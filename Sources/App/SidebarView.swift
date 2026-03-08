@@ -349,6 +349,7 @@ struct CreateWorktreeSheet: View {
             TextField("Base branch (optional)", text: $baseBranch)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isCreating)
+                .opacity(isCreating ? 0.5 : 1.0)
 
             HStack {
                 Button("Cancel") { dismiss() }
