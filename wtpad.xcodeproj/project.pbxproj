@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
+		08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */; };
 		0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741B9A5C7263C21519C58A7 /* SettingsView.swift */; };
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
@@ -21,6 +22,7 @@
 		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
 		8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */; };
 		9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8346D6DF56660212501AB834 /* Worktree.swift */; };
+		ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */; };
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
@@ -45,6 +47,7 @@
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
+		63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		7741B9A5C7263C21519C58A7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -57,6 +60,7 @@
 		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
+		D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		DEF31A165F772369B33B90AA /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
 		E131E35523E6802F91F45113 /* ShellEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironment.swift; sourceTree = "<group>"; };
 		ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadApp.swift; sourceTree = "<group>"; };
@@ -95,6 +99,8 @@
 		6F1FF42B73995D9739A65436 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */,
+				D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */,
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
 				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
 				1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */,
@@ -155,6 +161,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A610FA329D85E2EDDAB425A2 /* Build configuration list for PBXNativeTarget "wtpad" */;
 			buildPhases = (
+				D94CFE152489F9FD72FC43C8 /* Generate BuildInfo */,
 				A1196DCF71024AC68765FF61 /* Sources */,
 				2062A16E422EE24083DE6907 /* Resources */,
 			);
@@ -211,11 +218,35 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D94CFE152489F9FD72FC43C8 /* Generate BuildInfo */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate BuildInfo";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(PROJECT_DIR)/Sources/App/BuildInfo.generated.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "COMMIT=$(git -C \"$PROJECT_DIR\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\ncat > \"$PROJECT_DIR/Sources/App/BuildInfo.generated.swift\" <<SWIFT\n// Auto-generated at build time — do not edit.\nenum BuildInfo {\n    static let commit = \"$COMMIT\"\n}\nSWIFT\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A1196DCF71024AC68765FF61 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */,
+				08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */,
 				B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */,
 				12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */,
 				FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */,

@@ -50,6 +50,18 @@ targets:
         CLANG_ENABLE_MODULES: YES
         SWIFT_INCLUDE_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
+    preBuildScripts:
+      - name: Generate BuildInfo
+        script: |
+          COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          cat > "$PROJECT_DIR/Sources/App/BuildInfo.generated.swift" <<SWIFT
+          // Auto-generated at build time — do not edit.
+          enum BuildInfo {
+              static let commit = "$COMMIT"
+          }
+          SWIFT
+        outputFiles:
+          - $(PROJECT_DIR)/Sources/App/BuildInfo.generated.swift
     dependencies: []
 
   wtpadTests:

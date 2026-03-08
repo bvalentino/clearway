@@ -74,7 +74,7 @@ struct WtpadApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About wtpad") {
-                    NSApp.orderFrontStandardAboutPanel()
+                    AboutWindowController.shared.show()
                 }
                 Divider()
                 Button("Ghostty Settings\u{2026}") {
