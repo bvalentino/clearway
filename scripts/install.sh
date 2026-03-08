@@ -9,13 +9,14 @@ cd "$PROJECT_DIR"
 
 PRODUCT_NAME="wtpad"
 
+# Resolve BUILT_PRODUCTS_DIR once, then build.
+BUILD_DIR=$(xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Release -destination 'platform=macOS' \
+  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=wtpad \
+  -showBuildSettings 2>/dev/null | grep -m1 '^\s*BUILT_PRODUCTS_DIR' | awk '{print $3}')
+
 echo "==> Building $PRODUCT_NAME (Release)..."
 xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Release -destination 'platform=macOS' \
   PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=wtpad build -quiet
-
-# Locate the built .app in DerivedData.
-BUILD_DIR=$(xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Release -destination 'platform=macOS' \
-  -showBuildSettings 2>/dev/null | grep -m1 '^\s*BUILT_PRODUCTS_DIR' | awk '{print $3}')
 
 APP_PATH="$BUILD_DIR/$PRODUCT_NAME.app"
 

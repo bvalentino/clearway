@@ -30,10 +30,10 @@ enum ShellEnvironment {
         return ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
     }()
 
-    /// Returns a process environment dictionary with the resolved PATH.
-    static var processEnvironment: [String: String] {
+    /// A process environment dictionary with the resolved PATH, computed once.
+    static let processEnvironment: [String: String] = {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = path
         return env
-    }
+    }()
 }

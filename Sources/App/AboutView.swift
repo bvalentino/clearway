@@ -37,10 +37,6 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
 // MARK: - About View
 
 private struct AboutView: View {
-    @Environment(\.openURL) private var openURL
-
-    private let githubURL = URL(string: "https://github.com/bvalentino/wtpad-mac")
-
     private var version: String? {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }
