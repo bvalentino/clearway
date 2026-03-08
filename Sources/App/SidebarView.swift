@@ -6,8 +6,20 @@ struct SidebarView: View {
     @EnvironmentObject private var projectList: ProjectListManager
     @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
+    var onSearchActiveChanged: ((Bool) -> Void)?
     var onRunCommand: ((_ command: String, _ worktree: Worktree) -> Void)?
     @State private var showingCreateSheet = false
+    @State private var searchText = ""
+
+    private var isSearching: Bool { !searchText.isEmpty }
+
+    private var filteredWorktrees: [Worktree] {
+        guard isSearching else { return worktreeManager.worktrees }
+        return worktreeManager.worktrees.filter { wt in
+            wt.displayName.localizedCaseInsensitiveContains(searchText)
+            || (worktreeManager.subtitle(for: wt)?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
 
     var body: some View {
         List(selection: $selectedWorktree) {
@@ -15,7 +27,10 @@ struct SidebarView: View {
             worktreeSection
         }
         .listStyle(.sidebar)
+        .searchable(text: $searchText, placement: .sidebar, prompt: "Filter")
         .frame(minWidth: 200)
+        .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
+        .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
         .sheet(isPresented: $showingCreateSheet) {
             CreateWorktreeSheet()
         }
@@ -23,9 +38,16 @@ struct SidebarView: View {
 
     // MARK: - Sections
 
+    private var filteredProjectPaths: [String] {
+        guard isSearching else { return projectList.projectPaths }
+        return projectList.projectPaths.filter {
+            ($0 as NSString).lastPathComponent.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
     private var projectSection: some View {
         Section {
-            ForEach(projectList.projectPaths, id: \.self) { path in
+            ForEach(filteredProjectPaths, id: \.self) { path in
                 ProjectRow(
                     path: path,
                     isActive: path == worktreeManager.projectPath
@@ -60,8 +82,8 @@ struct SidebarView: View {
 
     private var worktreeSection: some View {
         Section {
-            ForEach(worktreeManager.worktrees) { wt in
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: shortcutIndex(for: wt))
+            ForEach(filteredWorktrees) { wt in
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching ? nil : shortcutIndex(for: wt))
                     .tag(wt)
                     .opacity(wt.isDimmed ? 0.5 : 1.0)
                     .contextMenu {
