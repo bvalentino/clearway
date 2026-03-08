@@ -49,7 +49,7 @@ struct ContentView: View {
         .navigationSubtitle(currentWorktree?.commit.message ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
-            let pane = terminalManager.activate(wt, app: app)
+            let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.activeProjectPath)
             DispatchQueue.main.async {
                 pane.main.window?.makeFirstResponder(pane.main)
             }
@@ -97,7 +97,7 @@ struct ContentView: View {
 
     private func runCommandInTerminal(command: String, worktree: Worktree) {
         guard let app = ghosttyApp.app else { return }
-        let pane = terminalManager.activate(worktree, app: app)
+        let pane = terminalManager.activate(worktree, app: app, projectPath: worktreeManager.activeProjectPath)
         selectedWorktree = worktree
         let cmd = command + "\n"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

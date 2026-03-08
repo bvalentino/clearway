@@ -22,7 +22,7 @@ extension Ghostty {
 
         override var acceptsFirstResponder: Bool { true }
 
-        init(_ app: ghostty_app_t) {
+        init(_ app: ghostty_app_t, workingDirectory: String? = nil, command: String? = nil) {
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
 
             self.wantsLayer = true
@@ -35,7 +35,29 @@ extension Ghostty {
             ))
             config.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2.0)
 
-            guard let surface = ghostty_surface_new(app, &config) else {
+            // Set working directory and command using closures to keep C strings alive
+            let createSurface: (inout ghostty_surface_config_s) -> ghostty_surface_t? = { cfg in
+                if let dir = workingDirectory {
+                    return dir.withCString { dirPtr in
+                        cfg.working_directory = dirPtr
+                        if let cmd = command {
+                            return cmd.withCString { cmdPtr in
+                                cfg.command = cmdPtr
+                                return ghostty_surface_new(app, &cfg)
+                            }
+                        }
+                        return ghostty_surface_new(app, &cfg)
+                    }
+                } else if let cmd = command {
+                    return cmd.withCString { cmdPtr in
+                        cfg.command = cmdPtr
+                        return ghostty_surface_new(app, &cfg)
+                    }
+                }
+                return ghostty_surface_new(app, &cfg)
+            }
+
+            guard let surface = createSurface(&config) else {
                 Ghostty.logger.critical("ghostty_surface_new failed")
                 return
             }

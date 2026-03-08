@@ -29,29 +29,23 @@ class TerminalManager: ObservableObject {
     }
 
     /// Get or create terminal panes for the given worktree.
-    func pane(for worktree: Worktree, app: ghostty_app_t) -> TerminalPane {
+    func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
         let key = worktree.id
         if let existing = panes[key] {
             return existing
         }
 
-        let main = Ghostty.SurfaceView(app)
-        let secondary = Ghostty.SurfaceView(app)
-        let side = Ghostty.SurfaceView(app)
+        let dir = worktree.path ?? projectPath
+        let main = Ghostty.SurfaceView(app, workingDirectory: dir)
+        let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
+        let side = Ghostty.SurfaceView(app, workingDirectory: dir)
 
         let tp = TerminalPane(main: main, secondary: secondary, side: side)
         panes[key] = tp
 
-        // Send cd to the worktree path after a short delay to let the shell initialize
-        if let path = worktree.path {
-            let cdCommand = "cd \(shellEscape(path))\n"
-            let sideCommand = "cd \(shellEscape(path)) && wtpad\n"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                for surface in [main, secondary] {
-                    surface.sendText(cdCommand)
-                }
-                side.sendText(sideCommand)
-            }
+        // Run wtpad in the side terminal
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            side.sendText("wtpad\n")
         }
 
         return tp
@@ -59,8 +53,8 @@ class TerminalManager: ObservableObject {
 
     /// Switch to a worktree's terminal.
     @discardableResult
-    func activate(_ worktree: Worktree, app: ghostty_app_t) -> TerminalPane {
-        let tp = pane(for: worktree, app: app)
+    func activate(_ worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
+        let tp = pane(for: worktree, app: app, projectPath: projectPath)
         activeSurfaceId = worktree.id
         return tp
     }
