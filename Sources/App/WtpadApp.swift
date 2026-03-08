@@ -17,6 +17,7 @@ struct WtpadApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
+    @StateObject private var settings = SettingsManager()
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
@@ -28,8 +29,14 @@ struct WtpadApp: App {
             ProjectWindow(projectPath: $projectPath)
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
+                .environmentObject(settings)
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
+
+        Settings {
+            SettingsView(settings: settings)
+                .preferredColorScheme(.dark)
+        }
     }
 }
