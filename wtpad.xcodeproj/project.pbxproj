@@ -7,22 +7,43 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
+		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
+		4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */; };
 		47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */; };
 		6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */; };
+		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
+		9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8346D6DF56660212501AB834 /* Worktree.swift */; };
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
 		FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF31A165F772369B33B90AA /* Ghostty.Config.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		34DBDE0851279A9E7D9E4F05 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0F0E6A454F6DC7C057FD3D94 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FD4EC480F9297D82DDB39599;
+			remoteInfo = wtpad;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
+		03DB14A8F11663E0841091A1 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
+		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
+		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		DEF31A165F772369B33B90AA /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
 		ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -41,14 +62,27 @@
 			isa = PBXGroup;
 			children = (
 				3E93CC01F922F2B8EA910CDE /* Sources */,
+				5E9957D2885BF61B78E0A7B3 /* Tests */,
 				735B9CCA3F0314ADA5083AC3 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		5E9957D2885BF61B78E0A7B3 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */,
+				D70F735E00E89E5639B51D00 /* WorktreeTests.swift */,
+			);
+			path = Tests;
 			sourceTree = "<group>";
 		};
 		6F1FF42B73995D9739A65436 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
+				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
+				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
+				8346D6DF56660212501AB834 /* Worktree.swift */,
 				ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */,
 			);
 			path = App;
@@ -58,6 +92,7 @@
 			isa = PBXGroup;
 			children = (
 				B25C7DC00406541512BE8A5D /* wtpad.app */,
+				BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +112,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0A45DBCD26BD88B40EBD121A /* wtpadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 823808D0B4EF5068ECD89A1C /* Build configuration list for PBXNativeTarget "wtpadTests" */;
+			buildPhases = (
+				A636E46AE70905B671B40D71 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A651CFBB047A4D4FFA6BA741 /* PBXTargetDependency */,
+			);
+			name = wtpadTests;
+			packageProductDependencies = (
+			);
+			productName = wtpadTests;
+			productReference = BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		FD4EC480F9297D82DDB39599 /* wtpad */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A610FA329D85E2EDDAB425A2 /* Build configuration list for PBXNativeTarget "wtpad" */;
@@ -120,6 +173,7 @@
 			projectRoot = "";
 			targets = (
 				FD4EC480F9297D82DDB39599 /* wtpad */,
+				0A45DBCD26BD88B40EBD121A /* wtpadTests */,
 			);
 		};
 /* End PBXProject section */
@@ -134,14 +188,64 @@
 				FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */,
 				6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */,
 				C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */,
+				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
+				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
+				9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */,
 				47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A636E46AE70905B671B40D71 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */,
+				8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A651CFBB047A4D4FFA6BA741 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FD4EC480F9297D82DDB39599 /* wtpad */;
+			targetProxy = 34DBDE0851279A9E7D9E4F05 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		1F69671413BA7AC04E915823 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.wtpad.mac.tests;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
+				);
+				SWIFT_VERSION = 5.10;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/wtpad.app/Contents/MacOS/wtpad";
+			};
+			name = Debug;
+		};
 		217307572B8C36CFB2A99930 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -303,6 +407,36 @@
 			};
 			name = Release;
 		};
+		BD12B92C1522D9747DABCB76 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.wtpad.mac.tests;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = (
+					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
+				);
+				SWIFT_VERSION = 5.10;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/wtpad.app/Contents/MacOS/wtpad";
+			};
+			name = Release;
+		};
 		D7715E5183212D4C273E5BB6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -367,6 +501,15 @@
 			buildConfigurations = (
 				217307572B8C36CFB2A99930 /* Debug */,
 				D7715E5183212D4C273E5BB6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		823808D0B4EF5068ECD89A1C /* Build configuration list for PBXNativeTarget "wtpadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1F69671413BA7AC04E915823 /* Debug */,
+				BD12B92C1522D9747DABCB76 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -9,6 +9,8 @@ private let ghosttyInitResult: Bool = {
 @main
 struct WtpadApp: App {
     @StateObject private var ghosttyApp: Ghostty.App
+    @StateObject private var worktreeManager = WorktreeManager()
+    @StateObject private var terminalManager = TerminalManager()
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
@@ -19,7 +21,9 @@ struct WtpadApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(ghosttyApp)
+                .environmentObject(worktreeManager)
+                .environmentObject(terminalManager)
         }
-        .defaultSize(width: 800, height: 600)
+        .defaultSize(width: 1100, height: 700)
     }
 }

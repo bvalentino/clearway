@@ -50,3 +50,24 @@ targets:
         SWIFT_INCLUDE_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
     dependencies: []
+
+  wtpadTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wtpad.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.10"
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64"
+        HEADER_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
+        LIBRARY_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64"
+        SWIFT_INCLUDE_PATHS:
+          - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
+    dependencies:
+      - target: wtpad

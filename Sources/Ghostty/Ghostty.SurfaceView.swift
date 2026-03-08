@@ -288,6 +288,16 @@ extension Ghostty {
             NSCursor.setHiddenUntilMouseMoves(!visible)
         }
 
+        // MARK: - Text Injection
+
+        /// Send a string to the terminal as if typed.
+        func sendText(_ text: String) {
+            guard let surface = surfacePtr else { return }
+            text.withCString { cStr in
+                ghostty_surface_text(surface, cStr, UInt(text.utf8.count))
+            }
+        }
+
         // MARK: - NSTextInputClient
 
         func insertText(_ string: Any, replacementRange: NSRange) {
