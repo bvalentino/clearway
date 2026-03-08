@@ -18,7 +18,7 @@ extension Ghostty {
 
         private var markedText = NSMutableAttributedString()
         private var keyTextAccumulator: [String]?
-        private var focused: Bool = true
+        private var focused: Bool = false
 
         override var acceptsFirstResponder: Bool { true }
 
@@ -40,6 +40,7 @@ extension Ghostty {
                 return
             }
             self.surfacePtr = surface
+            ghostty_surface_set_focus(surface, false)
 
             updateTrackingAreas()
         }

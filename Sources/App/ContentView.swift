@@ -90,16 +90,33 @@ struct ContentView: View {
 
         case .ready:
             if let pane = terminalManager.activePane {
-                HSplitView {
-                    VSplitView {
-                        TerminalSurface(surfaceView: pane.main)
-                        TerminalSurface(surfaceView: pane.secondary)
-                            .frame(minHeight: 100)
-                    }
-                    .frame(minWidth: 300)
+                VStack(spacing: 0) {
+                    HSplitView {
+                        VSplitView {
+                            TerminalSurface(surfaceView: pane.main)
+                            TerminalSurface(surfaceView: pane.secondary)
+                                .frame(minHeight: 100)
+                        }
+                        .frame(minWidth: 300)
 
-                    TerminalSurface(surfaceView: pane.side)
-                        .frame(minWidth: 200)
+                        TerminalSurface(surfaceView: pane.side)
+                            .frame(minWidth: 200)
+                    }
+
+                    if let path = selectedWorktree?.path {
+                        HStack {
+                            Text(path)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
+                        .background(.bar)
+                    }
                 }
             } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {
                 VStack(spacing: 12) {
