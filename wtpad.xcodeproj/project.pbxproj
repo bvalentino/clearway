@@ -11,6 +11,7 @@
 		0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741B9A5C7263C21519C58A7 /* SettingsView.swift */; };
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
+		1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E131E35523E6802F91F45113 /* ShellEnvironment.swift */; };
 		23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */; };
 		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
 		4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */; };
@@ -57,6 +58,7 @@
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		DEF31A165F772369B33B90AA /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
+		E131E35523E6802F91F45113 /* ShellEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironment.swift; sourceTree = "<group>"; };
 		ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -98,6 +100,7 @@
 				1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */,
 				A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */,
 				7741B9A5C7263C21519C58A7 /* SettingsView.swift */,
+				E131E35523E6802F91F45113 /* ShellEnvironment.swift */,
 				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				8346D6DF56660212501AB834 /* Worktree.swift */,
@@ -222,6 +225,7 @@
 				8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */,
 				23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */,
 				0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */,
+				1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */,
 				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,

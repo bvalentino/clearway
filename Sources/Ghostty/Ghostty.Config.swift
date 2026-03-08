@@ -20,7 +20,8 @@ extension Ghostty {
                 return
             }
 
-            // Load default config files (~/.config/ghostty/config)
+            // Load default config files (~/.config/ghostty/config,
+            // ~/Library/Application Support/com.mitchellh.ghostty/config)
             ghostty_config_load_default_files(cfg)
             ghostty_config_load_recursive_files(cfg)
 

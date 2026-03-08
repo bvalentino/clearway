@@ -397,6 +397,7 @@ class WorktreeManager: ObservableObject {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = args
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.environment = ShellEnvironment.processEnvironment
 
         let stdout = Pipe()
         process.standardOutput = stdout
