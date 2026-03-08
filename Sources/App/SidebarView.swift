@@ -18,19 +18,6 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .frame(minWidth: 200)
-        .toolbar {
-            ToolbarItemGroup {
-                Button { pickProject() } label: {
-                    Image(systemName: "folder.badge.plus")
-                }
-                .help("Add project")
-
-                Button { worktreeManager.refresh() } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Refresh")
-            }
-        }
         .sheet(isPresented: $showingCreateSheet) {
             CreateWorktreeSheet()
         }
@@ -44,7 +31,7 @@ struct SidebarView: View {
     // MARK: - Sections
 
     private var projectSection: some View {
-        Section("Projects") {
+        Section {
             ForEach(worktreeManager.projectPaths, id: \.self) { path in
                 ProjectRow(
                     path: path,
@@ -62,6 +49,15 @@ struct SidebarView: View {
                         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
                     }
                 }
+            }
+        } header: {
+            HStack {
+                Text("Projects")
+                Spacer()
+                SidebarHeaderButton(systemImage: "plus") {
+                    pickProject()
+                }
+                .padding(.trailing, 6)
             }
         }
     }
@@ -93,13 +89,14 @@ struct SidebarView: View {
             HStack {
                 Text("Worktrees")
                 Spacer()
-                Button { showingCreateSheet = true } label: {
-                    Image(systemName: "plus")
-                        .font(.body)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
+                SidebarHeaderButton(systemImage: "arrow.clockwise") {
+                    worktreeManager.refresh()
                 }
-                .buttonStyle(.plain)
+                .padding(.trailing, -6)
+
+                SidebarHeaderButton(systemImage: "plus") {
+                    showingCreateSheet = true
+                }
                 .disabled(worktreeManager.activeProjectPath == nil)
                 .padding(.trailing, 6)
             }
@@ -346,5 +343,25 @@ struct CreateWorktreeSheet: View {
         }
         .padding(20)
         .frame(width: 320)
+    }
+}
+
+// MARK: - Sidebar Header Button
+
+private struct SidebarHeaderButton: View {
+    let systemImage: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .foregroundStyle(isHovering ? .primary : .secondary)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
