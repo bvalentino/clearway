@@ -75,10 +75,18 @@ extension Ghostty {
             fatalError("init(coder:) is not supported")
         }
 
+        /// Free the underlying ghostty surface, signaling the shell with SIGHUP.
+        ///
+        /// Safe to call multiple times — subsequent calls are no-ops.
+        /// Called automatically by `deinit` if not called earlier.
+        func closeSurface() {
+            guard let surface = surfacePtr else { return }
+            surfacePtr = nil
+            ghostty_surface_free(surface)
+        }
+
         deinit {
-            if let surface = surfacePtr {
-                ghostty_surface_free(surface)
-            }
+            closeSurface()
             trackingAreas.forEach { removeTrackingArea($0) }
         }
 

@@ -23,6 +23,7 @@ class TerminalManager: ObservableObject {
     private var panes: [String: TerminalPane] = [:]
     private var app: ghostty_app_t?
     private var closeSurfaceObserver: Any?
+    private var terminateObserver: Any?
     private var recentRestarts: [String: [Date]] = [:]
     @Published var activeSurfaceId: String?
     @Published private(set) var notifiedWorktrees: Set<String> = []
@@ -34,6 +35,14 @@ class TerminalManager: ObservableObject {
     }
 
     init() {
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.closeAllSurfaces()
+        }
+
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .ghosttyDesktopNotification,
             object: nil,
@@ -59,11 +68,33 @@ class TerminalManager: ObservableObject {
     }
 
     deinit {
+        if let observer = terminateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         if let observer = notificationObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = closeSurfaceObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Explicitly close all terminal surfaces, sending SIGHUP to their shells.
+    ///
+    /// Called during app termination to ensure graceful cleanup before the
+    /// process exits. Removes the close-surface observer first to prevent
+    /// the restart logic from firing during teardown.
+    func closeAllSurfaces() {
+        if let observer = terminateObserver {
+            NotificationCenter.default.removeObserver(observer)
+            terminateObserver = nil
+        }
+        if let observer = closeSurfaceObserver {
+            NotificationCenter.default.removeObserver(observer)
+            closeSurfaceObserver = nil
+        }
+        for surface in allSurfaces {
+            surface.closeSurface()
         }
     }
 

@@ -283,6 +283,7 @@ extension Ghostty {
             guard let userdata else { return }
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
             DispatchQueue.main.async {
+                guard surfaceView.surfacePtr != nil else { return }
                 NotificationCenter.default.post(name: .ghosttyCloseSurface, object: surfaceView, userInfo: [
                     GhosttyNotificationKey.processAlive: processAlive,
                 ])
