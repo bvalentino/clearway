@@ -12,6 +12,9 @@ extension Ghostty {
         @Published var cellSize: NSSize = .zero
         @Published var pwd: String?
 
+        /// The working directory passed at initialization, used as a fallback for respawning.
+        let initialWorkingDirectory: String?
+
         private(set) var surfacePtr: ghostty_surface_t?
 
         var surface: ghostty_surface_t? { surfacePtr }
@@ -23,6 +26,7 @@ extension Ghostty {
         override var acceptsFirstResponder: Bool { true }
 
         init(_ app: ghostty_app_t, workingDirectory: String? = nil, command: String? = nil) {
+            self.initialWorkingDirectory = workingDirectory
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
 
             self.wantsLayer = true
