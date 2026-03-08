@@ -31,6 +31,11 @@ extension Ghostty {
             self.config = cfg
         }
 
+        /// Wraps an already-loaded config (used during reload).
+        init(existing: ghostty_config_t) {
+            self.config = existing
+        }
+
         deinit {
             self.config = nil
         }

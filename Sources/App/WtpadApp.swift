@@ -71,6 +71,21 @@ struct WtpadApp: App {
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About wtpad") {
+                    NSApp.orderFrontStandardAboutPanel()
+                }
+                Divider()
+                Button("Ghostty Settings\u{2026}") {
+                    ghosttyApp.openConfigFile()
+                }
+                Button("Reload Configuration") {
+                    ghosttyApp.reloadConfiguration()
+                }
+                .keyboardShortcut(",", modifiers: [.command, .shift])
+            }
+        }
 
         Settings {
             SettingsView(settings: settings)
