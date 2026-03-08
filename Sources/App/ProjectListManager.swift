@@ -54,8 +54,10 @@ class ProjectListManager: ObservableObject {
         }
     }
 
-    /// Show an open panel to pick a git project directory, add it, and open a window.
-    func pickAndOpenProject(openWindow: OpenWindowAction) {
+    /// Show an open panel to pick a git project directory and add it.
+    /// Returns the path if a project was added, or `nil` if the user cancelled.
+    @discardableResult
+    func pickAndAddProject() -> String? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -63,9 +65,8 @@ class ProjectListManager: ObservableObject {
         panel.message = "Choose a git project directory"
         panel.prompt = "Add Project"
 
-        if panel.runModal() == .OK, let url = panel.url {
-            addProject(url.path)
-            openWindow(value: url.path)
-        }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        addProject(url.path)
+        return url.path
     }
 }

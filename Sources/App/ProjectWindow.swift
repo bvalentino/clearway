@@ -7,23 +7,37 @@ import SwiftUI
 struct ProjectWindow: View {
     @Binding var projectPath: String?
     @EnvironmentObject private var projectList: ProjectListManager
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        content
+            .onChange(of: projectList.projectPaths) { paths in
+                guard let path = projectPath, !paths.contains(path) else { return }
+                if paths.isEmpty {
+                    projectPath = nil
+                } else {
+                    dismiss()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let path = projectPath {
             ProjectContentView(projectPath: path)
         } else if let path = projectList.lastActiveProjectPath {
             // WindowGroup(for:) passes nil on initial launch; redirect to last active project.
             Color.clear.onAppear { projectPath = path }
         } else {
-            WelcomeView()
+            WelcomeView(projectPath: $projectPath)
         }
     }
 }
 
 /// Welcome view shown when no projects have been added.
 struct WelcomeView: View {
+    @Binding var projectPath: String?
     @EnvironmentObject private var projectList: ProjectListManager
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 12) {
@@ -32,9 +46,13 @@ struct WelcomeView: View {
                 .foregroundStyle(.secondary)
             Text("Add a project to get started")
                 .foregroundStyle(.secondary)
-            Button("Add Project") { projectList.pickAndOpenProject(openWindow: openWindow) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+            Button("Add Project") {
+                if let path = projectList.pickAndAddProject() {
+                    projectPath = path
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

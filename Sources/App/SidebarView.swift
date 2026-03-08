@@ -152,7 +152,9 @@ struct SidebarView: View {
     }
 
     private func pickProject() {
-        projectList.pickAndOpenProject(openWindow: openWindow)
+        if let path = projectList.pickAndAddProject() {
+            openWindow(value: path)
+        }
     }
 }
 

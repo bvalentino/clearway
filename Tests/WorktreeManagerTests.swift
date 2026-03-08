@@ -107,7 +107,6 @@ final class WorktreeManagerTests: XCTestCase {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
 
         XCTAssertEqual(manager.projectPath, "/tmp/test-project")
-        XCTAssertTrue(manager.worktrees.isEmpty || !manager.worktrees.isEmpty) // may load async
         XCTAssertNil(manager.error)
     }
 
