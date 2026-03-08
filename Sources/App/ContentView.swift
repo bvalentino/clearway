@@ -21,6 +21,29 @@ struct ContentView: View {
         } detail: {
             detailView
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSecondaryTerminal.toggle()
+                    }
+                } label: {
+                    Image(systemName: "rectangle.bottomhalf.inset.filled")
+                }
+                .help(showSecondaryTerminal ? "Hide secondary terminal" : "Show secondary terminal")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSideTerminal.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                }
+                .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
+            }
+        }
         .navigationTitle(currentWorktree?.displayName ?? "wtpad")
         .navigationSubtitle(currentWorktree?.commit.message ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
@@ -30,8 +53,15 @@ struct ContentView: View {
                 pane.main.window?.makeFirstResponder(pane.main)
             }
         }
+        .onChange(of: worktreeManager.activeProjectPath) { _ in
+            selectedWorktree = nil
+        }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
+            if selectedWorktree == nil || !newWorktrees.contains(where: { $0.id == selectedWorktree?.id }) {
+                selectedWorktree = newWorktrees.first(where: \.isCurrent)
+                    ?? newWorktrees.first(where: \.isMain)
+            }
         }
         .onAppear {
             if selectedWorktree == nil {
@@ -153,29 +183,6 @@ struct ContentView: View {
                         .overlay(alignment: .top) {
                             Divider()
                         }
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showSecondaryTerminal.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "rectangle.bottomhalf.inset.filled")
-                        }
-                        .help(showSecondaryTerminal ? "Hide secondary terminal" : "Show secondary terminal")
-                    }
-
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showSideTerminal.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "sidebar.trailing")
-                        }
-                        .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
                     }
                 }
             } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {

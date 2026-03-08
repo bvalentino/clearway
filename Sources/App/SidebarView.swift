@@ -25,12 +25,6 @@ struct SidebarView: View {
                 }
                 .help("Add project")
 
-                Button { showingCreateSheet = true } label: {
-                    Image(systemName: "plus")
-                }
-                .help("New worktree")
-                .disabled(worktreeManager.activeProjectPath == nil)
-
                 Button { worktreeManager.refresh() } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -73,7 +67,7 @@ struct SidebarView: View {
     }
 
     private var worktreeSection: some View {
-        Section("Worktrees") {
+        Section {
             ForEach(worktreeManager.worktrees) { wt in
                 WorktreeRow(worktree: wt)
                     .tag(wt)
@@ -94,6 +88,20 @@ struct SidebarView: View {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
                     .font(.caption)
+            }
+        } header: {
+            HStack {
+                Text("Worktrees")
+                Spacer()
+                Button { showingCreateSheet = true } label: {
+                    Image(systemName: "plus")
+                        .font(.body)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(worktreeManager.activeProjectPath == nil)
+                .padding(.trailing, 6)
             }
         }
     }
