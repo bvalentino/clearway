@@ -21,6 +21,8 @@ struct ContentView: View {
         } detail: {
             detailView
         }
+        .navigationTitle(currentWorktree?.displayName ?? "wtpad")
+        .navigationSubtitle(currentWorktree?.commit.message ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
             let pane = terminalManager.activate(wt, app: app)
@@ -51,6 +53,13 @@ struct ContentView: View {
                 becomeActiveObserver = nil
             }
         }
+    }
+
+    // MARK: - Title
+
+    private var currentWorktree: Worktree? {
+        guard let id = selectedWorktree?.id else { return nil }
+        return worktreeManager.worktrees.first(where: { $0.id == id })
     }
 
     // MARK: - Command Execution
