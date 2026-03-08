@@ -156,7 +156,6 @@ struct SidebarView: View {
             openWindow(value: path)
         }
     }
-
 }
 
 // MARK: - Project Row
