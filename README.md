@@ -52,14 +52,26 @@ This will:
 2. Build `GhosttyKit.xcframework` from source (takes a few minutes)
 3. Generate the Xcode project
 
-## Build & Run
+## Build & Run (Debug)
 
 ```bash
-xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Debug build
-open ~/Library/Developer/Xcode/DerivedData/wtpad-*/Build/Products/Debug/wtpad.app
+./scripts/build.sh   # build only
+./scripts/run.sh     # build + launch
 ```
 
 Or open `wtpad.xcodeproj` in Xcode and hit Run.
+
+> **Note:** In git worktrees, the app is automatically named `wtpad (<worktree>)` so it doesn't conflict with the main build.
+
+## Install
+
+To build an optimized Release build and install it to `/Applications`:
+
+```bash
+./scripts/install.sh
+```
+
+After installing, wtpad will appear in Launchpad and Spotlight.
 
 ## Rebuilding GhosttyKit
 
