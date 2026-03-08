@@ -86,6 +86,7 @@ struct ContentView: View {
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
             let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
+            terminalManager.clearNotification(for: wt.id)
             DispatchQueue.main.async {
                 pane.main.window?.makeFirstResponder(pane.main)
             }

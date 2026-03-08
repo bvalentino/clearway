@@ -22,10 +22,47 @@ struct TerminalPane {
 class TerminalManager: ObservableObject {
     private var panes: [String: TerminalPane] = [:]
     @Published var activeSurfaceId: String?
+    @Published private(set) var notifiedWorktrees: Set<String> = []
+    private var notificationObserver: Any?
 
     var activePane: TerminalPane? {
         guard let id = activeSurfaceId else { return nil }
         return panes[id]
+    }
+
+    init() {
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .ghosttyDesktopNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self, let surface = notification.object as? Ghostty.SurfaceView else { return }
+            self.handleDesktopNotification(from: surface)
+        }
+    }
+
+    deinit {
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func handleDesktopNotification(from surface: Ghostty.SurfaceView) {
+        guard let worktreeId = worktreeId(for: surface),
+              worktreeId != activeSurfaceId,
+              !notifiedWorktrees.contains(worktreeId) else { return }
+        notifiedWorktrees.insert(worktreeId)
+    }
+
+    /// Find the worktree ID that owns the given surface.
+    private func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
+        panes.first(where: { _, pane in
+            pane.main === surface || pane.secondary === surface || pane.side === surface
+        })?.key
+    }
+
+    func clearNotification(for worktreeId: String) {
+        notifiedWorktrees.remove(worktreeId)
     }
 
     /// Get or create terminal panes for the given worktree.
@@ -66,6 +103,7 @@ class TerminalManager: ObservableObject {
     /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
         panes.removeValue(forKey: worktreeId)
+        notifiedWorktrees.remove(worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
         }
