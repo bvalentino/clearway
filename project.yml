@@ -22,8 +22,8 @@ targets:
         PRODUCT_NAME: wtpad
         INFOPLIST_FILE: ""
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: 2
         CODE_SIGN_ENTITLEMENTS: wtpad.entitlements
         CODE_SIGN_IDENTITY: "-"
         FRAMEWORK_SEARCH_PATHS:

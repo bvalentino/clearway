@@ -36,10 +36,5 @@ struct TerminalSurface: NSViewRepresentable {
             surface.topAnchor.constraint(equalTo: container.topAnchor),
             surface.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
-
-        // Make sure the surface gets focus
-        DispatchQueue.main.async {
-            surface.window?.makeFirstResponder(surface)
-        }
     }
 }

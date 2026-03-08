@@ -80,8 +80,6 @@ extension Ghostty {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window else { return }
-            window.makeFirstResponder(self)
         }
 
         override func setFrameSize(_ newSize: NSSize) {
@@ -128,6 +126,9 @@ extension Ghostty {
         // MARK: - Mouse Events
 
         override func mouseDown(with event: NSEvent) {
+            if window?.firstResponder !== self {
+                window?.makeFirstResponder(self)
+            }
             guard let surface = surfacePtr else { return }
             let pos = mousePosition(event)
             ghostty_surface_mouse_pos(surface, pos.x, pos.y, ghosttyMods(event.modifierFlags))
@@ -181,12 +182,36 @@ extension Ghostty {
 
         // MARK: - Keyboard Events
 
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            guard event.type == .keyDown, surfacePtr != nil, focused else { return false }
+            guard event.modifierFlags.contains(.control) ||
+                  event.modifierFlags.contains(.command) else { return false }
+            keyDown(with: event)
+            return true
+        }
+
+        override func doCommand(by selector: Selector) {
+            // Intentionally empty — prevent interpretKeyEvents from dispatching
+            // control-key combos up the responder chain.
+        }
+
         override func keyDown(with event: NSEvent) {
-            guard surfacePtr != nil else {
+            guard let surface = surfacePtr else {
                 interpretKeyEvents([event])
                 return
             }
 
+            let flags = event.modifierFlags
+            let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
+
+            // Fast path for control-key combos (Ctrl+C, Ctrl+D, etc.).
+            // Bypass interpretKeyEvents entirely so AppKit can't swallow the event.
+            if flags.contains(.control) && !flags.contains(.command) && !flags.contains(.option) && !hasMarkedText() {
+                sendKeyEvent(action, event: event, text: event.charactersIgnoringModifiers ?? "", composing: false)
+                return
+            }
+
+            // Normal path: use interpretKeyEvents for IME / dead key support
             keyTextAccumulator = []
             defer { keyTextAccumulator = nil }
 
@@ -195,18 +220,14 @@ extension Ghostty {
             interpretKeyEvents([event])
 
             // Sync preedit state
-            if let surface = surfacePtr {
-                if markedText.length > 0 {
-                    let str = markedText.string
-                    str.withCString { cStr in
-                        ghostty_surface_preedit(surface, cStr, UInt(str.utf8.count))
-                    }
-                } else if markedTextBefore {
-                    ghostty_surface_preedit(surface, nil, 0)
+            if markedText.length > 0 {
+                let str = markedText.string
+                str.withCString { cStr in
+                    ghostty_surface_preedit(surface, cStr, UInt(str.utf8.count))
                 }
+            } else if markedTextBefore {
+                ghostty_surface_preedit(surface, nil, 0)
             }
-
-            let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
 
             if let list = keyTextAccumulator, !list.isEmpty {
                 for text in list {

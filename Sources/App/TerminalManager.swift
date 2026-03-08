@@ -6,52 +6,66 @@ func shellEscape(_ path: String) -> String {
     "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
+/// The three terminal panes for a worktree.
+struct TerminalPane {
+    let main: Ghostty.SurfaceView
+    let secondary: Ghostty.SurfaceView
+    let side: Ghostty.SurfaceView
+}
+
 /// Manages per-worktree terminal surfaces.
 ///
-/// Each worktree gets its own `Ghostty.SurfaceView` that persists for the
-/// lifetime of the session. Switching worktrees shows/hides surfaces rather
-/// than creating new ones.
+/// Each worktree gets three `Ghostty.SurfaceView` instances (main, secondary,
+/// side) that persist for the lifetime of the session. Switching worktrees
+/// shows/hides surfaces rather than creating new ones.
 @MainActor
 class TerminalManager: ObservableObject {
-    private var surfaces: [String: Ghostty.SurfaceView] = [:]
+    private var panes: [String: TerminalPane] = [:]
     @Published var activeSurfaceId: String?
 
-    var activeSurface: Ghostty.SurfaceView? {
+    var activePane: TerminalPane? {
         guard let id = activeSurfaceId else { return nil }
-        return surfaces[id]
+        return panes[id]
     }
 
-    /// Get or create a terminal surface for the given worktree.
-    func surface(for worktree: Worktree, app: ghostty_app_t) -> Ghostty.SurfaceView {
+    /// Get or create terminal panes for the given worktree.
+    func pane(for worktree: Worktree, app: ghostty_app_t) -> TerminalPane {
         let key = worktree.id
-        if let existing = surfaces[key] {
+        if let existing = panes[key] {
             return existing
         }
 
-        let view = Ghostty.SurfaceView(app)
-        surfaces[key] = view
+        let main = Ghostty.SurfaceView(app)
+        let secondary = Ghostty.SurfaceView(app)
+        let side = Ghostty.SurfaceView(app)
+
+        let tp = TerminalPane(main: main, secondary: secondary, side: side)
+        panes[key] = tp
 
         // Send cd to the worktree path after a short delay to let the shell initialize
         if let path = worktree.path {
             let command = "cd \(shellEscape(path)) && clear\n"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                view.sendText(command)
+                for surface in [main, secondary, side] {
+                    surface.sendText(command)
+                }
             }
         }
 
-        return view
+        return tp
     }
 
     /// Switch to a worktree's terminal.
-    func activate(_ worktree: Worktree, app: ghostty_app_t) -> Ghostty.SurfaceView {
-        let view = surface(for: worktree, app: app)
+    @discardableResult
+    func activate(_ worktree: Worktree, app: ghostty_app_t) -> TerminalPane {
+        let tp = pane(for: worktree, app: app)
         activeSurfaceId = worktree.id
-        return view
+        return tp
     }
 
-    /// Remove a terminal surface when a worktree is deleted.
+    /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
-        surfaces.removeValue(forKey: worktreeId)
+        panes.removeValue(forKey: worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
         }
@@ -59,7 +73,7 @@ class TerminalManager: ObservableObject {
 
     /// Remove surfaces for worktrees that no longer exist.
     func pruneStale(keeping currentIds: Set<String>) {
-        for key in surfaces.keys where !currentIds.contains(key) {
+        for key in panes.keys where !currentIds.contains(key) {
             removeSurface(for: key)
         }
     }

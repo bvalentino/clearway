@@ -20,7 +20,10 @@ struct ContentView: View {
         }
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
-            _ = terminalManager.activate(wt, app: app)
+            let pane = terminalManager.activate(wt, app: app)
+            DispatchQueue.main.async {
+                pane.main.window?.makeFirstResponder(pane.main)
+            }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
@@ -51,11 +54,11 @@ struct ContentView: View {
 
     private func runCommandInTerminal(command: String, worktree: Worktree) {
         guard let app = ghosttyApp.app else { return }
-        let surface = terminalManager.activate(worktree, app: app)
+        let pane = terminalManager.activate(worktree, app: app)
         selectedWorktree = worktree
         let cmd = command + "\n"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            surface.sendText(cmd)
+            pane.main.sendText(cmd)
         }
     }
 
@@ -86,8 +89,18 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .ready:
-            if let surface = terminalManager.activeSurface {
-                TerminalSurface(surfaceView: surface)
+            if let pane = terminalManager.activePane {
+                HSplitView {
+                    VSplitView {
+                        TerminalSurface(surfaceView: pane.main)
+                        TerminalSurface(surfaceView: pane.secondary)
+                            .frame(minHeight: 100)
+                    }
+                    .frame(minWidth: 300)
+
+                    TerminalSurface(surfaceView: pane.side)
+                        .frame(minWidth: 200)
+                }
             } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {
                 VStack(spacing: 12) {
                     Image(systemName: "terminal")
