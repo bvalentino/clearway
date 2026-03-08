@@ -3,6 +3,15 @@ import GhosttyKit
 
 private let maxShortcuts = 9
 
+private let wtpadLogo: [String] = [
+    "  ___       _________              _________",
+    "  __ |     / /__  __/_____________ ______  /",
+    "  __ | /| / /__  /  ___  __ \\  __ `/  __  /",
+    "  __ |/ |/ / _  /   __  /_/ / /_/ // /_/ / ",
+    "  ____/|__/  /_/    _  .___/\\__,_/ \\__,_/  ",
+    "                    /_/                      ",
+]
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -91,9 +100,8 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
-            if selectedWorktree == nil || !newWorktrees.contains(where: { $0.id == selectedWorktree?.id }) {
-                selectedWorktree = newWorktrees.first(where: \.isCurrent)
-                    ?? newWorktrees.first(where: \.isMain)
+            if let selected = selectedWorktree, !newWorktrees.contains(where: { $0.id == selected.id }) {
+                selectedWorktree = newWorktrees.first(where: \.isMain)
             }
         }
         .background {
@@ -106,11 +114,6 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if selectedWorktree == nil {
-                selectedWorktree = worktreeManager.worktrees.first(where: \.isCurrent)
-                    ?? worktreeManager.worktrees.first(where: \.isMain)
-            }
-
             becomeActiveObserver = NotificationCenter.default.addObserver(
                 forName: NSApplication.didBecomeActiveNotification,
                 object: nil,
@@ -247,10 +250,14 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "sidebar.left")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(wtpadLogo, id: \.self) { line in
+                            Text(line)
+                        }
+                    }
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.tertiary)
                     Text("Select a worktree")
                         .foregroundStyle(.secondary)
                 }
