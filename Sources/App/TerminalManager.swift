@@ -20,6 +20,9 @@ struct TerminalPane {
 /// shows/hides surfaces rather than creating new ones.
 @MainActor
 class TerminalManager: ObservableObject {
+    /// All live instances, tracked via weak references for app-level queries.
+    static let allInstances = NSHashTable<TerminalManager>.weakObjects()
+
     private var panes: [String: TerminalPane] = [:]
     private var app: ghostty_app_t?
     private var closeSurfaceObserver: Any?
@@ -38,6 +41,8 @@ class TerminalManager: ObservableObject {
     }
 
     init() {
+        TerminalManager.allInstances.add(self)
+
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .ghosttyDesktopNotification,
             object: nil,
@@ -68,6 +73,21 @@ class TerminalManager: ObservableObject {
         }
         if let observer = closeSurfaceObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Explicitly close all terminal surfaces, sending SIGHUP to their shells.
+    ///
+    /// Called during app termination to ensure graceful cleanup before the
+    /// process exits. Removes the close-surface observer first to prevent
+    /// the restart logic from firing during teardown.
+    func closeAllSurfaces() {
+        if let observer = closeSurfaceObserver {
+            NotificationCenter.default.removeObserver(observer)
+            closeSurfaceObserver = nil
+        }
+        for surface in allSurfaces {
+            surface.closeSurface()
         }
     }
 
@@ -204,6 +224,18 @@ class TerminalManager: ObservableObject {
     func pruneStale(keeping currentIds: Set<String>) {
         for key in panes.keys where !currentIds.contains(key) {
             removeSurface(for: key)
+        }
+    }
+
+    /// Whether any surface across all managers has a running foreground process.
+    static var needsConfirmQuit: Bool {
+        allInstances.allObjects.flatMap(\.allSurfaces).contains(where: \.needsConfirmQuit)
+    }
+
+    /// Close all surfaces across every live manager.
+    static func closeAllManagers() {
+        for manager in allInstances.allObjects {
+            manager.closeAllSurfaces()
         }
     }
 

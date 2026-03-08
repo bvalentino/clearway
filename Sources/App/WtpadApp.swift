@@ -6,9 +6,30 @@ private let ghosttyInitResult: Bool = {
     ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
 }()
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard TerminalManager.needsConfirmQuit else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "Close terminal sessions?"
+        alert.informativeText = "There are processes still running in your terminals."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+
+        alert.beginSheetModal(for: NSApp.mainWindow ?? NSApp.keyWindow ?? NSApp.windows.first!) { response in
+            NSApp.reply(toApplicationShouldTerminate: response == .alertFirstButtonReturn)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        TerminalManager.closeAllManagers()
     }
 }
 
