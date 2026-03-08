@@ -1,0 +1,20 @@
+# Xcode
+xcuserdata/
+*.xcscmblueprint
+DerivedData/
+
+# Build artifacts
+build/
+
+# OS
+.DS_Store
+
+# Ghostty build output (built from submodule)
+ghostty/macos/GhosttyKit.xcframework/
+ghostty/zig-out/
+ghostty/zig-cache/
+ghostty/.zig-cache/
+
+# wtpad
+.wtpad/
+.my-dev.json
