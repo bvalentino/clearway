@@ -43,8 +43,12 @@ class TerminalManager: ObservableObject {
         let tp = TerminalPane(main: main, secondary: secondary, side: side)
         panes[key] = tp
 
-        // Run wtpad in the side terminal
+        // Run startup commands in terminals
+        let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if !command.isEmpty {
+                main.sendText(command.trimmingCharacters(in: .whitespacesAndNewlines) + "\n")
+            }
             side.sendText("wtpad\n")
         }
 

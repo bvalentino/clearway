@@ -8,8 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
+		0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741B9A5C7263C21519C58A7 /* SettingsView.swift */; };
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
+		23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */; };
 		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
 		4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */; };
 		47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */; };
@@ -44,8 +46,10 @@
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
+		7741B9A5C7263C21519C58A7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
+		A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -92,6 +96,8 @@
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
 				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
 				1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */,
+				A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */,
+				7741B9A5C7263C21519C58A7 /* SettingsView.swift */,
 				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				8346D6DF56660212501AB834 /* Worktree.swift */,
@@ -214,6 +220,8 @@
 				C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */,
 				0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */,
 				8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */,
+				23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */,
+				0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */,
 				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
