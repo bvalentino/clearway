@@ -1,6 +1,8 @@
 import SwiftUI
 import GhosttyKit
 
+private let maxShortcuts = 9
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -92,6 +94,15 @@ struct ContentView: View {
             if selectedWorktree == nil || !newWorktrees.contains(where: { $0.id == selectedWorktree?.id }) {
                 selectedWorktree = newWorktrees.first(where: \.isCurrent)
                     ?? newWorktrees.first(where: \.isMain)
+            }
+        }
+        .background {
+            ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
+                Button("") {
+                    selectedWorktree = wt
+                }
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                .hidden()
             }
         }
         .onAppear {

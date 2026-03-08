@@ -65,7 +65,7 @@ struct SidebarView: View {
     private var worktreeSection: some View {
         Section {
             ForEach(worktreeManager.worktrees) { wt in
-                WorktreeRow(worktree: wt)
+                WorktreeRow(worktree: wt, shortcutIndex: shortcutIndex(for: wt))
                     .tag(wt)
                     .opacity(wt.isDimmed ? 0.5 : 1.0)
                     .contextMenu {
@@ -169,6 +169,11 @@ struct SidebarView: View {
 
     // MARK: - Helpers
 
+    private func shortcutIndex(for wt: Worktree) -> Int? {
+        guard let i = worktreeManager.worktrees.firstIndex(where: { $0.id == wt.id }), i < 9 else { return nil }
+        return i + 1
+    }
+
     private func pickProject() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -205,6 +210,7 @@ struct ProjectRow: View {
 
 struct WorktreeRow: View {
     let worktree: Worktree
+    var shortcutIndex: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -216,6 +222,11 @@ struct WorktreeRow: View {
                 Spacer()
                 ciIndicator
                 statusBadges
+                if let index = shortcutIndex {
+                    Text("⌘\(index)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             HStack(spacing: 8) {
