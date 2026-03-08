@@ -13,7 +13,7 @@ struct ProjectWindow: View {
             ProjectContentView(projectPath: path)
         } else if let path = projectList.lastActiveProjectPath {
             // WindowGroup(for:) passes nil on initial launch; redirect to last active project.
-            EmptyView().onAppear { projectPath = path }
+            Color.clear.onAppear { projectPath = path }
         } else {
             WelcomeView()
         }
