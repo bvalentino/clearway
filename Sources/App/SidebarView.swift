@@ -2,29 +2,21 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var projectList: ProjectListManager
+    @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
     var onRunCommand: ((_ command: String, _ worktree: Worktree) -> Void)?
     @State private var showingCreateSheet = false
 
     var body: some View {
         List(selection: $selectedWorktree) {
-            if !worktreeManager.projectPaths.isEmpty {
-                projectSection
-            }
-
-            if let _ = worktreeManager.activeProjectPath {
-                worktreeSection
-            }
+            projectSection
+            worktreeSection
         }
         .listStyle(.sidebar)
         .frame(minWidth: 200)
         .sheet(isPresented: $showingCreateSheet) {
             CreateWorktreeSheet()
-        }
-        .overlay {
-            if worktreeManager.projectPaths.isEmpty && !worktreeManager.isLoading {
-                emptyState
-            }
         }
     }
 
@@ -32,18 +24,21 @@ struct SidebarView: View {
 
     private var projectSection: some View {
         Section {
-            ForEach(worktreeManager.projectPaths, id: \.self) { path in
+            ForEach(projectList.projectPaths, id: \.self) { path in
                 ProjectRow(
                     path: path,
-                    isActive: path == worktreeManager.activeProjectPath
+                    isActive: path == worktreeManager.projectPath
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    worktreeManager.activeProjectPath = path
+                    if path != worktreeManager.projectPath {
+                        projectList.lastActiveProjectPath = path
+                        openWindow(value: path)
+                    }
                 }
                 .contextMenu {
                     Button("Remove Project") {
-                        worktreeManager.removeProject(path)
+                        projectList.removeProject(path)
                     }
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
@@ -97,26 +92,8 @@ struct SidebarView: View {
                 SidebarHeaderButton(systemImage: "plus") {
                     showingCreateSheet = true
                 }
-                .disabled(worktreeManager.activeProjectPath == nil)
                 .padding(.trailing, 6)
             }
-        }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "folder")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-            Text("No project selected")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("Add a git project to see its worktrees")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            Button("Add Project") { pickProject() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
         }
     }
 
@@ -175,15 +152,8 @@ struct SidebarView: View {
     }
 
     private func pickProject() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a git project directory"
-        panel.prompt = "Add Project"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            worktreeManager.addProject(url.path)
+        if let path = projectList.pickAndAddProject() {
+            openWindow(value: path)
         }
     }
 }

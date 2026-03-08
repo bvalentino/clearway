@@ -2,13 +2,12 @@ import XCTest
 @testable import wtpad
 
 @MainActor
-final class WorktreeManagerTests: XCTestCase {
+final class ProjectListManagerTests: XCTestCase {
 
     private let suiteName = "com.wtpad.mac.tests"
 
     override func setUp() {
         super.setUp()
-        // Use a clean defaults domain for each test
         UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier ?? suiteName)
         UserDefaults.standard.removeObject(forKey: "wtpad.projectPaths")
         UserDefaults.standard.removeObject(forKey: "wtpad.activeProjectPath")
@@ -18,24 +17,24 @@ final class WorktreeManagerTests: XCTestCase {
     // MARK: - Project Management
 
     func testAddProject() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/project-a"])
-        XCTAssertEqual(manager.activeProjectPath, "/tmp/project-a")
+        XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/project-a")
     }
 
     func testAddMultipleProjects() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/project-a", "/tmp/project-b"])
-        XCTAssertEqual(manager.activeProjectPath, "/tmp/project-b")
+        XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/project-b")
     }
 
     func testAddDuplicateProjectIsNoop() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-a")
 
@@ -43,7 +42,7 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     func testRemoveProject() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
         manager.removeProject("/tmp/project-a")
@@ -52,33 +51,30 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     func testRemoveActiveProjectSwitchesToFirst() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
-        // Active is project-b (last added)
-        XCTAssertEqual(manager.activeProjectPath, "/tmp/project-b")
+        XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/project-b")
 
         manager.removeProject("/tmp/project-b")
-        XCTAssertEqual(manager.activeProjectPath, "/tmp/project-a")
+        XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/project-a")
     }
 
     func testRemoveLastProjectClearsActive() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
         manager.addProject("/tmp/project-a")
         manager.removeProject("/tmp/project-a")
 
         XCTAssertTrue(manager.projectPaths.isEmpty)
-        XCTAssertNil(manager.activeProjectPath)
+        XCTAssertNil(manager.lastActiveProjectPath)
     }
 
     func testPersistence() {
-        // Add projects
-        let manager1 = WorktreeManager()
-        manager1.addProject("/tmp/project-a")
-        manager1.addProject("/tmp/project-b")
+        let manager = ProjectListManager()
+        manager.addProject("/tmp/project-a")
+        manager.addProject("/tmp/project-b")
 
-        // Read back from defaults
         let paths = UserDefaults.standard.stringArray(forKey: "wtpad.projectPaths")
         let active = UserDefaults.standard.string(forKey: "wtpad.activeProjectPath")
 
@@ -87,24 +83,30 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     func testMigrationFromSingleProjectPath() {
-        // Simulate old single-project storage
         UserDefaults.standard.set("/tmp/legacy-project", forKey: "wtpad.projectPath")
 
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/legacy-project"])
-        XCTAssertEqual(manager.activeProjectPath, "/tmp/legacy-project")
-        // Old key should be cleaned up
+        XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/legacy-project")
         XCTAssertNil(UserDefaults.standard.string(forKey: "wtpad.projectPath"))
     }
 
     func testEmptyInitialState() {
-        let manager = WorktreeManager()
+        let manager = ProjectListManager()
 
         XCTAssertTrue(manager.projectPaths.isEmpty)
-        XCTAssertNil(manager.activeProjectPath)
-        XCTAssertTrue(manager.worktrees.isEmpty)
-        XCTAssertFalse(manager.isLoading)
+        XCTAssertNil(manager.lastActiveProjectPath)
+    }
+}
+
+@MainActor
+final class WorktreeManagerTests: XCTestCase {
+
+    func testInitWithProjectPath() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+
+        XCTAssertEqual(manager.projectPath, "/tmp/test-project")
         XCTAssertNil(manager.error)
     }
 

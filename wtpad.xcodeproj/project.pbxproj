@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
+		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
 		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
 		4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */; };
@@ -15,6 +16,7 @@
 		6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */; };
 		71FA07133B87E4AF06939917 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18B91B5ED14C6B98525B5661 /* Assets.xcassets */; };
 		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
+		8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */; };
 		9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8346D6DF56660212501AB834 /* Worktree.swift */; };
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
@@ -38,6 +40,7 @@
 		03DB14A8F11663E0841091A1 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		18B91B5ED14C6B98525B5661 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
+		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
@@ -46,6 +49,7 @@
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		DEF31A165F772369B33B90AA /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
@@ -86,6 +90,8 @@
 			isa = PBXGroup;
 			children = (
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
+				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
+				1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */,
 				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				8346D6DF56660212501AB834 /* Worktree.swift */,
@@ -206,6 +212,8 @@
 				FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */,
 				6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */,
 				C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */,
+				0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */,
+				8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */,
 				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
