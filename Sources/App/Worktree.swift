@@ -145,6 +145,7 @@ class WorktreeManager: ObservableObject {
     @Published var worktrees: [Worktree] = []
     @Published var isLoading = false
     @Published var error: String?
+    @Published var lastCreatedBranch: String?
     @Published var projectPaths: [String] = [] {
         didSet {
             UserDefaults.standard.set(projectPaths, forKey: DefaultsKey.projectPaths)
@@ -217,22 +218,40 @@ class WorktreeManager: ObservableObject {
     /// Create a new worktree: `wt switch --create <branch> --no-cd -y`
     func createWorktree(branch: String, base: String? = nil) {
         guard let projectPath = activeProjectPath else { return }
-        Task {
-            var args = ["wt", "switch", "--create", branch, "--no-cd", "-y"]
-            if let base { args += ["--base", base] }
-            try await Self.runCommand(args, in: projectPath)
-            refresh()
+        Task.detached { [weak self] in
+            do {
+                var args = ["wt", "switch", "--create", branch, "--no-cd", "-y"]
+                if let base { args += ["--base", base] }
+                try await Self.runCommand(args, in: projectPath)
+                let wts = try await Self.fetchWorktrees(in: projectPath)
+                await MainActor.run {
+                    self?.worktrees = wts
+                    self?.lastCreatedBranch = branch
+                }
+            } catch {
+                await MainActor.run {
+                    self?.error = error.localizedDescription
+                }
+            }
         }
     }
 
     /// Remove a worktree: `wt remove <branch> -y`
     func removeWorktree(branch: String, force: Bool = false) {
         guard let projectPath = activeProjectPath else { return }
-        Task {
-            var args = ["wt", "remove", branch, "-y"]
-            if force { args.append("--force") }
-            try await Self.runCommand(args, in: projectPath)
-            refresh()
+        worktrees.removeAll { $0.branch == branch }
+        Task.detached { [weak self] in
+            do {
+                var args = ["wt", "remove", branch, "-y"]
+                if force { args.append("--force") }
+                try await Self.runCommand(args, in: projectPath)
+            } catch {
+                let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
+                await MainActor.run {
+                    self?.worktrees = wts
+                    self?.error = error.localizedDescription
+                }
+            }
         }
     }
 

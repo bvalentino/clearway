@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showSecondaryTerminal = true
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
+    @State private var showRemoveConfirmation = false
 
     var body: some View {
         NavigationSplitView {
@@ -23,6 +24,16 @@ struct ContentView: View {
             detailView
         }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showRemoveConfirmation = true
+                } label: {
+                    Image(systemName: "archivebox")
+                }
+                .help("Remove worktree")
+                .disabled(currentWorktree == nil || currentWorktree?.isMain == true || currentWorktree?.branch == nil)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -45,6 +56,20 @@ struct ContentView: View {
                 .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
             }
         }
+        .confirmationDialog(
+            "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
+            isPresented: $showRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let branch = currentWorktree?.branch {
+                    selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+                    worktreeManager.removeWorktree(branch: branch)
+                }
+            }
+        } message: {
+            Text("This will delete the worktree and its working directory.")
+        }
         .navigationTitle(currentWorktree?.displayName ?? "wtpad")
         .navigationSubtitle(currentWorktree?.commit.message ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
@@ -53,6 +78,11 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 pane.main.window?.makeFirstResponder(pane.main)
             }
+        }
+        .onChange(of: worktreeManager.lastCreatedBranch) { branch in
+            guard let branch else { return }
+            selectedWorktree = worktreeManager.worktrees.first(where: { $0.branch == branch })
+            worktreeManager.lastCreatedBranch = nil
         }
         .onChange(of: worktreeManager.activeProjectPath) { _ in
             selectedWorktree = nil
