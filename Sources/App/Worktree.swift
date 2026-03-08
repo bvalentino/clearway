@@ -147,6 +147,7 @@ class WorktreeManager: ObservableObject {
     private static let wtpadTitleFile = ".wtpad/title.txt"
     private var titleWatcherSource: DispatchSourceFileSystemObject?
     private var titleDirWatcherSource: DispatchSourceFileSystemObject?
+    private var titleRootWatcherSource: DispatchSourceFileSystemObject?
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -156,6 +157,7 @@ class WorktreeManager: ObservableObject {
     nonisolated deinit {
         titleWatcherSource?.cancel()
         titleDirWatcherSource?.cancel()
+        titleRootWatcherSource?.cancel()
     }
 
     func refresh() {
@@ -214,6 +216,8 @@ class WorktreeManager: ObservableObject {
         titleWatcherSource = nil
         titleDirWatcherSource?.cancel()
         titleDirWatcherSource = nil
+        titleRootWatcherSource?.cancel()
+        titleRootWatcherSource = nil
 
         guard let worktreePath else { return }
 
@@ -224,7 +228,16 @@ class WorktreeManager: ObservableObject {
         applyTitle(Self.readTitle(atWorktreePath: worktreePath), for: worktreePath)
 
         watchFile(at: titleFile, worktreePath: worktreePath)
-        watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+
+        // If .wtpad/ exists, watch it directly; otherwise watch the worktree root
+        // to detect when .wtpad/ is created
+        let dirFd = open(wtpadDir, O_EVTONLY)
+        if dirFd >= 0 {
+            close(dirFd)
+            watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+        } else {
+            watchWorktreeRoot(at: worktreePath)
+        }
     }
 
     private static func readTitle(atWorktreePath path: String) -> String? {
@@ -291,6 +304,41 @@ class WorktreeManager: ObservableObject {
         source.setCancelHandler { close(fd) }
         source.resume()
         titleDirWatcherSource = source
+    }
+
+    /// Watches the worktree root for `.write` events to detect `.wtpad/` directory creation.
+    /// Once `.wtpad/` appears, transitions to the proper directory + file watchers.
+    private func watchWorktreeRoot(at worktreePath: String) {
+        let fd = open(worktreePath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
+        let wtpadDir = (titleFile as NSString).deletingLastPathComponent
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: .write,
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            // Check if .wtpad/ directory now exists
+            let dirFd = open(wtpadDir, O_EVTONLY)
+            guard dirFd >= 0 else { return }
+            close(dirFd)
+
+            let title = Self.readTitle(atWorktreePath: worktreePath)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.titleRootWatcherSource?.cancel()
+                self.titleRootWatcherSource = nil
+                self.watchFile(at: titleFile, worktreePath: worktreePath)
+                self.watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+                self.applyTitle(title, for: worktreePath)
+            }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        titleRootWatcherSource = source
     }
 
     private func applyTitle(_ title: String?, for worktreePath: String) {
