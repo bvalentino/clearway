@@ -10,10 +10,11 @@ Native macOS terminal app built on libghostty.
 
 Requires: `zig`, `xcodegen`
 
-## Build
+## Build & Run (Debug)
 
 ```bash
-xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Debug -destination 'platform=macOS' build
+./scripts/build.sh   # build only
+./scripts/run.sh     # build + launch
 ```
 
 ## Architecture

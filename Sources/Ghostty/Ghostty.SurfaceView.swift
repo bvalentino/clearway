@@ -229,8 +229,10 @@ extension Ghostty {
 
             // Fast path for control-key combos (Ctrl+C, Ctrl+D, etc.).
             // Bypass interpretKeyEvents entirely so AppKit can't swallow the event.
+            // Use event.characters (not charactersIgnoringModifiers) so control
+            // characters like 0x03 are detected and ghostty encodes them itself.
             if flags.contains(.control) && !flags.contains(.command) && !flags.contains(.option) && !hasMarkedText() {
-                sendKeyEvent(action, event: event, text: event.charactersIgnoringModifiers ?? "", composing: false)
+                sendKeyEvent(action, event: event, text: event.characters ?? "", composing: false)
                 return
             }
 
@@ -286,6 +288,13 @@ extension Ghostty {
             ghostty_surface_key(surface, keyEvent)
         }
 
+        /// Whether ghostty handles this codepoint internally (control chars, function keys).
+        /// These should not be sent as text or unshifted_codepoint — ghostty encodes
+        /// them from the keycode + mods via its KeyEncoder.
+        private func isGhosttyEncodedChar(_ value: UInt32) -> Bool {
+            value < 0x20 || (value >= 0xF700 && value <= 0xF8FF)
+        }
+
         private func sendKeyEvent(
             _ action: ghostty_input_action_e,
             event: NSEvent,
@@ -300,7 +309,28 @@ extension Ghostty {
             keyEvent.mods = ghosttyMods(event.modifierFlags)
             keyEvent.composing = composing
 
-            if !text.isEmpty && !composing {
+            // Control and command never contribute to text translation — ghostty
+            // handles control character encoding internally via KeyEncoder.
+            keyEvent.consumed_mods = ghosttyMods(
+                event.modifierFlags.subtracting([.control, .command]))
+
+            // Provide the unshifted codepoint so ghostty can map keys correctly.
+            if event.type == .keyDown || event.type == .keyUp {
+                if let chars = event.characters(byApplyingModifiers: []),
+                   let codepoint = chars.unicodeScalars.first,
+                   !isGhosttyEncodedChar(codepoint.value) {
+                    keyEvent.unshifted_codepoint = codepoint.value
+                }
+            }
+
+            // Determine whether to send text. Single ghostty-encoded characters
+            // (control chars, PUA function keys) are skipped — ghostty handles
+            // them by keycode alone.
+            let shouldSendText = !text.isEmpty && !composing
+                && !(text.unicodeScalars.count == 1
+                     && isGhosttyEncodedChar(text.unicodeScalars.first!.value))
+
+            if shouldSendText {
                 text.withCString { cStr in
                     keyEvent.text = cStr
                     ghostty_surface_key(surface, keyEvent)
