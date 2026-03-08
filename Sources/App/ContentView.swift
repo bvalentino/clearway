@@ -24,6 +24,8 @@ struct ContentView: View {
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
+    @State private var ctrlHeld = false
+    @State private var flagsMonitor: Any?
 
     var body: some View {
         NavigationSplitView {
@@ -123,12 +125,23 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
-            becomeActiveObserver = NotificationCenter.default.addObserver(
-                forName: NSApplication.didBecomeActiveNotification,
-                object: nil,
-                queue: .main
-            ) { [self] _ in
-                debouncedRefresh()
+            if becomeActiveObserver == nil {
+                becomeActiveObserver = NotificationCenter.default.addObserver(
+                    forName: NSApplication.didBecomeActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { [self] _ in
+                    debouncedRefresh()
+                }
+            }
+            if flagsMonitor == nil {
+                flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+                    let held = event.modifierFlags.contains(.control)
+                    if held != ctrlHeld {
+                        withAnimation(.easeInOut(duration: 0.1)) { ctrlHeld = held }
+                    }
+                    return event
+                }
             }
         }
         .onDisappear {
@@ -136,6 +149,11 @@ struct ContentView: View {
                 NotificationCenter.default.removeObserver(observer)
                 becomeActiveObserver = nil
             }
+            if let monitor = flagsMonitor {
+                NSEvent.removeMonitor(monitor)
+                flagsMonitor = nil
+            }
+            ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
         }
     }
@@ -182,6 +200,18 @@ struct ContentView: View {
         }
     }
 
+    private func shortcutBadge(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+            .padding(8)
+            .allowsHitTesting(false)
+            .opacity(ctrlHeld ? 1 : 0)
+    }
+
     private func toggleSecondaryTerminal() {
         withAnimation(.easeInOut(duration: 0.2)) { showSecondaryTerminal.toggle() }
     }
@@ -222,6 +252,7 @@ struct ContentView: View {
                     HStack(spacing: 0) {
                         VStack(spacing: 0) {
                             TerminalSurface(surfaceView: pane.main)
+                                .overlay(alignment: .topLeading) { shortcutBadge("⌃1") }
 
                             if showSecondaryTerminal {
                                 Divider()
@@ -242,6 +273,7 @@ struct ContentView: View {
                                     )
 
                                 TerminalSurface(surfaceView: pane.secondary)
+                                    .overlay(alignment: .topLeading) { shortcutBadge("⌃2") }
                                     .frame(height: secondaryHeight)
                             }
                         }
@@ -249,6 +281,7 @@ struct ContentView: View {
                         if showSideTerminal {
                             Divider()
                             TerminalSurface(surfaceView: pane.side)
+                                .overlay(alignment: .topLeading) { shortcutBadge("⌃3") }
                                 .frame(width: 380)
                         }
                     }
