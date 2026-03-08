@@ -23,6 +23,7 @@ struct WtpadApp: App {
                 .environmentObject(ghosttyApp)
                 .environmentObject(worktreeManager)
                 .environmentObject(terminalManager)
+                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
     }

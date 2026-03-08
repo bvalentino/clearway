@@ -8,6 +8,9 @@ struct ContentView: View {
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
+    @State private var showSideTerminal = true
+    @State private var showSecondaryTerminal = true
+    @State private var secondaryHeight: CGFloat = 120
 
     var body: some View {
         NavigationSplitView {
@@ -91,16 +94,38 @@ struct ContentView: View {
         case .ready:
             if let pane = terminalManager.activePane {
                 VStack(spacing: 0) {
-                    HSplitView {
-                        VSplitView {
+                    HStack(spacing: 0) {
+                        VStack(spacing: 0) {
                             TerminalSurface(surfaceView: pane.main)
-                            TerminalSurface(surfaceView: pane.secondary)
-                                .frame(minHeight: 100)
-                        }
-                        .frame(minWidth: 300)
 
-                        TerminalSurface(surfaceView: pane.side)
-                            .frame(minWidth: 200)
+                            if showSecondaryTerminal {
+                                Divider()
+                                    .padding(.vertical, 2)
+                                    .contentShape(Rectangle())
+                                    .onHover { hovering in
+                                        if hovering {
+                                            NSCursor.resizeUpDown.push()
+                                        } else {
+                                            NSCursor.pop()
+                                        }
+                                    }
+                                    .gesture(
+                                        DragGesture(minimumDistance: 1)
+                                            .onChanged { value in
+                                                secondaryHeight = max(80, secondaryHeight - value.translation.height)
+                                            }
+                                    )
+
+                                TerminalSurface(surfaceView: pane.secondary)
+                                    .frame(height: secondaryHeight)
+                            }
+                        }
+
+                        if showSideTerminal {
+                            Divider()
+                            TerminalSurface(surfaceView: pane.side)
+                                .frame(width: 380)
+                        }
                     }
 
                     if let path = selectedWorktree?.path {
@@ -119,6 +144,29 @@ struct ContentView: View {
                         .overlay(alignment: .top) {
                             Divider()
                         }
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showSecondaryTerminal.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "rectangle.bottomhalf.inset.filled")
+                        }
+                        .help(showSecondaryTerminal ? "Hide secondary terminal" : "Show secondary terminal")
+                    }
+
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showSideTerminal.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                        }
+                        .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
                     }
                 }
             } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {

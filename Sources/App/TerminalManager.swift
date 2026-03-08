@@ -44,11 +44,13 @@ class TerminalManager: ObservableObject {
 
         // Send cd to the worktree path after a short delay to let the shell initialize
         if let path = worktree.path {
-            let command = "cd \(shellEscape(path)) && clear\n"
+            let cdCommand = "cd \(shellEscape(path))\n"
+            let sideCommand = "cd \(shellEscape(path)) && wtpad\n"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                for surface in [main, secondary, side] {
-                    surface.sendText(command)
+                for surface in [main, secondary] {
+                    surface.sendText(cdCommand)
                 }
+                side.sendText(sideCommand)
             }
         }
 
@@ -76,5 +78,10 @@ class TerminalManager: ObservableObject {
         for key in panes.keys where !currentIds.contains(key) {
             removeSurface(for: key)
         }
+    }
+
+    /// All surfaces across all worktrees.
+    var allSurfaces: [Ghostty.SurfaceView] {
+        panes.values.flatMap { [$0.main, $0.secondary, $0.side] }
     }
 }
