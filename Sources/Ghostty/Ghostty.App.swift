@@ -284,7 +284,7 @@ extension Ghostty {
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .ghosttyCloseSurface, object: surfaceView, userInfo: [
-                    "process_alive": processAlive,
+                    GhosttyNotificationKey.processAlive: processAlive,
                 ])
             }
         }
@@ -297,4 +297,10 @@ extension Notification.Name {
     static let ghosttyCloseSurface = Notification.Name("com.wtpad.ghostty.closeSurface")
     static let ghosttyDesktopNotification = Notification.Name("com.wtpad.ghostty.desktopNotification")
     static let ghosttyNewWindow = Notification.Name("com.wtpad.ghostty.newWindow")
+}
+
+// MARK: - Notification UserInfo Keys
+
+enum GhosttyNotificationKey {
+    static let processAlive = "process_alive"
 }
