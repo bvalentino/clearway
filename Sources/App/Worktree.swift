@@ -220,6 +220,9 @@ class WorktreeManager: ObservableObject {
         let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
         let wtpadDir = (titleFile as NSString).deletingLastPathComponent
 
+        // Read the current value immediately so it's visible before any watcher fires
+        applyTitle(Self.readTitle(atWorktreePath: worktreePath), for: worktreePath)
+
         watchFile(at: titleFile, worktreePath: worktreePath)
         watchDirectory(at: wtpadDir, worktreePath: worktreePath)
     }
@@ -310,6 +313,7 @@ class WorktreeManager: ObservableObject {
             _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
             self.worktrees = wts
+            self.loadTitles()
             self.lastCreatedBranch = branch
         } catch {
             self.error = error.localizedDescription
