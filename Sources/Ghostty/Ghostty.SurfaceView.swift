@@ -19,6 +19,13 @@ extension Ghostty {
 
         var surface: ghostty_surface_t? { surfacePtr }
 
+        /// Whether this surface has a running foreground process that warrants
+        /// a confirmation dialog before closing.
+        var needsConfirmQuit: Bool {
+            guard let surface = surfacePtr else { return false }
+            return ghostty_surface_needs_confirm_quit(surface)
+        }
+
         private var markedText = NSMutableAttributedString()
         private var keyTextAccumulator: [String]?
         private var focused: Bool = false

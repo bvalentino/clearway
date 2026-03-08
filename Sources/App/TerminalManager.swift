@@ -20,10 +20,12 @@ struct TerminalPane {
 /// shows/hides surfaces rather than creating new ones.
 @MainActor
 class TerminalManager: ObservableObject {
+    /// All live instances, tracked via weak references for app-level queries.
+    static let allInstances = NSHashTable<TerminalManager>.weakObjects()
+
     private var panes: [String: TerminalPane] = [:]
     private var app: ghostty_app_t?
     private var closeSurfaceObserver: Any?
-    private var terminateObserver: Any?
     private var recentRestarts: [String: [Date]] = [:]
     @Published var activeSurfaceId: String?
     @Published private(set) var notifiedWorktrees: Set<String> = []
@@ -35,13 +37,7 @@ class TerminalManager: ObservableObject {
     }
 
     init() {
-        terminateObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.closeAllSurfaces()
-        }
+        TerminalManager.allInstances.add(self)
 
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .ghosttyDesktopNotification,
@@ -68,9 +64,6 @@ class TerminalManager: ObservableObject {
     }
 
     deinit {
-        if let observer = terminateObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = notificationObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -85,10 +78,6 @@ class TerminalManager: ObservableObject {
     /// process exits. Removes the close-surface observer first to prevent
     /// the restart logic from firing during teardown.
     func closeAllSurfaces() {
-        if let observer = terminateObserver {
-            NotificationCenter.default.removeObserver(observer)
-            terminateObserver = nil
-        }
         if let observer = closeSurfaceObserver {
             NotificationCenter.default.removeObserver(observer)
             closeSurfaceObserver = nil
@@ -207,6 +196,18 @@ class TerminalManager: ObservableObject {
     func pruneStale(keeping currentIds: Set<String>) {
         for key in panes.keys where !currentIds.contains(key) {
             removeSurface(for: key)
+        }
+    }
+
+    /// Whether any surface across all managers has a running foreground process.
+    static var needsConfirmQuit: Bool {
+        allInstances.allObjects.flatMap(\.allSurfaces).contains(where: \.needsConfirmQuit)
+    }
+
+    /// Close all surfaces across every live manager.
+    static func closeAllManagers() {
+        for manager in allInstances.allObjects {
+            manager.closeAllSurfaces()
         }
     }
 
