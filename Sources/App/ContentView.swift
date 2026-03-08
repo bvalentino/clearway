@@ -46,22 +46,14 @@ struct ContentView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSecondaryTerminal.toggle()
-                    }
-                } label: {
+                Button(action: toggleSecondaryTerminal) {
                     Image(systemName: "rectangle.bottomhalf.inset.filled")
                 }
                 .help(showSecondaryTerminal ? "Hide secondary terminal" : "Show secondary terminal")
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSideTerminal.toggle()
-                    }
-                } label: {
+                Button(action: toggleSideTerminal) {
                     Image(systemName: "sidebar.trailing")
                 }
                 .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
@@ -85,11 +77,9 @@ struct ContentView: View {
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
-            let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
+            terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
-            DispatchQueue.main.async {
-                pane.main.window?.makeFirstResponder(pane.main)
-            }
+            focusPane(\.main)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
@@ -104,6 +94,7 @@ struct ContentView: View {
             }
         }
         .background {
+            // Cmd+N: switch worktrees
             ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                 Button("") {
                     selectedWorktree = wt
@@ -111,6 +102,25 @@ struct ContentView: View {
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
                 .hidden()
             }
+
+            // Ctrl+N: focus terminal panes
+            Button("") { focusPane(\.main) }
+                .keyboardShortcut("1", modifiers: .control)
+                .hidden()
+            Button("") { showAndFocusPane(\.secondary, isVisible: showSecondaryTerminal, toggle: toggleSecondaryTerminal) }
+                .keyboardShortcut("2", modifiers: .control)
+                .hidden()
+            Button("") { showAndFocusPane(\.side, isVisible: showSideTerminal, toggle: toggleSideTerminal) }
+                .keyboardShortcut("3", modifiers: .control)
+                .hidden()
+
+            // Cmd+Ctrl+N: toggle pane visibility
+            Button("") { toggleSecondaryTerminal() }
+                .keyboardShortcut("2", modifiers: [.command, .control])
+                .hidden()
+            Button("") { toggleSideTerminal() }
+                .keyboardShortcut("3", modifiers: [.command, .control])
+                .hidden()
         }
         .onAppear {
             becomeActiveObserver = NotificationCenter.default.addObserver(
@@ -151,6 +161,33 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pane.main.sendText(cmd)
         }
+    }
+
+    // MARK: - Pane Focus & Visibility
+
+    private func focusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, delay: Double = 0) {
+        guard let pane = terminalManager.activePane else { return }
+        let surface = pane[keyPath: keyPath]
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            surface.window?.makeFirstResponder(surface)
+        }
+    }
+
+    private func showAndFocusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, isVisible: Bool, toggle: () -> Void) {
+        if isVisible {
+            focusPane(keyPath)
+        } else {
+            toggle()
+            focusPane(keyPath, delay: 0.25)
+        }
+    }
+
+    private func toggleSecondaryTerminal() {
+        withAnimation(.easeInOut(duration: 0.2)) { showSecondaryTerminal.toggle() }
+    }
+
+    private func toggleSideTerminal() {
+        withAnimation(.easeInOut(duration: 0.2)) { showSideTerminal.toggle() }
     }
 
     // MARK: - Refresh

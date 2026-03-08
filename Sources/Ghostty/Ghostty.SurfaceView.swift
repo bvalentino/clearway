@@ -213,6 +213,14 @@ extension Ghostty {
             guard event.type == .keyDown, surfacePtr != nil, focused else { return false }
             guard event.modifierFlags.contains(.control) ||
                   event.modifierFlags.contains(.command) else { return false }
+
+            // Let Ctrl+digit pass through to SwiftUI keyboard shortcuts (pane switching)
+            if event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.command),
+               let chars = event.charactersIgnoringModifiers, chars.count == 1,
+               let scalar = chars.unicodeScalars.first, scalar >= "0" && scalar <= "9" {
+                return false
+            }
+
             keyDown(with: event)
             return true
         }
