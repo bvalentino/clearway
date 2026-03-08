@@ -129,19 +129,14 @@ struct Worktree: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - Defaults Keys
-
-private enum DefaultsKey {
-    static let projectPaths = "wtpad.projectPaths"
-    static let activeProjectPath = "wtpad.activeProjectPath"
-    static let legacyProjectPath = "wtpad.projectPath"
-}
-
 // MARK: - Manager
 
-/// Manages worktree listing and actions for a project directory.
+/// Manages worktree listing and actions for a single project directory.
+///
+/// Each window creates its own `WorktreeManager` scoped to one project path.
 @MainActor
 class WorktreeManager: ObservableObject {
+    let projectPath: String
     @Published var worktrees: [Worktree] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -153,36 +148,9 @@ class WorktreeManager: ObservableObject {
     private var titleWatcherSource: DispatchSourceFileSystemObject?
     private var titleDirWatcherSource: DispatchSourceFileSystemObject?
 
-    @Published var projectPaths: [String] = [] {
-        didSet {
-            UserDefaults.standard.set(projectPaths, forKey: DefaultsKey.projectPaths)
-        }
-    }
-    @Published var activeProjectPath: String? {
-        didSet {
-            if let path = activeProjectPath {
-                UserDefaults.standard.set(path, forKey: DefaultsKey.activeProjectPath)
-            }
-            refresh()
-        }
-    }
-
-    init() {
-        // Migrate from single project path
-        if let single = UserDefaults.standard.string(forKey: DefaultsKey.legacyProjectPath) {
-            self.projectPaths = [single]
-            self.activeProjectPath = single
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.legacyProjectPath)
-            UserDefaults.standard.set(projectPaths, forKey: DefaultsKey.projectPaths)
-            UserDefaults.standard.set(single, forKey: DefaultsKey.activeProjectPath)
-        } else {
-            self.projectPaths = UserDefaults.standard.stringArray(forKey: DefaultsKey.projectPaths) ?? []
-            self.activeProjectPath = UserDefaults.standard.string(forKey: DefaultsKey.activeProjectPath)
-        }
-
-        if activeProjectPath != nil {
-            refresh()
-        }
+    init(projectPath: String) {
+        self.projectPath = projectPath
+        refresh()
     }
 
     nonisolated deinit {
@@ -190,38 +158,25 @@ class WorktreeManager: ObservableObject {
         titleDirWatcherSource?.cancel()
     }
 
-    func addProject(_ path: String) {
-        if !projectPaths.contains(path) {
-            projectPaths.append(path)
-        }
-        activeProjectPath = path
-    }
-
-    func removeProject(_ path: String) {
-        projectPaths.removeAll { $0 == path }
-        if activeProjectPath == path {
-            activeProjectPath = projectPaths.first
-        }
-    }
-
     func refresh() {
-        guard let projectPath = activeProjectPath else {
-            worktrees = []
-            return
-        }
+        let projectPath = self.projectPath
         isLoading = true
         error = nil
 
-        Task {
+        Task.detached { [weak self] in
             do {
                 let wts = try await Self.fetchWorktrees(in: projectPath)
-                self.worktrees = wts
-                self.loadTitles()
-                self.isLoading = false
+                await MainActor.run {
+                    self?.worktrees = wts
+                    self?.loadTitles()
+                    self?.isLoading = false
+                }
             } catch {
-                self.error = error.localizedDescription
-                self.worktrees = []
-                self.isLoading = false
+                await MainActor.run {
+                    self?.error = error.localizedDescription
+                    self?.worktrees = []
+                    self?.isLoading = false
+                }
             }
         }
     }
@@ -347,11 +302,12 @@ class WorktreeManager: ObservableObject {
 
     /// Create a new worktree: `wt switch --create <branch> --no-cd -y`
     func createWorktree(branch: String, base: String? = nil) {
-        guard let projectPath = activeProjectPath else { return }
+        let projectPath = self.projectPath
         Task.detached { [weak self] in
             do {
-                var args = ["wt", "switch", "--create", branch, "--no-cd", "-y"]
+                var args = ["wt", "switch", "--create", "--no-cd", "-y"]
                 if let base { args += ["--base", base] }
+                args += ["--", branch]
                 try await Self.runCommand(args, in: projectPath)
                 let wts = try await Self.fetchWorktrees(in: projectPath)
                 await MainActor.run {
@@ -368,12 +324,13 @@ class WorktreeManager: ObservableObject {
 
     /// Remove a worktree: `wt remove <branch> -y`
     func removeWorktree(branch: String, force: Bool = false) {
-        guard let projectPath = activeProjectPath else { return }
+        let projectPath = self.projectPath
         worktrees.removeAll { $0.branch == branch }
         Task.detached { [weak self] in
             do {
-                var args = ["wt", "remove", branch, "-y"]
+                var args = ["wt", "remove", "-y"]
                 if force { args.append("--force") }
+                args += ["--", branch]
                 try await Self.runCommand(args, in: projectPath)
             } catch {
                 let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []

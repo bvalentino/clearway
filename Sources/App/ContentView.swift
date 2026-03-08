@@ -81,11 +81,11 @@ struct ContentView: View {
         } message: {
             Text("This will delete the worktree and its working directory.")
         }
-        .navigationTitle(currentWorktree?.displayName ?? "wtpad")
+        .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
-            let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.activeProjectPath)
+            let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             DispatchQueue.main.async {
                 pane.main.window?.makeFirstResponder(pane.main)
             }
@@ -95,9 +95,6 @@ struct ContentView: View {
             guard let branch else { return }
             selectedWorktree = worktreeManager.worktrees.first(where: { $0.branch == branch })
             worktreeManager.lastCreatedBranch = nil
-        }
-        .onChange(of: worktreeManager.activeProjectPath) { _ in
-            selectedWorktree = nil
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
@@ -134,6 +131,10 @@ struct ContentView: View {
 
     // MARK: - Title
 
+    private var projectName: String {
+        URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
+    }
+
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
         return worktreeManager.worktrees.first(where: { $0.id == id })
@@ -143,7 +144,7 @@ struct ContentView: View {
 
     private func runCommandInTerminal(command: String, worktree: Worktree) {
         guard let app = ghosttyApp.app else { return }
-        let pane = terminalManager.activate(worktree, app: app, projectPath: worktreeManager.activeProjectPath)
+        let pane = terminalManager.activate(worktree, app: app, projectPath: worktreeManager.projectPath)
         selectedWorktree = worktree
         let cmd = command + "\n"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -242,15 +243,6 @@ struct ContentView: View {
                         }
                     }
                 }
-            } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {
-                VStack(spacing: 12) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    Text("Add a project to get started")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 0) {

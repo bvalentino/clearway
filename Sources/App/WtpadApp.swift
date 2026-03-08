@@ -6,11 +6,17 @@ private let ghosttyInitResult: Bool = {
     ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
 }()
 
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+}
+
 @main
 struct WtpadApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var ghosttyApp: Ghostty.App
-    @StateObject private var worktreeManager = WorktreeManager()
-    @StateObject private var terminalManager = TerminalManager()
+    @StateObject private var projectList = ProjectListManager()
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
@@ -18,11 +24,10 @@ struct WtpadApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        WindowGroup(for: String.self) { $projectPath in
+            ProjectWindow(projectPath: $projectPath)
                 .environmentObject(ghosttyApp)
-                .environmentObject(worktreeManager)
-                .environmentObject(terminalManager)
+                .environmentObject(projectList)
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
