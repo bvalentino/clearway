@@ -156,6 +156,7 @@ struct SidebarView: View {
             openWindow(value: path)
         }
     }
+
 }
 
 // MARK: - Project Row
@@ -298,6 +299,7 @@ struct CreateWorktreeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var branchName = ""
     @State private var baseBranch = ""
+    @State private var isCreating = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -306,23 +308,43 @@ struct CreateWorktreeSheet: View {
 
             TextField("Branch name", text: $branchName)
                 .textFieldStyle(.roundedBorder)
+                .onChange(of: branchName) { newValue in
+                    let sanitized = newValue.replacingOccurrences(of: " ", with: "-")
+                    if sanitized != newValue { branchName = sanitized }
+                }
+                .disabled(isCreating)
 
             TextField("Base branch (optional)", text: $baseBranch)
                 .textFieldStyle(.roundedBorder)
+                .disabled(isCreating)
 
             HStack {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .disabled(isCreating)
                 Spacer()
-                Button("Create") {
-                    worktreeManager.createWorktree(
-                        branch: branchName,
-                        base: baseBranch.isEmpty ? nil : baseBranch
-                    )
-                    dismiss()
+                Button {
+                    isCreating = true
+                    Task {
+                        await worktreeManager.createWorktree(
+                            branch: branchName,
+                            base: baseBranch.isEmpty ? nil : baseBranch
+                        )
+                        dismiss()
+                    }
+                } label: {
+                    if isCreating {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Creating…")
+                        }
+                    } else {
+                        Text("Create")
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(branchName.isEmpty)
+                .disabled(branchName.isEmpty || isCreating)
             }
         }
         .padding(20)
