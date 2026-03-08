@@ -32,8 +32,7 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 selectedWorktree: $selectedWorktree,
-                onSearchActiveChanged: { worktreeShortcutsDisabled = $0 },
-                onRunCommand: runCommandInTerminal
+                onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
         } detail: {
             detailView
@@ -171,18 +170,6 @@ struct ContentView: View {
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
         return worktreeManager.worktrees.first(where: { $0.id == id })
-    }
-
-    // MARK: - Command Execution
-
-    private func runCommandInTerminal(command: String, worktree: Worktree) {
-        guard let app = ghosttyApp.app else { return }
-        let pane = terminalManager.activate(worktree, app: app, projectPath: worktreeManager.projectPath)
-        selectedWorktree = worktree
-        let cmd = command + "\n"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pane.main.sendText(cmd)
-        }
     }
 
     // MARK: - Pane Focus & Visibility

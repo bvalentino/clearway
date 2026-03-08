@@ -7,9 +7,9 @@ struct SidebarView: View {
     @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
     var onSearchActiveChanged: ((Bool) -> Void)?
-    var onRunCommand: ((_ command: String, _ worktree: Worktree) -> Void)?
     @State private var showingCreateSheet = false
     @State private var searchText = ""
+    @State private var worktreeToRemove: Worktree?
 
     private var isSearching: Bool { !searchText.isEmpty }
 
@@ -33,6 +33,26 @@ struct SidebarView: View {
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
         .sheet(isPresented: $showingCreateSheet) {
             CreateWorktreeSheet()
+        }
+        .confirmationDialog(
+            "Remove worktree \"\(worktreeToRemove?.displayName ?? "")\"?",
+            isPresented: Binding(
+                get: { worktreeToRemove != nil },
+                set: { if !$0 { worktreeToRemove = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let branch = worktreeToRemove?.branch {
+                    if selectedWorktree?.id == worktreeToRemove?.id {
+                        selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+                    }
+                    worktreeManager.removeWorktree(branch: branch)
+                }
+                worktreeToRemove = nil
+            }
+        } message: {
+            Text("This will delete the worktree and its working directory.")
         }
     }
 
@@ -124,30 +144,8 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func worktreeContextMenu(_ wt: Worktree) -> some View {
-        Button("Merge to Main") {
-            onRunCommand?("wt merge -y", wt)
-        }
-        .disabled(wt.isMain)
-
-        Divider()
-
         Button("Remove Worktree") {
-            if let branch = wt.branch {
-                worktreeManager.removeWorktree(branch: branch)
-                if selectedWorktree?.id == wt.id {
-                    selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                }
-            }
-        }
-        .disabled(wt.isMain)
-
-        Button("Force Remove") {
-            if let branch = wt.branch {
-                worktreeManager.removeWorktree(branch: branch, force: true)
-                if selectedWorktree?.id == wt.id {
-                    selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                }
-            }
+            worktreeToRemove = wt
         }
         .disabled(wt.isMain)
 
