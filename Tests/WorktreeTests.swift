@@ -313,32 +313,4 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(Worktree.CI(status: "unknown", source: nil, stale: nil, url: nil).statusLabel, "unknown")
     }
 
-    // MARK: - Helpers
-
-    private func makeWorktree(
-        branch: String? = "test",
-        path: String? = "/tmp/test",
-        mainState: String? = nil,
-        operationState: String? = nil,
-        ciStatus: String? = nil
-    ) -> Worktree {
-        Worktree(
-            branch: branch,
-            path: path,
-            kind: "worktree",
-            commit: Worktree.Commit(sha: "abc", shortSha: "abc", message: "test", timestamp: 1),
-            workingTree: nil,
-            mainState: mainState,
-            integrationReason: nil,
-            operationState: operationState,
-            main: nil,
-            remote: nil,
-            worktree: Worktree.WorktreeMeta(state: nil, reason: nil, detached: false),
-            ci: ciStatus.map { Worktree.CI(status: $0, source: nil, stale: nil, url: nil) },
-            isMain: false,
-            isCurrent: false,
-            isPrevious: false,
-            symbols: nil
-        )
-    }
 }

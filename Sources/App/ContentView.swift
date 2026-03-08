@@ -82,13 +82,14 @@ struct ContentView: View {
             Text("This will delete the worktree and its working directory.")
         }
         .navigationTitle(currentWorktree?.displayName ?? "wtpad")
-        .navigationSubtitle(currentWorktree?.commit.message ?? "")
+        .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: selectedWorktree) { newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
             let pane = terminalManager.activate(wt, app: app, projectPath: worktreeManager.activeProjectPath)
             DispatchQueue.main.async {
                 pane.main.window?.makeFirstResponder(pane.main)
             }
+            worktreeManager.watchTitle(forWorktreePath: wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -127,6 +128,7 @@ struct ContentView: View {
                 NotificationCenter.default.removeObserver(observer)
                 becomeActiveObserver = nil
             }
+            worktreeManager.watchTitle(forWorktreePath: nil)
         }
     }
 

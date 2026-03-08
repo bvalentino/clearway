@@ -146,6 +146,13 @@ class WorktreeManager: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastCreatedBranch: String?
+    /// Titles read from `.wtpad/title.txt` in each worktree, keyed by worktree path.
+    @Published var worktreeTitles: [String: String] = [:]
+
+    private static let wtpadTitleFile = ".wtpad/title.txt"
+    private var titleWatcherSource: DispatchSourceFileSystemObject?
+    private var titleDirWatcherSource: DispatchSourceFileSystemObject?
+
     @Published var projectPaths: [String] = [] {
         didSet {
             UserDefaults.standard.set(projectPaths, forKey: DefaultsKey.projectPaths)
@@ -178,6 +185,11 @@ class WorktreeManager: ObservableObject {
         }
     }
 
+    nonisolated deinit {
+        titleWatcherSource?.cancel()
+        titleDirWatcherSource?.cancel()
+    }
+
     func addProject(_ path: String) {
         if !projectPaths.contains(path) {
             projectPaths.append(path)
@@ -204,12 +216,130 @@ class WorktreeManager: ObservableObject {
             do {
                 let wts = try await Self.fetchWorktrees(in: projectPath)
                 self.worktrees = wts
+                self.loadTitles()
                 self.isLoading = false
             } catch {
                 self.error = error.localizedDescription
                 self.worktrees = []
                 self.isLoading = false
             }
+        }
+    }
+
+    // MARK: - Titles
+
+    /// Returns the subtitle to display for a worktree.
+    /// Uses `.wtpad/title.txt` if available; falls back to commit message (empty for main).
+    func subtitle(for worktree: Worktree) -> String? {
+        if let path = worktree.path, let title = worktreeTitles[path] {
+            return title
+        }
+        if worktree.isMain { return nil }
+        return worktree.commit.message
+    }
+
+    /// Reads `.wtpad/title.txt` for all current worktrees and updates `worktreeTitles`.
+    func loadTitles() {
+        var titles: [String: String] = [:]
+        for wt in worktrees {
+            guard let path = wt.path else { continue }
+            if let title = Self.readTitle(atWorktreePath: path) {
+                titles[path] = title
+            }
+        }
+        if titles != worktreeTitles {
+            worktreeTitles = titles
+        }
+    }
+
+    /// Watches `.wtpad/title.txt` (and `.wtpad/` directory for creation) for the given worktree path.
+    /// Pass `nil` to stop watching.
+    func watchTitle(forWorktreePath worktreePath: String?) {
+        titleWatcherSource?.cancel()
+        titleWatcherSource = nil
+        titleDirWatcherSource?.cancel()
+        titleDirWatcherSource = nil
+
+        guard let worktreePath else { return }
+
+        let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
+        let wtpadDir = (titleFile as NSString).deletingLastPathComponent
+
+        watchFile(at: titleFile, worktreePath: worktreePath)
+        watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+    }
+
+    private static func readTitle(atWorktreePath path: String) -> String? {
+        let file = (path as NSString).appendingPathComponent(wtpadTitleFile)
+        guard let fh = FileHandle(forReadingAtPath: file) else { return nil }
+        defer { fh.closeFile() }
+        let data = fh.readData(ofLength: 1024)
+        guard let content = String(data: data, encoding: .utf8) else { return nil }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func watchFile(at path: String, worktreePath: String) {
+        let fd = open(path, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            let flags = source.data
+            let title = Self.readTitle(atWorktreePath: worktreePath)
+            // File was deleted/renamed — cancel so directory watcher can re-establish
+            if flags.contains(.delete) || flags.contains(.rename) {
+                source.cancel()
+                DispatchQueue.main.async {
+                    self?.titleWatcherSource = nil
+                    self?.applyTitle(title, for: worktreePath)
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                self?.applyTitle(title, for: worktreePath)
+            }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        titleWatcherSource = source
+    }
+
+    private func watchDirectory(at dirPath: String, worktreePath: String) {
+        let fd = open(dirPath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: .write,
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            let title = Self.readTitle(atWorktreePath: worktreePath)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                // If title.txt was just created, set up a file watcher for it
+                if self.titleWatcherSource == nil {
+                    self.watchFile(at: titleFile, worktreePath: worktreePath)
+                }
+                self.applyTitle(title, for: worktreePath)
+            }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        titleDirWatcherSource = source
+    }
+
+    private func applyTitle(_ title: String?, for worktreePath: String) {
+        if let title {
+            worktreeTitles[worktreePath] = title
+        } else {
+            worktreeTitles.removeValue(forKey: worktreePath)
         }
     }
 

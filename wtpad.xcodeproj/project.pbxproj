@@ -19,6 +19,7 @@
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
+		E61377ACA7A5D6326B96E429 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1D01555B16916CD81B458C /* TestHelpers.swift */; };
 		FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF31A165F772369B33B90AA /* Ghostty.Config.swift */; };
 /* End PBXBuildFile section */
 
@@ -39,6 +40,7 @@
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -73,6 +75,7 @@
 		5E9957D2885BF61B78E0A7B3 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				6E1D01555B16916CD81B458C /* TestHelpers.swift */,
 				D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */,
 				D70F735E00E89E5639B51D00 /* WorktreeTests.swift */,
 			);
@@ -215,6 +218,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E61377ACA7A5D6326B96E429 /* TestHelpers.swift in Sources */,
 				4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */,
 				8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */,
 			);
@@ -332,7 +336,7 @@
 				CODE_SIGN_ENTITLEMENTS = wtpad.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
@@ -348,7 +352,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"-lghostty",
 					"-lz",
@@ -381,7 +385,7 @@
 				CODE_SIGN_ENTITLEMENTS = wtpad.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
@@ -397,7 +401,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"-lghostty",
 					"-lz",
