@@ -26,11 +26,13 @@ struct ContentView: View {
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
     @State private var flagsMonitor: Any?
+    @State private var worktreeShortcutsDisabled = false
 
     var body: some View {
         NavigationSplitView {
             SidebarView(
                 selectedWorktree: $selectedWorktree,
+                onSearchActiveChanged: { worktreeShortcutsDisabled = $0 },
                 onRunCommand: runCommandInTerminal
             )
         } detail: {
@@ -97,12 +99,14 @@ struct ContentView: View {
         }
         .background {
             // Cmd+N: switch worktrees
-            ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
-                Button("") {
-                    selectedWorktree = wt
+            if !worktreeShortcutsDisabled {
+                ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
+                    Button("") {
+                        selectedWorktree = wt
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .hidden()
                 }
-                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
-                .hidden()
             }
 
             // Ctrl+N: focus terminal panes
