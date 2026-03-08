@@ -146,6 +146,8 @@ class WorktreeManager: ObservableObject {
 
     private static let wtpadTitleFile = ".wtpad/title.txt"
     private var titleWatcherSource: DispatchSourceFileSystemObject?
+    /// Watches either `.wtpad/` (for title.txt creation) or the worktree root (for `.wtpad/` creation).
+    /// Only one is active at a time.
     private var titleDirWatcherSource: DispatchSourceFileSystemObject?
 
     init(projectPath: String) {
@@ -217,15 +219,29 @@ class WorktreeManager: ObservableObject {
 
         guard let worktreePath else { return }
 
-        let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
-        let wtpadDir = (titleFile as NSString).deletingLastPathComponent
+        let (titleFile, wtpadDir) = Self.wtpadPaths(for: worktreePath)
+
+        // Read the current value immediately so it's visible before any watcher fires
+        applyTitle(Self.readTitle(atWorktreePath: worktreePath), for: worktreePath)
 
         watchFile(at: titleFile, worktreePath: worktreePath)
-        watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+
+        // If .wtpad/ exists, watch it directly; otherwise watch the worktree root
+        // to detect when .wtpad/ is created
+        if access(wtpadDir, F_OK) == 0 {
+            watchDirectory(at: wtpadDir, worktreePath: worktreePath)
+        } else {
+            watchWorktreeRoot(at: worktreePath)
+        }
+    }
+
+    private static func wtpadPaths(for worktreePath: String) -> (titleFile: String, directory: String) {
+        let titleFile = (worktreePath as NSString).appendingPathComponent(wtpadTitleFile)
+        return (titleFile, (titleFile as NSString).deletingLastPathComponent)
     }
 
     private static func readTitle(atWorktreePath path: String) -> String? {
-        let file = (path as NSString).appendingPathComponent(wtpadTitleFile)
+        let file = wtpadPaths(for: path).titleFile
         guard let fh = FileHandle(forReadingAtPath: file) else { return nil }
         defer { fh.closeFile() }
         let data = fh.readData(ofLength: 1024)
@@ -268,7 +284,7 @@ class WorktreeManager: ObservableObject {
         let fd = open(dirPath, O_EVTONLY)
         guard fd >= 0 else { return }
 
-        let titleFile = (worktreePath as NSString).appendingPathComponent(Self.wtpadTitleFile)
+        let titleFile = Self.wtpadPaths(for: worktreePath).titleFile
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: .write,
@@ -282,6 +298,37 @@ class WorktreeManager: ObservableObject {
                 if self.titleWatcherSource == nil {
                     self.watchFile(at: titleFile, worktreePath: worktreePath)
                 }
+                self.applyTitle(title, for: worktreePath)
+            }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        titleDirWatcherSource = source
+    }
+
+    /// Watches the worktree root for `.write` events to detect `.wtpad/` directory creation.
+    /// Once `.wtpad/` appears, transitions to the proper directory + file watchers.
+    private func watchWorktreeRoot(at worktreePath: String) {
+        let fd = open(worktreePath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let (titleFile, wtpadDir) = Self.wtpadPaths(for: worktreePath)
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: .write,
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            guard access(wtpadDir, F_OK) == 0 else { return }
+
+            let title = Self.readTitle(atWorktreePath: worktreePath)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.titleDirWatcherSource?.cancel()
+                self.titleDirWatcherSource = nil
+                self.watchFile(at: titleFile, worktreePath: worktreePath)
+                self.watchDirectory(at: wtpadDir, worktreePath: worktreePath)
                 self.applyTitle(title, for: worktreePath)
             }
         }
@@ -310,6 +357,7 @@ class WorktreeManager: ObservableObject {
             _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
             self.worktrees = wts
+            self.loadTitles()
             self.lastCreatedBranch = branch
         } catch {
             self.error = error.localizedDescription
