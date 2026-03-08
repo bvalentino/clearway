@@ -65,7 +65,7 @@ struct SidebarView: View {
     private var worktreeSection: some View {
         Section {
             ForEach(worktreeManager.worktrees) { wt in
-                WorktreeRow(worktree: wt, shortcutIndex: shortcutIndex(for: wt))
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), shortcutIndex: shortcutIndex(for: wt))
                     .tag(wt)
                     .opacity(wt.isDimmed ? 0.5 : 1.0)
                     .contextMenu {
@@ -210,6 +210,7 @@ struct ProjectRow: View {
 
 struct WorktreeRow: View {
     let worktree: Worktree
+    var subtitle: String? = nil
     var shortcutIndex: Int? = nil
 
     var body: some View {
@@ -230,10 +231,12 @@ struct WorktreeRow: View {
             }
 
             HStack(spacing: 8) {
-                Text(worktree.commit.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
                 Spacer()
 
