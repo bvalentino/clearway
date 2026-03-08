@@ -28,6 +28,10 @@ class TerminalManager: ObservableObject {
     @Published private(set) var notifiedWorktrees: Set<String> = []
     private var notificationObserver: Any?
 
+    /// Per-worktree panel visibility (defaults to true when absent).
+    @Published private var sideVisible: [String: Bool] = [:]
+    @Published private var secondaryVisible: [String: Bool] = [:]
+
     var activePane: TerminalPane? {
         guard let id = activeSurfaceId else { return nil }
         return panes[id]
@@ -83,6 +87,28 @@ class TerminalManager: ObservableObject {
 
     func clearNotification(for worktreeId: String) {
         notifiedWorktrees.remove(worktreeId)
+    }
+
+    // MARK: - Panel Visibility
+
+    func isSideVisible(for worktreeId: String?) -> Bool {
+        guard let worktreeId else { return true }
+        return sideVisible[worktreeId] ?? true
+    }
+
+    func isSecondaryVisible(for worktreeId: String?) -> Bool {
+        guard let worktreeId else { return true }
+        return secondaryVisible[worktreeId] ?? true
+    }
+
+    func toggleSide(for worktreeId: String?) {
+        guard let worktreeId else { return }
+        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? true)
+    }
+
+    func toggleSecondary(for worktreeId: String?) {
+        guard let worktreeId else { return }
+        secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? true)
     }
     /// Get or create terminal panes for the given worktree.
     func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
@@ -167,6 +193,8 @@ class TerminalManager: ObservableObject {
         panes.removeValue(forKey: worktreeId)
         notifiedWorktrees.remove(worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
+        sideVisible.removeValue(forKey: worktreeId)
+        secondaryVisible.removeValue(forKey: worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
         }

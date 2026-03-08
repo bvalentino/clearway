@@ -19,8 +19,6 @@ struct ContentView: View {
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
-    @State private var showSideTerminal = true
-    @State private var showSecondaryTerminal = true
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
@@ -52,14 +50,16 @@ struct ContentView: View {
                 Button(action: toggleSecondaryTerminal) {
                     Image(systemName: "rectangle.bottomhalf.inset.filled")
                 }
-                .help(showSecondaryTerminal ? "Hide secondary terminal" : "Show secondary terminal")
+                .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
+                .disabled(selectedWorktree == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
                 Button(action: toggleSideTerminal) {
                     Image(systemName: "sidebar.trailing")
                 }
-                .help(showSideTerminal ? "Hide side terminal" : "Show side terminal")
+                .help(sideVisible ? "Hide side terminal" : "Show side terminal")
+                .disabled(selectedWorktree == nil)
             }
         }
         .confirmationDialog(
@@ -112,10 +112,10 @@ struct ContentView: View {
             Button("") { focusPane(\.main) }
                 .keyboardShortcut("1", modifiers: .control)
                 .hidden()
-            Button("") { showAndFocusPane(\.secondary, isVisible: showSecondaryTerminal, toggle: toggleSecondaryTerminal) }
+            Button("") { showAndFocusPane(\.secondary, isVisible: secondaryVisible, toggle: toggleSecondaryTerminal) }
                 .keyboardShortcut("2", modifiers: .control)
                 .hidden()
-            Button("") { showAndFocusPane(\.side, isVisible: showSideTerminal, toggle: toggleSideTerminal) }
+            Button("") { showAndFocusPane(\.side, isVisible: sideVisible, toggle: toggleSideTerminal) }
                 .keyboardShortcut("3", modifiers: .control)
                 .hidden()
 
@@ -172,6 +172,14 @@ struct ContentView: View {
         return worktreeManager.worktrees.first(where: { $0.id == id })
     }
 
+    private var sideVisible: Bool {
+        terminalManager.isSideVisible(for: selectedWorktree?.id)
+    }
+
+    private var secondaryVisible: Bool {
+        terminalManager.isSecondaryVisible(for: selectedWorktree?.id)
+    }
+
     // MARK: - Pane Focus & Visibility
 
     private func focusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, delay: Double = 0) {
@@ -204,11 +212,11 @@ struct ContentView: View {
     }
 
     private func toggleSecondaryTerminal() {
-        withAnimation(.easeInOut(duration: 0.2)) { showSecondaryTerminal.toggle() }
+        withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSecondary(for: selectedWorktree?.id) }
     }
 
     private func toggleSideTerminal() {
-        withAnimation(.easeInOut(duration: 0.2)) { showSideTerminal.toggle() }
+        withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSide(for: selectedWorktree?.id) }
     }
 
     // MARK: - Refresh
@@ -245,7 +253,7 @@ struct ContentView: View {
                             TerminalSurface(surfaceView: pane.main)
                                 .overlay(alignment: .topLeading) { shortcutBadge("⌃1") }
 
-                            if showSecondaryTerminal {
+                            if secondaryVisible {
                                 Divider()
                                     .padding(.vertical, 2)
                                     .contentShape(Rectangle())
@@ -269,7 +277,7 @@ struct ContentView: View {
                             }
                         }
 
-                        if showSideTerminal {
+                        if sideVisible {
                             Divider()
                             TerminalSurface(surfaceView: pane.side)
                                 .overlay(alignment: .topLeading) { shortcutBadge("⌃3") }
