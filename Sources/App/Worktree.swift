@@ -300,25 +300,19 @@ class WorktreeManager: ObservableObject {
 
     // MARK: - Actions
 
-    /// Create a new worktree: `wt switch --create <branch> --no-cd -y`
-    func createWorktree(branch: String, base: String? = nil) {
+    /// Create a new worktree: `wt switch --create --no-cd -y <branch>`
+    func createWorktree(branch: String, base: String? = nil) async {
         let projectPath = self.projectPath
-        Task.detached { [weak self] in
-            do {
-                var args = ["wt", "switch", "--create", "--no-cd", "-y"]
-                if let base { args += ["--base", base] }
-                args += ["--", branch]
-                try await Self.runCommand(args, in: projectPath)
-                let wts = try await Self.fetchWorktrees(in: projectPath)
-                await MainActor.run {
-                    self?.worktrees = wts
-                    self?.lastCreatedBranch = branch
-                }
-            } catch {
-                await MainActor.run {
-                    self?.error = error.localizedDescription
-                }
-            }
+        do {
+            var args = ["wt", "switch", "--create", "--no-cd", "-y"]
+            if let base { args += ["--base", base] }
+            args.append(branch)
+            _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
+            let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
+            self.worktrees = wts
+            self.lastCreatedBranch = branch
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
