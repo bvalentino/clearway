@@ -116,6 +116,9 @@ struct ContentView: View {
                         .padding(.top, 10)
                         .padding(.bottom, 12)
                         .background(.bar)
+                        .overlay(alignment: .top) {
+                            Divider()
+                        }
                     }
                 }
             } else if worktreeManager.worktrees.isEmpty && worktreeManager.activeProjectPath == nil {
