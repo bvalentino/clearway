@@ -184,6 +184,13 @@ extension Ghostty {
                 }
                 return true
 
+            case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+                guard let surface = surfaceViewFromTarget(target) else { return false }
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .ghosttyDesktopNotification, object: surface)
+                }
+                return true
+
             case GHOSTTY_ACTION_RENDER,
                  GHOSTTY_ACTION_SECURE_INPUT,
                  GHOSTTY_ACTION_COLOR_CHANGE,
@@ -192,7 +199,6 @@ extension Ghostty {
                  GHOSTTY_ACTION_KEY_SEQUENCE,
                  GHOSTTY_ACTION_KEY_TABLE,
                  GHOSTTY_ACTION_RING_BELL,
-                 GHOSTTY_ACTION_DESKTOP_NOTIFICATION,
                  GHOSTTY_ACTION_SCROLLBAR,
                  GHOSTTY_ACTION_SIZE_LIMIT,
                  GHOSTTY_ACTION_INITIAL_SIZE,
@@ -289,5 +295,6 @@ extension Ghostty {
 
 extension Notification.Name {
     static let ghosttyCloseSurface = Notification.Name("com.wtpad.ghostty.closeSurface")
+    static let ghosttyDesktopNotification = Notification.Name("com.wtpad.ghostty.desktopNotification")
     static let ghosttyNewWindow = Notification.Name("com.wtpad.ghostty.newWindow")
 }

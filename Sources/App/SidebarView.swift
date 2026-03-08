@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var projectList: ProjectListManager
     @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
@@ -60,7 +61,7 @@ struct SidebarView: View {
     private var worktreeSection: some View {
         Section {
             ForEach(worktreeManager.worktrees) { wt in
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), shortcutIndex: shortcutIndex(for: wt))
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: shortcutIndex(for: wt))
                     .tag(wt)
                     .opacity(wt.isDimmed ? 0.5 : 1.0)
                     .contextMenu {
@@ -181,6 +182,7 @@ struct ProjectRow: View {
 struct WorktreeRow: View {
     let worktree: Worktree
     var subtitle: String? = nil
+    var hasNotification: Bool = false
     var shortcutIndex: Int? = nil
 
     var body: some View {
@@ -191,6 +193,7 @@ struct WorktreeRow: View {
                     .fontWeight(worktree.isCurrent ? .semibold : .regular)
                     .lineLimit(1)
                 Spacer()
+                notificationIndicator
                 ciIndicator
                 statusBadges
                 if let index = shortcutIndex {
@@ -230,6 +233,16 @@ struct WorktreeRow: View {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.caption2)
                 .foregroundStyle(.purple)
+        }
+    }
+
+    @ViewBuilder
+    private var notificationIndicator: some View {
+        if hasNotification {
+            Circle()
+                .fill(.blue)
+                .frame(width: 7, height: 7)
+                .help("Terminal notification")
         }
     }
 
