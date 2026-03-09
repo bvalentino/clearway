@@ -116,9 +116,19 @@ struct SidebarView: View {
             }
 
             if let error = worktreeManager.error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Error loading worktrees", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                        .font(.caption.bold())
+                    Text(error)
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color(.controlBackgroundColor).opacity(0.5))
+                .cornerRadius(4)
             }
         } header: {
             HStack {

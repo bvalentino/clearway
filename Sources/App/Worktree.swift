@@ -400,26 +400,62 @@ class WorktreeManager: ObservableObject {
         process.environment = ShellEnvironment.processEnvironment
 
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = Pipe()
+        process.standardError = stderr
 
         try process.run()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            throw WorktreeError.commandFailed(args.joined(separator: " "))
+            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            let stderrString = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let cmd = args.joined(separator: " ")
+            throw WorktreeError.commandFailed(cmd, stderr: stderrString)
         }
 
         return stdout.fileHandleForReading.readDataToEndOfFile()
     }
 
     enum WorktreeError: LocalizedError {
-        case commandFailed(String)
+        case commandFailed(String, stderr: String)
 
         var errorDescription: String? {
             switch self {
-            case .commandFailed(let cmd): return "Command failed: \(cmd)"
+            case .commandFailed(let cmd, let stderr):
+                return Self.formatErrorMessage(cmd: cmd, stderr: stderr)
             }
+        }
+
+        private static func formatErrorMessage(cmd: String, stderr: String) -> String {
+            // Analyze stderr for common failure patterns
+            if stderr.contains("command not found") || stderr.contains("No such file or directory") {
+                return "Could not find 'wt' command. Make sure 'wt' is installed and available in your PATH."
+            }
+
+            if stderr.contains("not a git repository") || stderr.contains("not a working tree") {
+                return "Not in a git repository. Make sure the project path is a valid git repository."
+            }
+
+            if stderr.contains("Permission denied") {
+                return "Permission denied. Check that you have permission to access the project directory."
+            }
+
+            if stderr.contains("fatal:") {
+                // Extract git error message
+                let lines = stderr.split(separator: "\n")
+                if let fatalLine = lines.first(where: { $0.contains("fatal:") }) {
+                    let message = String(fatalLine).replacingOccurrences(of: "fatal: ", with: "").capitalized
+                    return "Git error: \(message)"
+                }
+            }
+
+            // If we have stderr, show it; otherwise show generic message
+            if !stderr.isEmpty {
+                return "Command failed: \(cmd)\n\nError: \(stderr)"
+            }
+
+            return "Command failed: \(cmd)"
         }
     }
 }
