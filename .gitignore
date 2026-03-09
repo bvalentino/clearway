@@ -18,3 +18,4 @@ ghostty/.zig-cache/
 # wtpad
 .wtpad/
 .my-dev.json
+Sources/App/BuildInfo.generated.swift

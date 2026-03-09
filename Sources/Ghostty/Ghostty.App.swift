@@ -79,6 +79,37 @@ extension Ghostty {
             ghostty_app_tick(app)
         }
 
+        // MARK: - Configuration
+
+        /// Opens the Ghostty config file in TextEdit.
+        func openConfigFile() {
+            let gs = ghostty_config_open_path()
+            defer { ghostty_string_free(gs) }
+            guard let ptr = gs.ptr, gs.len > 0 else { return }
+            let rawPtr = UnsafeRawPointer(ptr).assumingMemoryBound(to: UInt8.self)
+            let path = String(decoding: UnsafeBufferPointer(start: rawPtr, count: Int(gs.len)), as: UTF8.self)
+            guard !path.isEmpty else { return }
+
+            let fileURL = URL(fileURLWithPath: path)
+            let editorURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+            NSWorkspace.shared.open([fileURL], withApplicationAt: editorURL, configuration: NSWorkspace.OpenConfiguration())
+        }
+
+        /// Reloads Ghostty configuration from disk and applies it to the running app.
+        func reloadConfiguration() {
+            guard let app = self.app else { return }
+            guard let newConfig = ghostty_config_new() else { return }
+
+            ghostty_config_load_default_files(newConfig)
+            ghostty_config_load_recursive_files(newConfig)
+            ghostty_config_finalize(newConfig)
+
+            ghostty_app_update_config(app, newConfig)
+
+            // Replace the Config wrapper; the old one's deinit frees the previous pointer.
+            config = Config(existing: newConfig)
+        }
+
         // MARK: - Notifications
 
         @objc private func keyboardSelectionDidChange(notification: NSNotification) {

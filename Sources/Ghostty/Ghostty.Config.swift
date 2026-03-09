@@ -20,7 +20,8 @@ extension Ghostty {
                 return
             }
 
-            // Load default config files (~/.config/ghostty/config)
+            // Load default config files (~/.config/ghostty/config,
+            // ~/Library/Application Support/com.mitchellh.ghostty/config)
             ghostty_config_load_default_files(cfg)
             ghostty_config_load_recursive_files(cfg)
 
@@ -28,6 +29,11 @@ extension Ghostty {
             ghostty_config_finalize(cfg)
 
             self.config = cfg
+        }
+
+        /// Wraps an already-loaded config (used during reload).
+        init(existing: ghostty_config_t) {
+            self.config = existing
         }
 
         deinit {

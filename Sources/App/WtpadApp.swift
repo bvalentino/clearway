@@ -1,9 +1,26 @@
 import SwiftUI
 import GhosttyKit
 
-/// Call ghostty_init once at process startup, before any config/app is created.
+/// Configure environment and call ghostty_init once at process startup,
+/// before any config/app is created.
 private let ghosttyInitResult: Bool = {
-    ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
+    // Set GHOSTTY_RESOURCES_DIR before ghostty_init so libghostty can find
+    // themes, shaders, etc. from the installed Ghostty.app bundle.
+    if getenv("GHOSTTY_RESOURCES_DIR") == nil {
+        let candidates = [
+            "/Applications/Ghostty.app/Contents/Resources/ghostty",
+            NSString(string: "~/Applications/Ghostty.app/Contents/Resources/ghostty")
+                .expandingTildeInPath,
+        ]
+        for path in candidates {
+            if access(path, R_OK) == 0 {
+                setenv("GHOSTTY_RESOURCES_DIR", path, 1)
+                break
+            }
+        }
+    }
+
+    return ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
 }()
 
 @MainActor
@@ -54,6 +71,21 @@ struct WtpadApp: App {
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About wtpad") {
+                    AboutWindowController.shared.show()
+                }
+                Divider()
+                Button("Ghostty Settings\u{2026}") {
+                    ghosttyApp.openConfigFile()
+                }
+                Button("Reload Configuration") {
+                    ghosttyApp.reloadConfiguration()
+                }
+                .keyboardShortcut(",", modifiers: [.command, .shift])
+            }
+        }
 
         Settings {
             SettingsView(settings: settings)
