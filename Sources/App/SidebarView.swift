@@ -6,8 +6,8 @@ struct SidebarView: View {
     @EnvironmentObject private var projectList: ProjectListManager
     @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
+    @Binding var showingCreateSheet: Bool
     var onSearchActiveChanged: ((Bool) -> Void)?
-    @State private var showingCreateSheet = false
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
 
@@ -31,9 +31,6 @@ struct SidebarView: View {
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreateWorktreeSheet()
-        }
         .confirmationDialog(
             "Remove worktree \"\(worktreeToRemove?.displayName ?? "")\"?",
             isPresented: Binding(
