@@ -1,0 +1,3 @@
+[post-start]
+ghostty_build = "rm -rf ghostty && cp -r {{ primary_worktree_path }}/ghostty ."
+copy = "wt step copy-ignored"
