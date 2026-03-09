@@ -16,6 +16,12 @@ if ! command -v zig &> /dev/null; then
     exit 1
 fi
 
+echo "==> Ensuring Metal Toolchain is installed..."
+if ! xcrun metal --version &> /dev/null; then
+    echo "    Metal Toolchain not found, downloading..."
+    xcodebuild -downloadComponent MetalToolchain
+fi
+
 echo "==> Building GhosttyKit.xcframework (this may take a few minutes)..."
 cd ghostty
 zig build -Demit-xcframework=true -Doptimize=ReleaseFast
