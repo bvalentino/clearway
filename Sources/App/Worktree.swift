@@ -132,6 +132,17 @@ struct Worktree: Identifiable, Codable, Hashable {
     var isRebase: Bool {
         operationState == "rebase"
     }
+
+    /// Sort worktrees: main first, then open (alphabetical), then closed (alphabetical).
+    static func sorted(_ worktrees: [Worktree], openIds: Set<String>) -> [Worktree] {
+        worktrees.sorted { a, b in
+            if a.isMain != b.isMain { return a.isMain }
+            let aOpen = openIds.contains(a.id)
+            let bOpen = openIds.contains(b.id)
+            if aOpen != bOpen { return aOpen }
+            return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+        }
+    }
 }
 
 // MARK: - Manager

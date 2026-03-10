@@ -14,9 +14,13 @@ struct SidebarView: View {
 
     private var isSearching: Bool { !searchText.isEmpty }
 
+    private var sortedWorktrees: [Worktree] {
+        Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
+    }
+
     private var filteredWorktrees: [Worktree] {
-        guard isSearching else { return worktreeManager.worktrees }
-        return worktreeManager.worktrees.filter { wt in
+        guard isSearching else { return sortedWorktrees }
+        return sortedWorktrees.filter { wt in
             wt.displayName.localizedCaseInsensitiveContains(searchText)
             || (worktreeManager.subtitle(for: wt)?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
@@ -111,9 +115,10 @@ struct SidebarView: View {
     private var worktreeSection: some View {
         Section {
             ForEach(filteredWorktrees) { wt in
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching ? nil : shortcutIndex(for: wt))
+                let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
                     .tag(wt)
-                    .opacity(wt.isDimmed ? 0.5 : 1.0)
+                    .opacity(wt.isDimmed || !isOpen ? 0.5 : 1.0)
                     .contextMenu {
                         worktreeContextMenu(wt)
                     }
@@ -169,6 +174,11 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func worktreeContextMenu(_ wt: Worktree) -> some View {
+        Button("Close Worktree") {
+            terminalManager.closeWorktree(wt.id)
+        }
+        .disabled(wt.isMain || !terminalManager.openWorktreeIds.contains(wt.id))
+
         Button("Remove Worktree") {
             worktreeToRemove = wt
         }
@@ -193,7 +203,7 @@ struct SidebarView: View {
     // MARK: - Helpers
 
     private func shortcutIndex(for wt: Worktree) -> Int? {
-        guard let i = worktreeManager.worktrees.firstIndex(where: { $0.id == wt.id }), i < 9 else { return nil }
+        guard let i = sortedWorktrees.firstIndex(where: { $0.id == wt.id }), i < 9 else { return nil }
         return i + 1
     }
 

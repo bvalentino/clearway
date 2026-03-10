@@ -106,10 +106,14 @@ struct ContentView: View {
                 selectedWorktree = newWorktrees.first(where: \.isMain)
             }
         }
+        .onChange(of: terminalManager.openWorktreeIds) { openIds in
+            guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
+            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+        }
         .background {
-            // Cmd+N: switch worktrees
+            // Cmd+N: switch worktrees (sorted order matches sidebar)
             if !worktreeShortcutsDisabled {
-                ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
+                ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
                         selectedWorktree = wt
                     }
@@ -172,6 +176,10 @@ struct ContentView: View {
     }
 
     // MARK: - Title
+
+    private var sortedWorktrees: [Worktree] {
+        Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
+    }
 
     private var projectName: String {
         URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
