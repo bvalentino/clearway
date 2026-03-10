@@ -399,6 +399,36 @@ extension Ghostty {
             }
         }
 
+        /// Send a command string followed by Enter to the terminal.
+        func sendCommand(_ command: String) {
+            let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            sendText(trimmed)
+            sendEnter()
+        }
+
+        /// Simulate pressing the Enter/Return key.
+        private func sendEnter() {
+            guard let surface = surfacePtr else { return }
+            let kVKReturn: UInt32 = 36
+
+            var press = ghostty_input_key_s()
+            press.action = GHOSTTY_ACTION_PRESS
+            press.keycode = kVKReturn
+            press.mods = GHOSTTY_MODS_NONE
+            press.composing = false
+            press.text = nil
+            ghostty_surface_key(surface, press)
+
+            var release = ghostty_input_key_s()
+            release.action = GHOSTTY_ACTION_RELEASE
+            release.keycode = kVKReturn
+            release.mods = GHOSTTY_MODS_NONE
+            release.composing = false
+            release.text = nil
+            ghostty_surface_key(surface, release)
+        }
+
         // MARK: - NSTextInputClient
 
         func insertText(_ string: Any, replacementRange: NSRange) {
