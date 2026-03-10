@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var lastRefreshDate = Date.distantPast
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
+    @State private var showingCreateSheet = false
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
     @State private var flagsMonitor: Any?
@@ -30,10 +31,14 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 selectedWorktree: $selectedWorktree,
+                showingCreateSheet: $showingCreateSheet,
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
         } detail: {
             detailView
+        }
+        .sheet(isPresented: $showingCreateSheet) {
+            CreateWorktreeSheet()
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
