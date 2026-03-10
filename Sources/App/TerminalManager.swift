@@ -153,7 +153,7 @@ class TerminalManager: ObservableObject {
             if !command.isEmpty {
                 main.sendCommand(command)
             }
-            side.sendCommand("wtpad")
+            Self.launchWtpad(in: side)
         }
 
         return tp
@@ -193,7 +193,7 @@ class TerminalManager: ObservableObject {
 
             if slot == \.side {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    newSurface.sendCommand("wtpad")
+                    Self.launchWtpad(in: newSurface)
                 }
             }
             return
@@ -242,5 +242,11 @@ class TerminalManager: ObservableObject {
     /// All surfaces across all worktrees.
     var allSurfaces: [Ghostty.SurfaceView] {
         panes.values.flatMap { [$0.main, $0.secondary, $0.side] }
+    }
+
+    /// Send the wtpad command to a side terminal surface.
+    static func launchWtpad(in surface: Ghostty.SurfaceView) {
+        guard WtpadBinary.isInPATH else { return }
+        surface.sendCommand("wtpad")
     }
 }

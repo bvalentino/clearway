@@ -285,13 +285,20 @@ struct ContentView: View {
 
                         if sideVisible {
                             Divider()
-                            FocusableTerminal(
-                                surfaceView: pane.side,
-                                badge: "⌃3",
-                                ctrlHeld: ctrlHeld,
-                                showBorder: shouldShowFocusBorder
-                            )
-                            .frame(width: 380)
+                            if WtpadBinary.isInPATH {
+                                FocusableTerminal(
+                                    surfaceView: pane.side,
+                                    badge: "⌃3",
+                                    ctrlHeld: ctrlHeld,
+                                    showBorder: shouldShowFocusBorder
+                                )
+                                .frame(width: 380)
+                            } else {
+                                WtpadInstallView {
+                                    TerminalManager.launchWtpad(in: pane.side)
+                                }
+                                .frame(width: 380)
+                            }
                         }
                     }
 

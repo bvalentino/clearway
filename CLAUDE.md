@@ -8,7 +8,7 @@ Native macOS terminal app built on libghostty.
 ./scripts/setup.sh
 ```
 
-Requires: `zig`, `xcodegen`
+Requires: `zig`, `xcodegen`, `go`
 
 ## Build & Run (Debug)
 
@@ -20,6 +20,7 @@ Requires: `zig`, `xcodegen`
 ## Architecture
 
 - **ghostty/** — upstream ghostty submodule, built into `GhosttyKit.xcframework`
+- **wtpad-cli/** — upstream wtpad submodule, built via `go build` in an Xcode pre-build phase and embedded in the app bundle
 - **Sources/Ghostty/** — Swift wrappers around the libghostty C API
   - `Ghostty.swift` — namespace + logger
   - `Ghostty.Config.swift` — wraps `ghostty_config_t`
