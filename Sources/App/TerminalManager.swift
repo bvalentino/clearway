@@ -113,7 +113,7 @@ class TerminalManager: ObservableObject {
 
     func isSideVisible(for worktreeId: String?) -> Bool {
         guard let worktreeId else { return true }
-        return sideVisible[worktreeId] ?? WtpadBinary.isAvailable
+        return sideVisible[worktreeId] ?? true
     }
 
     func isSecondaryVisible(for worktreeId: String?) -> Bool {
@@ -123,7 +123,7 @@ class TerminalManager: ObservableObject {
 
     func toggleSide(for worktreeId: String?) {
         guard let worktreeId else { return }
-        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? WtpadBinary.isAvailable)
+        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? true)
     }
 
     func toggleSecondary(for worktreeId: String?) {
@@ -244,9 +244,12 @@ class TerminalManager: ObservableObject {
         panes.values.flatMap { [$0.main, $0.secondary, $0.side] }
     }
 
-    /// Send the resolved wtpad command to a side terminal surface.
-    private static func launchWtpad(in surface: Ghostty.SurfaceView) {
-        guard let path = WtpadBinary.path else { return }
-        surface.sendCommand(shellEscape(path))
+    /// Send the wtpad command to a side terminal surface.
+    static func launchWtpad(in surface: Ghostty.SurfaceView) {
+        if WtpadBinary.isInPATH {
+            surface.sendCommand("wtpad")
+        } else if let bundled = WtpadBinary.bundledPath {
+            surface.sendCommand(shellEscape(bundled))
+        }
     }
 }

@@ -57,7 +57,7 @@ targets:
             echo "warning: Go not found — wtpad CLI will not be embedded. Install Go: brew install go"
             exit 0
           fi
-          WTPAD_OUTPUT="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/wtpad-cli"
+          WTPAD_OUTPUT="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS/cli"
           # Skip rebuild if binary is newer than all Go sources
           if [ -f "$WTPAD_OUTPUT" ] && [ -z "$(find "$PROJECT_DIR/wtpad-cli" -name '*.go' -newer "$WTPAD_OUTPUT" 2>/dev/null)" ]; then
             exit 0
@@ -66,7 +66,7 @@ targets:
           cd "$PROJECT_DIR/wtpad-cli"
           CGO_ENABLED=0 go build -ldflags="-s -w" -o "$WTPAD_OUTPUT" .
         outputFiles:
-          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/wtpad-cli
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/cli
       - name: Generate BuildInfo
         script: |
           COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")

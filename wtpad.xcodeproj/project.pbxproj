@@ -25,9 +25,11 @@
 		9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8346D6DF56660212501AB834 /* Worktree.swift */; };
 		ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */; };
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
+		C319CEAD586C5543D8D4E409 /* WtpadInstallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAC724186064A338EA13481 /* WtpadInstallView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
 		E61377ACA7A5D6326B96E429 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1D01555B16916CD81B458C /* TestHelpers.swift */; };
+		F06D91BD2095EFE03D92BD5B /* CLIInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */; };
 		FADC4023EA06E557A31BFE3E /* WtpadBinary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0604FC7DC75A491568F29B /* WtpadBinary.swift */; };
 		FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF31A165F772369B33B90AA /* Ghostty.Config.swift */; };
 /* End PBXBuildFile section */
@@ -50,6 +52,7 @@
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
+		3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIInstaller.swift; sourceTree = "<group>"; };
 		63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
@@ -58,6 +61,7 @@
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BDAC724186064A338EA13481 /* WtpadInstallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadInstallView.swift; sourceTree = "<group>"; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
@@ -105,6 +109,7 @@
 			children = (
 				63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */,
 				D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */,
+				3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */,
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
 				15DE76037AB236AE890CDD14 /* DebugTerminalSheet.swift */,
 				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
@@ -117,6 +122,7 @@
 				8346D6DF56660212501AB834 /* Worktree.swift */,
 				ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */,
 				CF0604FC7DC75A491568F29B /* WtpadBinary.swift */,
+				BDAC724186064A338EA13481 /* WtpadInstallView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -239,11 +245,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/wtpad-cli",
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/cli",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if ! command -v go &>/dev/null; then\n  echo \"warning: Go not found — wtpad CLI will not be embedded. Install Go: brew install go\"\n  exit 0\nfi\nWTPAD_OUTPUT=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/wtpad-cli\"\n# Skip rebuild if binary is newer than all Go sources\nif [ -f \"$WTPAD_OUTPUT\" ] && [ -z \"$(find \"$PROJECT_DIR/wtpad-cli\" -name '*.go' -newer \"$WTPAD_OUTPUT\" 2>/dev/null)\" ]; then\n  exit 0\nfi\nmkdir -p \"$(dirname \"$WTPAD_OUTPUT\")\"\ncd \"$PROJECT_DIR/wtpad-cli\"\nCGO_ENABLED=0 go build -ldflags=\"-s -w\" -o \"$WTPAD_OUTPUT\" .\n";
+			shellScript = "if ! command -v go &>/dev/null; then\n  echo \"warning: Go not found — wtpad CLI will not be embedded. Install Go: brew install go\"\n  exit 0\nfi\nWTPAD_OUTPUT=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS/cli\"\n# Skip rebuild if binary is newer than all Go sources\nif [ -f \"$WTPAD_OUTPUT\" ] && [ -z \"$(find \"$PROJECT_DIR/wtpad-cli\" -name '*.go' -newer \"$WTPAD_OUTPUT\" 2>/dev/null)\" ]; then\n  exit 0\nfi\nmkdir -p \"$(dirname \"$WTPAD_OUTPUT\")\"\ncd \"$PROJECT_DIR/wtpad-cli\"\nCGO_ENABLED=0 go build -ldflags=\"-s -w\" -o \"$WTPAD_OUTPUT\" .\n";
 		};
 		D94CFE152489F9FD72FC43C8 /* Generate BuildInfo */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -273,6 +279,7 @@
 			files = (
 				ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */,
 				08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */,
+				F06D91BD2095EFE03D92BD5B /* CLIInstaller.swift in Sources */,
 				B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */,
 				39171E29FE8032B712B9BA1D /* DebugTerminalSheet.swift in Sources */,
 				12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */,
@@ -290,6 +297,7 @@
 				9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */,
 				47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */,
 				FADC4023EA06E557A31BFE3E /* WtpadBinary.swift in Sources */,
+				C319CEAD586C5543D8D4E409 /* WtpadInstallView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

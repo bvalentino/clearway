@@ -79,6 +79,7 @@ struct WtpadApp: App {
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
     @StateObject private var settings = SettingsManager()
+    @StateObject private var cliInstaller = CLIInstaller()
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
@@ -92,6 +93,7 @@ struct WtpadApp: App {
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
                 .environmentObject(settings)
+                .environmentObject(cliInstaller)
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 1100, height: 700)
@@ -113,6 +115,7 @@ struct WtpadApp: App {
 
         Settings {
             SettingsView(settings: settings)
+                .environmentObject(cliInstaller)
                 .preferredColorScheme(.dark)
         }
     }
