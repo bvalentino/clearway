@@ -29,6 +29,9 @@ class TerminalManager: ObservableObject {
     private var recentRestarts: [String: [Date]] = [:]
     @Published var activeSurfaceId: String?
     @Published private(set) var notifiedWorktrees: Set<String> = []
+    /// Worktree IDs that have active terminal panes. Must stay in sync with
+    /// `panes.keys` — all pane mutations should go through `removeSurface` or `closeWorktree`.
+    @Published private(set) var openWorktreeIds: Set<String> = []
     private var notificationObserver: Any?
 
     /// Per-worktree panel visibility (defaults to true when absent).
@@ -146,6 +149,9 @@ class TerminalManager: ObservableObject {
 
         let tp = TerminalPane(main: main, secondary: secondary, side: side)
         panes[key] = tp
+        if !openWorktreeIds.contains(key) {
+            openWorktreeIds.insert(key)
+        }
 
         // Run startup commands in terminals
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
@@ -211,6 +217,29 @@ class TerminalManager: ObservableObject {
     /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
         panes.removeValue(forKey: worktreeId)
+        cleanupState(for: worktreeId)
+    }
+
+    /// Whether a worktree has any surface with a running foreground process.
+    func worktreeNeedsConfirmClose(_ worktreeId: String) -> Bool {
+        guard let pane = panes[worktreeId] else { return false }
+        return pane.main.needsConfirmQuit || pane.secondary.needsConfirmQuit || pane.side.needsConfirmQuit
+    }
+
+    /// Close a worktree's terminals without deleting the worktree itself.
+    ///
+    /// Removes the pane entry first so the close-surface observer doesn't
+    /// try to restart the dying shells, then sends SIGHUP via `closeSurface()`.
+    func closeWorktree(_ worktreeId: String) {
+        guard let pane = panes.removeValue(forKey: worktreeId) else { return }
+        cleanupState(for: worktreeId)
+        pane.main.closeSurface()
+        pane.secondary.closeSurface()
+        pane.side.closeSurface()
+    }
+
+    private func cleanupState(for worktreeId: String) {
+        openWorktreeIds.remove(worktreeId)
         notifiedWorktrees.remove(worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
         sideVisible.removeValue(forKey: worktreeId)

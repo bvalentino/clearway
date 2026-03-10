@@ -88,8 +88,8 @@ struct ContentView: View {
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
-        .onChange(of: selectedWorktree) { newWorktree in
-            guard let wt = newWorktree, let app = ghosttyApp.app else { return }
+        .onChange(of: selectedWorktree) { [oldId = selectedWorktree?.id] newWorktree in
+            guard let wt = newWorktree, let app = ghosttyApp.app, wt.id != oldId else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
@@ -102,14 +102,24 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
-            if let selected = selectedWorktree, !newWorktrees.contains(where: { $0.id == selected.id }) {
+            guard let selected = selectedWorktree else { return }
+            let refreshed = newWorktrees.first(where: { $0.id == selected.id })
+            // Update selection to the refreshed instance so its hash matches
+            // the List tag — otherwise the highlight is lost after refresh.
+            if let refreshed, refreshed != selected {
+                selectedWorktree = refreshed
+            } else if refreshed == nil {
                 selectedWorktree = newWorktrees.first(where: \.isMain)
             }
         }
+        .onChange(of: terminalManager.openWorktreeIds) { openIds in
+            guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
+            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+        }
         .background {
-            // Cmd+N: switch worktrees
+            // Cmd+N: switch worktrees (sorted order matches sidebar)
             if !worktreeShortcutsDisabled {
-                ForEach(Array(worktreeManager.worktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
+                ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
                         selectedWorktree = wt
                     }
@@ -172,6 +182,10 @@ struct ContentView: View {
     }
 
     // MARK: - Title
+
+    private var sortedWorktrees: [Worktree] {
+        Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
+    }
 
     private var projectName: String {
         URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
