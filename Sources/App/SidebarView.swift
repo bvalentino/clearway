@@ -11,6 +11,7 @@ struct SidebarView: View {
     @State private var showingDebugTerminal = false
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
+    @State private var worktreeToClose: Worktree?
 
     private var isSearching: Bool { !searchText.isEmpty }
 
@@ -65,6 +66,23 @@ struct SidebarView: View {
             } else {
                 Text("This will delete the worktree and its working directory.")
             }
+        }
+        .confirmationDialog(
+            "Close worktree \"\(worktreeToClose?.displayName ?? "")\"?",
+            isPresented: Binding(
+                get: { worktreeToClose != nil },
+                set: { if !$0 { worktreeToClose = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Close", role: .destructive) {
+                if let wt = worktreeToClose {
+                    terminalManager.closeWorktree(wt.id)
+                }
+                worktreeToClose = nil
+            }
+        } message: {
+            Text("There are processes still running in this worktree's terminals.")
         }
     }
 
@@ -175,7 +193,11 @@ struct SidebarView: View {
     @ViewBuilder
     private func worktreeContextMenu(_ wt: Worktree) -> some View {
         Button("Close Worktree") {
-            terminalManager.closeWorktree(wt.id)
+            if terminalManager.worktreeNeedsConfirmClose(wt.id) {
+                worktreeToClose = wt
+            } else {
+                terminalManager.closeWorktree(wt.id)
+            }
         }
         .disabled(wt.isMain || !terminalManager.openWorktreeIds.contains(wt.id))
 

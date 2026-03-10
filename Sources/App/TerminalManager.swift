@@ -218,6 +218,12 @@ class TerminalManager: ObservableObject {
         cleanupState(for: worktreeId)
     }
 
+    /// Whether a worktree has any surface with a running foreground process.
+    func worktreeNeedsConfirmClose(_ worktreeId: String) -> Bool {
+        guard let pane = panes[worktreeId] else { return false }
+        return pane.main.needsConfirmQuit || pane.secondary.needsConfirmQuit || pane.side.needsConfirmQuit
+    }
+
     /// Close a worktree's terminals without deleting the worktree itself.
     ///
     /// Removes the pane entry first so the close-surface observer doesn't
