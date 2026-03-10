@@ -401,7 +401,10 @@ extension Ghostty {
 
         /// Send a command string followed by Enter to the terminal.
         func sendCommand(_ command: String) {
-            let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = command
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: .newlines)
+                .first ?? ""
             guard !trimmed.isEmpty else { return }
             sendText(trimmed)
             sendEnter()
@@ -412,21 +415,17 @@ extension Ghostty {
             guard let surface = surfacePtr else { return }
             let kVKReturn: UInt32 = 36
 
-            var press = ghostty_input_key_s()
-            press.action = GHOSTTY_ACTION_PRESS
-            press.keycode = kVKReturn
-            press.mods = GHOSTTY_MODS_NONE
-            press.composing = false
-            press.text = nil
-            ghostty_surface_key(surface, press)
+            var key = ghostty_input_key_s()
+            key.keycode = kVKReturn
+            key.mods = GHOSTTY_MODS_NONE
+            key.composing = false
+            key.text = nil
 
-            var release = ghostty_input_key_s()
-            release.action = GHOSTTY_ACTION_RELEASE
-            release.keycode = kVKReturn
-            release.mods = GHOSTTY_MODS_NONE
-            release.composing = false
-            release.text = nil
-            ghostty_surface_key(surface, release)
+            key.action = GHOSTTY_ACTION_PRESS
+            ghostty_surface_key(surface, key)
+
+            key.action = GHOSTTY_ACTION_RELEASE
+            ghostty_surface_key(surface, key)
         }
 
         // MARK: - NSTextInputClient
