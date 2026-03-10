@@ -1,1 +1,2 @@
 # This limits what gets copied with `wt step copy-ignored`. Entries here must be both gitignored.
+.my-dev.json

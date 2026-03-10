@@ -1,3 +1,4 @@
 [post-start]
-ghostty_build = "rm -rf ghostty && cp -r {{ primary_worktree_path }}/ghostty ."
+cp_ghostty_submodule = "rm -rf ghostty && cp -r {{ primary_worktree_path }}/ghostty ."
+cp_wtpad_cli_submodule = "rm -rf wtpad_cli && cp -r {{ primary_worktree_path }}/wtpad_cli ."
 copy = "wt step copy-ignored"
