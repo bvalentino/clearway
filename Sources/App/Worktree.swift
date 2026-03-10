@@ -405,16 +405,21 @@ class WorktreeManager: ObservableObject {
         process.standardError = stderr
 
         try process.run()
+
+        // Read pipes before waitUntilExit to avoid deadlock if the subprocess
+        // fills the pipe buffer (~64KB) — it would block waiting for the reader
+        // while we block waiting for exit.
+        let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
             let stderrString = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let cmd = args.joined(separator: " ")
             throw WorktreeError.commandFailed(cmd, stderr: stderrString)
         }
 
-        return stdout.fileHandleForReading.readDataToEndOfFile()
+        return stdoutData
     }
 
     enum WorktreeError: LocalizedError {
@@ -423,39 +428,13 @@ class WorktreeManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .commandFailed(let cmd, let stderr):
-                return Self.formatErrorMessage(cmd: cmd, stderr: stderr)
-            }
-        }
-
-        private static func formatErrorMessage(cmd: String, stderr: String) -> String {
-            // Analyze stderr for common failure patterns
-            if stderr.contains("command not found") || stderr.contains("No such file or directory") {
-                return "Could not find 'wt' command. Make sure 'wt' is installed and available in your PATH."
-            }
-
-            if stderr.contains("not a git repository") || stderr.contains("not a working tree") {
-                return "Not in a git repository. Make sure the project path is a valid git repository."
-            }
-
-            if stderr.contains("Permission denied") {
-                return "Permission denied. Check that you have permission to access the project directory."
-            }
-
-            if stderr.contains("fatal:") {
-                // Extract git error message
-                let lines = stderr.split(separator: "\n")
-                if let fatalLine = lines.first(where: { $0.contains("fatal:") }) {
-                    let message = String(fatalLine).replacingOccurrences(of: "fatal: ", with: "").capitalized
-                    return "Git error: \(message)"
+                // Surface a helpful message for the most common failure: wt not installed
+                if stderr.contains("command not found") || stderr.contains("No such file or directory") {
+                    return "Could not find 'wt' command. Make sure 'wt' is installed and available in your PATH."
                 }
+                if !stderr.isEmpty { return stderr }
+                return "Command failed: \(cmd)"
             }
-
-            // If we have stderr, show it; otherwise show generic message
-            if !stderr.isEmpty {
-                return "Command failed: \(cmd)\n\nError: \(stderr)"
-            }
-
-            return "Command failed: \(cmd)"
         }
     }
 }

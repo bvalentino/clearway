@@ -8,8 +8,9 @@ enum ShellEnvironment {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
-        // -l: login shell (sources profile), -c: run command
-        process.arguments = ["-l", "-c", "echo $PATH"]
+        // -li: login + interactive shell (sources both .zprofile and .zshrc)
+        // -c: run command then exit
+        process.arguments = ["-lic", "echo $PATH"]
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -17,10 +18,12 @@ enum ShellEnvironment {
 
         do {
             try process.run()
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let resolved = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
+            process.waitUntilExit()
+            // Take last non-empty line — .zshrc may print other output before our echo
+            if let output = String(data: data, encoding: .utf8),
+               let resolved = output.split(separator: "\n").last
+                .map({ String($0).trimmingCharacters(in: .whitespaces) }),
                !resolved.isEmpty {
                 return resolved
             }

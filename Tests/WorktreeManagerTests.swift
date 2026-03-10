@@ -181,27 +181,11 @@ final class WorktreeErrorTests: XCTestCase {
         XCTAssertTrue(message.contains("PATH"))
     }
 
-    func testNotAGitRepositoryError() {
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "fatal: not a git repository (or any of the parent directories): .git")
-        let message = error.errorDescription ?? ""
+    func testStderrShownDirectly() {
+        let stderr = "fatal: not a git repository (or any of the parent directories): .git"
+        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: stderr)
 
-        XCTAssertTrue(message.contains("Not in a git repository"))
-    }
-
-    func testPermissionDeniedError() {
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "Permission denied")
-        let message = error.errorDescription ?? ""
-
-        XCTAssertTrue(message.contains("Permission denied"))
-    }
-
-    func testGenericErrorIncludesStderr() {
-        let customError = "Something went wrong with the command"
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: customError)
-        let message = error.errorDescription ?? ""
-
-        XCTAssertTrue(message.contains(customError))
-        XCTAssertTrue(message.contains("wt list"))
+        XCTAssertEqual(error.errorDescription, stderr)
     }
 
     func testEmptyStderrFallsBackToGeneric() {
