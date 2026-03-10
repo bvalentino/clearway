@@ -56,7 +56,7 @@ struct SidebarView: View {
                     if selectedWorktree?.id == wt.id {
                         selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
                     }
-                    worktreeManager.removeWorktree(branch: branch, force: wt.isDirty)
+                    worktreeManager.removeWorktree(branch: branch)
                 }
                 worktreeToRemove = nil
             }
