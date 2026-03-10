@@ -9,9 +9,13 @@ struct SettingsView: View {
                 TextField("Command", text: $settings.mainTerminalCommand, prompt: Text("claude"))
                     .textFieldStyle(.roundedBorder)
             }
+
+            Section("Appearance") {
+                Toggle("Show focus border on active pane", isOn: $settings.showFocusBorder)
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .frame(width: 450, height: 120)
+        .frame(width: 450, height: 220)
     }
 }
