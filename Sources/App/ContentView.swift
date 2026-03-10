@@ -214,7 +214,25 @@ struct ContentView: View {
     }
 
     private func toggleSideTerminal() {
+        if !WtpadBinary.isAvailable && !sideVisible {
+            showWtpadMissingAlert()
+            return
+        }
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSide(for: selectedWorktree?.id) }
+    }
+
+    private func showWtpadMissingAlert() {
+        let alert = NSAlert()
+        alert.messageText = "wtpad CLI Not Installed"
+        alert.informativeText = "The wtpad command-line tool is required for the side panel. Install it to enable task tracking in your terminal.\n\nRestart wtpad after installing."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "View Installation Instructions")
+        alert.addButton(withTitle: "OK")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn,
+           let url = URL(string: "https://github.com/bvalentino/wtpad") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Refresh

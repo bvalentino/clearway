@@ -28,6 +28,7 @@
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
 		E61377ACA7A5D6326B96E429 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1D01555B16916CD81B458C /* TestHelpers.swift */; };
+		FADC4023EA06E557A31BFE3E /* WtpadBinary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0604FC7DC75A491568F29B /* WtpadBinary.swift */; };
 		FB58302C61812C992A5B80FD /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF31A165F772369B33B90AA /* Ghostty.Config.swift */; };
 /* End PBXBuildFile section */
 
@@ -60,6 +61,7 @@
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
+		CF0604FC7DC75A491568F29B /* WtpadBinary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadBinary.swift; sourceTree = "<group>"; };
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				8346D6DF56660212501AB834 /* Worktree.swift */,
 				ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */,
+				CF0604FC7DC75A491568F29B /* WtpadBinary.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -164,6 +167,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A610FA329D85E2EDDAB425A2 /* Build configuration list for PBXNativeTarget "wtpad" */;
 			buildPhases = (
+				84A63D52CCD9FC9920338F8E /* Build wtpad CLI */,
 				D94CFE152489F9FD72FC43C8 /* Generate BuildInfo */,
 				A1196DCF71024AC68765FF61 /* Sources */,
 				2062A16E422EE24083DE6907 /* Resources */,
@@ -222,6 +226,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		84A63D52CCD9FC9920338F8E /* Build wtpad CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build wtpad CLI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/wtpad-cli",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if ! command -v go &>/dev/null; then\n  echo \"warning: Go not found — wtpad CLI will not be embedded. Install Go: brew install go\"\n  exit 0\nfi\nWTPAD_OUTPUT=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/wtpad-cli\"\n# Skip rebuild if binary is newer than all Go sources\nif [ -f \"$WTPAD_OUTPUT\" ] && [ -z \"$(find \"$PROJECT_DIR/wtpad-cli\" -name '*.go' -newer \"$WTPAD_OUTPUT\" 2>/dev/null)\" ]; then\n  exit 0\nfi\nmkdir -p \"$(dirname \"$WTPAD_OUTPUT\")\"\ncd \"$PROJECT_DIR/wtpad-cli\"\nCGO_ENABLED=0 go build -ldflags=\"-s -w\" -o \"$WTPAD_OUTPUT\" .\n";
+		};
 		D94CFE152489F9FD72FC43C8 /* Generate BuildInfo */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -239,7 +262,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "COMMIT=$(git -C \"$PROJECT_DIR\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\ncat > \"$PROJECT_DIR/Sources/App/BuildInfo.generated.swift\" <<SWIFT\n// Auto-generated at build time — do not edit.\nenum BuildInfo {\n    static let commit = \"$COMMIT\"\n}\nSWIFT\n";
+			shellScript = "COMMIT=$(git -C \"$PROJECT_DIR\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(echo \"$COMMIT\" | tr -cd 'a-zA-Z0-9._-')\nWTPAD_VERSION=$(git -C \"$PROJECT_DIR/wtpad-cli\" describe --tags --always 2>/dev/null || echo \"unknown\")\nWTPAD_VERSION=$(echo \"$WTPAD_VERSION\" | tr -cd 'a-zA-Z0-9._-')\nTMPFILE=$(mktemp)\ncat > \"$TMPFILE\" <<SWIFT\n// Auto-generated at build time — do not edit.\nenum BuildInfo {\n    static let commit = \"$COMMIT\"\n    static let wtpadVersion = \"$WTPAD_VERSION\"\n}\nSWIFT\nTARGET=\"$PROJECT_DIR/Sources/App/BuildInfo.generated.swift\"\nif ! cmp -s \"$TMPFILE\" \"$TARGET\"; then\n  mv \"$TMPFILE\" \"$TARGET\"\nelse\n  rm \"$TMPFILE\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -266,6 +289,7 @@
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
 				9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */,
 				47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */,
+				FADC4023EA06E557A31BFE3E /* WtpadBinary.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

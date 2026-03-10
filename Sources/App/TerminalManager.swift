@@ -113,7 +113,7 @@ class TerminalManager: ObservableObject {
 
     func isSideVisible(for worktreeId: String?) -> Bool {
         guard let worktreeId else { return true }
-        return sideVisible[worktreeId] ?? true
+        return sideVisible[worktreeId] ?? WtpadBinary.isAvailable
     }
 
     func isSecondaryVisible(for worktreeId: String?) -> Bool {
@@ -123,7 +123,7 @@ class TerminalManager: ObservableObject {
 
     func toggleSide(for worktreeId: String?) {
         guard let worktreeId else { return }
-        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? true)
+        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? WtpadBinary.isAvailable)
     }
 
     func toggleSecondary(for worktreeId: String?) {
@@ -153,7 +153,7 @@ class TerminalManager: ObservableObject {
             if !command.isEmpty {
                 main.sendCommand(command)
             }
-            side.sendCommand("wtpad")
+            Self.launchWtpad(in: side)
         }
 
         return tp
@@ -193,7 +193,7 @@ class TerminalManager: ObservableObject {
 
             if slot == \.side {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    newSurface.sendCommand("wtpad")
+                    Self.launchWtpad(in: newSurface)
                 }
             }
             return
@@ -242,5 +242,11 @@ class TerminalManager: ObservableObject {
     /// All surfaces across all worktrees.
     var allSurfaces: [Ghostty.SurfaceView] {
         panes.values.flatMap { [$0.main, $0.secondary, $0.side] }
+    }
+
+    /// Send the resolved wtpad command to a side terminal surface.
+    private static func launchWtpad(in surface: Ghostty.SurfaceView) {
+        guard let path = WtpadBinary.path else { return }
+        surface.sendCommand(shellEscape(path))
     }
 }

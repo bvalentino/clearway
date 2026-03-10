@@ -51,15 +51,42 @@ targets:
         SWIFT_INCLUDE_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
     preBuildScripts:
+      - name: Build wtpad CLI
+        script: |
+          if ! command -v go &>/dev/null; then
+            echo "warning: Go not found — wtpad CLI will not be embedded. Install Go: brew install go"
+            exit 0
+          fi
+          WTPAD_OUTPUT="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/wtpad-cli"
+          # Skip rebuild if binary is newer than all Go sources
+          if [ -f "$WTPAD_OUTPUT" ] && [ -z "$(find "$PROJECT_DIR/wtpad-cli" -name '*.go' -newer "$WTPAD_OUTPUT" 2>/dev/null)" ]; then
+            exit 0
+          fi
+          mkdir -p "$(dirname "$WTPAD_OUTPUT")"
+          cd "$PROJECT_DIR/wtpad-cli"
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o "$WTPAD_OUTPUT" .
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/wtpad-cli
       - name: Generate BuildInfo
         script: |
           COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-          cat > "$PROJECT_DIR/Sources/App/BuildInfo.generated.swift" <<SWIFT
+          COMMIT=$(echo "$COMMIT" | tr -cd 'a-zA-Z0-9._-')
+          WTPAD_VERSION=$(git -C "$PROJECT_DIR/wtpad-cli" describe --tags --always 2>/dev/null || echo "unknown")
+          WTPAD_VERSION=$(echo "$WTPAD_VERSION" | tr -cd 'a-zA-Z0-9._-')
+          TMPFILE=$(mktemp)
+          cat > "$TMPFILE" <<SWIFT
           // Auto-generated at build time — do not edit.
           enum BuildInfo {
               static let commit = "$COMMIT"
+              static let wtpadVersion = "$WTPAD_VERSION"
           }
           SWIFT
+          TARGET="$PROJECT_DIR/Sources/App/BuildInfo.generated.swift"
+          if ! cmp -s "$TMPFILE" "$TARGET"; then
+            mv "$TMPFILE" "$TARGET"
+          else
+            rm "$TMPFILE"
+          fi
         outputFiles:
           - $(PROJECT_DIR)/Sources/App/BuildInfo.generated.swift
     dependencies: []
