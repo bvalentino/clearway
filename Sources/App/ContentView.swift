@@ -27,7 +27,6 @@ struct ContentView: View {
     @State private var ctrlHeld = false
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
-    @EnvironmentObject private var cliInstaller: CLIInstaller
 
     var body: some View {
         NavigationSplitView {
@@ -286,7 +285,7 @@ struct ContentView: View {
 
                         if sideVisible {
                             Divider()
-                            if WtpadBinary.isAvailable {
+                            if WtpadBinary.isInPATH {
                                 FocusableTerminal(
                                     surfaceView: pane.side,
                                     badge: "⌃3",
@@ -295,7 +294,7 @@ struct ContentView: View {
                                 )
                                 .frame(width: 380)
                             } else {
-                                WtpadInstallView(installer: cliInstaller) {
+                                WtpadInstallView {
                                     TerminalManager.launchWtpad(in: pane.side)
                                 }
                                 .frame(width: 380)

@@ -32,7 +32,7 @@ struct SettingsView: View {
                         Text("wtpad CLI not installed.")
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Install Command Line Tools") {
+                        Button("Install Command Line Tool") {
                             cliInstaller.install()
                         }
                         .disabled(WtpadBinary.bundledPath == nil)

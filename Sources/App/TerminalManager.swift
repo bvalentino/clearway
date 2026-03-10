@@ -246,10 +246,7 @@ class TerminalManager: ObservableObject {
 
     /// Send the wtpad command to a side terminal surface.
     static func launchWtpad(in surface: Ghostty.SurfaceView) {
-        if WtpadBinary.isInPATH {
-            surface.sendCommand("wtpad")
-        } else if let bundled = WtpadBinary.bundledPath {
-            surface.sendCommand(shellEscape(bundled))
-        }
+        guard WtpadBinary.isInPATH else { return }
+        surface.sendCommand("wtpad")
     }
 }

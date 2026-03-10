@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Shown in the side panel when the wtpad CLI is not installed to PATH.
 struct WtpadInstallView: View {
-    @ObservedObject var installer: CLIInstaller
+    @EnvironmentObject private var installer: CLIInstaller
     var onInstalled: () -> Void
 
     private var canInstall: Bool {
@@ -34,7 +34,7 @@ struct WtpadInstallView: View {
                         onInstalled()
                     }
                 } label: {
-                    Text("Install Command Line Tools")
+                    Text("Install Command Line Tool")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

@@ -63,6 +63,7 @@ class CLIInstaller: ObservableObject {
 
             do {
                 try process.run()
+                _ = (process.standardOutput as? Pipe)?.fileHandleForReading.readDataToEndOfFile()
                 _ = (process.standardError as? Pipe)?.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 guard process.terminationStatus == 0 else { return false }
@@ -88,6 +89,7 @@ class CLIInstaller: ObservableObject {
 
         do {
             try process.run()
+            _ = (process.standardOutput as? Pipe)?.fileHandleForReading.readDataToEndOfFile()
             let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             if process.terminationStatus != 0 {
