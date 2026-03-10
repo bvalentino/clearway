@@ -88,11 +88,15 @@ struct ContentView: View {
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
-        .onChange(of: selectedWorktree) { newWorktree in
+        .onChange(of: selectedWorktree) { [oldId = selectedWorktree?.id] newWorktree in
             guard let wt = newWorktree, let app = ghosttyApp.app else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
-            focusPane(\.main)
+            // Only steal focus when switching to a different worktree,
+            // not when the selection is refreshed with updated data.
+            if wt.id != oldId {
+                focusPane(\.main)
+            }
             worktreeManager.watchTitle(forWorktreePath: wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
@@ -102,7 +106,13 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
-            if let selected = selectedWorktree, !newWorktrees.contains(where: { $0.id == selected.id }) {
+            guard let selected = selectedWorktree else { return }
+            let refreshed = newWorktrees.first(where: { $0.id == selected.id })
+            // Update selection to the refreshed instance so its hash matches
+            // the List tag — otherwise the highlight is lost after refresh.
+            if let refreshed, refreshed != selected {
+                selectedWorktree = refreshed
+            } else if refreshed == nil {
                 selectedWorktree = newWorktrees.first(where: \.isMain)
             }
         }
