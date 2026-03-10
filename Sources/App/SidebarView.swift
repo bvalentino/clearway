@@ -134,7 +134,7 @@ struct SidebarView: View {
         Section {
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), isIntegrated: wt.isIntegrated, shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
                     .tag(wt)
                     .opacity(!isOpen ? 0.5 : 1.0)
                     .contextMenu {
@@ -260,7 +260,6 @@ struct WorktreeRow: View {
     let worktree: Worktree
     var subtitle: String? = nil
     var hasNotification: Bool = false
-    var isIntegrated: Bool = false
     var shortcutIndex: Int? = nil
 
     var body: some View {
@@ -269,7 +268,7 @@ struct WorktreeRow: View {
                 branchIcon
                 Text(worktree.displayName)
                     .fontWeight(worktree.isCurrent ? .semibold : .regular)
-                    .strikethrough(isIntegrated)
+                    .strikethrough(worktree.isIntegrated)
                     .lineLimit(1)
                 Spacer()
                 notificationIndicator

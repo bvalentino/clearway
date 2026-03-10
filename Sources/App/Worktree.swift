@@ -116,10 +116,6 @@ struct Worktree: Identifiable, Codable, Hashable {
 
     var displayName: String { branch ?? "(detached)" }
 
-    var isDimmed: Bool {
-        mainState == "empty"
-    }
-
     var isIntegrated: Bool {
         mainState == "integrated"
     }

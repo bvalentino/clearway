@@ -89,14 +89,10 @@ struct ContentView: View {
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: selectedWorktree) { [oldId = selectedWorktree?.id] newWorktree in
-            guard let wt = newWorktree, let app = ghosttyApp.app else { return }
+            guard let wt = newWorktree, let app = ghosttyApp.app, wt.id != oldId else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
-            // Only steal focus when switching to a different worktree,
-            // not when the selection is refreshed with updated data.
-            if wt.id != oldId {
-                focusPane(\.main)
-            }
+            focusPane(\.main)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in

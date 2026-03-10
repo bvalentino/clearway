@@ -149,7 +149,9 @@ class TerminalManager: ObservableObject {
 
         let tp = TerminalPane(main: main, secondary: secondary, side: side)
         panes[key] = tp
-        openWorktreeIds.insert(key)
+        if !openWorktreeIds.contains(key) {
+            openWorktreeIds.insert(key)
+        }
 
         // Run startup commands in terminals
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
