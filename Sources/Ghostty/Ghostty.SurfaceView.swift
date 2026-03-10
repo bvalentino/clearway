@@ -28,7 +28,7 @@ extension Ghostty {
 
         private var markedText = NSMutableAttributedString()
         private var keyTextAccumulator: [String]?
-        private var focused: Bool = false
+        @Published private(set) var focused: Bool = false
 
         override var acceptsFirstResponder: Bool { true }
 

@@ -16,6 +16,7 @@ struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var settings: SettingsManager
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
@@ -185,6 +186,10 @@ struct ContentView: View {
         terminalManager.isSecondaryVisible(for: selectedWorktree?.id)
     }
 
+    private var shouldShowFocusBorder: Bool {
+        settings.showFocusBorder && (sideVisible || secondaryVisible)
+    }
+
     // MARK: - Pane Focus & Visibility
 
     private func focusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, delay: Double = 0) {
@@ -202,18 +207,6 @@ struct ContentView: View {
             toggle()
             focusPane(keyPath, delay: 0.25)
         }
-    }
-
-    private func shortcutBadge(_ label: String) -> some View {
-        Text(label)
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-            .padding(8)
-            .allowsHitTesting(false)
-            .opacity(ctrlHeld ? 1 : 0)
     }
 
     private func toggleSecondaryTerminal() {
@@ -255,8 +248,12 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         VStack(spacing: 0) {
-                            TerminalSurface(surfaceView: pane.main)
-                                .overlay(alignment: .topLeading) { shortcutBadge("⌃1") }
+                            FocusableTerminal(
+                                surfaceView: pane.main,
+                                badge: "⌃1",
+                                ctrlHeld: ctrlHeld,
+                                showBorder: shouldShowFocusBorder
+                            )
 
                             if secondaryVisible {
                                 Divider()
@@ -276,17 +273,25 @@ struct ContentView: View {
                                             }
                                     )
 
-                                TerminalSurface(surfaceView: pane.secondary)
-                                    .overlay(alignment: .topLeading) { shortcutBadge("⌃2") }
-                                    .frame(height: secondaryHeight)
+                                FocusableTerminal(
+                                    surfaceView: pane.secondary,
+                                    badge: "⌃2",
+                                    ctrlHeld: ctrlHeld,
+                                    showBorder: shouldShowFocusBorder
+                                )
+                                .frame(height: secondaryHeight)
                             }
                         }
 
                         if sideVisible {
                             Divider()
-                            TerminalSurface(surfaceView: pane.side)
-                                .overlay(alignment: .topLeading) { shortcutBadge("⌃3") }
-                                .frame(width: 380)
+                            FocusableTerminal(
+                                surfaceView: pane.side,
+                                badge: "⌃3",
+                                ctrlHeld: ctrlHeld,
+                                showBorder: shouldShowFocusBorder
+                            )
+                            .frame(width: 380)
                         }
                     }
 
@@ -333,5 +338,35 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+}
+
+/// A terminal pane that observes its surface's focus state and draws a border when focused.
+private struct FocusableTerminal: View {
+    @ObservedObject var surfaceView: Ghostty.SurfaceView
+    let badge: String
+    let ctrlHeld: Bool
+    let showBorder: Bool
+
+    var body: some View {
+        TerminalSurface(surfaceView: surfaceView)
+            .overlay(alignment: .topLeading) {
+                Text(badge)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                    .padding(8)
+                    .allowsHitTesting(false)
+                    .opacity(ctrlHeld ? 1 : 0)
+            }
+            .overlay {
+                if showBorder && surfaceView.focused {
+                    Rectangle()
+                        .strokeBorder(Color.accentColor, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 }
