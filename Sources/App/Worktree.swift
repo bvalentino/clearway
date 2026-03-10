@@ -400,25 +400,40 @@ class WorktreeManager: ObservableObject {
         process.environment = ShellEnvironment.processEnvironment
 
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = Pipe()
+        process.standardError = stderr
 
         try process.run()
+
+        // Read pipes before waitUntilExit to avoid deadlock if the subprocess
+        // fills the pipe buffer (~64KB) — it would block waiting for the reader
+        // while we block waiting for exit.
+        let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            throw WorktreeError.commandFailed(args.joined(separator: " "))
+            let stderrString = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let cmd = args.joined(separator: " ")
+            throw WorktreeError.commandFailed(cmd, stderr: stderrString)
         }
 
-        return stdout.fileHandleForReading.readDataToEndOfFile()
+        return stdoutData
     }
 
     enum WorktreeError: LocalizedError {
-        case commandFailed(String)
+        case commandFailed(String, stderr: String)
 
         var errorDescription: String? {
             switch self {
-            case .commandFailed(let cmd): return "Command failed: \(cmd)"
+            case .commandFailed(let cmd, let stderr):
+                // Surface a helpful message for the most common failure: wt not installed
+                if stderr.contains("command not found") || stderr.contains("No such file or directory") {
+                    return "Could not find 'wt' command. Make sure 'wt' is installed and available in your PATH."
+                }
+                if !stderr.isEmpty { return stderr }
+                return "Command failed: \(cmd)"
             }
         }
     }

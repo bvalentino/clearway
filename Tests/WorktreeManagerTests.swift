@@ -113,7 +113,7 @@ final class WorktreeManagerTests: XCTestCase {
     // MARK: - Subtitle
 
     func testSubtitleReturnsTitleWhenAvailable() {
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktreeTitles["/tmp/feature"] = "Fix login bug"
         let wt = makeWorktree(path: "/tmp/feature", isMain: false)
 
@@ -121,21 +121,21 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     func testSubtitleReturnsCommitMessageWhenNoTitle() {
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         let wt = makeWorktree(path: "/tmp/feature", isMain: false, commitMessage: "Add OAuth2")
 
         XCTAssertEqual(manager.subtitle(for: wt), "Add OAuth2")
     }
 
     func testSubtitleReturnsNilForMainWithNoTitle() {
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         let wt = makeWorktree(path: "/tmp/main", isMain: true, commitMessage: "Old commit")
 
         XCTAssertNil(manager.subtitle(for: wt))
     }
 
     func testSubtitleReturnsTitleForMainWhenAvailable() {
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktreeTitles["/tmp/main"] = "Main branch title"
         let wt = makeWorktree(path: "/tmp/main", isMain: true)
 
@@ -150,7 +150,7 @@ final class WorktreeManagerTests: XCTestCase {
         try FileManager.default.createDirectory(at: wtpadDir, withIntermediateDirectories: true)
         try "My title\n".write(to: wtpadDir.appendingPathComponent("title.txt"), atomically: true, encoding: .utf8)
 
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktrees = [makeWorktree(path: tmpDir.path, isMain: false)]
         manager.loadTitles()
 
@@ -160,11 +160,39 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     func testLoadTitlesIgnoresMissingFiles() {
-        let manager = WorktreeManager()
+        let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktrees = [makeWorktree(path: "/tmp/nonexistent-\(UUID().uuidString)", isMain: false)]
         manager.loadTitles()
 
         XCTAssertTrue(manager.worktreeTitles.isEmpty)
+    }
+
+}
+
+// MARK: - WorktreeError Tests
+
+final class WorktreeErrorTests: XCTestCase {
+
+    func testCommandNotFoundError() {
+        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "env: wt: command not found")
+        let message = error.errorDescription ?? ""
+
+        XCTAssertTrue(message.contains("Could not find 'wt' command"))
+        XCTAssertTrue(message.contains("PATH"))
+    }
+
+    func testStderrShownDirectly() {
+        let stderr = "fatal: not a git repository (or any of the parent directories): .git"
+        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: stderr)
+
+        XCTAssertEqual(error.errorDescription, stderr)
+    }
+
+    func testEmptyStderrFallsBackToGeneric() {
+        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "")
+        let message = error.errorDescription ?? ""
+
+        XCTAssertEqual(message, "Command failed: wt list")
     }
 
 }

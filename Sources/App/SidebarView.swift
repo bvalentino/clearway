@@ -8,6 +8,7 @@ struct SidebarView: View {
     @Binding var selectedWorktree: Worktree?
     @Binding var showingCreateSheet: Bool
     var onSearchActiveChanged: ((Bool) -> Void)?
+    @State private var showingDebugTerminal = false
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
 
@@ -31,6 +32,12 @@ struct SidebarView: View {
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
+        .sheet(isPresented: $showingDebugTerminal) {
+            DebugTerminalSheet(
+                error: worktreeManager.error ?? "",
+                projectPath: worktreeManager.projectPath
+            )
+        }
         .confirmationDialog(
             "Remove worktree \"\(worktreeToRemove?.displayName ?? "")\"?",
             isPresented: Binding(
@@ -116,9 +123,26 @@ struct SidebarView: View {
             }
 
             if let error = worktreeManager.error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Error loading worktrees", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                        .font(.caption.bold())
+                    Text(error)
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                        .lineLimit(3)
+                    Text("Click to open debug terminal")
+                        .foregroundStyle(.tertiary)
+                        .font(.caption2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(Color(.controlBackgroundColor).opacity(0.5))
+                .cornerRadius(4)
+                .contentShape(Rectangle())
+                .onTapGesture { showingDebugTerminal = true }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Open debug terminal")
             }
         } header: {
             HStack {
