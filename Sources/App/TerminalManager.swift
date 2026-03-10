@@ -151,9 +151,9 @@ class TerminalManager: ObservableObject {
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if !command.isEmpty {
-                main.sendText(command.trimmingCharacters(in: .whitespacesAndNewlines) + "\n")
+                main.sendCommand(command)
             }
-            side.sendText("wtpad\n")
+            side.sendCommand("wtpad")
         }
 
         return tp
@@ -193,7 +193,7 @@ class TerminalManager: ObservableObject {
 
             if slot == \.side {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    newSurface.sendText("wtpad\n")
+                    newSurface.sendCommand("wtpad")
                 }
             }
             return
