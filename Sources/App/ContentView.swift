@@ -74,13 +74,17 @@ struct ContentView: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let branch = currentWorktree?.branch {
+                if let wt = currentWorktree, let branch = wt.branch {
                     selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                    worktreeManager.removeWorktree(branch: branch)
+                    worktreeManager.removeWorktree(branch: branch, force: wt.isDirty)
                 }
             }
         } message: {
-            Text("This will delete the worktree and its working directory.")
+            if currentWorktree?.isDirty == true {
+                Text("This worktree has uncommitted changes that will be lost.")
+            } else {
+                Text("This will delete the worktree and its working directory.")
+            }
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")

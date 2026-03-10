@@ -47,16 +47,20 @@ struct SidebarView: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let branch = worktreeToRemove?.branch {
-                    if selectedWorktree?.id == worktreeToRemove?.id {
+                if let wt = worktreeToRemove, let branch = wt.branch {
+                    if selectedWorktree?.id == wt.id {
                         selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
                     }
-                    worktreeManager.removeWorktree(branch: branch)
+                    worktreeManager.removeWorktree(branch: branch, force: wt.isDirty)
                 }
                 worktreeToRemove = nil
             }
         } message: {
-            Text("This will delete the worktree and its working directory.")
+            if worktreeToRemove?.isDirty == true {
+                Text("This worktree has uncommitted changes that will be lost.")
+            } else {
+                Text("This will delete the worktree and its working directory.")
+            }
         }
     }
 

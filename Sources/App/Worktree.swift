@@ -120,6 +120,11 @@ struct Worktree: Identifiable, Codable, Hashable {
         mainState == "empty" || mainState == "integrated"
     }
 
+    var isDirty: Bool {
+        guard let wt = workingTree else { return false }
+        return wt.staged || wt.modified || (wt.deleted ?? false)
+    }
+
     var hasConflicts: Bool {
         operationState == "conflicts"
     }
