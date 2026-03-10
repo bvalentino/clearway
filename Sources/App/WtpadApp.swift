@@ -29,8 +29,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard TerminalManager.needsConfirmQuit else { return .terminateNow }
+    func applicationWillTerminate(_ notification: Notification) {
+        TerminalManager.closeAllManagers()
+    }
+}
+
+/// Window delegate that confirms close when terminals have running processes.
+@MainActor
+final class CloseConfirmationDelegate: NSObject, NSWindowDelegate {
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard TerminalManager.needsConfirmQuit else { return true }
 
         let alert = NSAlert()
         alert.messageText = "Close terminal sessions?"
@@ -39,15 +47,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
 
-        alert.beginSheetModal(for: NSApp.mainWindow ?? NSApp.keyWindow ?? NSApp.windows.first!) { response in
-            NSApp.reply(toApplicationShouldTerminate: response == .alertFirstButtonReturn)
+        alert.beginSheetModal(for: sender) { response in
+            if response == .alertFirstButtonReturn {
+                sender.close()
+            }
         }
-        return .terminateLater
+        return false
+    }
+}
+
+/// Installs a `CloseConfirmationDelegate` on the hosting window.
+struct CloseConfirmation: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            let delegate = CloseConfirmationDelegate()
+            // Keep delegate alive for the window's lifetime.
+            objc_setAssociatedObject(window, "closeConfirmationDelegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+            window.delegate = delegate
+        }
+        return view
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        TerminalManager.closeAllManagers()
-    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 @main
@@ -65,6 +88,7 @@ struct WtpadApp: App {
     var body: some Scene {
         WindowGroup(for: String.self) { $projectPath in
             ProjectWindow(projectPath: $projectPath)
+                .background(CloseConfirmation())
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
                 .environmentObject(settings)
