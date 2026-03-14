@@ -381,14 +381,12 @@ class WorktreeManager: ObservableObject {
     }
 
     /// Remove a worktree: `wt remove <branch> -y`
-    func removeWorktree(branch: String, force: Bool = false) {
+    func removeWorktree(branch: String) {
         let projectPath = self.projectPath
         worktrees.removeAll { $0.branch == branch }
         Task.detached { [weak self] in
             do {
-                var args = ["wt", "remove", "-y"]
-                if force { args.append("--force") }
-                args += ["--", branch]
+                let args = ["wt", "remove", "-y", "--force", "--", branch]
                 try await Self.runCommand(args, in: projectPath)
             } catch {
                 let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []

@@ -76,7 +76,7 @@ struct ContentView: View {
             Button("Remove", role: .destructive) {
                 if let wt = currentWorktree, let branch = wt.branch {
                     selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                    worktreeManager.removeWorktree(branch: branch, force: wt.isDirty)
+                    worktreeManager.removeWorktree(branch: branch)
                 }
             }
         } message: {
