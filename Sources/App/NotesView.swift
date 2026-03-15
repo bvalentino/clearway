@@ -73,6 +73,7 @@ private struct NoteRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onOpen: () -> Void
+    @State private var lastClickTime: Date = .distantPast
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -100,8 +101,15 @@ private struct NoteRow: View {
         .padding(.vertical, 10)
         .background(isSelected ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onOpen() }
-        .onTapGesture(count: 1) { onSelect() }
+        .onTapGesture {
+            let now = Date()
+            if now.timeIntervalSince(lastClickTime) < 0.3 {
+                onOpen()
+            } else {
+                onSelect()
+            }
+            lastClickTime = now
+        }
         .overlay(alignment: .bottom) {
             Divider().padding(.horizontal, 12)
         }
