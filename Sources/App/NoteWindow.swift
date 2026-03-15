@@ -53,6 +53,7 @@ struct NoteWindow: View {
                     } label: {
                         Image(systemName: "ellipsis")
                     }
+                    .menuIndicator(.hidden)
                 }
             }
             .confirmationDialog(
