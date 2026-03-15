@@ -206,6 +206,7 @@ struct ContentView: View {
             }
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
+            claudeTaskManager.stopWatching()
         }
     }
 

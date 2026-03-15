@@ -10,20 +10,31 @@ class ClaudeTaskManager: ObservableObject {
 
     private var worktreePath: String?
     private var watcherSources: [DispatchSourceFileSystemObject] = []
+    private var pendingReload: DispatchWorkItem?
+    private var needsWatcherRebuild = false
 
     private static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
     }()
 
     nonisolated deinit {
+        pendingReload?.cancel()
         for source in watcherSources { source.cancel() }
     }
 
     func setWorktreePath(_ path: String?) {
         guard path != worktreePath else { return }
+        stopWatching()
         worktreePath = path
         reload()
         watchTaskDirectories()
+    }
+
+    func stopWatching() {
+        pendingReload?.cancel()
+        pendingReload = nil
+        for source in watcherSources { source.cancel() }
+        watcherSources = []
     }
 
     func reload() {
@@ -118,7 +129,7 @@ class ClaudeTaskManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(sessions) else { return }
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: path, contents: data)
+        FileManager.default.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
     }
 
     /// Merges live sessions with cached sessions. Live tasks take precedence;
@@ -177,11 +188,7 @@ class ClaudeTaskManager: ObservableObject {
 
         // Watch the projects directory for new sessions
         if let source = Self.makeWatcher(path: projectDir) { [weak self] in
-            DispatchQueue.main.async {
-                // New session appeared — rebuild watchers to include its tasks dir
-                self?.reload()
-                self?.watchTaskDirectories()
-            }
+            self?.scheduleReload(rebuildWatchers: true)
         } {
             watcherSources.append(source)
         }
@@ -198,34 +205,38 @@ class ClaudeTaskManager: ObservableObject {
                 .appendingPathComponent("tasks")
                 .appending("/\(uuid)")
 
-            // Watch the directory for new/deleted task files
             if let source = Self.makeWatcher(path: tasksDir) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.reload()
-                    self?.watchTaskDirectories()
-                }
+                self?.scheduleReload(rebuildWatchers: false)
             } {
                 watcherSources.append(source)
             }
+        }
+    }
 
-            // Watch each individual task file for content changes (e.g. status updates)
-            let taskFiles = (try? fm.contentsOfDirectory(atPath: tasksDir)) ?? []
-            for file in taskFiles where file.hasSuffix(".json") {
-                let filePath = (tasksDir as NSString).appendingPathComponent(file)
-                if let source = Self.makeWatcher(path: filePath, eventMask: [.write, .delete, .rename]) { [weak self] in
-                    DispatchQueue.main.async {
-                        self?.reload()
-                    }
-                } {
-                    watcherSources.append(source)
+    /// Coalesces rapid file system events into a single reload after a short delay.
+    /// The `rebuildWatchers` flag is latched — once any event requests a rebuild,
+    /// it won't be lost even if a later event within the window doesn't need one.
+    private nonisolated func scheduleReload(rebuildWatchers: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingReload?.cancel()
+            if rebuildWatchers { self.needsWatcherRebuild = true }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                let shouldRebuild = self.needsWatcherRebuild
+                self.needsWatcherRebuild = false
+                self.reload()
+                if shouldRebuild {
+                    self.watchTaskDirectories()
                 }
             }
+            self.pendingReload = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }
 
     private nonisolated static func makeWatcher(
         path: String,
-        eventMask: DispatchSource.FileSystemEvent = .write,
         handler: @escaping () -> Void
     ) -> DispatchSourceFileSystemObject? {
         let fd = open(path, O_EVTONLY)
@@ -233,7 +244,7 @@ class ClaudeTaskManager: ObservableObject {
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: eventMask,
+            eventMask: .write,
             queue: .global(qos: .utility)
         )
         source.setEventHandler(handler: handler)
