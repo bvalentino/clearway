@@ -92,7 +92,7 @@ class WorktreeManager: ObservableObject {
     /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
     func loadTitles() {
         var titles: [String: String] = [:]
-        for wt in worktrees {
+        for wt in worktrees where !wt.isMain {
             guard let path = wt.path else { continue }
             if let title = Self.readClaudeSessionTitle(forWorktreePath: path) {
                 titles[path] = title
@@ -157,20 +157,11 @@ class WorktreeManager: ObservableObject {
     }
 
     /// Parses a Claude Code session JSONL file for the last `custom-title` entry.
-    /// Reads only the tail of the file since titles are near the end and files can be large.
     private nonisolated static func readCustomTitle(fromJSONL path: String) -> String? {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { handle.closeFile() }
+        guard let data = FileManager.default.contents(atPath: path),
+              let content = String(data: data, encoding: .utf8) else { return nil }
 
-        let fileSize = handle.seekToEndOfFile()
-        // Read the last 8KB — custom-title entries are short and appended near the end
-        let readSize: UInt64 = 8192
-        let offset = fileSize > readSize ? fileSize - readSize : 0
-        handle.seek(toFileOffset: offset)
-        let data = handle.readDataToEndOfFile()
-
-        guard let content = String(data: data, encoding: .utf8) else { return nil }
-
+        // Last matching line wins (user may have renamed multiple times)
         var title: String?
         for line in content.split(separator: "\n") {
             guard line.contains("\"custom-title\"") else { continue }

@@ -197,6 +197,41 @@ final class WorktreeManagerTests: XCTestCase {
         try fm.removeItem(atPath: projectDir)
     }
 
+    func testLoadTitlesSurvivesLargeSessionFile() throws {
+        let fm = FileManager.default
+        let worktreePath = "/tmp/test-wt-\(UUID().uuidString)"
+        let encodedPath = WorktreeManager.encodePathForClaude(worktreePath)
+        let claudeDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+        let projectDir = (claudeDir as NSString)
+            .appendingPathComponent("projects")
+            .appending("/\(encodedPath)")
+        try fm.createDirectory(atPath: projectDir, withIntermediateDirectories: true)
+
+        // Write a session JSONL where custom-title is near the start, followed by >8KB of data
+        // This simulates an active Claude session where tool calls push the title out of an 8KB tail window
+        let sessionFile = (projectDir as NSString).appendingPathComponent("test-session.jsonl")
+        var jsonl = "{\"type\":\"custom-title\",\"customTitle\":\"Early Title\",\"sessionId\":\"test\"}\n"
+        let padding = String(repeating: "x", count: 200)
+        for i in 0..<100 {
+            jsonl += "{\"type\":\"assistant\",\"message\":\"\(padding)-\(i)\"}\n"
+        }
+
+        try jsonl.write(toFile: sessionFile, atomically: true, encoding: .utf8)
+
+        // Verify file is larger than 8KB
+        let attrs = try fm.attributesOfItem(atPath: sessionFile)
+        let fileSize = attrs[.size] as! UInt64
+        XCTAssertGreaterThan(fileSize, 16384, "Test file should be larger than 16KB to exceed head+tail window")
+
+        let manager = WorktreeManager(projectPath: "/tmp/test")
+        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
+        manager.loadTitles()
+
+        XCTAssertEqual(manager.worktreeTitles[worktreePath], "Early Title")
+
+        try fm.removeItem(atPath: projectDir)
+    }
+
     func testLoadTitlesIgnoresMissingSessions() {
         let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktrees = [makeWorktree(path: "/tmp/nonexistent-\(UUID().uuidString)", isMain: false)]
