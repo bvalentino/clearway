@@ -65,6 +65,7 @@ struct ProjectContentView: View {
     @StateObject private var worktreeManager: WorktreeManager
     @StateObject private var terminalManager = TerminalManager()
     @StateObject private var claudeTaskManager = ClaudeTaskManager()
+    @StateObject private var userTaskManager = UserTaskManager()
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -76,5 +77,6 @@ struct ProjectContentView: View {
             .environmentObject(worktreeManager)
             .environmentObject(terminalManager)
             .environmentObject(claudeTaskManager)
+            .environmentObject(userTaskManager)
     }
 }
