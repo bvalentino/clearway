@@ -55,19 +55,19 @@ struct NoteWindow: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button(role: .destructive) {
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete Note", systemImage: "trash")
-                        }
-
-                        Divider()
-
                         Button {
                             save()
                             revealInFinder()
                         } label: {
                             Label("Reveal in Finder", systemImage: "folder")
+                        }
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Note", systemImage: "trash")
                         }
                     } label: {
                         Image(systemName: "ellipsis")
