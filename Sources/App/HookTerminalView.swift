@@ -7,24 +7,31 @@ struct HookSheet: Identifiable {
     let title: String
     let command: String
     let surface: Ghostty.SurfaceView
-    /// Called when the hook succeeds (auto) or the user clicks "Continue Anyway" after failure.
+    /// Called when the hook succeeds (auto) or the user clicks "Run in Background".
     let onContinue: () -> Void
+    /// Called when the user clicks "Force remove" after a before-remove hook fails. Nil for after-create hooks.
+    var onForce: (() -> Void)?
 }
 
 /// A modal sheet that runs a hook command in a terminal.
 /// Auto-dismisses on success. On failure, drops into an interactive
-/// shell and shows Cancel / Continue Anyway buttons.
+/// shell for debugging with a "Close" button.
 struct HookTerminalSheet: View {
     let hook: HookSheet
+    @ObservedObject var surface: Ghostty.SurfaceView
     @Environment(\.dismiss) private var dismiss
+    @State private var failed = false
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            header(failed: failed)
             Divider()
             TerminalSurface(surfaceView: hook.surface)
         }
         .frame(minWidth: 600, minHeight: 400)
+        .onChange(of: surface.title) { title in
+            if title == hookFailedMarker { failed = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
             guard let surface = notification.object as? Ghostty.SurfaceView,
                   surface === hook.surface,
@@ -40,10 +47,15 @@ struct HookTerminalSheet: View {
         }
     }
 
-    private var header: some View {
+    private func header(failed: Bool) -> some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
+            if failed {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(hook.title)
@@ -56,9 +68,19 @@ struct HookTerminalSheet: View {
 
             Spacer()
 
-            Button("Run in Background") {
-                hook.onContinue()
-                dismiss()
+            if failed {
+                Button("Close") { dismiss() }
+                if let onForce = hook.onForce {
+                    Button("Force Remove", role: .destructive) {
+                        onForce()
+                        dismiss()
+                    }
+                }
+            } else {
+                Button("Run in Background") {
+                    hook.onContinue()
+                    dismiss()
+                }
             }
         }
         .padding(.horizontal, 12)

@@ -12,6 +12,9 @@ private let wtpadLogo: [String] = [
     "                    /_/                      ",
 ]
 
+/// Marker set as the terminal title when a hook command fails.
+let hookFailedMarker = "__wtpad_hook_failed__"
+
 /// Wraps a hook command for use as a Ghostty surface `command:` parameter.
 /// Runs the hook through `/bin/sh`, then drops into the user's shell so
 /// the terminal stays interactive for debugging.
@@ -20,7 +23,7 @@ private func hookShellCommand(_ cmd: String) -> String {
     if !shell.hasPrefix("/") || shell.contains("'") || shell.contains(" ") {
         shell = "/bin/sh"
     }
-    return "/bin/sh -c \(shellEscape(cmd + "; s=$?; if [ $s -ne 0 ]; then exec \(shell); fi; exit $s"))"
+    return "/bin/sh -c \(shellEscape("(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
 }
 
 struct ContentView: View {
@@ -50,7 +53,7 @@ struct ContentView: View {
             detailView
         }
         .sheet(item: $hookSheet) { hook in
-            HookTerminalSheet(hook: hook)
+            HookTerminalSheet(hook: hook, surface: hook.surface)
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -268,11 +271,12 @@ struct ContentView: View {
         if let cmd = worktreeManager.hookCommand(\.beforeRemove, forBranch: branch, worktreePath: worktreePath),
            let app = ghosttyApp.app {
             let surface = Ghostty.SurfaceView(app, workingDirectory: worktreePath, command: hookShellCommand(cmd))
-            hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface) { [weak worktreeManager] in
+            let doRemove = { [weak worktreeManager] in
                 guard let worktreeManager else { return }
                 selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
                 worktreeManager.removeWorktree(branch: branch)
             }
+            hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface, onContinue: doRemove, onForce: doRemove)
         } else {
             selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
             worktreeManager.removeWorktree(branch: branch)
