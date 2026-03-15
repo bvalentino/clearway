@@ -96,7 +96,7 @@ struct NoteWindow: View {
            firstLine.hasPrefix("# ") {
             return String(firstLine.dropFirst(2))
         }
-        return identifier.displayName
+        return "New Note"
     }
 
     private func loadIfNeeded() {

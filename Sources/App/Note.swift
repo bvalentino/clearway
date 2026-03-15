@@ -9,12 +9,12 @@ struct Note: Identifiable, Hashable {
     /// When the file was last modified on disk.
     let modificationDate: Date
 
-    /// Title derived from the first `# ` heading, falling back to the filename without extension.
+    /// Title derived from the first `# ` heading, falling back to "New Note".
     var title: String {
         if let firstLine = content.split(separator: "\n", maxSplits: 1).first,
            firstLine.hasPrefix("# ") {
             return String(firstLine.dropFirst(2))
         }
-        return id.hasSuffix(".md") ? String(id.dropLast(".md".count)) : id
+        return "New Note"
     }
 }
