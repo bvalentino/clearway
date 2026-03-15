@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Displays and manages markdown notes for the current worktree.
@@ -35,26 +36,52 @@ struct NotesView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            createButton
+            actionButtons
         }
     }
 
-    private var createButton: some View {
-        Button(action: {
-            if let id = notesManager.createNote(),
-               let note = notesManager.notes.first(where: { $0.id == id }) {
-                openNote(note)
+    private var actionButtons: some View {
+        HStack(spacing: 0) {
+            Button {
+                if let id = notesManager.createNote(),
+                   let note = notesManager.notes.first(where: { $0.id == id }) {
+                    openNote(note)
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 36, height: 36)
             }
-        }) {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+
+            Divider()
+                .frame(height: 20)
+
+            Button {
+                importNote()
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .frame(width: 36, height: 36)
+            }
         }
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.primary)
         .buttonStyle(.plain)
+        .background(.thinMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         .padding(12)
+    }
+
+    private func importNote() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "md")!]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Select markdown files to import"
+
+        guard panel.runModal() == .OK else { return }
+
+        for url in panel.urls {
+            notesManager.importNote(from: url.path)
+        }
     }
 
     private func openNote(_ note: Note) {
