@@ -134,12 +134,12 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertNil(manager.subtitle(for: wt))
     }
 
-    func testSubtitleReturnsTitleForMainWhenAvailable() {
+    func testSubtitleReturnsNilForMainEvenWithTitle() {
         let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktreeTitles["/tmp/main"] = "Main branch title"
         let wt = makeWorktree(path: "/tmp/main", isMain: true)
 
-        XCTAssertEqual(manager.subtitle(for: wt), "Main branch title")
+        XCTAssertNil(manager.subtitle(for: wt))
     }
 
     // MARK: - Load Titles (Claude Code sessions)

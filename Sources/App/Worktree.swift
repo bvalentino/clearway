@@ -83,8 +83,9 @@ class WorktreeManager: ObservableObject {
     // MARK: - Titles (from Claude Code sessions)
 
     /// Returns the subtitle to display for a worktree.
+    /// Only non-main worktrees show session titles.
     func subtitle(for worktree: Worktree) -> String? {
-        guard let path = worktree.path, let title = worktreeTitles[path] else { return nil }
+        guard !worktree.isMain, let path = worktree.path, let title = worktreeTitles[path] else { return nil }
         return title
     }
 
