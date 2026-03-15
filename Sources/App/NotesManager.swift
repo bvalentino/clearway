@@ -113,7 +113,7 @@ class NotesManager: ObservableObject {
             loaded.append(Note(id: file, content: content, modificationDate: modDate))
         }
 
-        loaded.sort { $0.modificationDate > $1.modificationDate }
+        loaded.sort { $0.id > $1.id }
         return loaded
     }
 
