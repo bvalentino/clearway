@@ -37,14 +37,15 @@ class WorktreeManager: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastCreatedBranch: String?
-    /// Titles read from `.wtpad/title.txt` in each worktree, keyed by worktree path.
+    /// Titles read from Claude Code session JSONL files, keyed by worktree path.
     @Published var worktreeTitles: [String: String] = [:]
 
-    private static let wtpadTitleFile = ".wtpad/title.txt"
-    private var titleWatcherSource: DispatchSourceFileSystemObject?
-    /// Watches either `.wtpad/` (for title.txt creation) or the worktree root (for `.wtpad/` creation).
-    /// Only one is active at a time.
-    private var titleDirWatcherSource: DispatchSourceFileSystemObject?
+    private static let claudeDir: String = {
+        (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+    }()
+
+    private var titleWatcherSources: [DispatchSourceFileSystemObject] = []
+    private var pendingTitleReload: DispatchWorkItem?
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -52,8 +53,8 @@ class WorktreeManager: ObservableObject {
     }
 
     nonisolated deinit {
-        titleWatcherSource?.cancel()
-        titleDirWatcherSource?.cancel()
+        pendingTitleReload?.cancel()
+        for source in titleWatcherSources { source.cancel() }
     }
 
     func refresh() {
@@ -79,21 +80,21 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    // MARK: - Titles
+    // MARK: - Titles (from Claude Code sessions)
 
     /// Returns the subtitle to display for a worktree.
-    /// Uses `.wtpad/title.txt` if available; returns nil otherwise.
+    /// Only non-main worktrees show session titles.
     func subtitle(for worktree: Worktree) -> String? {
-        guard let path = worktree.path, let title = worktreeTitles[path] else { return nil }
+        guard !worktree.isMain, let path = worktree.path, let title = worktreeTitles[path] else { return nil }
         return title
     }
 
-    /// Reads `.wtpad/title.txt` for all current worktrees and updates `worktreeTitles`.
+    /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
     func loadTitles() {
         var titles: [String: String] = [:]
         for wt in worktrees {
             guard let path = wt.path else { continue }
-            if let title = Self.readTitle(atWorktreePath: path) {
+            if let title = Self.readClaudeSessionTitle(forWorktreePath: path) {
                 titles[path] = title
             }
         }
@@ -102,132 +103,153 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    /// Watches `.wtpad/title.txt` (and `.wtpad/` directory for creation) for the given worktree path.
+    /// Watches Claude Code session files for title changes for the given worktree path.
     /// Pass `nil` to stop watching.
     func watchTitle(forWorktreePath worktreePath: String?) {
-        titleWatcherSource?.cancel()
-        titleWatcherSource = nil
-        titleDirWatcherSource?.cancel()
-        titleDirWatcherSource = nil
+        stopWatchingTitles()
 
         guard let worktreePath else { return }
 
-        let (titleFile, wtpadDir) = Self.wtpadPaths(for: worktreePath)
+        // Read the current value immediately
+        applyTitle(Self.readClaudeSessionTitle(forWorktreePath: worktreePath), for: worktreePath)
 
-        // Read the current value immediately so it's visible before any watcher fires
-        applyTitle(Self.readTitle(atWorktreePath: worktreePath), for: worktreePath)
+        watchClaudeSessionDirectory(forWorktreePath: worktreePath)
+    }
 
-        watchFile(at: titleFile, worktreePath: worktreePath)
+    /// Encodes a filesystem path to Claude Code's project directory name format.
+    /// `/Users/foo/bar` → `-Users-foo-bar`
+    nonisolated static func encodePathForClaude(_ path: String) -> String {
+        path.replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+    }
 
-        // If .wtpad/ exists, watch it directly; otherwise watch the worktree root
-        // to detect when .wtpad/ is created
-        if access(wtpadDir, F_OK) == 0 {
-            watchDirectory(at: wtpadDir, worktreePath: worktreePath)
-        } else {
-            watchWorktreeRoot(at: worktreePath)
+    /// Returns the Claude Code projects directory for a worktree path.
+    private nonisolated static func claudeProjectDir(forWorktreePath path: String) -> String {
+        (claudeDir as NSString)
+            .appendingPathComponent("projects")
+            .appending("/\(encodePathForClaude(path))")
+    }
+
+    /// Reads the most recent `custom-title` from Claude Code session JSONL files for a worktree.
+    nonisolated static func readClaudeSessionTitle(forWorktreePath worktreePath: String) -> String? {
+        let projectDir = claudeProjectDir(forWorktreePath: worktreePath)
+        let fm = FileManager.default
+
+        guard let contents = try? fm.contentsOfDirectory(atPath: projectDir) else { return nil }
+
+        // Sort by modification date (most recent first), return first title found
+        let sorted = contents
+            .filter { $0.hasSuffix(".jsonl") }
+            .compactMap { file -> (path: String, mod: Date)? in
+                let path = (projectDir as NSString).appendingPathComponent(file)
+                guard let attrs = try? fm.attributesOfItem(atPath: path),
+                      let mod = attrs[.modificationDate] as? Date else { return nil }
+                return (path, mod)
+            }
+            .sorted { $0.mod > $1.mod }
+
+        for (path, _) in sorted {
+            if let title = readCustomTitle(fromJSONL: path) {
+                return title
+            }
         }
+        return nil
     }
 
-    private static func wtpadPaths(for worktreePath: String) -> (titleFile: String, directory: String) {
-        let titleFile = (worktreePath as NSString).appendingPathComponent(wtpadTitleFile)
-        return (titleFile, (titleFile as NSString).deletingLastPathComponent)
-    }
+    /// Parses a Claude Code session JSONL file for the last `custom-title` entry.
+    /// Reads only the tail of the file since titles are near the end and files can be large.
+    private nonisolated static func readCustomTitle(fromJSONL path: String) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { handle.closeFile() }
 
-    private static func readTitle(atWorktreePath path: String) -> String? {
-        let file = wtpadPaths(for: path).titleFile
-        guard let fh = FileHandle(forReadingAtPath: file) else { return nil }
-        defer { fh.closeFile() }
-        let data = fh.readData(ofLength: 1024)
+        let fileSize = handle.seekToEndOfFile()
+        // Read the last 8KB — custom-title entries are short and appended near the end
+        let readSize: UInt64 = 8192
+        let offset = fileSize > readSize ? fileSize - readSize : 0
+        handle.seek(toFileOffset: offset)
+        let data = handle.readDataToEndOfFile()
+
         guard let content = String(data: data, encoding: .utf8) else { return nil }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+
+        var title: String?
+        for line in content.split(separator: "\n") {
+            guard line.contains("\"custom-title\"") else { continue }
+            guard let lineData = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let type = json["type"] as? String, type == "custom-title",
+                  let customTitle = json["customTitle"] as? String,
+                  !customTitle.isEmpty else { continue }
+            title = customTitle
+        }
+        return title
     }
 
-    private func watchFile(at path: String, worktreePath: String) {
+    private func stopWatchingTitles() {
+        pendingTitleReload?.cancel()
+        pendingTitleReload = nil
+        for source in titleWatcherSources { source.cancel() }
+        titleWatcherSources = []
+    }
+
+    /// Watches the Claude Code projects directory for changes to session JSONL files.
+    private func watchClaudeSessionDirectory(forWorktreePath worktreePath: String) {
+        let projectDir = Self.claudeProjectDir(forWorktreePath: worktreePath)
+
+        // Watch the projects directory for new session files — rebuild watchers when directory changes
+        if let source = Self.makeTitleWatcher(path: projectDir) { [weak self] in
+            self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: true)
+        } {
+            titleWatcherSources.append(source)
+        }
+
+        // Watch individual JSONL files for title changes within existing sessions
+        let fm = FileManager.default
+        let contents = (try? fm.contentsOfDirectory(atPath: projectDir)) ?? []
+        for file in contents where file.hasSuffix(".jsonl") {
+            let filePath = (projectDir as NSString).appendingPathComponent(file)
+            if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend]) { [weak self] in
+                self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: false)
+            } {
+                titleWatcherSources.append(source)
+            }
+        }
+    }
+
+    private nonisolated func scheduleTitleReload(forWorktreePath worktreePath: String, rebuildWatchers: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingTitleReload?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                let title = Self.readClaudeSessionTitle(forWorktreePath: worktreePath)
+                self.applyTitle(title, for: worktreePath)
+                if rebuildWatchers {
+                    self.stopWatchingTitles()
+                    self.watchClaudeSessionDirectory(forWorktreePath: worktreePath)
+                }
+            }
+            self.pendingTitleReload = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+    }
+
+    private nonisolated static func makeTitleWatcher(
+        path: String,
+        eventMask: DispatchSource.FileSystemEvent = .write,
+        handler: @escaping () -> Void
+    ) -> DispatchSourceFileSystemObject? {
         let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return nil }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: [.write, .delete, .rename],
+            eventMask: eventMask,
             queue: .global(qos: .utility)
         )
-        source.setEventHandler { [weak self] in
-            let flags = source.data
-            let title = Self.readTitle(atWorktreePath: worktreePath)
-            // File was deleted/renamed — cancel so directory watcher can re-establish
-            if flags.contains(.delete) || flags.contains(.rename) {
-                source.cancel()
-                DispatchQueue.main.async {
-                    self?.titleWatcherSource = nil
-                    self?.applyTitle(title, for: worktreePath)
-                }
-                return
-            }
-            DispatchQueue.main.async {
-                self?.applyTitle(title, for: worktreePath)
-            }
-        }
+        source.setEventHandler(handler: handler)
         source.setCancelHandler { close(fd) }
         source.resume()
-        titleWatcherSource = source
-    }
-
-    private func watchDirectory(at dirPath: String, worktreePath: String) {
-        let fd = open(dirPath, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let titleFile = Self.wtpadPaths(for: worktreePath).titleFile
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            let title = Self.readTitle(atWorktreePath: worktreePath)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                // If title.txt was just created, set up a file watcher for it
-                if self.titleWatcherSource == nil {
-                    self.watchFile(at: titleFile, worktreePath: worktreePath)
-                }
-                self.applyTitle(title, for: worktreePath)
-            }
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        titleDirWatcherSource = source
-    }
-
-    /// Watches the worktree root for `.write` events to detect `.wtpad/` directory creation.
-    /// Once `.wtpad/` appears, transitions to the proper directory + file watchers.
-    private func watchWorktreeRoot(at worktreePath: String) {
-        let fd = open(worktreePath, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let (titleFile, wtpadDir) = Self.wtpadPaths(for: worktreePath)
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            guard access(wtpadDir, F_OK) == 0 else { return }
-
-            let title = Self.readTitle(atWorktreePath: worktreePath)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.titleDirWatcherSource?.cancel()
-                self.titleDirWatcherSource = nil
-                self.watchFile(at: titleFile, worktreePath: worktreePath)
-                self.watchDirectory(at: wtpadDir, worktreePath: worktreePath)
-                self.applyTitle(title, for: worktreePath)
-            }
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        titleDirWatcherSource = source
+        return source
     }
 
     private func applyTitle(_ title: String?, for worktreePath: String) {
