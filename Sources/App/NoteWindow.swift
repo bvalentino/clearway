@@ -22,6 +22,7 @@ struct NoteWindow: View {
     @State private var content: String = ""
     @State private var loaded = false
     @State private var showDeleteConfirmation = false
+    @State private var deleted = false
     @AppStorage("noteFontSize") private var fontSize: Double = 14
     @Environment(\.dismiss) private var dismiss
 
@@ -81,6 +82,7 @@ struct NoteWindow: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
+                    deleted = true
                     try? FileManager.default.removeItem(atPath: identifier.filePath)
                     dismiss()
                 }
@@ -110,6 +112,7 @@ struct NoteWindow: View {
     }
 
     private func save() {
+        guard !deleted, FileManager.default.fileExists(atPath: identifier.filePath) else { return }
         let data = content.data(using: .utf8) ?? Data()
         FileManager.default.createFile(
             atPath: identifier.filePath,
