@@ -35,16 +35,15 @@ struct NoteWindow: View {
             .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .help("Delete note")
-                }
-
-                ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Note", systemImage: "trash")
+                        }
+
+                        Divider()
+
                         Button {
                             save()
                             revealInFinder()
@@ -52,9 +51,8 @@ struct NoteWindow: View {
                             Label("Reveal in Finder", systemImage: "folder")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "ellipsis")
                     }
-                    .help("More actions")
                 }
             }
             .confirmationDialog(
