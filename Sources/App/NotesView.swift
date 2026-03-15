@@ -20,15 +20,14 @@ struct NotesView: View {
             } else {
                 List {
                     ForEach(notesManager.notes) { note in
-                        NoteRow(note: note)
-                            .contentShape(Rectangle())
-                            .onTapGesture { openNote(note) }
+                        NoteRow(note: note) { openNote(note) }
                             .contextMenu {
                                 Button("Delete", role: .destructive) {
                                     notesManager.deleteNote(note)
                                 }
                             }
-                            .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                            .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.inset)
@@ -65,6 +64,8 @@ struct NotesView: View {
 
 private struct NoteRow: View {
     let note: Note
+    let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -87,6 +88,12 @@ private struct NoteRow: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(isHovered ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture { action() }
     }
 }
