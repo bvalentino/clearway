@@ -3,7 +3,7 @@ import SwiftUI
 /// Displays and manages markdown notes for the current worktree.
 struct NotesView: View {
     @EnvironmentObject private var notesManager: NotesManager
-    @State private var editingNoteId: String?
+    @State private var editingNote: Note?
     @State private var editContent: String = ""
 
     var body: some View {
@@ -22,22 +22,14 @@ struct NotesView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(notesManager.notes) { note in
-                            if editingNoteId == note.id {
-                                NoteEditor(
-                                    content: $editContent,
-                                    onSave: { saveAndClose(note) },
-                                    onDelete: { deleteAndClose(note) }
-                                )
-                            } else {
-                                NoteRow(note: note)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { beginEditing(note) }
-                                    .contextMenu {
-                                        Button("Delete", role: .destructive) {
-                                            notesManager.deleteNote(note)
-                                        }
+                            NoteRow(note: note)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openNote(note) }
+                                .contextMenu {
+                                    Button("Delete", role: .destructive) {
+                                        notesManager.deleteNote(note)
                                     }
-                            }
+                                }
                             Divider()
                         }
                     }
@@ -47,17 +39,27 @@ struct NotesView: View {
         .overlay(alignment: .bottomTrailing) {
             createButton
         }
-        .onDisappear {
-            saveEditingNote()
+        .sheet(item: $editingNote) { note in
+            NoteEditorSheet(
+                content: $editContent,
+                title: note.title,
+                onDismiss: { save in
+                    if save { notesManager.updateNote(note, content: editContent) }
+                    editingNote = nil
+                },
+                onDelete: {
+                    editingNote = nil
+                    notesManager.deleteNote(note)
+                }
+            )
         }
     }
 
     private var createButton: some View {
         Button(action: {
-            saveEditingNote()
-            if let id = notesManager.createNote() {
-                editingNoteId = id
-                editContent = ""
+            if let id = notesManager.createNote(),
+               let note = notesManager.notes.first(where: { $0.id == id }) {
+                openNote(note)
             }
         }) {
             Image(systemName: "plus")
@@ -70,30 +72,9 @@ struct NotesView: View {
         .padding(16)
     }
 
-    private func beginEditing(_ note: Note) {
-        saveEditingNote()
-        editingNoteId = note.id
+    private func openNote(_ note: Note) {
         editContent = note.content
-    }
-
-    private func saveAndClose(_ note: Note) {
-        notesManager.updateNote(note, content: editContent)
-        editingNoteId = nil
-        editContent = ""
-    }
-
-    private func deleteAndClose(_ note: Note) {
-        editingNoteId = nil
-        editContent = ""
-        notesManager.deleteNote(note)
-    }
-
-    private func saveEditingNote() {
-        guard let previousId = editingNoteId,
-              let previous = notesManager.notes.first(where: { $0.id == previousId }) else { return }
-        notesManager.updateNote(previous, content: editContent)
-        editingNoteId = nil
-        editContent = ""
+        editingNote = note
     }
 }
 
@@ -116,29 +97,44 @@ private struct NoteRow: View {
     }
 }
 
-private struct NoteEditor: View {
+private struct NoteEditorSheet: View {
     @Binding var content: String
-    let onSave: () -> Void
+    let title: String
+    let onDismiss: (Bool) -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextEditor(text: $content)
-                .font(.body)
-                .frame(minHeight: 120, maxHeight: 300)
-                .scrollContentBackground(.hidden)
-
+        VStack(spacing: 0) {
             HStack {
-                Button("Done") { onSave() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                Text(title.isEmpty ? "New Note" : title)
+                    .font(.headline)
+                    .lineLimit(1)
 
                 Spacer()
 
-                Button("Delete", role: .destructive) { onDelete() }
-                    .controlSize(.small)
+                Button("Done") { onDismiss(true) }
+                    .keyboardShortcut(.return, modifiers: .command)
             }
+            .padding()
+
+            Divider()
+
+            TextEditor(text: $content)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            HStack {
+                Button("Delete", role: .destructive) { onDelete() }
+                Spacer()
+                Button("Cancel") { onDismiss(false) }
+                Button("Save") { onDismiss(true) }
+                    .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+            .padding()
         }
-        .padding(12)
+        .frame(minWidth: 500, minHeight: 400)
     }
 }
