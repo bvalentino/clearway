@@ -1,6 +1,6 @@
 import Foundation
 
-/// Resolves the user's login shell PATH so subprocesses can find tools like `wt` and `git`
+/// Resolves the user's login shell PATH so subprocesses can find tools like `git`
 /// even when the app is launched from Finder / Launchpad (which use a minimal PATH).
 enum ShellEnvironment {
     /// The user's full PATH, resolved once at startup.

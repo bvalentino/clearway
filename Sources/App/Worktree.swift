@@ -3,135 +3,15 @@ import SwiftUI
 
 // MARK: - Model
 
-/// A worktree entry from `wt list --format json`.
-struct Worktree: Identifiable, Codable, Hashable {
+/// A worktree entry parsed from `git worktree list --porcelain`.
+struct Worktree: Identifiable, Hashable {
     var id: String { path ?? branch ?? "" }
 
     let branch: String?
     let path: String?
-    let kind: String
-    let commit: Commit
-    let workingTree: WorkingTree?
-    let mainState: String?
-    let integrationReason: String?
-    let operationState: String?
-    let main: MainDivergence?
-    let remote: Remote?
-    let worktree: WorktreeMeta?
-    let ci: CI?
     let isMain: Bool
-    let isCurrent: Bool
-    let isPrevious: Bool
-    let symbols: String?
-
-    enum CodingKeys: String, CodingKey {
-        case branch, path, kind, commit, main, remote, worktree, ci, symbols
-        case workingTree = "working_tree"
-        case mainState = "main_state"
-        case integrationReason = "integration_reason"
-        case operationState = "operation_state"
-        case isMain = "is_main"
-        case isCurrent = "is_current"
-        case isPrevious = "is_previous"
-    }
-
-    struct Commit: Codable, Hashable {
-        let sha: String
-        let shortSha: String
-        let message: String
-        let timestamp: Int
-
-        enum CodingKeys: String, CodingKey {
-            case sha
-            case shortSha = "short_sha"
-            case message, timestamp
-        }
-    }
-
-    struct WorkingTree: Codable, Hashable {
-        let staged: Bool
-        let modified: Bool
-        let untracked: Bool
-        let renamed: Bool?
-        let deleted: Bool?
-        let diff: LineDiff?
-    }
-
-    struct LineDiff: Codable, Hashable {
-        let added: Int
-        let deleted: Int
-    }
-
-    struct MainDivergence: Codable, Hashable {
-        let ahead: Int
-        let behind: Int
-        let diff: LineDiff?
-    }
-
-    struct Remote: Codable, Hashable {
-        let name: String
-        let branch: String
-        let ahead: Int
-        let behind: Int
-    }
-
-    struct WorktreeMeta: Codable, Hashable {
-        let state: String?
-        let reason: String?
-        let detached: Bool
-    }
-
-    struct CI: Codable, Hashable {
-        let status: String
-        let source: String?
-        let stale: Bool?
-        let url: String?
-
-        var statusColor: Color {
-            switch status {
-            case "passed": return .green
-            case "running": return .blue
-            case "failed": return .red
-            case "conflicts": return .yellow
-            case "no-ci": return .gray
-            case "error": return .orange
-            default: return .gray
-            }
-        }
-
-        var statusLabel: String {
-            switch status {
-            case "passed": return "CI passed"
-            case "running": return "CI running"
-            case "failed": return "CI failed"
-            case "conflicts": return "Merge conflicts"
-            case "no-ci": return "No CI"
-            case "error": return "CI error"
-            default: return status
-            }
-        }
-    }
-
-    // MARK: - Computed
 
     var displayName: String { branch ?? "(detached)" }
-
-    var isIntegrated: Bool {
-        mainState == "integrated"
-    }
-
-    var isDirty: Bool {
-        guard let wt = workingTree else { return false }
-        return wt.staged || wt.modified || (wt.deleted ?? false)
-    }
-
-    var hasConflicts: Bool {
-        operationState == "conflicts"
-    }
-
-    var isRebase: Bool {
-        operationState == "rebase"
-    }
 
     /// Sort worktrees: main first, then open (alphabetical), then closed (alphabetical).
     static func sorted(_ worktrees: [Worktree], openIds: Set<String>) -> [Worktree] {
@@ -202,13 +82,10 @@ class WorktreeManager: ObservableObject {
     // MARK: - Titles
 
     /// Returns the subtitle to display for a worktree.
-    /// Uses `.wtpad/title.txt` if available; falls back to commit message (empty for main).
+    /// Uses `.wtpad/title.txt` if available; returns nil otherwise.
     func subtitle(for worktree: Worktree) -> String? {
-        if let path = worktree.path, let title = worktreeTitles[path] {
-            return title
-        }
-        if worktree.isMain { return nil }
-        return worktree.commit.message
+        guard let path = worktree.path, let title = worktreeTitles[path] else { return nil }
+        return title
     }
 
     /// Reads `.wtpad/title.txt` for all current worktrees and updates `worktreeTitles`.
@@ -363,14 +240,19 @@ class WorktreeManager: ObservableObject {
 
     // MARK: - Actions
 
-    /// Create a new worktree: `wt switch --create --no-cd -y <branch>`
+    /// Create a new worktree: `git worktree add .worktrees/<branch> -b <branch> [<base>]`
     func createWorktree(branch: String, base: String? = nil) async {
+        guard !branch.contains("..") && !branch.hasPrefix("/") else {
+            self.error = "Invalid branch name"
+            return
+        }
         let projectPath = self.projectPath
         do {
-            var args = ["wt", "switch", "--create", "--no-cd", "-y"]
-            if let base { args += ["--base", base] }
-            args.append(branch)
+            let worktreePath = (projectPath as NSString).appendingPathComponent(".worktrees/\(branch)")
+            var args = ["git", "worktree", "add", worktreePath, "-b", branch]
+            if let base { args.append(base) }
             _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
+
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
             self.worktrees = wts
             self.loadTitles()
@@ -380,14 +262,19 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    /// Remove a worktree: `wt remove <branch> -y`
+    /// Remove a worktree: `git worktree remove --force <path>`
     func removeWorktree(branch: String) {
         let projectPath = self.projectPath
+        guard let wt = worktrees.first(where: { $0.branch == branch }),
+              let worktreePath = wt.path else {
+            self.error = "Could not find path for worktree '\(branch)'"
+            return
+        }
         worktrees.removeAll { $0.branch == branch }
         Task.detached { [weak self] in
             do {
-                let args = ["wt", "remove", "-y", "--force", "--", branch]
-                try await Self.runCommand(args, in: projectPath)
+                try await Self.runCommand(["git", "worktree", "remove", "--force", worktreePath], in: projectPath)
+                _ = try? await Self.runCommand(["git", "branch", "-D", "--", branch], in: projectPath)
             } catch {
                 let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
                 await MainActor.run {
@@ -398,11 +285,58 @@ class WorktreeManager: ObservableObject {
         }
     }
 
+    // MARK: - Hooks
+
+    /// Returns the interpolated hook command for the given worktree, or nil if no hook is configured.
+    func hookCommand(_ keyPath: KeyPath<ProjectHooks, String>, forBranch branch: String, worktreePath: String) -> String? {
+        let hooks = ProjectHooks.load(for: projectPath)
+        let context = ProjectHooks.Context(
+            branch: branch,
+            worktreePath: worktreePath,
+            primaryWorktreePath: projectPath
+        )
+        return hooks.interpolated(keyPath, context: context)
+    }
+
     // MARK: - Process helpers
 
+    /// Parses `git worktree list --porcelain` output into `Worktree` entries.
+    nonisolated static func parseWorktreeListOutput(_ output: String) -> [Worktree] {
+        let blocks = output.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        var worktrees: [Worktree] = []
+
+        for (index, block) in blocks.enumerated() {
+            let lines = block.components(separatedBy: "\n")
+            var path: String?
+            var branch: String?
+            var isDetached = false
+
+            for line in lines {
+                if line.hasPrefix("worktree ") {
+                    path = String(line.dropFirst("worktree ".count))
+                } else if line.hasPrefix("branch refs/heads/") {
+                    branch = String(line.dropFirst("branch refs/heads/".count))
+                } else if line == "detached" {
+                    isDetached = true
+                }
+            }
+
+            // Skip entries with no path (shouldn't happen with porcelain output)
+            guard path != nil else { continue }
+
+            let isMain = index == 0
+            if isDetached { branch = nil }
+
+            worktrees.append(Worktree(branch: branch, path: path, isMain: isMain))
+        }
+
+        return worktrees
+    }
+
     private static func fetchWorktrees(in directory: String) async throws -> [Worktree] {
-        let data = try await runCommand(["wt", "list", "--format", "json"], in: directory)
-        return try JSONDecoder().decode([Worktree].self, from: data)
+        let data = try await runCommand(["git", "worktree", "list", "--porcelain"], in: directory)
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return parseWorktreeListOutput(output)
     }
 
     @discardableResult
@@ -442,10 +376,6 @@ class WorktreeManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .commandFailed(let cmd, let stderr):
-                // Surface a helpful message for the most common failure: wt not installed
-                if stderr.contains("command not found") || stderr.contains("No such file or directory") {
-                    return "Could not find 'wt' command. Make sure 'wt' is installed and available in your PATH."
-                }
                 if !stderr.isEmpty { return stderr }
                 return "Command failed: \(cmd)"
             }

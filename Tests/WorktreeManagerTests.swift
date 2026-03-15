@@ -120,16 +120,16 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertEqual(manager.subtitle(for: wt), "Fix login bug")
     }
 
-    func testSubtitleReturnsCommitMessageWhenNoTitle() {
+    func testSubtitleReturnsNilWhenNoTitle() {
         let manager = WorktreeManager(projectPath: "/tmp/test")
-        let wt = makeWorktree(path: "/tmp/feature", isMain: false, commitMessage: "Add OAuth2")
+        let wt = makeWorktree(path: "/tmp/feature", isMain: false)
 
-        XCTAssertEqual(manager.subtitle(for: wt), "Add OAuth2")
+        XCTAssertNil(manager.subtitle(for: wt))
     }
 
     func testSubtitleReturnsNilForMainWithNoTitle() {
         let manager = WorktreeManager(projectPath: "/tmp/test")
-        let wt = makeWorktree(path: "/tmp/main", isMain: true, commitMessage: "Old commit")
+        let wt = makeWorktree(path: "/tmp/main", isMain: true)
 
         XCTAssertNil(manager.subtitle(for: wt))
     }
@@ -173,26 +173,18 @@ final class WorktreeManagerTests: XCTestCase {
 
 final class WorktreeErrorTests: XCTestCase {
 
-    func testCommandNotFoundError() {
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "env: wt: command not found")
-        let message = error.errorDescription ?? ""
-
-        XCTAssertTrue(message.contains("Could not find 'wt' command"))
-        XCTAssertTrue(message.contains("PATH"))
-    }
-
     func testStderrShownDirectly() {
         let stderr = "fatal: not a git repository (or any of the parent directories): .git"
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: stderr)
+        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: stderr)
 
         XCTAssertEqual(error.errorDescription, stderr)
     }
 
     func testEmptyStderrFallsBackToGeneric() {
-        let error = WorktreeManager.WorktreeError.commandFailed("wt list", stderr: "")
+        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: "")
         let message = error.errorDescription ?? ""
 
-        XCTAssertEqual(message, "Command failed: wt list")
+        XCTAssertEqual(message, "Command failed: git worktree list")
     }
 
 }
