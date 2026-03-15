@@ -52,13 +52,14 @@ struct NotesView: View {
             }
         }) {
             Image(systemName: "plus")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(.blue, in: Circle())
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
-        .padding(16)
+        .padding(12)
     }
 
     private func openNote(_ note: Note) {
