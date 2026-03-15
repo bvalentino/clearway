@@ -10,7 +10,7 @@ struct NotesView: View {
     @State private var activeObserver: Any?
     @State private var lastChangeCount: Int = 0
     @State private var clipboardTimer: Timer?
-    @State private var dismissedChangeCount: Int = -1
+    @State private var dismissedPath: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,11 +19,10 @@ struct NotesView: View {
                     filename: (path as NSString).lastPathComponent,
                     onImport: {
                         notesManager.importNote(from: path)
-                        dismissedChangeCount = NSPasteboard.general.changeCount
                         clipboardPath = nil
                     },
                     onDismiss: {
-                        dismissedChangeCount = NSPasteboard.general.changeCount
+                        dismissedPath = path
                         clipboardPath = nil
                     }
                 )
@@ -64,6 +63,7 @@ struct NotesView: View {
                 let count = NSPasteboard.general.changeCount
                 if count != lastChangeCount {
                     lastChangeCount = count
+                    dismissedPath = nil
                     checkClipboard()
                 }
             }
@@ -75,18 +75,25 @@ struct NotesView: View {
     }
 
     private func checkClipboard() {
-        let pasteboard = NSPasteboard.general
-        guard pasteboard.changeCount != dismissedChangeCount,
-              let string = pasteboard.string(forType: .string) else {
+        guard let string = NSPasteboard.general.string(forType: .string) else {
             clipboardPath = nil
             return
         }
         let path = (string as NSString).expandingTildeInPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if path.hasSuffix(".md"), FileManager.default.fileExists(atPath: path) {
-            clipboardPath = path
-        } else {
+        guard path.hasSuffix(".md"),
+              path != dismissedPath,
+              FileManager.default.fileExists(atPath: path),
+              !alreadyImported(path: path) else {
             clipboardPath = nil
+            return
         }
+        clipboardPath = path
+    }
+
+    private func alreadyImported(path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path),
+              let content = String(data: data, encoding: .utf8) else { return false }
+        return notesManager.notes.contains { $0.content == content }
     }
 
     private var actionButtons: some View {
