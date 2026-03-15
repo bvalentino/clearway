@@ -12,6 +12,17 @@ private let wtpadLogo: [String] = [
     "                    /_/                      ",
 ]
 
+/// Wraps a hook command for use as a Ghostty surface `command:` parameter.
+/// Runs the hook through `/bin/sh`, then drops into the user's shell so
+/// the terminal stays interactive for debugging.
+private func hookShellCommand(_ cmd: String) -> String {
+    var shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/sh"
+    if !shell.hasPrefix("/") || shell.contains("'") || shell.contains(" ") {
+        shell = "/bin/sh"
+    }
+    return "/bin/sh -c \(shellEscape(cmd + "; s=$?; if [ $s -ne 0 ]; then exec \(shell); fi; exit $s"))"
+}
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -22,24 +33,24 @@ struct ContentView: View {
     @State private var lastRefreshDate = Date.distantPast
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
-    @State private var showingCreateSheet = false
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
+    @State private var hookSheet: HookSheet?
 
     var body: some View {
         NavigationSplitView {
             SidebarView(
                 selectedWorktree: $selectedWorktree,
-                showingCreateSheet: $showingCreateSheet,
+                onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
         } detail: {
             detailView
         }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreateWorktreeSheet()
+        .sheet(item: $hookSheet) { hook in
+            HookTerminalSheet(hook: hook)
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -74,17 +85,14 @@ struct ContentView: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let wt = currentWorktree, let branch = wt.branch {
-                    selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                    worktreeManager.removeWorktree(branch: branch)
+                guard let wt = currentWorktree else { return }
+                // Delay so the confirmation dialog dismisses before the hook sheet presents
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    beginRemoveWorktree(wt)
                 }
             }
         } message: {
-            if currentWorktree?.isDirty == true {
-                Text("This worktree has uncommitted changes that will be lost.")
-            } else {
-                Text("This will delete the worktree and its working directory.")
-            }
+            Text("This will delete the worktree and its working directory.")
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
@@ -97,8 +105,16 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
-            selectedWorktree = worktreeManager.worktrees.first(where: { $0.branch == branch })
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
+
+            selectedWorktree = wt
+
+            if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
+               let app = ghosttyApp.app {
+                let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
+                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface) {}
+            }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
@@ -242,6 +258,25 @@ struct ContentView: View {
         guard now.timeIntervalSince(lastRefreshDate) > 2 else { return }
         lastRefreshDate = now
         worktreeManager.refresh()
+    }
+
+    // MARK: - Worktree Removal with Hook
+
+    private func beginRemoveWorktree(_ worktree: Worktree) {
+        guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
+
+        if let cmd = worktreeManager.hookCommand(\.beforeRemove, forBranch: branch, worktreePath: worktreePath),
+           let app = ghosttyApp.app {
+            let surface = Ghostty.SurfaceView(app, workingDirectory: worktreePath, command: hookShellCommand(cmd))
+            hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface) { [weak worktreeManager] in
+                guard let worktreeManager else { return }
+                selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+                worktreeManager.removeWorktree(branch: branch)
+            }
+        } else {
+            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+            worktreeManager.removeWorktree(branch: branch)
+        }
     }
 
     // MARK: - Detail View

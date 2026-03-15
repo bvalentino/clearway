@@ -118,5 +118,6 @@ struct WtpadApp: App {
                 .environmentObject(cliInstaller)
                 .preferredColorScheme(.dark)
         }
+
     }
 }

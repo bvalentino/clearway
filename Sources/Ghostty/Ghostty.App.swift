@@ -222,6 +222,16 @@ extension Ghostty {
                 }
                 return true
 
+            case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
+                guard let surface = surfaceViewFromTarget(target) else { return false }
+                let exitCode = action.action.child_exited.exit_code
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .ghosttyChildExited, object: surface, userInfo: [
+                        GhosttyNotificationKey.exitCode: exitCode,
+                    ])
+                }
+                return true
+
             case GHOSTTY_ACTION_RENDER,
                  GHOSTTY_ACTION_SECURE_INPUT,
                  GHOSTTY_ACTION_COLOR_CHANGE,
@@ -233,7 +243,6 @@ extension Ghostty {
                  GHOSTTY_ACTION_SCROLLBAR,
                  GHOSTTY_ACTION_SIZE_LIMIT,
                  GHOSTTY_ACTION_INITIAL_SIZE,
-                 GHOSTTY_ACTION_SHOW_CHILD_EXITED,
                  GHOSTTY_ACTION_PROGRESS_REPORT,
                  GHOSTTY_ACTION_COMMAND_FINISHED,
                  GHOSTTY_ACTION_READONLY,
@@ -327,6 +336,7 @@ extension Ghostty {
 
 extension Notification.Name {
     static let ghosttyCloseSurface = Notification.Name("com.wtpad.ghostty.closeSurface")
+    static let ghosttyChildExited = Notification.Name("com.wtpad.ghostty.childExited")
     static let ghosttyDesktopNotification = Notification.Name("com.wtpad.ghostty.desktopNotification")
     static let ghosttyNewWindow = Notification.Name("com.wtpad.ghostty.newWindow")
 }
@@ -335,4 +345,5 @@ extension Notification.Name {
 
 enum GhosttyNotificationKey {
     static let processAlive = "process_alive"
+    static let exitCode = "exit_code"
 }

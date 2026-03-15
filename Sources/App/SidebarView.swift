@@ -1,14 +1,23 @@
 import SwiftUI
 
+/// Sheets presented from the sidebar.
+private enum SidebarSheet: String, Identifiable {
+    case createWorktree
+    case projectSettings
+    case debugTerminal
+
+    var id: String { rawValue }
+}
+
 struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var projectList: ProjectListManager
     @Environment(\.openWindow) private var openWindow
     @Binding var selectedWorktree: Worktree?
-    @Binding var showingCreateSheet: Bool
+    var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
-    @State private var showingDebugTerminal = false
+    @State private var activeSheet: SidebarSheet?
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
@@ -37,11 +46,18 @@ struct SidebarView: View {
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
-        .sheet(isPresented: $showingDebugTerminal) {
-            DebugTerminalSheet(
-                error: worktreeManager.error ?? "",
-                projectPath: worktreeManager.projectPath
-            )
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .createWorktree:
+                CreateWorktreeSheet()
+            case .projectSettings:
+                ProjectSettingsView(projectPath: worktreeManager.projectPath)
+            case .debugTerminal:
+                DebugTerminalSheet(
+                    error: worktreeManager.error ?? "",
+                    projectPath: worktreeManager.projectPath
+                )
+            }
         }
         .confirmationDialog(
             "Remove worktree \"\(worktreeToRemove?.displayName ?? "")\"?",
@@ -52,20 +68,16 @@ struct SidebarView: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let wt = worktreeToRemove, let branch = wt.branch {
-                    if selectedWorktree?.id == wt.id {
-                        selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+                if let wt = worktreeToRemove {
+                    // Delay so the confirmation dialog dismisses before any hook sheet presents
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        onRemoveWorktree?(wt)
                     }
-                    worktreeManager.removeWorktree(branch: branch)
                 }
                 worktreeToRemove = nil
             }
         } message: {
-            if worktreeToRemove?.isDirty == true {
-                Text("This worktree has uncommitted changes that will be lost.")
-            } else {
-                Text("This will delete the worktree and its working directory.")
-            }
+            Text("This will delete the worktree and its working directory.")
         }
         .confirmationDialog(
             "Close worktree \"\(worktreeToClose?.displayName ?? "")\"?",
@@ -110,6 +122,13 @@ struct SidebarView: View {
                     }
                 }
                 .contextMenu {
+                    Button("Project Settings\u{2026}") {
+                        activeSheet = .projectSettings
+                    }
+                    .disabled(path != worktreeManager.projectPath)
+
+                    Divider()
+
                     Button("Remove Project") {
                         projectList.removeProject(path)
                     }
@@ -167,7 +186,7 @@ struct SidebarView: View {
                 .background(Color(.controlBackgroundColor).opacity(0.5))
                 .cornerRadius(4)
                 .contentShape(Rectangle())
-                .onTapGesture { showingDebugTerminal = true }
+                .onTapGesture { activeSheet = .debugTerminal }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityLabel("Open debug terminal")
             }
@@ -181,7 +200,7 @@ struct SidebarView: View {
                 .padding(.trailing, -6)
 
                 SidebarHeaderButton(systemImage: "plus") {
-                    showingCreateSheet = true
+                    activeSheet = .createWorktree
                 }
                 .padding(.trailing, 6)
             }
@@ -265,15 +284,20 @@ struct WorktreeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                branchIcon
+                if worktree.isMain {
+                    Image(systemName: "crown.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
                 Text(worktree.displayName)
-                    .fontWeight(worktree.isCurrent ? .semibold : .regular)
-                    .strikethrough(worktree.isIntegrated)
                     .lineLimit(1)
                 Spacer()
-                notificationIndicator
-                ciIndicator
-                statusBadges
+                if hasNotification {
+                    Circle()
+                        .fill(.blue)
+                        .frame(width: 7, height: 7)
+                        .help("Terminal notification")
+                }
                 if let index = shortcutIndex {
                     Text("⌘\(index)")
                         .font(.caption2.monospaced())
@@ -281,104 +305,14 @@ struct WorktreeRow: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                divergenceInfo
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private var branchIcon: some View {
-        if worktree.isMain {
-            Image(systemName: "crown.fill")
-                .font(.caption2)
-                .foregroundStyle(.orange)
-        } else if worktree.hasConflicts {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
-        } else if worktree.isRebase {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.caption2)
-                .foregroundStyle(.purple)
-        }
-    }
-
-    @ViewBuilder
-    private var notificationIndicator: some View {
-        if hasNotification {
-            Circle()
-                .fill(.blue)
-                .frame(width: 7, height: 7)
-                .help("Terminal notification")
-        }
-    }
-
-    @ViewBuilder
-    private var ciIndicator: some View {
-        if let ci = worktree.ci {
-            Circle()
-                .fill(ci.statusColor)
-                .frame(width: 7, height: 7)
-                .opacity(ci.stale == true ? 0.5 : 1.0)
-                .help(ci.statusLabel)
-        }
-    }
-
-    @ViewBuilder
-    private var statusBadges: some View {
-        let wt = worktree.workingTree
-        HStack(spacing: 1) {
-            if wt?.staged == true { Text("+").foregroundStyle(.green) }
-            if wt?.modified == true { Text("!").foregroundStyle(.cyan) }
-            if wt?.untracked == true { Text("?").foregroundStyle(.cyan) }
-        }
-        .font(.caption.monospaced())
-    }
-
-    @ViewBuilder
-    private var divergenceInfo: some View {
-        HStack(spacing: 6) {
-            if let main = worktree.main {
-                if main.ahead > 0 || main.behind > 0 {
-                    HStack(spacing: 2) {
-                        if main.ahead > 0 {
-                            Text("↑\(main.ahead)")
-                                .foregroundStyle(.green)
-                        }
-                        if main.behind > 0 {
-                            Text("↓\(main.behind)")
-                                .foregroundStyle(.red)
-                        }
-                    }
-                }
-            }
-
-            if let diff = worktree.workingTree?.diff,
-               (diff.added > 0 || diff.deleted > 0) {
-                HStack(spacing: 2) {
-                    if diff.added > 0 {
-                        Text("+\(diff.added)")
-                            .foregroundStyle(.green)
-                    }
-                    if diff.deleted > 0 {
-                        Text("-\(diff.deleted)")
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-        }
-        .font(.caption2.monospaced())
     }
 }
 
