@@ -6,9 +6,22 @@ struct NotesView: View {
     @EnvironmentObject private var notesManager: NotesManager
     @Environment(\.openWindow) private var openWindow
     @State private var selectedNoteId: String?
+    @State private var clipboardPath: String?
+    @State private var activeObserver: Any?
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            if let path = clipboardPath {
+                ClipboardImportBanner(
+                    filename: (path as NSString).lastPathComponent,
+                    onImport: {
+                        notesManager.importNote(from: path)
+                        clipboardPath = nil
+                    },
+                    onDismiss: { clipboardPath = nil }
+                )
+            }
+
             if notesManager.notes.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "note.text")
@@ -37,6 +50,35 @@ struct NotesView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             actionButtons
+        }
+        .onAppear { checkClipboard() }
+        .onDisappear {
+            if let observer = activeObserver {
+                NotificationCenter.default.removeObserver(observer)
+                activeObserver = nil
+            }
+        }
+        .task {
+            if activeObserver == nil {
+                activeObserver = NotificationCenter.default.addObserver(
+                    forName: NSApplication.didBecomeActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in checkClipboard() }
+            }
+        }
+    }
+
+    private func checkClipboard() {
+        guard let string = NSPasteboard.general.string(forType: .string) else {
+            clipboardPath = nil
+            return
+        }
+        let path = (string as NSString).expandingTildeInPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.hasSuffix(".md"), FileManager.default.fileExists(atPath: path) {
+            clipboardPath = path
+        } else {
+            clipboardPath = nil
         }
     }
 
@@ -138,5 +180,38 @@ private struct NoteRow: View {
         .overlay(alignment: .bottom) {
             Divider().padding(.horizontal, 12)
         }
+    }
+}
+
+private struct ClipboardImportBanner: View {
+    let filename: String
+    let onImport: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(.secondary)
+
+            Text(filename)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            Button("Import") { onImport() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+            Button { onDismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
     }
 }
