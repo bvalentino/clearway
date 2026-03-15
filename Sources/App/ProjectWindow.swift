@@ -64,6 +64,7 @@ struct ProjectContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @StateObject private var worktreeManager: WorktreeManager
     @StateObject private var terminalManager = TerminalManager()
+    @StateObject private var claudeTaskManager = ClaudeTaskManager()
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -74,5 +75,6 @@ struct ProjectContentView: View {
         ContentView()
             .environmentObject(worktreeManager)
             .environmentObject(terminalManager)
+            .environmentObject(claudeTaskManager)
     }
 }
