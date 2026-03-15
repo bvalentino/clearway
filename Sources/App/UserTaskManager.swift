@@ -108,7 +108,8 @@ class UserTaskManager: ObservableObject {
         // Incomplete tasks by ID (creation order), completed at bottom
         let incomplete = loaded.filter { !$0.isCompleted }.sorted { $0.id < $1.id }
         let completed = loaded.filter { $0.isCompleted }.sorted { $0.id < $1.id }
-        tasks = incomplete + completed
+        let newTasks = incomplete + completed
+        if newTasks != tasks { tasks = newTasks }
     }
 
     // MARK: - File Watching
