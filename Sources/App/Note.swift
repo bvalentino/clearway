@@ -17,4 +17,15 @@ struct Note: Identifiable, Hashable {
         }
         return "New Note"
     }
+
+    /// Creation date parsed from the timestamp filename (e.g., `20260315-142129.md`).
+    var creationDate: Date? {
+        Self.filenameParser.date(from: String(id.dropLast(".md".count)))
+    }
+
+    private static let filenameParser: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
 }

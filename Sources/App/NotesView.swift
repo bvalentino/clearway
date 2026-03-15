@@ -74,9 +74,11 @@ private struct NoteRow: View {
                 .fontWeight(.medium)
                 .lineLimit(1)
 
-            Text(note.modificationDate, style: .relative)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let date = note.creationDate {
+                Text(date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
