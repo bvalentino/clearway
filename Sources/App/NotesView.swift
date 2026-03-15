@@ -35,7 +35,7 @@ struct NotesView: View {
                                 }
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(8)
                 }
             }
         }
