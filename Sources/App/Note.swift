@@ -9,10 +9,18 @@ struct Note: Identifiable, Hashable {
     /// When the file was last modified on disk.
     let modificationDate: Date
 
+    /// Whether the note has a `# ` heading line.
+    var hasHeading: Bool {
+        if let firstLine = content.split(separator: "\n", maxSplits: 1).first {
+            return firstLine.hasPrefix("# ")
+        }
+        return false
+    }
+
     /// Title derived from the first `# ` heading, falling back to the body preview or "New Note".
     var title: String {
-        if let firstLine = content.split(separator: "\n", maxSplits: 1).first,
-           firstLine.hasPrefix("# ") {
+        if hasHeading,
+           let firstLine = content.split(separator: "\n", maxSplits: 1).first {
             return String(firstLine.dropFirst(2))
         }
         let text = preview

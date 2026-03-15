@@ -90,8 +90,10 @@ private struct NoteRow: View {
                     Text("  ")
                 }
 
-                Text(note.preview.isEmpty ? "No additional text" : note.preview)
-                    .foregroundStyle(.tertiary)
+                if note.hasHeading {
+                    Text(note.preview.isEmpty ? "No additional text" : note.preview)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .font(.callout)
             .foregroundStyle(.secondary)
