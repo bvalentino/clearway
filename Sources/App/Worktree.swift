@@ -92,7 +92,7 @@ class WorktreeManager: ObservableObject {
     /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
     func loadTitles() {
         var titles: [String: String] = [:]
-        for wt in worktrees {
+        for wt in worktrees where !wt.isMain {
             guard let path = wt.path else { continue }
             if let title = Self.readClaudeSessionTitle(forWorktreePath: path) {
                 titles[path] = title
