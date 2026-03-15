@@ -2,6 +2,7 @@
 xcuserdata/
 *.xcscmblueprint
 DerivedData/
+Sources/App/BuildInfo.generated.swift
 
 # Build artifacts
 build/
@@ -21,4 +22,6 @@ ghostty/.zig-cache/
 # wtpad
 .wtpad/
 .my-dev.json
-Sources/App/BuildInfo.generated.swift
+
+# Claude
+.claude/settings.local.json

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/build.sh 2>&1)",
+      "Bash(./scripts/build.sh 2>&1 | tail *)",
+      "Bash(./scripts/run.sh 2>&1)",
+      "Bash(./scripts/run.sh 2>&1 | tail *)"
+    ]
+  }
+}
