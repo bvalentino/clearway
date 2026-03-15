@@ -56,7 +56,7 @@ private struct AboutView: View {
                     Text("wtpad")
                         .bold()
                         .font(.title)
-                    Text("A workspace manager built on\nGhostty, Worktrunk, and wtpad.")
+                    Text("A workspace manager built on\nGhostty and wtpad.")
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .font(.caption)
