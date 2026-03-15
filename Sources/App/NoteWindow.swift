@@ -44,13 +44,17 @@ struct NoteWindow: View {
                 }
 
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        save()
-                        revealInFinder()
+                    Menu {
+                        Button {
+                            save()
+                            revealInFinder()
+                        } label: {
+                            Label("Reveal in Finder", systemImage: "folder")
+                        }
                     } label: {
-                        Image(systemName: "folder")
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .help("Reveal in Finder")
+                    .help("More actions")
                 }
             }
             .confirmationDialog(
