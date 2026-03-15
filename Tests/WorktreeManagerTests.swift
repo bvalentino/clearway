@@ -142,29 +142,78 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertEqual(manager.subtitle(for: wt), "Main branch title")
     }
 
-    // MARK: - Load Titles
+    // MARK: - Load Titles (Claude Code sessions)
 
-    func testLoadTitlesReadsFromFiles() throws {
-        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let wtpadDir = tmpDir.appendingPathComponent(".wtpad")
-        try FileManager.default.createDirectory(at: wtpadDir, withIntermediateDirectories: true)
-        try "My title\n".write(to: wtpadDir.appendingPathComponent("title.txt"), atomically: true, encoding: .utf8)
+    func testLoadTitlesReadsFromClaudeSession() throws {
+        let fm = FileManager.default
+        // Create a fake worktree path and its Claude Code session directory
+        let worktreePath = "/tmp/test-wt-\(UUID().uuidString)"
+        let encodedPath = WorktreeManager.encodePathForClaude(worktreePath)
+        let claudeDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+        let projectDir = (claudeDir as NSString)
+            .appendingPathComponent("projects")
+            .appending("/\(encodedPath)")
+        try fm.createDirectory(atPath: projectDir, withIntermediateDirectories: true)
+
+        // Write a session JSONL with a custom-title entry
+        let sessionFile = (projectDir as NSString).appendingPathComponent("test-session.jsonl")
+        let jsonl = "{\"type\":\"custom-title\",\"customTitle\":\"My Claude Title\",\"sessionId\":\"test\"}\n"
+        try jsonl.write(toFile: sessionFile, atomically: true, encoding: .utf8)
 
         let manager = WorktreeManager(projectPath: "/tmp/test")
-        manager.worktrees = [makeWorktree(path: tmpDir.path, isMain: false)]
+        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
         manager.loadTitles()
 
-        XCTAssertEqual(manager.worktreeTitles[tmpDir.path], "My title")
+        XCTAssertEqual(manager.worktreeTitles[worktreePath], "My Claude Title")
 
-        try FileManager.default.removeItem(at: tmpDir)
+        try fm.removeItem(atPath: projectDir)
     }
 
-    func testLoadTitlesIgnoresMissingFiles() {
+    func testLoadTitlesUsesLastCustomTitle() throws {
+        let fm = FileManager.default
+        let worktreePath = "/tmp/test-wt-\(UUID().uuidString)"
+        let encodedPath = WorktreeManager.encodePathForClaude(worktreePath)
+        let claudeDir = (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+        let projectDir = (claudeDir as NSString)
+            .appendingPathComponent("projects")
+            .appending("/\(encodedPath)")
+        try fm.createDirectory(atPath: projectDir, withIntermediateDirectories: true)
+
+        // Write a session JSONL with multiple custom-title entries (last wins)
+        let sessionFile = (projectDir as NSString).appendingPathComponent("test-session.jsonl")
+        let jsonl = """
+        {"type":"custom-title","customTitle":"First Title","sessionId":"test"}
+        {"type":"user","message":"hello"}
+        {"type":"custom-title","customTitle":"Updated Title","sessionId":"test"}
+        """
+        try jsonl.write(toFile: sessionFile, atomically: true, encoding: .utf8)
+
+        let manager = WorktreeManager(projectPath: "/tmp/test")
+        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
+        manager.loadTitles()
+
+        XCTAssertEqual(manager.worktreeTitles[worktreePath], "Updated Title")
+
+        try fm.removeItem(atPath: projectDir)
+    }
+
+    func testLoadTitlesIgnoresMissingSessions() {
         let manager = WorktreeManager(projectPath: "/tmp/test")
         manager.worktrees = [makeWorktree(path: "/tmp/nonexistent-\(UUID().uuidString)", isMain: false)]
         manager.loadTitles()
 
         XCTAssertTrue(manager.worktreeTitles.isEmpty)
+    }
+
+    func testEncodePathForClaude() {
+        XCTAssertEqual(
+            WorktreeManager.encodePathForClaude("/Users/foo/bar"),
+            "-Users-foo-bar"
+        )
+        XCTAssertEqual(
+            WorktreeManager.encodePathForClaude("/Users/foo/.worktrees/my-branch"),
+            "-Users-foo--worktrees-my-branch"
+        )
     }
 
 }
