@@ -10,7 +10,7 @@ struct NotesView: View {
     @State private var activeObserver: Any?
     @State private var lastChangeCount: Int = 0
     @State private var clipboardTimer: Timer?
-    @State private var dismissedPath: String?
+    @State private var dismissedChangeCount: Int = -1
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,11 +19,11 @@ struct NotesView: View {
                     filename: (path as NSString).lastPathComponent,
                     onImport: {
                         notesManager.importNote(from: path)
-                        dismissedPath = path
+                        dismissedChangeCount = NSPasteboard.general.changeCount
                         clipboardPath = nil
                     },
                     onDismiss: {
-                        dismissedPath = path
+                        dismissedChangeCount = NSPasteboard.general.changeCount
                         clipboardPath = nil
                     }
                 )
@@ -75,12 +75,14 @@ struct NotesView: View {
     }
 
     private func checkClipboard() {
-        guard let string = NSPasteboard.general.string(forType: .string) else {
+        let pasteboard = NSPasteboard.general
+        guard pasteboard.changeCount != dismissedChangeCount,
+              let string = pasteboard.string(forType: .string) else {
             clipboardPath = nil
             return
         }
         let path = (string as NSString).expandingTildeInPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if path.hasSuffix(".md"), path != dismissedPath, FileManager.default.fileExists(atPath: path) {
+        if path.hasSuffix(".md"), FileManager.default.fileExists(atPath: path) {
             clipboardPath = path
         } else {
             clipboardPath = nil
