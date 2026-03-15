@@ -84,7 +84,9 @@ struct NoteWindow: View {
                 Button("Delete", role: .destructive) {
                     deleted = true
                     try? FileManager.default.removeItem(atPath: identifier.filePath)
-                    dismiss()
+                    DispatchQueue.main.async {
+                        NSApplication.shared.keyWindow?.close()
+                    }
                 }
             } message: {
                 Text("This action cannot be undone.")
