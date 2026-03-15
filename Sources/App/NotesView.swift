@@ -28,11 +28,6 @@ struct NotesView: View {
                                 onSelect: { selectedNoteId = note.id },
                                 onOpen: { openNote(note) }
                             )
-                                .contextMenu {
-                                    Button("Delete", role: .destructive) {
-                                        notesManager.deleteNote(note)
-                                    }
-                                }
                         }
                     }
                     .padding(8)
