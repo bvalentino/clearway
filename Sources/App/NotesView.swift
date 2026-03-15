@@ -18,19 +18,19 @@ struct NotesView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(notesManager.notes) { note in
-                        NoteRow(note: note) { openNote(note) }
-                            .contextMenu {
-                                Button("Delete", role: .destructive) {
-                                    notesManager.deleteNote(note)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(notesManager.notes) { note in
+                            NoteRow(note: note) { openNote(note) }
+                                .contextMenu {
+                                    Button("Delete", role: .destructive) {
+                                        notesManager.deleteNote(note)
+                                    }
                                 }
-                            }
-                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                            .listRowSeparator(.visible)
+                        }
                     }
+                    .padding(.horizontal, 8)
                 }
-                .listStyle(.inset)
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -95,5 +95,10 @@ private struct NoteRow: View {
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture { action() }
+        .overlay(alignment: .bottom) {
+            if !isHovered {
+                Divider().padding(.horizontal, 12)
+            }
+        }
     }
 }
