@@ -10,8 +10,8 @@ build/
 # OS
 .DS_Store
 
-# Worktree
-.worktrees/
+# Worktree (ignore worktree directories, keep scripts)
+.worktrees/*/
 
 # Ghostty build output (built from submodule)
 ghostty/macos/GhosttyKit.xcframework/
