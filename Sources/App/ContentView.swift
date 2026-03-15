@@ -26,10 +26,16 @@ private func hookShellCommand(_ cmd: String) -> String {
     return "/bin/sh -c \(shellEscape("(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
 }
 
+private enum SidePanelTab: String, CaseIterable {
+    case wtpad = "wtpad"
+    case tasks = "Tasks"
+}
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var claudeTaskManager: ClaudeTaskManager
     @EnvironmentObject private var settings: SettingsManager
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
@@ -41,6 +47,7 @@ struct ContentView: View {
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
+    @State private var sidePanelTab: SidePanelTab = .wtpad
 
     var body: some View {
         NavigationSplitView {
@@ -105,6 +112,7 @@ struct ContentView: View {
             terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
+            claudeTaskManager.setWorktreePath(wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -167,6 +175,7 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
+            claudeTaskManager.setWorktreePath(selectedWorktree?.path)
             if becomeActiveObserver == nil {
                 becomeActiveObserver = NotificationCenter.default.addObserver(
                     forName: NSApplication.didBecomeActiveNotification,
@@ -197,6 +206,7 @@ struct ContentView: View {
             }
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
+            claudeTaskManager.stopWatching()
         }
     }
 
@@ -342,20 +352,37 @@ struct ContentView: View {
 
                         if sideVisible {
                             Divider()
-                            if WtpadBinary.isInPATH {
-                                FocusableTerminal(
-                                    surfaceView: pane.side,
-                                    badge: "⌃3",
-                                    ctrlHeld: ctrlHeld,
-                                    showBorder: shouldShowFocusBorder
-                                )
-                                .frame(width: 380)
-                            } else {
-                                WtpadInstallView {
-                                    TerminalManager.launchWtpad(in: pane.side)
+                            VStack(spacing: 0) {
+                                Picker("", selection: $sidePanelTab) {
+                                    ForEach(SidePanelTab.allCases, id: \.self) { tab in
+                                        Text(tab.rawValue).tag(tab)
+                                    }
                                 }
-                                .frame(width: 380)
+                                .pickerStyle(.segmented)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+
+                                Divider()
+
+                                switch sidePanelTab {
+                                case .wtpad:
+                                    if WtpadBinary.isInPATH {
+                                        FocusableTerminal(
+                                            surfaceView: pane.side,
+                                            badge: "⌃3",
+                                            ctrlHeld: ctrlHeld,
+                                            showBorder: shouldShowFocusBorder
+                                        )
+                                    } else {
+                                        WtpadInstallView {
+                                            TerminalManager.launchWtpad(in: pane.side)
+                                        }
+                                    }
+                                case .tasks:
+                                    ClaudeTasksView()
+                                }
                             }
+                            .frame(width: 380)
                         }
                     }
 

@@ -21,11 +21,14 @@
 		4235FEADD0973204CB12B8EE /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */; };
 		47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2CED240FCD89042A5D8C24 /* WtpadApp.swift */; };
 		6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */; };
+		68FF93394B8D650DA08E61D9 /* ClaudeTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2113FFD53E28901F2ED96D47 /* ClaudeTaskManager.swift */; };
+		718624650C3019FFC357FA6D /* ClaudeTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF274E95DD1B7365FCBCFCAA /* ClaudeTask.swift */; };
 		71FA07133B87E4AF06939917 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18B91B5ED14C6B98525B5661 /* Assets.xcassets */; };
 		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
 		8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */; };
 		9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8346D6DF56660212501AB834 /* Worktree.swift */; };
 		ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */; };
+		B7EB46C93357AEAA6D996650 /* ClaudeTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7C886D003EA321069801A5 /* ClaudeTasksView.swift */; };
 		B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B324481DB038886F84E3C6 /* ContentView.swift */; };
 		C319CEAD586C5543D8D4E409 /* WtpadInstallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAC724186064A338EA13481 /* WtpadInstallView.swift */; };
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
@@ -55,10 +58,12 @@
 		18B91B5ED14C6B98525B5661 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
+		2113FFD53E28901F2ED96D47 /* ClaudeTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTaskManager.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIInstaller.swift; sourceTree = "<group>"; };
 		63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6C7C886D003EA321069801A5 /* ClaudeTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTasksView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		7741B9A5C7263C21519C58A7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
@@ -71,6 +76,7 @@
 		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		C7D100CF5E5C8418A0ADBF27 /* HookTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookTerminalView.swift; sourceTree = "<group>"; };
 		CF0604FC7DC75A491568F29B /* WtpadBinary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadBinary.swift; sourceTree = "<group>"; };
+		CF274E95DD1B7365FCBCFCAA /* ClaudeTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTask.swift; sourceTree = "<group>"; };
 		D21FB46A23B163C26A6E2869 /* ProjectHooksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectHooksTests.swift; sourceTree = "<group>"; };
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
@@ -118,6 +124,9 @@
 			children = (
 				63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */,
 				D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */,
+				CF274E95DD1B7365FCBCFCAA /* ClaudeTask.swift */,
+				2113FFD53E28901F2ED96D47 /* ClaudeTaskManager.swift */,
+				6C7C886D003EA321069801A5 /* ClaudeTasksView.swift */,
 				3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */,
 				69B324481DB038886F84E3C6 /* ContentView.swift */,
 				15DE76037AB236AE890CDD14 /* DebugTerminalSheet.swift */,
@@ -292,6 +301,9 @@
 				ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */,
 				08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */,
 				F06D91BD2095EFE03D92BD5B /* CLIInstaller.swift in Sources */,
+				718624650C3019FFC357FA6D /* ClaudeTask.swift in Sources */,
+				68FF93394B8D650DA08E61D9 /* ClaudeTaskManager.swift in Sources */,
+				B7EB46C93357AEAA6D996650 /* ClaudeTasksView.swift in Sources */,
 				B9A7084CCFAF15F0E27B4277 /* ContentView.swift in Sources */,
 				39171E29FE8032B712B9BA1D /* DebugTerminalSheet.swift in Sources */,
 				12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */,
