@@ -8,7 +8,7 @@ import Foundation
 class NotesManager: ObservableObject {
     @Published var notes: [Note] = []
 
-    private var worktreePath: String?
+    private(set) var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
 

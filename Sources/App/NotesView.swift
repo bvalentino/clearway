@@ -3,8 +3,7 @@ import SwiftUI
 /// Displays and manages markdown notes for the current worktree.
 struct NotesView: View {
     @EnvironmentObject private var notesManager: NotesManager
-    @State private var editingNote: Note?
-    @State private var editContent: String = ""
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -39,20 +38,6 @@ struct NotesView: View {
         .overlay(alignment: .bottomTrailing) {
             createButton
         }
-        .sheet(item: $editingNote) { note in
-            NoteEditorSheet(
-                content: $editContent,
-                title: note.title,
-                onDismiss: { save in
-                    if save { notesManager.updateNote(note, content: editContent) }
-                    editingNote = nil
-                },
-                onDelete: {
-                    editingNote = nil
-                    notesManager.deleteNote(note)
-                }
-            )
-        }
     }
 
     private var createButton: some View {
@@ -73,8 +58,9 @@ struct NotesView: View {
     }
 
     private func openNote(_ note: Note) {
-        editContent = note.content
-        editingNote = note
+        guard let worktreePath = notesManager.worktreePath else { return }
+        let identifier = NoteIdentifier(worktreePath: worktreePath, filename: note.id)
+        openWindow(value: identifier)
     }
 }
 
@@ -94,47 +80,5 @@ private struct NoteRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-}
-
-private struct NoteEditorSheet: View {
-    @Binding var content: String
-    let title: String
-    let onDismiss: (Bool) -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(title.isEmpty ? "New Note" : title)
-                    .font(.headline)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Button("Done") { onDismiss(true) }
-                    .keyboardShortcut(.return, modifiers: .command)
-            }
-            .padding()
-
-            Divider()
-
-            TextEditor(text: $content)
-                .font(.system(.body, design: .monospaced))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            HStack {
-                Button("Delete", role: .destructive) { onDelete() }
-                Spacer()
-                Button("Cancel") { onDismiss(false) }
-                Button("Save") { onDismiss(true) }
-                    .buttonStyle(.borderedProminent)
-            }
-            .controlSize(.small)
-            .padding()
-        }
-        .frame(minWidth: 500, minHeight: 400)
     }
 }

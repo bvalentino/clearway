@@ -38,6 +38,7 @@
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
 		C7D65582543065CEA773F888 /* UserTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63787963C7514B8C24369A96 /* UserTasksView.swift */; };
 		D3D76586F15D1E79133B3C8B /* ProjectHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21FB46A23B163C26A6E2869 /* ProjectHooksTests.swift */; };
+		DD379A1DF85E388FAE8A45D6 /* NoteWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5719DD840FC11C63AF6F84E /* NoteWindow.swift */; };
 		E61377ACA7A5D6326B96E429 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1D01555B16916CD81B458C /* TestHelpers.swift */; };
 		EF2E6586623E234DEBF42A75 /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB5A8C97B2AF141D8E08761 /* NotesView.swift */; };
 		F06D91BD2095EFE03D92BD5B /* CLIInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */; };
@@ -84,6 +85,7 @@
 		BDAC724186064A338EA13481 /* WtpadInstallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadInstallView.swift; sourceTree = "<group>"; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5719DD840FC11C63AF6F84E /* NoteWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteWindow.swift; sourceTree = "<group>"; };
 		C7413DF158A0D475363F560A /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		C7D100CF5E5C8418A0ADBF27 /* HookTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookTerminalView.swift; sourceTree = "<group>"; };
 		CF0604FC7DC75A491568F29B /* WtpadBinary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WtpadBinary.swift; sourceTree = "<group>"; };
@@ -145,6 +147,7 @@
 				4359038C55EA5EAD56BC1D4A /* Note.swift */,
 				0DF450431D96F5EDA07F9E06 /* NotesManager.swift */,
 				5AB5A8C97B2AF141D8E08761 /* NotesView.swift */,
+				C5719DD840FC11C63AF6F84E /* NoteWindow.swift */,
 				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
 				E856EBACD95238A075585AB1 /* ProjectSettings.swift */,
 				E0CE0C805A860E996C7A1418 /* ProjectSettingsView.swift */,
@@ -329,6 +332,7 @@
 				C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */,
 				06290FABECDDC7A371F4E628 /* HookTerminalView.swift in Sources */,
 				440A3E797D4F1E57430C8B5D /* Note.swift in Sources */,
+				DD379A1DF85E388FAE8A45D6 /* NoteWindow.swift in Sources */,
 				F0A274036A700D9E70D479AC /* NotesManager.swift in Sources */,
 				EF2E6586623E234DEBF42A75 /* NotesView.swift in Sources */,
 				0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */,
