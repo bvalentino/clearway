@@ -95,5 +95,8 @@ private struct NoteRow: View {
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture { action() }
+        .overlay(alignment: .bottom) {
+            Divider().padding(.horizontal, 12)
+        }
     }
 }
