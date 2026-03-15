@@ -22,11 +22,12 @@ struct NoteWindow: View {
     @State private var content: String = ""
     @State private var loaded = false
     @State private var showDeleteConfirmation = false
+    @AppStorage("noteFontSize") private var fontSize: Double = 14
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         TextEditor(text: $content)
-            .font(.system(size: 14))
+            .font(.system(size: fontSize))
             .scrollContentBackground(.hidden)
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -34,6 +35,24 @@ struct NoteWindow: View {
             .background(.ultraThinMaterial)
             .navigationTitle(title)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 4) {
+                        Button { fontSize = max(10, fontSize - 1) } label: {
+                            Image(systemName: "textformat.size.smaller")
+                        }
+                        .help("Decrease font size (⌘−)")
+                        .keyboardShortcut("-", modifiers: .command)
+                        .disabled(fontSize <= 10)
+
+                        Button { fontSize = min(28, fontSize + 1) } label: {
+                            Image(systemName: "textformat.size.larger")
+                        }
+                        .help("Increase font size (⌘+)")
+                        .keyboardShortcut("=", modifiers: .command)
+                        .disabled(fontSize >= 28)
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button(role: .destructive) {
