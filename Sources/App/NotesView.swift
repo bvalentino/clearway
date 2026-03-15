@@ -8,6 +8,8 @@ struct NotesView: View {
     @State private var selectedNoteId: String?
     @State private var clipboardPath: String?
     @State private var activeObserver: Any?
+    @State private var lastChangeCount: Int = 0
+    @State private var clipboardTimer: Timer?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,21 +53,19 @@ struct NotesView: View {
         .overlay(alignment: .bottomTrailing) {
             actionButtons
         }
-        .onAppear { checkClipboard() }
-        .onDisappear {
-            if let observer = activeObserver {
-                NotificationCenter.default.removeObserver(observer)
-                activeObserver = nil
+        .onAppear {
+            checkClipboard()
+            clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+                let count = NSPasteboard.general.changeCount
+                if count != lastChangeCount {
+                    lastChangeCount = count
+                    checkClipboard()
+                }
             }
         }
-        .task {
-            if activeObserver == nil {
-                activeObserver = NotificationCenter.default.addObserver(
-                    forName: NSApplication.didBecomeActiveNotification,
-                    object: nil,
-                    queue: .main
-                ) { _ in checkClipboard() }
-            }
+        .onDisappear {
+            clipboardTimer?.invalidate()
+            clipboardTimer = nil
         }
     }
 
