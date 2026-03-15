@@ -8,9 +8,6 @@ class UserTaskManager: ObservableObject {
     private var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
-    /// Monotonic timestamp of the last programmatic reload, used to suppress
-    /// redundant watcher-triggered reloads within the debounce window.
-    private var lastReloadTime: DispatchTime = .init(uptimeNanoseconds: 0)
 
     nonisolated deinit {
         pendingReload?.cancel()
@@ -39,7 +36,8 @@ class UserTaskManager: ObservableObject {
     func createTask(subject: String) {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let task = UserTask(subject: trimmed)
+        let nextID = (tasks.map(\.id).max() ?? 0) + 1
+        let task = UserTask(id: nextID, subject: trimmed, isCompleted: false)
         write(task)
         reload()
     }
@@ -49,7 +47,6 @@ class UserTaskManager: ObservableObject {
         guard !trimmed.isEmpty else { return }
         var updated = task
         updated.subject = trimmed
-        updated.updatedAt = Date()
         write(updated)
         reload()
     }
@@ -57,7 +54,6 @@ class UserTaskManager: ObservableObject {
     func toggleComplete(_ task: UserTask) {
         var updated = task
         updated.isCompleted.toggle()
-        updated.updatedAt = Date()
         write(updated)
         reload()
     }
@@ -88,8 +84,6 @@ class UserTaskManager: ObservableObject {
     }
 
     func reload() {
-        lastReloadTime = .now()
-
         guard let dir = tasksDirectory else {
             tasks = []
             return
@@ -111,9 +105,9 @@ class UserTaskManager: ObservableObject {
             loaded.append(task)
         }
 
-        // Incomplete tasks sorted by createdAt (oldest first), completed at bottom
-        let incomplete = loaded.filter { !$0.isCompleted }.sorted { $0.createdAt < $1.createdAt }
-        let completed = loaded.filter { $0.isCompleted }.sorted { $0.updatedAt > $1.updatedAt }
+        // Incomplete tasks by ID (creation order), completed at bottom
+        let incomplete = loaded.filter { !$0.isCompleted }.sorted { $0.id < $1.id }
+        let completed = loaded.filter { $0.isCompleted }.sorted { $0.id < $1.id }
         tasks = incomplete + completed
     }
 
@@ -149,10 +143,7 @@ class UserTaskManager: ObservableObject {
             guard let self else { return }
             self.pendingReload?.cancel()
             let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                // Skip if a programmatic reload happened recently
-                guard DispatchTime.now() > self.lastReloadTime + 0.3 else { return }
-                self.reload()
+                self?.reload()
             }
             self.pendingReload = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
