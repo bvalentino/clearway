@@ -9,13 +9,14 @@ struct Note: Identifiable, Hashable {
     /// When the file was last modified on disk.
     let modificationDate: Date
 
-    /// Title derived from the first `# ` heading, falling back to "New Note".
+    /// Title derived from the first `# ` heading, falling back to the body preview or "New Note".
     var title: String {
         if let firstLine = content.split(separator: "\n", maxSplits: 1).first,
            firstLine.hasPrefix("# ") {
             return String(firstLine.dropFirst(2))
         }
-        return "New Note"
+        let text = preview
+        return text.isEmpty ? "New Note" : text
     }
 
     /// Body text after the title line, for use as a preview snippet.

@@ -70,7 +70,7 @@ private struct NoteRow: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(note.title)
                 .font(.body)
-                .fontWeight(.semibold)
+                .fontWeight(.bold)
                 .lineLimit(1)
 
             HStack(spacing: 0) {
