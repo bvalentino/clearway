@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Identifies a note file for opening in its own window.
@@ -20,6 +21,8 @@ struct NoteWindow: View {
     let identifier: NoteIdentifier
     @State private var content: String = ""
     @State private var loaded = false
+    @State private var showDeleteConfirmation = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         TextEditor(text: $content)
@@ -30,6 +33,38 @@ struct NoteWindow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.ultraThinMaterial)
             .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete note")
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        save()
+                        revealInFinder()
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .help("Reveal in Finder")
+                }
+            }
+            .confirmationDialog(
+                "Delete this note?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    try? FileManager.default.removeItem(atPath: identifier.filePath)
+                    dismiss()
+                }
+            } message: {
+                Text("This action cannot be undone.")
+            }
             .onAppear { loadIfNeeded() }
             .onDisappear { save() }
     }
@@ -58,5 +93,9 @@ struct NoteWindow: View {
             contents: data,
             attributes: [.posixPermissions: 0o600]
         )
+    }
+
+    private func revealInFinder() {
+        NSWorkspace.shared.selectFile(identifier.filePath, inFileViewerRootedAtPath: "")
     }
 }
