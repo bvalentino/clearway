@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
 		06290FABECDDC7A371F4E628 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D100CF5E5C8418A0ADBF27 /* HookTerminalView.swift */; };
-		08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */; };
 		0B8BCD108A11518ECCA8D79F /* UserTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2526E99293C6A16C8E0BD72 /* UserTaskManager.swift */; };
 		0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741B9A5C7263C21519C58A7 /* SettingsView.swift */; };
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
@@ -85,7 +84,6 @@
 		D21FB46A23B163C26A6E2869 /* ProjectHooksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectHooksTests.swift; sourceTree = "<group>"; };
 		D24AA30D8ADC37C645413C92 /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
 		D70F735E00E89E5639B51D00 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
-		D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		DEF31A165F772369B33B90AA /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
 		E0CE0C805A860E996C7A1418 /* ProjectSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsView.swift; sourceTree = "<group>"; };
 		E131E35523E6802F91F45113 /* ShellEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironment.swift; sourceTree = "<group>"; };
@@ -129,7 +127,6 @@
 			isa = PBXGroup;
 			children = (
 				63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */,
-				D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */,
 				CF274E95DD1B7365FCBCFCAA /* ClaudeTask.swift */,
 				2113FFD53E28901F2ED96D47 /* ClaudeTaskManager.swift */,
 				3765A9E0B3A919BF3A9FF207 /* CLIInstaller.swift */,
@@ -308,7 +305,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */,
-				08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */,
 				F06D91BD2095EFE03D92BD5B /* CLIInstaller.swift in Sources */,
 				718624650C3019FFC357FA6D /* ClaudeTask.swift in Sources */,
 				68FF93394B8D650DA08E61D9 /* ClaudeTaskManager.swift in Sources */,
