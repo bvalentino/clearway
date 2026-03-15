@@ -18,21 +18,20 @@ struct NotesView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(notesManager.notes) { note in
-                            NoteRow(note: note)
-                                .contentShape(Rectangle())
-                                .onTapGesture { openNote(note) }
-                                .contextMenu {
-                                    Button("Delete", role: .destructive) {
-                                        notesManager.deleteNote(note)
-                                    }
+                List {
+                    ForEach(notesManager.notes) { note in
+                        NoteRow(note: note)
+                            .contentShape(Rectangle())
+                            .onTapGesture { openNote(note) }
+                            .contextMenu {
+                                Button("Delete", role: .destructive) {
+                                    notesManager.deleteNote(note)
                                 }
-                            Divider()
-                        }
+                            }
+                            .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                     }
                 }
+                .listStyle(.inset)
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -68,19 +67,26 @@ private struct NoteRow: View {
     let note: Note
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(note.title)
                 .font(.body)
-                .fontWeight(.medium)
+                .fontWeight(.semibold)
                 .lineLimit(1)
 
-            if let date = note.creationDate {
-                Text(date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 0) {
+                if let date = note.creationDate {
+                    Text(date, format: .dateTime.month(.abbreviated).day().year())
+                        .fontWeight(.medium)
+                    Text("  ")
+                }
+
+                Text(note.preview.isEmpty ? "No additional text" : note.preview)
+                    .foregroundStyle(.tertiary)
             }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 4)
     }
 }

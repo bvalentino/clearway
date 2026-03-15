@@ -18,6 +18,13 @@ struct Note: Identifiable, Hashable {
         return "New Note"
     }
 
+    /// Body text after the title line, for use as a preview snippet.
+    var preview: String {
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
+        let body = lines.drop { $0.hasPrefix("# ") }
+        return body.prefix(3).joined(separator: " ")
+    }
+
     /// Creation date parsed from the timestamp filename (e.g., `20260315-142129.md`).
     var creationDate: Date? {
         Self.filenameParser.date(from: String(id.dropLast(".md".count)))
