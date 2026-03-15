@@ -29,6 +29,7 @@ private func hookShellCommand(_ cmd: String) -> String {
 private enum SidePanelTab: String, CaseIterable {
     case wtpad = "wtpad"
     case tasks = "Tasks"
+    case notes = "Notes"
 }
 
 struct ContentView: View {
@@ -37,6 +38,7 @@ struct ContentView: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var claudeTaskManager: ClaudeTaskManager
     @EnvironmentObject private var userTaskManager: UserTaskManager
+    @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
@@ -115,6 +117,7 @@ struct ContentView: View {
             worktreeManager.watchTitle(forWorktreePath: wt.path)
             claudeTaskManager.setWorktreePath(wt.path)
             userTaskManager.setWorktreePath(wt.path)
+            notesManager.setWorktreePath(wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -179,6 +182,7 @@ struct ContentView: View {
         .onAppear {
             claudeTaskManager.setWorktreePath(selectedWorktree?.path)
             userTaskManager.setWorktreePath(selectedWorktree?.path)
+            notesManager.setWorktreePath(selectedWorktree?.path)
             if becomeActiveObserver == nil {
                 becomeActiveObserver = NotificationCenter.default.addObserver(
                     forName: NSApplication.didBecomeActiveNotification,
@@ -211,6 +215,7 @@ struct ContentView: View {
             worktreeManager.watchTitle(forWorktreePath: nil)
             claudeTaskManager.stopWatching()
             userTaskManager.stopWatching()
+            notesManager.stopWatching()
         }
     }
 
@@ -384,6 +389,8 @@ struct ContentView: View {
                                     }
                                 case .tasks:
                                     TasksPanelView()
+                                case .notes:
+                                    NotesView()
                                 }
                             }
                             .frame(width: 380)
