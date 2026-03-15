@@ -4,6 +4,7 @@ import SwiftUI
 struct NotesView: View {
     @EnvironmentObject private var notesManager: NotesManager
     @Environment(\.openWindow) private var openWindow
+    @State private var selectedNoteId: String?
 
     var body: some View {
         Group {
@@ -21,7 +22,12 @@ struct NotesView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(notesManager.notes) { note in
-                            NoteRow(note: note) { openNote(note) }
+                            NoteRow(
+                                note: note,
+                                isSelected: selectedNoteId == note.id,
+                                onSelect: { selectedNoteId = note.id },
+                                onOpen: { openNote(note) }
+                            )
                                 .contextMenu {
                                     Button("Delete", role: .destructive) {
                                         notesManager.deleteNote(note)
@@ -64,8 +70,9 @@ struct NotesView: View {
 
 private struct NoteRow: View {
     let note: Note
-    let action: () -> Void
-    @State private var isHovered = false
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onOpen: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -91,10 +98,10 @@ private struct NoteRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(isHovered ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .background(isSelected ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
-        .onTapGesture { action() }
+        .onTapGesture(count: 2) { onOpen() }
+        .onTapGesture(count: 1) { onSelect() }
         .overlay(alignment: .bottom) {
             Divider().padding(.horizontal, 12)
         }
