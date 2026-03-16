@@ -31,7 +31,7 @@ struct Note: Identifiable {
 
     /// Creation date parsed from the timestamp filename (e.g., `20260315-142129.md`).
     var creationDate: Date? {
-        Self.filenameParser.date(from: String(id.dropLast(".md".count)))
+        NotesManager.timestampFormatter.date(from: String(id.dropLast(".md".count)))
     }
 
     /// Extracts a title from markdown content. Used by both Note and NoteWindow.
@@ -43,12 +43,6 @@ struct Note: Identifiable {
         let preview = lines.prefix(3).joined(separator: " ")
         return preview.isEmpty ? "New Note" : preview
     }
-
-    private static let filenameParser: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
 }
 
 extension Note: Hashable {

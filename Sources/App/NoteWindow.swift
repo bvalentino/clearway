@@ -10,10 +10,6 @@ struct NoteIdentifier: Codable, Hashable {
         let wtpadDir = (worktreePath as NSString).appendingPathComponent(".wtpad")
         return (wtpadDir as NSString).appendingPathComponent(filename)
     }
-
-    var displayName: String {
-        filename.hasSuffix(".md") ? String(filename.dropLast(".md".count)) : filename
-    }
 }
 
 /// A standalone note editor window, styled like Apple Notes.

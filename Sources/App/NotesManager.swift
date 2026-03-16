@@ -14,7 +14,7 @@ class NotesManager: ObservableObject {
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
 
-    private static let timestampFormatter: DateFormatter = {
+    static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter
@@ -69,7 +69,7 @@ class NotesManager: ObservableObject {
         let filePath = (wtpadDir as NSString).appendingPathComponent(filename)
 
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         guard fm.createFile(atPath: filePath, contents: Data(), attributes: [.posixPermissions: 0o600]) else {
             return nil
         }
@@ -80,12 +80,6 @@ class NotesManager: ObservableObject {
         return filename
     }
 
-    func updateNote(_ note: Note, content: String) {
-        guard let wtpadDir else { return }
-        let filePath = (wtpadDir as NSString).appendingPathComponent(note.id)
-        let data = content.data(using: .utf8) ?? Data()
-        FileManager.default.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600])
-    }
 
     func deleteNote(_ note: Note) {
         guard let wtpadDir else { return }
@@ -99,7 +93,7 @@ class NotesManager: ObservableObject {
     func importNote(from sourcePath: String) {
         guard let wtpadDir else { return }
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
         // Read source content and write as a new timestamped note
         guard let data = fm.contents(atPath: sourcePath),
@@ -144,7 +138,7 @@ class NotesManager: ObservableObject {
         guard let wtpadDir else { return }
 
         // Ensure directory exists so we can watch it
-        try? FileManager.default.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
         if let source = Self.makeWatcher(path: wtpadDir, handler: { [weak self] in
             self?.scheduleReload()
