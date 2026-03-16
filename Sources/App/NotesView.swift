@@ -54,7 +54,7 @@ struct NotesView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            actionButtons
+            createButton
         }
         .onAppear {
             notesManager.lastClipboardChangeCount = NSPasteboard.general.changeCount
@@ -95,48 +95,22 @@ struct NotesView: View {
         return notesManager.notes.contains { $0.content == content }
     }
 
-    private var actionButtons: some View {
-        HStack(spacing: 0) {
-            Button {
-                if let id = notesManager.createNote(),
-                   let note = notesManager.notes.first(where: { $0.id == id }) {
-                    openNote(note)
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 36, height: 36)
+    private var createButton: some View {
+        Button {
+            if let id = notesManager.createNote(),
+               let note = notesManager.notes.first(where: { $0.id == id }) {
+                openNote(note)
             }
-
-            Divider()
-                .frame(height: 20)
-
-            Button {
-                importNote()
-            } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .frame(width: 36, height: 36)
-            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(.primary)
         .buttonStyle(.plain)
-        .background(.thinMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         .padding(12)
-    }
-
-    private func importNote() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "md")!]
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.message = "Select markdown files to import"
-
-        guard panel.runModal() == .OK else { return }
-
-        for url in panel.urls {
-            notesManager.importNote(from: url.path)
-        }
     }
 
     private func openNote(_ note: Note) {
