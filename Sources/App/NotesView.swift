@@ -43,6 +43,7 @@ struct NotesView: View {
                             NoteRow(
                                 note: note,
                                 isSelected: selectedNoteId == note.id,
+                                isLast: note.id == notesManager.notes.last?.id,
                                 onSelect: { selectedNoteId = note.id },
                                 onOpen: { openNote(note) }
                             )
@@ -148,6 +149,7 @@ struct NotesView: View {
 private struct NoteRow: View {
     let note: Note
     let isSelected: Bool
+    let isLast: Bool
     let onSelect: () -> Void
     let onOpen: () -> Void
     @State private var lastClickTime: Date = .distantPast
@@ -190,7 +192,7 @@ private struct NoteRow: View {
             lastClickTime = now
         }
         .overlay(alignment: .bottom) {
-            Divider().padding(.horizontal, 12)
+            if !isLast { Divider().padding(.horizontal, 12) }
         }
     }
 }
