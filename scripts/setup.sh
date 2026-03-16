@@ -16,13 +16,6 @@ if ! command -v zig &> /dev/null; then
     exit 1
 fi
 
-echo "==> Checking for go..."
-if ! command -v go &> /dev/null; then
-    echo "Error: go is not installed."
-    echo "Install via: brew install go"
-    exit 1
-fi
-
 echo "==> Ensuring Metal Toolchain is installed..."
 if ! xcrun metal --version &> /dev/null; then
     echo "    Metal Toolchain not found, downloading..."

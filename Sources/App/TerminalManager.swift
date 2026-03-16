@@ -6,17 +6,16 @@ func shellEscape(_ path: String) -> String {
     "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
-/// The three terminal panes for a worktree.
+/// The terminal panes for a worktree.
 struct TerminalPane {
     var main: Ghostty.SurfaceView
     var secondary: Ghostty.SurfaceView
-    var side: Ghostty.SurfaceView
 }
 
 /// Manages per-worktree terminal surfaces.
 ///
-/// Each worktree gets three `Ghostty.SurfaceView` instances (main, secondary,
-/// side) that persist for the lifetime of the session. Switching worktrees
+/// Each worktree gets two `Ghostty.SurfaceView` instances (main, secondary)
+/// that persist for the lifetime of the session. Switching worktrees
 /// shows/hides surfaces rather than creating new ones.
 @MainActor
 class TerminalManager: ObservableObject {
@@ -35,7 +34,7 @@ class TerminalManager: ObservableObject {
     private var notificationObserver: Any?
 
     /// Per-worktree panel visibility (defaults to true when absent).
-    @Published private var sideVisible: [String: Bool] = [:]
+    @Published private var asideVisible: [String: Bool] = [:]
     @Published private var secondaryVisible: [String: Bool] = [:]
 
     var activePane: TerminalPane? {
@@ -104,7 +103,7 @@ class TerminalManager: ObservableObject {
     /// Find the worktree ID that owns the given surface.
     private func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
         panes.first(where: { _, pane in
-            pane.main === surface || pane.secondary === surface || pane.side === surface
+            pane.main === surface || pane.secondary === surface
         })?.key
     }
 
@@ -114,9 +113,9 @@ class TerminalManager: ObservableObject {
 
     // MARK: - Panel Visibility
 
-    func isSideVisible(for worktreeId: String?) -> Bool {
+    func isAsideVisible(for worktreeId: String?) -> Bool {
         guard let worktreeId else { return true }
-        return sideVisible[worktreeId] ?? true
+        return asideVisible[worktreeId] ?? true
     }
 
     func isSecondaryVisible(for worktreeId: String?) -> Bool {
@@ -124,9 +123,9 @@ class TerminalManager: ObservableObject {
         return secondaryVisible[worktreeId] ?? true
     }
 
-    func toggleSide(for worktreeId: String?) {
+    func toggleAside(for worktreeId: String?) {
         guard let worktreeId else { return }
-        sideVisible[worktreeId] = !(sideVisible[worktreeId] ?? true)
+        asideVisible[worktreeId] = !(asideVisible[worktreeId] ?? true)
     }
 
     func toggleSecondary(for worktreeId: String?) {
@@ -145,21 +144,19 @@ class TerminalManager: ObservableObject {
         let dir = worktree.path ?? projectPath
         let main = Ghostty.SurfaceView(app, workingDirectory: dir)
         let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
-        let side = Ghostty.SurfaceView(app, workingDirectory: dir)
 
-        let tp = TerminalPane(main: main, secondary: secondary, side: side)
+        let tp = TerminalPane(main: main, secondary: secondary)
         panes[key] = tp
         if !openWorktreeIds.contains(key) {
             openWorktreeIds.insert(key)
         }
 
-        // Run startup commands in terminals
+        // Run startup command in main terminal
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if !command.isEmpty {
+        if !command.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 main.sendCommand(command)
             }
-            Self.launchWtpad(in: side)
         }
 
         return tp
@@ -176,8 +173,6 @@ class TerminalManager: ObservableObject {
                 slot = \.main
             } else if pane.secondary === deadSurface {
                 slot = \.secondary
-            } else if pane.side === deadSurface {
-                slot = \.side
             } else {
                 continue
             }
@@ -197,11 +192,6 @@ class TerminalManager: ObservableObject {
             objectWillChange.send()
             panes[key]![keyPath: slot] = newSurface
 
-            if slot == \.side {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    Self.launchWtpad(in: newSurface)
-                }
-            }
             return
         }
     }
@@ -223,7 +213,7 @@ class TerminalManager: ObservableObject {
     /// Whether a worktree has any surface with a running foreground process.
     func worktreeNeedsConfirmClose(_ worktreeId: String) -> Bool {
         guard let pane = panes[worktreeId] else { return false }
-        return pane.main.needsConfirmQuit || pane.secondary.needsConfirmQuit || pane.side.needsConfirmQuit
+        return pane.main.needsConfirmQuit || pane.secondary.needsConfirmQuit
     }
 
     /// Close a worktree's terminals without deleting the worktree itself.
@@ -235,14 +225,13 @@ class TerminalManager: ObservableObject {
         cleanupState(for: worktreeId)
         pane.main.closeSurface()
         pane.secondary.closeSurface()
-        pane.side.closeSurface()
     }
 
     private func cleanupState(for worktreeId: String) {
         openWorktreeIds.remove(worktreeId)
         notifiedWorktrees.remove(worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
-        sideVisible.removeValue(forKey: worktreeId)
+        asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
@@ -270,12 +259,7 @@ class TerminalManager: ObservableObject {
 
     /// All surfaces across all worktrees.
     var allSurfaces: [Ghostty.SurfaceView] {
-        panes.values.flatMap { [$0.main, $0.secondary, $0.side] }
+        panes.values.flatMap { [$0.main, $0.secondary] }
     }
 
-    /// Send the wtpad command to a side terminal surface.
-    static func launchWtpad(in surface: Ghostty.SurfaceView) {
-        guard WtpadBinary.isInPATH else { return }
-        surface.sendCommand("wtpad")
-    }
 }

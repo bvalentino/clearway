@@ -56,7 +56,7 @@ private struct AboutView: View {
                     Text("wtpad")
                         .bold()
                         .font(.title)
-                    Text("A workspace manager built on\nGhostty and wtpad.")
+                    Text("A workspace manager built on Ghostty.")
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .font(.caption)
@@ -73,13 +73,6 @@ private struct AboutView: View {
                         text: commit,
                         url: URL(string: "https://github.com/bvalentino/wtpad-mac/commit/\(commit)")
                     )
-                    if BuildInfo.wtpadVersion != "unknown" {
-                        AboutPropertyRow(
-                            label: "wtpad CLI",
-                            text: BuildInfo.wtpadVersion,
-                            url: URL(string: "https://github.com/bvalentino/wtpad/releases")
-                        )
-                    }
                 }
                 .frame(maxWidth: .infinity)
             }
