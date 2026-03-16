@@ -5,7 +5,7 @@ struct ClaudeTask: Codable, Identifiable {
     let id: String
     let subject: String
     let description: String
-    let status: Status
+    var status: Status
     let blocks: [String]
     let blockedBy: [String]
 

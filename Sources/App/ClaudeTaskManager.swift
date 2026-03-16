@@ -133,31 +133,46 @@ class ClaudeTaskManager: ObservableObject {
     }
 
     /// Merges live sessions with cached sessions. Live tasks take precedence;
-    /// cached tasks that no longer exist in live data are preserved.
+    /// cached tasks whose files were deleted are marked completed (Claude Code
+    /// deletes task files when a session finishes).
     private nonisolated static func mergeSessions(live: [ClaudeSession], cached: [ClaudeSession]) -> [ClaudeSession] {
         var sessionsByID: [String: ClaudeSession] = [:]
+        let liveByID = Dictionary(live.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
 
-        // Start with cached sessions
         for session in cached {
-            sessionsByID[session.id] = session
-        }
-
-        // Merge live data on top
-        for liveSession in live {
-            if let existing = sessionsByID[liveSession.id] {
-                // Merge tasks: live tasks win, keep cached tasks that were deleted
+            if let liveSession = liveByID[session.id] {
+                // Merge: live tasks win, cached-only tasks marked completed
+                let liveTaskIDs = Set(liveSession.tasks.map(\.id))
                 var tasksByID: [String: ClaudeTask] = [:]
-                for task in existing.tasks { tasksByID[task.id] = task }
+                for task in session.tasks where !liveTaskIDs.contains(task.id) {
+                    var marked = task
+                    if marked.status != .completed { marked.status = .completed }
+                    tasksByID[task.id] = marked
+                }
                 for task in liveSession.tasks { tasksByID[task.id] = task }
                 let mergedTasks = tasksByID.values.sorted { Int($0.id) ?? 0 < Int($1.id) ?? 0 }
-                sessionsByID[liveSession.id] = ClaudeSession(
-                    id: liveSession.id,
+                sessionsByID[session.id] = ClaudeSession(
+                    id: session.id,
                     tasks: mergedTasks,
-                    modificationDate: max(liveSession.modificationDate, existing.modificationDate)
+                    modificationDate: max(liveSession.modificationDate, session.modificationDate)
                 )
             } else {
-                sessionsByID[liveSession.id] = liveSession
+                // Session no longer live — mark all non-completed tasks as completed
+                let tasks = session.tasks.map { task -> ClaudeTask in
+                    guard task.status != .completed else { return task }
+                    var copy = task
+                    copy.status = .completed
+                    return copy
+                }
+                sessionsByID[session.id] = ClaudeSession(
+                    id: session.id, tasks: tasks, modificationDate: session.modificationDate
+                )
             }
+        }
+
+        // Add live-only sessions (not in cache)
+        for liveSession in live where sessionsByID[liveSession.id] == nil {
+            sessionsByID[liveSession.id] = liveSession
         }
 
         return sessionsByID.values.sorted { $0.modificationDate > $1.modificationDate }
