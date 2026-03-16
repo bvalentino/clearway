@@ -40,8 +40,10 @@ struct Note: Identifiable {
         if let firstLine = lines.first, firstLine.hasPrefix("# ") {
             return String(firstLine.dropFirst(2))
         }
-        let preview = lines.prefix(3).joined(separator: " ")
-        return preview.isEmpty ? "New Note" : preview
+        if let firstLine = lines.first {
+            return String(firstLine)
+        }
+        return "New Note"
     }
 }
 
