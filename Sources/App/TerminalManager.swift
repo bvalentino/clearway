@@ -42,6 +42,11 @@ class TerminalManager: ObservableObject {
         return panes[id]
     }
 
+    /// Look up a pane by worktree ID without creating one.
+    func pane(forId worktreeId: String) -> TerminalPane? {
+        panes[worktreeId]
+    }
+
     init() {
         TerminalManager.allInstances.add(self)
 
@@ -101,7 +106,7 @@ class TerminalManager: ObservableObject {
     }
 
     /// Find the worktree ID that owns the given surface.
-    private func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
+    func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
         panes.first(where: { _, pane in
             pane.main === surface || pane.secondary === surface
         })?.key
@@ -160,6 +165,19 @@ class TerminalManager: ObservableObject {
         }
 
         return tp
+    }
+
+    /// Replace the main surface for a worktree with one running the given command.
+    /// Used to launch Claude Code in a ticket's worktree.
+    func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) {
+        let key = worktree.id
+        guard var pane = panes.removeValue(forKey: key) else { return }
+        let oldSurface = pane.main
+        pane.main = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
+        panes[key] = pane
+        objectWillChange.send()
+        // Close after re-inserting so the closeSurface observer can't match the old surface
+        oldSurface.closeSurface()
     }
 
     /// Replace a dead surface with a fresh terminal in the same working directory.

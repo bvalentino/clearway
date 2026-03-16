@@ -39,6 +39,7 @@ struct ContentView: View {
     @EnvironmentObject private var userTaskManager: UserTaskManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var ticketManager: TicketManager
     @State private var selectedWorktree: Worktree?
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
@@ -50,6 +51,8 @@ struct ContentView: View {
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var sidePanelTab: SidePanelTab = .tasks
+    @State private var pendingTicketLaunch: (id: UUID, branch: String)?
+    @State private var childExitedObserver: Any?
 
     var body: some View {
         NavigationSplitView {
@@ -125,10 +128,19 @@ struct ContentView: View {
 
             selectedWorktree = wt
 
+            let launchClaudeIfNeeded = {
+                guard let pending = pendingTicketLaunch, pending.branch == branch,
+                      let ticket = ticketManager.tickets.first(where: { $0.id == pending.id }) else { return }
+                pendingTicketLaunch = nil
+                launchClaudeCode(for: ticket, in: wt)
+            }
+
             if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
                let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface) {}
+                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaudeIfNeeded)
+            } else {
+                launchClaudeIfNeeded()
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
@@ -197,6 +209,15 @@ struct ContentView: View {
                     return event
                 }
             }
+            if childExitedObserver == nil {
+                childExitedObserver = NotificationCenter.default.addObserver(
+                    forName: .ghosttyChildExited,
+                    object: nil,
+                    queue: .main
+                ) { [self] notification in
+                    handleChildExited(notification)
+                }
+            }
         }
         .onDisappear {
             if let observer = becomeActiveObserver {
@@ -206,6 +227,10 @@ struct ContentView: View {
             if let monitor = flagsMonitor {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
+            }
+            if let observer = childExitedObserver {
+                NotificationCenter.default.removeObserver(observer)
+                childExitedObserver = nil
             }
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
@@ -296,6 +321,56 @@ struct ContentView: View {
             selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
             worktreeManager.removeWorktree(branch: branch)
         }
+    }
+
+    // MARK: - Tickets
+
+    private func startTicket(_ ticket: Ticket) {
+        guard ticket.status == .open || ticket.status == .stopped else { return }
+
+        if let branch = ticket.worktree,
+           let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
+            // Worktree already exists — reuse it
+            ticketManager.setStatus(ticket, to: .running)
+            selectedWorktree = wt
+            launchClaudeCode(for: ticket, in: wt)
+        } else {
+            // Create new worktree
+            let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
+            let branch = ticket.worktree ?? ticketManager.deriveBranchName(from: ticket.title, existingBranches: existingBranches)
+            var updated = ticket
+            updated.worktree = branch
+            updated.status = .running
+            ticketManager.updateTicket(updated)
+            pendingTicketLaunch = (id: updated.id, branch: branch)
+            Task { await worktreeManager.createWorktree(branch: branch) }
+        }
+    }
+
+    private func openTicketWorktree(_ ticket: Ticket) {
+        guard let branch = ticket.worktree,
+              let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+        selectedWorktree = wt
+    }
+
+    private func handleChildExited(_ notification: Notification) {
+        guard let surface = notification.object as? Ghostty.SurfaceView,
+              // Only consider surfaces owned by TerminalManager (not hook surfaces)
+              let worktreeId = terminalManager.worktreeId(for: surface),
+              let pane = terminalManager.pane(forId: worktreeId),
+              pane.main === surface,
+              let wt = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
+              let branch = wt.branch,
+              let ticket = ticketManager.ticket(forWorktree: branch),
+              ticket.status == .running else { return }
+        ticketManager.setStatus(ticket, to: .stopped)
+    }
+
+    private func launchClaudeCode(for ticket: Ticket, in worktree: Worktree) {
+        guard let app = ghosttyApp.app else { return }
+        let ticketPath = ticketManager.filePath(for: ticket)
+        let command = "/bin/sh -c " + shellEscape("claude \"$(cat " + shellEscape(ticketPath) + ")\"")
+        terminalManager.replaceMainSurface(for: worktree, app: app, command: command)
     }
 
     // MARK: - Detail View
@@ -409,18 +484,10 @@ struct ContentView: View {
                     }
                 }
             } else {
-                VStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(wtpadLogo, id: \.self) { line in
-                            Text(line)
-                        }
-                    }
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    Text("Select a worktree")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                TicketListView(
+                    onStart: { startTicket($0) },
+                    onOpen: { openTicketWorktree($0) }
+                )
             }
         }
     }
