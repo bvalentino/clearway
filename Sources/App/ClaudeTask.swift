@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A task created by Claude Code, parsed from `~/.claude/tasks/<session>/<id>.json`.
 struct ClaudeTask: Codable, Identifiable {
@@ -13,13 +14,21 @@ struct ClaudeTask: Codable, Identifiable {
         case pending
         case inProgress = "in_progress"
         case completed
-    }
 
-    var statusSymbol: String {
-        switch status {
-        case .completed: return "checkmark.circle.fill"
-        case .inProgress: return "circle.dotted.circle"
-        case .pending: return "circle"
+        var symbol: String {
+            switch self {
+            case .pending: return "circle"
+            case .inProgress: return "circle.dotted.circle"
+            case .completed: return "checkmark.circle.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .completed: return .green
+            case .inProgress: return .orange
+            case .pending: return .secondary
+            }
         }
     }
 }
