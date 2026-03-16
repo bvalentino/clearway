@@ -8,6 +8,7 @@ import Foundation
 class NotesManager: ObservableObject {
     @Published var notes: [Note] = []
     var dismissedImportPaths: Set<String> = []
+    var lastClipboardChangeCount: Int = 0
 
     private(set) var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
