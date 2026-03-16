@@ -107,8 +107,7 @@ class NotesManager: ObservableObject {
 
         let filename = Self.timestampFormatter.string(from: Date()) + ".md"
         let filePath = (wtpadDir as NSString).appendingPathComponent(filename)
-        let writeData = content.data(using: .utf8) ?? Data()
-        fm.createFile(atPath: filePath, contents: writeData, attributes: [.posixPermissions: 0o600])
+        fm.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600])
 
         // Optimistic insert
         let note = Note(id: filename, content: content, modificationDate: Date())

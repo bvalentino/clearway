@@ -7,7 +7,6 @@ struct NotesView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedNoteId: String?
     @State private var clipboardPath: String?
-    @State private var activeObserver: Any?
     @State private var clipboardTimer: Timer?
 
     var body: some View {
@@ -57,6 +56,7 @@ struct NotesView: View {
             createButton
         }
         .onAppear {
+            clipboardTimer?.invalidate()
             notesManager.lastClipboardChangeCount = NSPasteboard.general.changeCount
             checkClipboard()
             clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in

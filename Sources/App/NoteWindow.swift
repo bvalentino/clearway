@@ -96,12 +96,7 @@ struct NoteWindow: View {
     }
 
     private var title: String {
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
-        if let firstLine = lines.first, firstLine.hasPrefix("# ") {
-            return String(firstLine.dropFirst(2))
-        }
-        let preview = lines.prefix(3).joined(separator: " ")
-        return preview.isEmpty ? "New Note" : preview
+        Note.title(from: content)
     }
 
     private func loadIfNeeded() {

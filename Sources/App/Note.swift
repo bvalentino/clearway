@@ -1,7 +1,7 @@
 import Foundation
 
 /// A markdown note persisted in the worktree's `.wtpad/` directory.
-struct Note: Identifiable, Hashable {
+struct Note: Identifiable {
     /// The filename (e.g., `20260315-142129.md`), used as a stable identifier.
     let id: String
     /// The full markdown content of the note.
@@ -19,12 +19,7 @@ struct Note: Identifiable, Hashable {
 
     /// Title derived from the first `# ` heading, falling back to the body preview or "New Note".
     var title: String {
-        if hasHeading,
-           let firstLine = content.split(separator: "\n", maxSplits: 1).first {
-            return String(firstLine.dropFirst(2))
-        }
-        let text = preview
-        return text.isEmpty ? "New Note" : text
+        Self.title(from: content)
     }
 
     /// Body text after the title line, for use as a preview snippet.
@@ -39,9 +34,30 @@ struct Note: Identifiable, Hashable {
         Self.filenameParser.date(from: String(id.dropLast(".md".count)))
     }
 
+    /// Extracts a title from markdown content. Used by both Note and NoteWindow.
+    static func title(from content: String) -> String {
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
+        if let firstLine = lines.first, firstLine.hasPrefix("# ") {
+            return String(firstLine.dropFirst(2))
+        }
+        let preview = lines.prefix(3).joined(separator: " ")
+        return preview.isEmpty ? "New Note" : preview
+    }
+
     private static let filenameParser: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter
     }()
+}
+
+extension Note: Hashable {
+    static func == (lhs: Note, rhs: Note) -> Bool {
+        lhs.id == rhs.id && lhs.modificationDate == rhs.modificationDate
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(modificationDate)
+    }
 }
