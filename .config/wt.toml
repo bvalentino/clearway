@@ -1,4 +1,3 @@
 [post-start]
 cp_ghostty_submodule = "rm -rf ghostty && cp -r {{ primary_worktree_path }}/ghostty . && echo 'gitdir: {{ primary_worktree_path }}/.git/modules/ghostty' > ghostty/.git"
-cp_wtpad_cli_submodule = "rm -rf wtpad-cli && cp -r {{ primary_worktree_path }}/wtpad-cli . && echo 'gitdir: {{ primary_worktree_path }}/.git/modules/wtpad-cli' > wtpad-cli/.git"
 copy = "wt step copy-ignored"

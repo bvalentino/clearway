@@ -27,7 +27,6 @@ private func hookShellCommand(_ cmd: String) -> String {
 }
 
 private enum SidePanelTab: String, CaseIterable {
-    case wtpad = "wtpad"
     case tasks = "Tasks"
     case notes = "Notes"
 }
@@ -50,7 +49,7 @@ struct ContentView: View {
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
-    @State private var sidePanelTab: SidePanelTab = .wtpad
+    @State private var sidePanelTab: SidePanelTab = .tasks
 
     var body: some View {
         NavigationSplitView {
@@ -85,10 +84,10 @@ struct ContentView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button(action: toggleSideTerminal) {
+                Button(action: toggleAside) {
                     Image(systemName: "sidebar.trailing")
                 }
-                .help(sideVisible ? "Hide side terminal" : "Show side terminal")
+                .help(asideVisible ? "Hide aside" : "Show aside")
                 .disabled(selectedWorktree == nil)
             }
         }
@@ -167,15 +166,12 @@ struct ContentView: View {
             Button("") { showAndFocusPane(\.secondary, isVisible: secondaryVisible, toggle: toggleSecondaryTerminal) }
                 .keyboardShortcut("2", modifiers: .control)
                 .hidden()
-            Button("") { showAndFocusPane(\.side, isVisible: sideVisible, toggle: toggleSideTerminal) }
-                .keyboardShortcut("3", modifiers: .control)
-                .hidden()
 
             // Cmd+Ctrl+N: toggle pane visibility
             Button("") { toggleSecondaryTerminal() }
                 .keyboardShortcut("2", modifiers: [.command, .control])
                 .hidden()
-            Button("") { toggleSideTerminal() }
+            Button("") { toggleAside() }
                 .keyboardShortcut("3", modifiers: [.command, .control])
                 .hidden()
         }
@@ -234,8 +230,8 @@ struct ContentView: View {
         return worktreeManager.worktrees.first(where: { $0.id == id })
     }
 
-    private var sideVisible: Bool {
-        terminalManager.isSideVisible(for: selectedWorktree?.id)
+    private var asideVisible: Bool {
+        terminalManager.isAsideVisible(for: selectedWorktree?.id)
     }
 
     private var secondaryVisible: Bool {
@@ -243,7 +239,7 @@ struct ContentView: View {
     }
 
     private var shouldShowFocusBorder: Bool {
-        settings.showFocusBorder && (sideVisible || secondaryVisible)
+        settings.showFocusBorder && (asideVisible || secondaryVisible)
     }
 
     // MARK: - Pane Focus & Visibility
@@ -269,8 +265,8 @@ struct ContentView: View {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSecondary(for: selectedWorktree?.id) }
     }
 
-    private func toggleSideTerminal() {
-        withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSide(for: selectedWorktree?.id) }
+    private func toggleAside() {
+        withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
     }
 
     // MARK: - Refresh
@@ -359,7 +355,7 @@ struct ContentView: View {
                             }
                         }
 
-                        if sideVisible {
+                        if asideVisible {
                             Divider()
                             VStack(spacing: 0) {
                                 Picker("", selection: $sidePanelTab) {
@@ -374,19 +370,6 @@ struct ContentView: View {
                                 Divider()
 
                                 switch sidePanelTab {
-                                case .wtpad:
-                                    if WtpadBinary.isInPATH {
-                                        FocusableTerminal(
-                                            surfaceView: pane.side,
-                                            badge: "⌃3",
-                                            ctrlHeld: ctrlHeld,
-                                            showBorder: shouldShowFocusBorder
-                                        )
-                                    } else {
-                                        WtpadInstallView {
-                                            TerminalManager.launchWtpad(in: pane.side)
-                                        }
-                                    }
                                 case .tasks:
                                     TasksPanelView()
                                 case .notes:
