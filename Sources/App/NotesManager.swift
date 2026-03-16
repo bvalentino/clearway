@@ -7,6 +7,7 @@ import Foundation
 @MainActor
 class NotesManager: ObservableObject {
     @Published var notes: [Note] = []
+    var dismissedImportPaths: Set<String> = []
 
     private(set) var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
@@ -31,6 +32,7 @@ class NotesManager: ObservableObject {
         guard path != worktreePath else { return }
         stopWatching()
         worktreePath = path
+        dismissedImportPaths.removeAll()
         reload()
         watchDirectory()
     }
