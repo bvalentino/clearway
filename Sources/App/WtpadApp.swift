@@ -113,6 +113,15 @@ struct WtpadApp: App {
             }
         }
 
+        WindowGroup(for: NoteIdentifier.self) { $identifier in
+            if let identifier {
+                NoteWindow(identifier: identifier)
+                    .preferredColorScheme(.dark)
+            }
+        }
+        .defaultSize(width: 500, height: 500)
+        .windowStyle(.titleBar)
+
         Settings {
             SettingsView(settings: settings)
                 .environmentObject(cliInstaller)
