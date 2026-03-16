@@ -5,6 +5,9 @@ import Foundation
 class UserTaskManager: ObservableObject {
     @Published var tasks: [UserTask] = []
 
+    var incompleteTasks: [UserTask] { tasks.filter { $0.status != .completed } }
+    var completedTasks: [UserTask] { tasks.filter { $0.status == .completed } }
+
     private var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
@@ -37,7 +40,7 @@ class UserTaskManager: ObservableObject {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let nextID = (tasks.map(\.id).max() ?? 0) + 1
-        let task = UserTask(id: nextID, subject: trimmed, isCompleted: false)
+        let task = UserTask(id: nextID, subject: trimmed)
         write(task)
         reload()
     }
@@ -51,9 +54,16 @@ class UserTaskManager: ObservableObject {
         reload()
     }
 
-    func toggleComplete(_ task: UserTask) {
+    func cycleStatus(_ task: UserTask) {
+        setStatus(task, to: task.nextStatus)
+    }
+
+    func setStatus(_ task: UserTask, to status: UserTask.Status) {
+        guard task.status != status else { return }
         var updated = task
-        updated.isCompleted.toggle()
+        let crossedSections = (task.status == .completed) != (status == .completed)
+        updated.status = status
+        if crossedSections { updated.statusChangedAt = Date() }
         write(updated)
         reload()
     }
@@ -105,9 +115,12 @@ class UserTaskManager: ObservableObject {
             loaded.append(task)
         }
 
-        // Incomplete tasks by ID (creation order), completed at bottom
-        let incomplete = loaded.filter { !$0.isCompleted }.sorted { $0.id < $1.id }
-        let completed = loaded.filter { $0.isCompleted }.sorted { $0.id < $1.id }
+        // Incomplete: oldest status change first (new tasks at top, recently uncompleted at bottom)
+        // Completed: most recently completed first
+        let incomplete = loaded.filter { $0.status != .completed }
+            .sorted { $0.statusChangedAt < $1.statusChangedAt }
+        let completed = loaded.filter { $0.status == .completed }
+            .sorted { $0.statusChangedAt > $1.statusChangedAt }
         let newTasks = incomplete + completed
         if newTasks != tasks { tasks = newTasks }
     }
