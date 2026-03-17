@@ -26,6 +26,17 @@ private func hookShellCommand(_ cmd: String) -> String {
     return "/bin/sh -c \(shellEscape("(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
 }
 
+/// What the detail pane is showing.
+enum DetailSelection: Hashable {
+    case tickets
+    case worktree(Worktree)
+
+    var worktree: Worktree? {
+        if case .worktree(let wt) = self { return wt }
+        return nil
+    }
+}
+
 private enum SidePanelTab: String, CaseIterable {
     case tasks = "Tasks"
     case notes = "Notes"
@@ -39,7 +50,8 @@ struct ContentView: View {
     @EnvironmentObject private var userTaskManager: UserTaskManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
-    @State private var selectedWorktree: Worktree?
+    @EnvironmentObject private var ticketCoordinator: TicketCoordinator
+    @State private var detailSelection: DetailSelection? = .tickets
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
     @State private var secondaryHeight: CGFloat = 120
@@ -51,10 +63,12 @@ struct ContentView: View {
     @State private var hookSheet: HookSheet?
     @State private var sidePanelTab: SidePanelTab = .tasks
 
+    private var selectedWorktree: Worktree? { detailSelection?.worktree }
+
     var body: some View {
         NavigationSplitView {
             SidebarView(
-                selectedWorktree: $selectedWorktree,
+                detailSelection: $detailSelection,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
@@ -108,8 +122,11 @@ struct ContentView: View {
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
-        .onChange(of: selectedWorktree) { [oldId = selectedWorktree?.id] newWorktree in
-            guard let wt = newWorktree, let app = ghosttyApp.app, wt.id != oldId else { return }
+        .onChange(of: detailSelection) { [old = detailSelection] new in
+            if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
+                terminalManager.activeSurfaceId = nil
+            }
+            guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
@@ -123,12 +140,18 @@ struct ContentView: View {
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
 
-            selectedWorktree = wt
+            detailSelection = .worktree(wt)
+
+            let launchClaude = ghosttyApp.app.flatMap { app in
+                ticketCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
+            }
 
             if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
                let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface) {}
+                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
+            } else {
+                launchClaude?()
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
@@ -138,21 +161,21 @@ struct ContentView: View {
             // Update selection to the refreshed instance so its hash matches
             // the List tag — otherwise the highlight is lost after refresh.
             if let refreshed, refreshed != selected {
-                selectedWorktree = refreshed
+                detailSelection = .worktree(refreshed)
             } else if refreshed == nil {
-                selectedWorktree = newWorktrees.first(where: \.isMain)
+                selectFallback()
             }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
-            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+            selectFallback()
         }
         .background {
             // Cmd+N: switch worktrees (sorted order matches sidebar)
             if !worktreeShortcutsDisabled {
                 ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
-                        selectedWorktree = wt
+                        detailSelection = .worktree(wt)
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
                     .hidden()
@@ -269,6 +292,14 @@ struct ContentView: View {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
     }
 
+    private func selectFallback() {
+        if let main = worktreeManager.worktrees.first(where: \.isMain) {
+            detailSelection = .worktree(main)
+        } else {
+            detailSelection = .tickets
+        }
+    }
+
     // MARK: - Refresh
 
     private func debouncedRefresh() {
@@ -283,18 +314,39 @@ struct ContentView: View {
     private func beginRemoveWorktree(_ worktree: Worktree) {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
+        let doRemove = { [weak worktreeManager, weak ticketCoordinator] in
+            guard let worktreeManager else { return }
+            self.selectFallback()
+            ticketCoordinator?.handleWorktreeRemoved(branch: branch)
+            worktreeManager.removeWorktree(branch: branch)
+        }
+
         if let cmd = worktreeManager.hookCommand(\.beforeRemove, forBranch: branch, worktreePath: worktreePath),
            let app = ghosttyApp.app {
             let surface = Ghostty.SurfaceView(app, workingDirectory: worktreePath, command: hookShellCommand(cmd))
-            let doRemove = { [weak worktreeManager] in
-                guard let worktreeManager else { return }
-                selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                worktreeManager.removeWorktree(branch: branch)
-            }
             hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface, onContinue: doRemove, onForce: doRemove)
         } else {
-            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-            worktreeManager.removeWorktree(branch: branch)
+            doRemove()
+        }
+    }
+
+    // MARK: - Ticket Actions
+
+    private func startTicket(_ ticket: Ticket) {
+        guard let app = ghosttyApp.app else { return }
+        switch ticketCoordinator.startTicket(ticket, app: app) {
+        case .reuse(let wt):
+            detailSelection = .worktree(wt)
+        case .createWorktree(let branch):
+            Task { await worktreeManager.createWorktree(branch: branch) }
+        case .ignored:
+            break
+        }
+    }
+
+    private func openTicketWorktree(_ ticket: Ticket) {
+        if let wt = ticketCoordinator.worktreeForTicket(ticket) {
+            detailSelection = .worktree(wt)
         }
     }
 
@@ -409,18 +461,10 @@ struct ContentView: View {
                     }
                 }
             } else {
-                VStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(wtpadLogo, id: \.self) { line in
-                            Text(line)
-                        }
-                    }
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    Text("Select a worktree")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                TicketListView(
+                    onStart: { startTicket($0) },
+                    onOpen: { openTicketWorktree($0) }
+                )
             }
         }
     }

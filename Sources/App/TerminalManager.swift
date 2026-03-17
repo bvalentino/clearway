@@ -162,6 +162,19 @@ class TerminalManager: ObservableObject {
         return tp
     }
 
+    /// Replace the main surface for a worktree with one running the given command.
+    /// Used to launch Claude Code in a ticket's worktree.
+    func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) {
+        let key = worktree.id
+        guard var pane = panes.removeValue(forKey: key) else { return }
+        let oldSurface = pane.main
+        pane.main = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
+        panes[key] = pane
+        objectWillChange.send()
+        // Close after re-inserting so the closeSurface observer can't match the old surface
+        oldSurface.closeSurface()
+    }
+
     /// Replace a dead surface with a fresh terminal in the same working directory.
     private func replaceSurface(_ deadSurface: Ghostty.SurfaceView) {
         guard let app else { return }

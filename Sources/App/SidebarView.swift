@@ -14,7 +14,7 @@ struct SidebarView: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var projectList: ProjectListManager
     @Environment(\.openWindow) private var openWindow
-    @Binding var selectedWorktree: Worktree?
+    @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
     @State private var activeSheet: SidebarSheet?
@@ -36,9 +36,12 @@ struct SidebarView: View {
         }
     }
 
+    private var selectedWorktree: Worktree? { detailSelection?.worktree }
+
     var body: some View {
-        List(selection: $selectedWorktree) {
+        List(selection: $detailSelection) {
             projectSection
+            ticketsRow
             worktreeSection
         }
         .listStyle(.sidebar)
@@ -149,12 +152,27 @@ struct SidebarView: View {
         }
     }
 
+    private var ticketsRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "ticket")
+                .font(.caption)
+                .foregroundStyle(selectedWorktree == nil ? .blue : .secondary)
+            Text("Tickets")
+                .fontWeight(selectedWorktree == nil ? .semibold : .regular)
+            Spacer()
+        }
+        .padding(.vertical, 2)
+        .listRowBackground(selectedWorktree == nil ? Color.accentColor.opacity(0.15) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { detailSelection = .tickets }
+    }
+
     private var worktreeSection: some View {
         Section {
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
                 WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
-                    .tag(wt)
+                    .tag(DetailSelection.worktree(wt))
                     .opacity(!isOpen ? 0.5 : 1.0)
                     .contextMenu {
                         worktreeContextMenu(wt)
@@ -269,7 +287,9 @@ struct ProjectRow: View {
             Text(URL(fileURLWithPath: path).lastPathComponent)
                 .fontWeight(isActive ? .semibold : .regular)
                 .lineLimit(1)
+            Spacer()
         }
+        .contentShape(Rectangle())
     }
 }
 
