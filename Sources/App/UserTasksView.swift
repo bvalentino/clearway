@@ -6,7 +6,9 @@ struct UserTaskRow: View {
     let task: UserTask
     var isEditing: Bool
     var isSelected: Bool
+    var canSend: Bool
     var onSelect: () -> Void
+    var onSend: () -> Void
     var onEditStart: () -> Void
     var onEditCommit: (String) -> Void
     var onEditCancel: () -> Void
@@ -50,6 +52,10 @@ struct UserTaskRow: View {
                         }
                         lastClickTime = now
                     }
+
+                if task.status != .completed {
+                    SendToTerminalButton(action: onSend, disabled: !canSend)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -63,6 +69,13 @@ struct UserTaskRow: View {
                     Label(status.label, systemImage: status.symbol)
                 }
                 .disabled(task.status == status)
+            }
+            Divider()
+            if task.status != .completed {
+                Button { onSend() } label: {
+                    Label("Send to Terminal", systemImage: "play.fill")
+                }
+                .disabled(!canSend)
             }
             Divider()
             Button(role: .destructive) { onDelete() } label: {
