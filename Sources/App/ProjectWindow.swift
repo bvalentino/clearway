@@ -63,16 +63,26 @@ struct ProjectContentView: View {
     let projectPath: String
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @StateObject private var worktreeManager: WorktreeManager
-    @StateObject private var terminalManager = TerminalManager()
+    @StateObject private var terminalManager: TerminalManager
     @StateObject private var claudeTaskManager = ClaudeTaskManager()
     @StateObject private var userTaskManager = UserTaskManager()
     @StateObject private var notesManager = NotesManager()
     @StateObject private var ticketManager: TicketManager
+    @StateObject private var ticketCoordinator: TicketCoordinator
 
     init(projectPath: String) {
         self.projectPath = projectPath
-        _worktreeManager = StateObject(wrappedValue: WorktreeManager(projectPath: projectPath))
-        _ticketManager = StateObject(wrappedValue: TicketManager(projectPath: projectPath))
+        let wm = WorktreeManager(projectPath: projectPath)
+        let tm = TerminalManager()
+        let ticketMgr = TicketManager(projectPath: projectPath)
+        _worktreeManager = StateObject(wrappedValue: wm)
+        _terminalManager = StateObject(wrappedValue: tm)
+        _ticketManager = StateObject(wrappedValue: ticketMgr)
+        _ticketCoordinator = StateObject(wrappedValue: TicketCoordinator(
+            ticketManager: ticketMgr,
+            terminalManager: tm,
+            worktreeManager: wm
+        ))
     }
 
     var body: some View {
@@ -83,5 +93,6 @@ struct ProjectContentView: View {
             .environmentObject(userTaskManager)
             .environmentObject(notesManager)
             .environmentObject(ticketManager)
+            .environmentObject(ticketCoordinator)
     }
 }

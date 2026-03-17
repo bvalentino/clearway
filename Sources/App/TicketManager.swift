@@ -47,21 +47,17 @@ class TicketManager: ObservableObject {
         var updated = ticket
         updated.updatedAt = Date()
         write(updated)
-        reload()
     }
 
     func setStatus(_ ticket: Ticket, to status: Ticket.Status) {
         guard ticket.status != status else { return }
         var updated = ticket
         updated.status = status
-        updated.updatedAt = Date()
-        write(updated)
-        reload()
+        updateTicket(updated)
     }
 
     func deleteTicket(_ ticket: Ticket) {
         try? FileManager.default.removeItem(atPath: filePath(for: ticket))
-        reload()
     }
 
     // MARK: - Branch Name Derivation
@@ -69,13 +65,18 @@ class TicketManager: ObservableObject {
     /// Derives a git branch name from a ticket title.
     /// Slugifies: lowercase, replace non-alphanumeric with `-`, collapse/trim dashes, cap at 50 chars.
     /// Appends a short UUID suffix on collision.
+    private static let branchSlugCharacters = CharacterSet.lowercaseLetters.union(.decimalDigits)
+
     func deriveBranchName(from title: String, existingBranches: Set<String>) -> String {
-        let allowed = CharacterSet.lowercaseLetters.union(.decimalDigits)
+        let allowed = Self.branchSlugCharacters
         let mapped = title.lowercased().unicodeScalars.map { allowed.contains($0) ? String($0) : "-" }
         let slug = mapped.joined()
             .replacingOccurrences(of: "-{2,}", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         let capped = String(slug.prefix(50))
+        if capped.isEmpty {
+            return "ticket-\(UUID().uuidString.prefix(8).lowercased())"
+        }
         if !existingBranches.contains(capped) { return capped }
         return "\(capped)-\(UUID().uuidString.prefix(8).lowercased())"
     }

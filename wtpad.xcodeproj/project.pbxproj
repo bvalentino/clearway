@@ -17,6 +17,7 @@
 		1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E131E35523E6802F91F45113 /* ShellEnvironment.swift */; };
 		1911F062C0A2E32FD7D4DD27 /* TicketListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD397B7D93EEFD2CA8AF5C9A /* TicketListView.swift */; };
 		23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */; };
+		2A5F1A47F6DFDA4528D945C7 /* TicketCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35399839148C92E7A53FFC87 /* TicketCoordinator.swift */; };
 		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
 		39171E29FE8032B712B9BA1D /* DebugTerminalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15DE76037AB236AE890CDD14 /* DebugTerminalSheet.swift */; };
 		41549514701263E028D48FDD /* ProjectSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E856EBACD95238A075585AB1 /* ProjectSettings.swift */; };
@@ -70,6 +71,7 @@
 		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		2113FFD53E28901F2ED96D47 /* ClaudeTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTaskManager.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
+		35399839148C92E7A53FFC87 /* TicketCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketCoordinator.swift; sourceTree = "<group>"; };
 		4359038C55EA5EAD56BC1D4A /* Note.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Note.swift; sourceTree = "<group>"; };
 		5AB5A8C97B2AF141D8E08761 /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
 		60E16CDBBA828B96A690B3D0 /* TicketDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketDetailView.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				136EBD0E0586F10F432DD0BD /* TasksPanelView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				DC4B0AE3B7884FBB4D04B51E /* Ticket.swift */,
+				35399839148C92E7A53FFC87 /* TicketCoordinator.swift */,
 				60E16CDBBA828B96A690B3D0 /* TicketDetailView.swift */,
 				AD397B7D93EEFD2CA8AF5C9A /* TicketListView.swift */,
 				C8B6A6CB16080F89DB1FA5C6 /* TicketManager.swift */,
@@ -329,6 +332,7 @@
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
 				76540B939A13E1BC77963FF9 /* Ticket.swift in Sources */,
+				2A5F1A47F6DFDA4528D945C7 /* TicketCoordinator.swift in Sources */,
 				CF9765F4C72EB8570D96DFD8 /* TicketDetailView.swift in Sources */,
 				1911F062C0A2E32FD7D4DD27 /* TicketListView.swift in Sources */,
 				655BC4D7C743F8E7856A7846 /* TicketManager.swift in Sources */,

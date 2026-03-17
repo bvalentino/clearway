@@ -26,6 +26,17 @@ private func hookShellCommand(_ cmd: String) -> String {
     return "/bin/sh -c \(shellEscape("(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
 }
 
+/// What the detail pane is showing.
+enum DetailSelection: Hashable {
+    case tickets
+    case worktree(Worktree)
+
+    var worktree: Worktree? {
+        if case .worktree(let wt) = self { return wt }
+        return nil
+    }
+}
+
 private enum SidePanelTab: String, CaseIterable {
     case tasks = "Tasks"
     case notes = "Notes"
@@ -39,8 +50,8 @@ struct ContentView: View {
     @EnvironmentObject private var userTaskManager: UserTaskManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
-    @EnvironmentObject private var ticketManager: TicketManager
-    @State private var selectedWorktree: Worktree?
+    @EnvironmentObject private var ticketCoordinator: TicketCoordinator
+    @State private var detailSelection: DetailSelection? = .tickets
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
     @State private var secondaryHeight: CGFloat = 120
@@ -51,13 +62,13 @@ struct ContentView: View {
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var sidePanelTab: SidePanelTab = .tasks
-    @State private var pendingTicketLaunch: (id: UUID, branch: String)?
-    @State private var childExitedObserver: Any?
+
+    private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
     var body: some View {
         NavigationSplitView {
             SidebarView(
-                selectedWorktree: $selectedWorktree,
+                detailSelection: $detailSelection,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
@@ -111,8 +122,11 @@ struct ContentView: View {
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
-        .onChange(of: selectedWorktree) { [oldId = selectedWorktree?.id] newWorktree in
-            guard let wt = newWorktree, let app = ghosttyApp.app, wt.id != oldId else { return }
+        .onChange(of: detailSelection) { [old = detailSelection] new in
+            if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
+                terminalManager.activeSurfaceId = nil
+            }
+            guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
@@ -126,21 +140,18 @@ struct ContentView: View {
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
 
-            selectedWorktree = wt
+            detailSelection = .worktree(wt)
 
-            let launchClaudeIfNeeded = {
-                guard let pending = pendingTicketLaunch, pending.branch == branch,
-                      let ticket = ticketManager.tickets.first(where: { $0.id == pending.id }) else { return }
-                pendingTicketLaunch = nil
-                launchClaudeCode(for: ticket, in: wt)
+            let launchClaude = ghosttyApp.app.flatMap { app in
+                ticketCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
             }
 
             if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
                let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaudeIfNeeded)
+                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
             } else {
-                launchClaudeIfNeeded()
+                launchClaude?()
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
@@ -150,21 +161,21 @@ struct ContentView: View {
             // Update selection to the refreshed instance so its hash matches
             // the List tag — otherwise the highlight is lost after refresh.
             if let refreshed, refreshed != selected {
-                selectedWorktree = refreshed
+                detailSelection = .worktree(refreshed)
             } else if refreshed == nil {
-                selectedWorktree = newWorktrees.first(where: \.isMain)
+                selectFallback()
             }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
-            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
+            selectFallback()
         }
         .background {
             // Cmd+N: switch worktrees (sorted order matches sidebar)
             if !worktreeShortcutsDisabled {
                 ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
-                        selectedWorktree = wt
+                        detailSelection = .worktree(wt)
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
                     .hidden()
@@ -209,15 +220,6 @@ struct ContentView: View {
                     return event
                 }
             }
-            if childExitedObserver == nil {
-                childExitedObserver = NotificationCenter.default.addObserver(
-                    forName: .ghosttyChildExited,
-                    object: nil,
-                    queue: .main
-                ) { [self] notification in
-                    handleChildExited(notification)
-                }
-            }
         }
         .onDisappear {
             if let observer = becomeActiveObserver {
@@ -227,10 +229,6 @@ struct ContentView: View {
             if let monitor = flagsMonitor {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
-            }
-            if let observer = childExitedObserver {
-                NotificationCenter.default.removeObserver(observer)
-                childExitedObserver = nil
             }
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
@@ -294,6 +292,14 @@ struct ContentView: View {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
     }
 
+    private func selectFallback() {
+        if let main = worktreeManager.worktrees.first(where: \.isMain) {
+            detailSelection = .worktree(main)
+        } else {
+            detailSelection = .tickets
+        }
+    }
+
     // MARK: - Refresh
 
     private func debouncedRefresh() {
@@ -308,69 +314,40 @@ struct ContentView: View {
     private func beginRemoveWorktree(_ worktree: Worktree) {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
+        let doRemove = { [weak worktreeManager, weak ticketCoordinator] in
+            guard let worktreeManager else { return }
+            self.selectFallback()
+            ticketCoordinator?.handleWorktreeRemoved(branch: branch)
+            worktreeManager.removeWorktree(branch: branch)
+        }
+
         if let cmd = worktreeManager.hookCommand(\.beforeRemove, forBranch: branch, worktreePath: worktreePath),
            let app = ghosttyApp.app {
             let surface = Ghostty.SurfaceView(app, workingDirectory: worktreePath, command: hookShellCommand(cmd))
-            let doRemove = { [weak worktreeManager] in
-                guard let worktreeManager else { return }
-                selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-                worktreeManager.removeWorktree(branch: branch)
-            }
             hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface, onContinue: doRemove, onForce: doRemove)
         } else {
-            selectedWorktree = worktreeManager.worktrees.first(where: \.isMain)
-            worktreeManager.removeWorktree(branch: branch)
+            doRemove()
         }
     }
 
-    // MARK: - Tickets
+    // MARK: - Ticket Actions
 
     private func startTicket(_ ticket: Ticket) {
-        guard ticket.status == .open || ticket.status == .stopped else { return }
-
-        if let branch = ticket.worktree,
-           let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
-            // Worktree already exists — reuse it
-            ticketManager.setStatus(ticket, to: .running)
-            selectedWorktree = wt
-            launchClaudeCode(for: ticket, in: wt)
-        } else {
-            // Create new worktree
-            let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
-            let branch = ticket.worktree ?? ticketManager.deriveBranchName(from: ticket.title, existingBranches: existingBranches)
-            var updated = ticket
-            updated.worktree = branch
-            updated.status = .running
-            ticketManager.updateTicket(updated)
-            pendingTicketLaunch = (id: updated.id, branch: branch)
+        guard let app = ghosttyApp.app else { return }
+        switch ticketCoordinator.startTicket(ticket, app: app) {
+        case .reuse(let wt):
+            detailSelection = .worktree(wt)
+        case .createWorktree(let branch):
             Task { await worktreeManager.createWorktree(branch: branch) }
+        case .ignored:
+            break
         }
     }
 
     private func openTicketWorktree(_ ticket: Ticket) {
-        guard let branch = ticket.worktree,
-              let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
-        selectedWorktree = wt
-    }
-
-    private func handleChildExited(_ notification: Notification) {
-        guard let surface = notification.object as? Ghostty.SurfaceView,
-              // Only consider surfaces owned by TerminalManager (not hook surfaces)
-              let worktreeId = terminalManager.worktreeId(for: surface),
-              let pane = terminalManager.pane(forId: worktreeId),
-              pane.main === surface,
-              let wt = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
-              let branch = wt.branch,
-              let ticket = ticketManager.ticket(forWorktree: branch),
-              ticket.status == .running else { return }
-        ticketManager.setStatus(ticket, to: .stopped)
-    }
-
-    private func launchClaudeCode(for ticket: Ticket, in worktree: Worktree) {
-        guard let app = ghosttyApp.app else { return }
-        let ticketPath = ticketManager.filePath(for: ticket)
-        let command = "/bin/sh -c " + shellEscape("claude \"$(cat " + shellEscape(ticketPath) + ")\"")
-        terminalManager.replaceMainSurface(for: worktree, app: app, command: command)
+        if let wt = ticketCoordinator.worktreeForTicket(ticket) {
+            detailSelection = .worktree(wt)
+        }
     }
 
     // MARK: - Detail View

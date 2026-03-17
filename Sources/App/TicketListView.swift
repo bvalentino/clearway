@@ -110,14 +110,14 @@ private struct TicketCard: View {
                 Label("Edit", systemImage: "pencil")
             }
             Divider()
-            if ticket.status == .running || ticket.status == .open {
+            if ticket.status == .started || ticket.status == .open {
                 Button {
                     ticketManager.setStatus(ticket, to: .done)
                 } label: {
                     Label("Mark Done", systemImage: "checkmark.circle")
                 }
             }
-            if ticket.status == .done || ticket.status == .stopped {
+            if ticket.status == .done {
                 Button {
                     ticketManager.setStatus(ticket, to: .open)
                 } label: {
@@ -140,12 +140,8 @@ private struct TicketCard: View {
             Button("Start", action: onStart)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-        case .running:
+        case .started:
             Button("Open", action: onOpen)
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-        case .stopped:
-            Button("Restart", action: onStart)
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
         case .done:
@@ -174,9 +170,8 @@ struct TicketStatusBadge: View {
     private var badgeColor: Color {
         switch status {
         case .open: return .blue
-        case .running: return .green
+        case .started: return .green
         case .done: return .secondary
-        case .stopped: return .orange
         }
     }
 }

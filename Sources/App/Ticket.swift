@@ -13,16 +13,14 @@ struct Ticket: Identifiable, Equatable, Hashable {
 
     enum Status: String, CaseIterable {
         case open
-        case running
+        case started
         case done
-        case stopped
 
         var label: String {
             switch self {
             case .open: return "Open"
-            case .running: return "Running"
+            case .started: return "Started"
             case .done: return "Done"
-            case .stopped: return "Stopped"
             }
         }
     }
@@ -43,9 +41,9 @@ struct Ticket: Identifiable, Equatable, Hashable {
     func serialized() -> String {
         var lines = ["---"]
         lines.append("id: \(id.uuidString)")
-        lines.append("title: \(title.replacingOccurrences(of: "\n", with: " "))")
+        lines.append("title: \(Self.yamlQuote(title))")
         lines.append("status: \(status.rawValue)")
-        lines.append("worktree: \(worktree?.replacingOccurrences(of: "\n", with: "") ?? "null")")
+        lines.append("worktree: \(worktree.map { Self.yamlQuote($0) } ?? "null")")
         lines.append("created_at: \(Self.dateFormatter.string(from: createdAt))")
         lines.append("updated_at: \(Self.dateFormatter.string(from: updatedAt))")
         lines.append("---")
@@ -54,6 +52,17 @@ struct Ticket: Identifiable, Equatable, Hashable {
             lines.append(body)
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Double-quote a string for YAML, escaping backslashes, double quotes, and control characters.
+    private static func yamlQuote(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        return "\"\(escaped)\""
     }
 
     // MARK: - Parsing
@@ -80,8 +89,8 @@ struct Ticket: Identifiable, Equatable, Hashable {
             let line = lines[i]
             guard let colonIndex = line.firstIndex(of: ":") else { continue }
             let key = line[line.startIndex..<colonIndex].trimmingCharacters(in: .whitespaces)
-            let value = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
-            fields[key] = value
+            let raw = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
+            fields[key] = yamlUnquote(raw)
         }
 
         // Required fields
@@ -92,7 +101,8 @@ struct Ticket: Identifiable, Equatable, Hashable {
               let status = Status(rawValue: statusString) else { return nil }
 
         let worktree: String? = {
-            guard let value = fields["worktree"], value != "null" else { return nil }
+            guard let value = fields["worktree"], value != "null", !value.isEmpty else { return nil }
+            guard isValidBranchName(value) else { return nil }
             return value
         }()
 
@@ -115,6 +125,45 @@ struct Ticket: Identifiable, Equatable, Hashable {
         ticket.createdAt = createdAt
         ticket.updatedAt = updatedAt
         return ticket
+    }
+
+    /// Strip YAML double-quote wrapper and unescape sequences (single-pass to avoid ordering bugs).
+    private static func yamlUnquote(_ value: String) -> String {
+        guard value.hasPrefix("\"") && value.hasSuffix("\"") && value.count >= 2 else { return value }
+        let inner = String(value.dropFirst().dropLast())
+        var result = ""
+        var i = inner.startIndex
+        while i < inner.endIndex {
+            if inner[i] == "\\" && inner.index(after: i) < inner.endIndex {
+                let next = inner[inner.index(after: i)]
+                switch next {
+                case "n": result.append("\n")
+                case "r": result.append("\r")
+                case "t": result.append("\t")
+                case "\"": result.append("\"")
+                case "\\": result.append("\\")
+                default: result.append("\\"); result.append(next)
+                }
+                i = inner.index(i, offsetBy: 2)
+            } else {
+                result.append(inner[i])
+                i = inner.index(after: i)
+            }
+        }
+        return result
+    }
+
+    private static let branchNameCharacters = CharacterSet.lowercaseLetters
+        .union(.uppercaseLetters)
+        .union(.decimalDigits)
+        .union(CharacterSet(charactersIn: "-_/."))
+
+    /// Validates a worktree branch name contains only safe characters.
+    private static func isValidBranchName(_ name: String) -> Bool {
+        !name.isEmpty
+            && name.unicodeScalars.allSatisfy { branchNameCharacters.contains($0) }
+            && !name.contains("..")
+            && !name.hasPrefix("/")
     }
 
     // MARK: - Date Formatting

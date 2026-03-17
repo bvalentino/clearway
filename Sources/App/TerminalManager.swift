@@ -42,11 +42,6 @@ class TerminalManager: ObservableObject {
         return panes[id]
     }
 
-    /// Look up a pane by worktree ID without creating one.
-    func pane(forId worktreeId: String) -> TerminalPane? {
-        panes[worktreeId]
-    }
-
     init() {
         TerminalManager.allInstances.add(self)
 
@@ -106,7 +101,7 @@ class TerminalManager: ObservableObject {
     }
 
     /// Find the worktree ID that owns the given surface.
-    func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
+    private func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
         panes.first(where: { _, pane in
             pane.main === surface || pane.secondary === surface
         })?.key
