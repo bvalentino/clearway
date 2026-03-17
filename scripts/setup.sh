@@ -34,6 +34,17 @@ if ! command -v xcodegen &> /dev/null; then
     exit 1
 fi
 
+echo "==> Creating BuildInfo placeholder..."
+BUILDINFO="$PROJECT_DIR/Sources/App/BuildInfo.generated.swift"
+if [ ! -f "$BUILDINFO" ]; then
+    cat > "$BUILDINFO" <<'SWIFT'
+// Auto-generated at build time — do not edit.
+enum BuildInfo {
+    static let commit = "unknown"
+}
+SWIFT
+fi
+
 echo "==> Generating Xcode project..."
 xcodegen generate
 
