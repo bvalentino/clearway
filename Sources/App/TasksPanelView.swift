@@ -9,6 +9,7 @@ struct TasksPanelView: View {
     @State private var newTaskGeneration = 0
     @State private var selectedTask: TaskSelection?
     @State private var taskPendingDeletion: UserTask?
+    @FocusState private var isListFocused: Bool
 
     enum TaskSelection: Hashable {
         case user(Int)
@@ -59,12 +60,17 @@ struct TasksPanelView: View {
                         ForEach(claudeTaskManager.sessions) { session in
                             ClaudeSessionSection(
                                 session: session,
-                                selectedTask: $selectedTask
+                                selectedTaskId: selectedClaudeTaskId(for: session.id),
+                                onSelect: { task in
+                                    selectTask(.claude(sessionId: session.id, taskId: task.id))
+                                }
                             )
                         }
                     }
                     .padding()
                 }
+                .focusable()
+                .focused($isListFocused)
                 .onCopyCommand {
                     guard let text = selectedTaskSubject else { return [] }
                     return [NSItemProvider(object: text as NSString)]
@@ -105,10 +111,16 @@ struct TasksPanelView: View {
         }
     }
 
-    private func selectUserTask(_ task: UserTask) {
-        selectedTask = .user(task.id)
+    private func selectedClaudeTaskId(for sessionId: String) -> String? {
+        if case .claude(sessionId, let taskId) = selectedTask { return taskId }
+        return nil
+    }
+
+    private func selectTask(_ selection: TaskSelection) {
+        selectedTask = selection
         isCreatingNew = false
         editingTaskId = nil
+        DispatchQueue.main.async { isListFocused = true }
     }
 
     private func userTaskRow(_ task: UserTask) -> some View {
@@ -116,7 +128,7 @@ struct TasksPanelView: View {
             task: task,
             isEditing: editingTaskId == task.id,
             isSelected: selectedTask == .user(task.id),
-            onSelect: { selectUserTask(task) },
+            onSelect: { selectTask(.user(task.id)) },
             onEditStart: { editingTaskId = task.id },
             onEditCommit: { subject in
                 saveEdit(task: task, subject: subject)
@@ -168,7 +180,8 @@ struct TasksPanelView: View {
 /// A group of Claude Code tasks from a single session.
 private struct ClaudeSessionSection: View {
     let session: ClaudeSession
-    @Binding var selectedTask: TasksPanelView.TaskSelection?
+    var selectedTaskId: String?
+    var onSelect: (ClaudeTask) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -183,8 +196,8 @@ private struct ClaudeSessionSection: View {
             ForEach(session.tasks) { task in
                 ClaudeTaskRow(
                     task: task,
-                    isSelected: selectedTask == .claude(sessionId: session.id, taskId: task.id),
-                    onSelect: { selectedTask = .claude(sessionId: session.id, taskId: task.id) }
+                    isSelected: selectedTaskId == task.id,
+                    onSelect: { onSelect(task) }
                 )
             }
         }
