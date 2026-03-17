@@ -1,9 +1,27 @@
 import SwiftUI
 
+/// Inline play button that sends a task to the active terminal.
+struct SendToTerminalButton: View {
+    var action: () -> Void
+    var disabled: Bool = false
+
+    var body: some View {
+        Button { action() } label: {
+            Image(systemName: "play.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("Send to Terminal")
+        .disabled(disabled)
+    }
+}
+
 /// Combines user tasks and Claude Code tasks into a single panel.
 struct TasksPanelView: View {
     @EnvironmentObject private var claudeTaskManager: ClaudeTaskManager
     @EnvironmentObject private var userTaskManager: UserTaskManager
+    @EnvironmentObject private var terminalManager: TerminalManager
     @State private var editingTaskId: Int?
     @State private var isCreatingNew = false
     @State private var newTaskGeneration = 0
@@ -18,6 +36,10 @@ struct TasksPanelView: View {
 
     private var isEmpty: Bool {
         userTaskManager.tasks.isEmpty && !isCreatingNew && claudeTaskManager.sessions.isEmpty
+    }
+
+    private var canSend: Bool {
+        terminalManager.activePane != nil
     }
 
     var body: some View {
@@ -61,8 +83,12 @@ struct TasksPanelView: View {
                             ClaudeSessionSection(
                                 session: session,
                                 selectedTaskId: selectedClaudeTaskId(for: session.id),
+                                canSend: canSend,
                                 onSelect: { task in
                                     selectTask(.claude(sessionId: session.id, taskId: task.id))
+                                },
+                                onSend: { task in
+                                    sendToTerminal(task.subject)
                                 }
                             )
                         }
@@ -128,7 +154,9 @@ struct TasksPanelView: View {
             task: task,
             isEditing: editingTaskId == task.id,
             isSelected: selectedTask == .user(task.id),
+            canSend: canSend,
             onSelect: { selectTask(.user(task.id)) },
+            onSend: { sendUserTaskToTerminal(task) },
             onEditStart: { editingTaskId = task.id },
             onEditCommit: { subject in
                 saveEdit(task: task, subject: subject)
@@ -161,6 +189,19 @@ struct TasksPanelView: View {
         startCreating()
     }
 
+    private func sendToTerminal(_ text: String) {
+        guard let surface = terminalManager.activePane?.main else { return }
+        surface.sendCommand(text)
+        surface.window?.makeFirstResponder(surface)
+    }
+
+    private func sendUserTaskToTerminal(_ task: UserTask) {
+        sendToTerminal(task.subject)
+        if task.status == .pending {
+            userTaskManager.setStatus(task, to: .inProgress)
+        }
+    }
+
     private var createButton: some View {
         Button {
             startCreating()
@@ -181,7 +222,9 @@ struct TasksPanelView: View {
 private struct ClaudeSessionSection: View {
     let session: ClaudeSession
     var selectedTaskId: String?
+    var canSend: Bool
     var onSelect: (ClaudeTask) -> Void
+    var onSend: (ClaudeTask) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -197,7 +240,9 @@ private struct ClaudeSessionSection: View {
                 ClaudeTaskRow(
                     task: task,
                     isSelected: selectedTaskId == task.id,
-                    onSelect: { onSelect(task) }
+                    canSend: canSend,
+                    onSelect: { onSelect(task) },
+                    onSend: { onSend(task) }
                 )
             }
         }
@@ -208,7 +253,9 @@ private struct ClaudeSessionSection: View {
 private struct ClaudeTaskRow: View {
     let task: ClaudeTask
     var isSelected: Bool
+    var canSend: Bool
     var onSelect: () -> Void
+    var onSend: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -223,11 +270,23 @@ private struct ClaudeTaskRow: View {
                 .strikethrough(task.status == .completed)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if task.status != .completed {
+                SendToTerminalButton(action: onSend, disabled: !canSend)
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(isSelected ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
+        .contextMenu {
+            if task.status != .completed {
+                Button { onSend() } label: {
+                    Label("Send to Terminal", systemImage: "play.fill")
+                }
+                .disabled(!canSend)
+            }
+        }
     }
 }
