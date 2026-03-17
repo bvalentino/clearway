@@ -67,10 +67,12 @@ struct ProjectContentView: View {
     @StateObject private var claudeTaskManager = ClaudeTaskManager()
     @StateObject private var userTaskManager = UserTaskManager()
     @StateObject private var notesManager = NotesManager()
+    @StateObject private var ticketManager: TicketManager
 
     init(projectPath: String) {
         self.projectPath = projectPath
         _worktreeManager = StateObject(wrappedValue: WorktreeManager(projectPath: projectPath))
+        _ticketManager = StateObject(wrappedValue: TicketManager(projectPath: projectPath))
     }
 
     var body: some View {
@@ -80,5 +82,6 @@ struct ProjectContentView: View {
             .environmentObject(claudeTaskManager)
             .environmentObject(userTaskManager)
             .environmentObject(notesManager)
+            .environmentObject(ticketManager)
     }
 }

@@ -39,6 +39,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selectedWorktree) {
             projectSection
+            ticketsRow
             worktreeSection
         }
         .listStyle(.sidebar)
@@ -147,6 +148,20 @@ struct SidebarView: View {
                 .padding(.trailing, 6)
             }
         }
+    }
+
+    private var ticketsRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "ticket")
+                .font(.caption)
+                .foregroundStyle(selectedWorktree == nil ? .blue : .secondary)
+            Text("Tickets")
+                .fontWeight(selectedWorktree == nil ? .semibold : .regular)
+        }
+        .padding(.vertical, 2)
+        .listRowBackground(selectedWorktree == nil ? Color.accentColor.opacity(0.15) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedWorktree = nil }
     }
 
     private var worktreeSection: some View {
