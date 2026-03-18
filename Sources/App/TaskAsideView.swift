@@ -107,13 +107,15 @@ struct TaskAsideView: View {
 
                 Spacer()
 
-                Button {
-                    onMarkDone?(task)
-                } label: {
-                    Label("Mark Done", systemImage: "checkmark.circle")
+                if task.status != .done {
+                    Button {
+                        onMarkDone?(task)
+                    } label: {
+                        Label("Mark Done", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
     }
