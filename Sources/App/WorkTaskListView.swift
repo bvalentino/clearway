@@ -5,6 +5,7 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     var onStart: (WorkTask) -> Void
     var onOpen: (WorkTask) -> Void
+    var onContinue: ((WorkTask) -> Void)?
 
     @State private var editingTask: WorkTask?
 
@@ -18,7 +19,11 @@ struct WorkTaskListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $editingTask) { task in
-            WorkTaskDetailView(task: task)
+            WorkTaskDetailView(
+                task: task,
+                onStart: { onStart($0) },
+                onContinue: { onContinue?($0) }
+            )
         }
     }
 
@@ -46,7 +51,8 @@ struct WorkTaskListView: View {
                         task: task,
                         onEdit: { editingTask = task },
                         onStart: { onStart(task) },
-                        onOpen: { onOpen(task) }
+                        onOpen: { onOpen(task) },
+                        onContinue: { onContinue?(task) }
                     )
                 }
             }
@@ -78,6 +84,7 @@ private struct WorkTaskCard: View {
     var onEdit: () -> Void
     var onStart: () -> Void
     var onOpen: () -> Void
+    var onContinue: () -> Void
     @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
@@ -88,9 +95,22 @@ private struct WorkTaskCard: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                WorkTaskStatusBadge(status: task.status)
+                HStack(spacing: 6) {
+                    WorkTaskStatusBadge(status: task.status)
 
-                if !task.body.isEmpty {
+                    if let tokens = task.totalTokens {
+                        Text("\(WorkTask.formatTokenCount(tokens)) tokens")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                if task.status == .stopped, let error = task.errorMessage {
+                    Text(error.components(separatedBy: "\n").first ?? error)
+                        .font(.caption)
+                        .foregroundStyle(.red.opacity(0.8))
+                        .lineLimit(1)
+                } else if !task.body.isEmpty {
                     Text(task.body.prefix(120))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -110,14 +130,14 @@ private struct WorkTaskCard: View {
                 Label("Edit", systemImage: "pencil")
             }
             Divider()
-            if task.status == .started || task.status == .open {
+            if task.status == .started || task.status == .open || task.status == .stopped {
                 Button {
                     workTaskManager.setStatus(task, to: .done)
                 } label: {
                     Label("Mark Done", systemImage: "checkmark.circle")
                 }
             }
-            if task.status == .done {
+            if task.status == .done || task.status == .stopped {
                 Button {
                     workTaskManager.setStatus(task, to: .open)
                 } label: {
@@ -145,9 +165,20 @@ private struct WorkTaskCard: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
         case .done:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
-                .foregroundStyle(.green)
+            if task.worktree != nil {
+                Button("Continue", action: onContinue)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+            }
+        case .stopped:
+            Button("Restart", action: onStart)
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .controlSize(.regular)
         }
     }
 }
@@ -156,15 +187,27 @@ private struct WorkTaskCard: View {
 
 struct WorkTaskStatusBadge: View {
     let status: WorkTask.Status
+    @State private var pulsing = false
 
     var body: some View {
-        Text(status.label)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .foregroundStyle(badgeColor)
-            .background(badgeColor.opacity(0.12), in: Capsule())
+        HStack(spacing: 4) {
+            if status == .started {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(pulsing ? 1.3 : 1.0)
+                    .opacity(pulsing ? 0.6 : 1.0)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulsing)
+                    .onAppear { pulsing = true }
+            }
+            Text(status.label)
+        }
+        .font(.caption2)
+        .fontWeight(.medium)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .foregroundStyle(badgeColor)
+        .background(badgeColor.opacity(0.12), in: Capsule())
     }
 
     private var badgeColor: Color {
@@ -172,6 +215,7 @@ struct WorkTaskStatusBadge: View {
         case .open: return .blue
         case .started: return .green
         case .done: return .secondary
+        case .stopped: return .orange
         }
     }
 }

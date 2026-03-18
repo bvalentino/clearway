@@ -1,17 +1,23 @@
 import SwiftUI
 
 /// A sheet for editing a task's title and markdown body.
+/// Shows agent status, token usage, error messages, and Continue/Restart actions.
 struct WorkTaskDetailView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @Environment(\.dismiss) private var dismiss
 
     let task: WorkTask
+    var onStart: ((WorkTask) -> Void)?
+    var onContinue: ((WorkTask) -> Void)?
+
     @State private var title: String
     @State private var bodyText: String
     @State private var pendingSave: DispatchWorkItem?
 
-    init(task: WorkTask) {
+    init(task: WorkTask, onStart: ((WorkTask) -> Void)? = nil, onContinue: ((WorkTask) -> Void)? = nil) {
         self.task = task
+        self.onStart = onStart
+        self.onContinue = onContinue
         _title = State(initialValue: task.title)
         _bodyText = State(initialValue: task.body)
     }
@@ -30,6 +36,11 @@ struct WorkTaskDetailView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+
+            // Agent metadata bar
+            if currentTask.status != .open {
+                agentMetadataBar
+            }
 
             Divider()
 
@@ -62,6 +73,74 @@ struct WorkTaskDetailView: View {
             saveNow()
         }
     }
+
+    // MARK: - Agent Metadata
+
+    private var agentMetadataBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                // Token usage
+                if let input = currentTask.inputTokens, let output = currentTask.outputTokens {
+                    Label {
+                        Text("\(WorkTask.formatTokenCount(input)) in / \(WorkTask.formatTokenCount(output)) out")
+                    } icon: {
+                        Image(systemName: "gauge.with.dots.needle.bottom.50percent")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                // Attempt count
+                if let attempt = currentTask.attempt, attempt > 0 {
+                    Label("Attempt \(attempt + 1)", systemImage: "arrow.counterclockwise")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // Action buttons
+                if currentTask.status == .stopped {
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            onStart?(currentTask)
+                        }
+                    } label: {
+                        Label("Restart", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .controlSize(.small)
+                }
+
+                if currentTask.status == .done, currentTask.worktree != nil {
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            onContinue?(currentTask)
+                        }
+                    } label: {
+                        Label("Continue", systemImage: "play")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
+            // Error message
+            if let error = currentTask.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Helpers
 
     /// The latest version of this task from the manager.
     private var currentTask: WorkTask {
