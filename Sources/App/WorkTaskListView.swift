@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The project home — a dispatch board showing all tasks.
+/// The project home — a backlog showing tasks that need shaping or haven't started.
+/// Started/stopped/done tasks live in their worktree's aside panel.
 struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     var onStart: (WorkTask) -> Void
@@ -9,9 +10,23 @@ struct WorkTaskListView: View {
 
     @State private var editingTask: WorkTask?
 
+    /// Only open tasks appear in the backlog — once started, tasks live in worktrees.
+    private var backlogTasks: [WorkTask] {
+        workTaskManager.tasks.filter { $0.status == .open }
+    }
+
+    /// Count of tasks that have been dispatched to worktrees.
+    private var activeTaskCount: Int {
+        workTaskManager.tasks.filter { $0.status != .open }.count
+    }
+
+    private var activeTaskLabel: String {
+        "\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s") in worktrees"
+    }
+
     var body: some View {
         Group {
-            if workTaskManager.tasks.isEmpty {
+            if backlogTasks.isEmpty {
                 emptyState
             } else {
                 taskList
@@ -32,9 +47,14 @@ struct WorkTaskListView: View {
             Image(systemName: "ticket")
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
-            Text("No tasks yet")
+            Text(activeTaskCount > 0 ? "Backlog is empty" : "No tasks yet")
                 .font(.title3)
                 .foregroundStyle(.secondary)
+            if activeTaskCount > 0 {
+                Text(activeTaskLabel)
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
             Button("New Task") {
                 createAndEdit()
             }
@@ -46,7 +66,7 @@ struct WorkTaskListView: View {
     private var taskList: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(workTaskManager.tasks) { task in
+                ForEach(backlogTasks) { task in
                     WorkTaskCard(
                         task: task,
                         onEdit: { editingTask = task },
@@ -54,6 +74,13 @@ struct WorkTaskListView: View {
                         onOpen: { onOpen(task) },
                         onContinue: { onContinue?(task) }
                     )
+                }
+
+                if activeTaskCount > 0 {
+                    Text(activeTaskLabel)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 4)
                 }
             }
             .padding(20)

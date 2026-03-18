@@ -38,6 +38,7 @@ enum DetailSelection: Hashable {
 }
 
 private enum SidePanelTab: String, CaseIterable {
+    case task = "Task"
     case todos = "Todos"
     case notes = "Notes"
 }
@@ -50,6 +51,7 @@ struct ContentView: View {
     @EnvironmentObject private var todoManager: TodoManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
@@ -161,6 +163,16 @@ struct ContentView: View {
             claudeTodoManager.setWorktreePath(wt.path)
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
+
+            // Auto-select Task tab when navigating to a worktree with an active task,
+            // or fall back to Todos if the new worktree has no task
+            if let branch = wt.branch,
+               let task = workTaskManager.task(forWorktree: branch),
+               task.status == .started {
+                sidePanelTab = .task
+            } else if sidePanelTab == .task {
+                sidePanelTab = .todos
+            }
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -200,6 +212,11 @@ struct ContentView: View {
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
+        .onChange(of: currentWorktreeHasTask) { hasTask in
+            if !hasTask && sidePanelTab == .task {
+                sidePanelTab = .todos
+            }
+        }
         .background {
             // Cmd+N: switch worktrees (sorted order matches sidebar)
             if !worktreeShortcutsDisabled {
@@ -232,6 +249,13 @@ struct ContentView: View {
             claudeTodoManager.setWorktreePath(selectedWorktree?.path)
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
+
+            // Mirror onChange(of: detailSelection) auto-select — onChange doesn't fire for initial value
+            if let branch = selectedWorktree?.branch,
+               let task = workTaskManager.task(forWorktree: branch),
+               task.status == .started {
+                sidePanelTab = .task
+            }
             if becomeActiveObserver == nil {
                 becomeActiveObserver = NotificationCenter.default.addObserver(
                     forName: NSApplication.didBecomeActiveNotification,
@@ -285,6 +309,20 @@ struct ContentView: View {
 
     private var asideVisible: Bool {
         terminalManager.isAsideVisible(for: selectedWorktree?.id)
+    }
+
+    /// Whether the current worktree has a linked task.
+    private var currentWorktreeHasTask: Bool {
+        guard let branch = selectedWorktree?.branch else { return false }
+        return workTaskManager.task(forWorktree: branch) != nil
+    }
+
+    /// Tabs available for the current worktree — hides Task when no task is linked.
+    private var availableSidePanelTabs: [SidePanelTab] {
+        if currentWorktreeHasTask {
+            return SidePanelTab.allCases
+        }
+        return SidePanelTab.allCases.filter { $0 != .task }
     }
 
     private var secondaryVisible: Bool {
@@ -460,7 +498,7 @@ struct ContentView: View {
                             Divider()
                             VStack(spacing: 0) {
                                 Picker("", selection: $sidePanelTab) {
-                                    ForEach(SidePanelTab.allCases, id: \.self) { tab in
+                                    ForEach(availableSidePanelTabs, id: \.self) { tab in
                                         Text(tab.rawValue).tag(tab)
                                     }
                                 }
@@ -471,6 +509,15 @@ struct ContentView: View {
                                 Divider()
 
                                 switch sidePanelTab {
+                                case .task:
+                                    if let branch = selectedWorktree?.branch {
+                                        TaskAsideView(
+                                            worktreeBranch: branch,
+                                            onContinue: { continueWorkTask($0) },
+                                            onRestart: { startWorkTask($0) },
+                                            onMarkDone: { workTaskManager.setStatus($0, to: .done) }
+                                        )
+                                    }
                                 case .todos:
                                     TodosPanelView()
                                 case .notes:

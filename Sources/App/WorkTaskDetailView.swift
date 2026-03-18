@@ -79,23 +79,7 @@ struct WorkTaskDetailView: View {
     private var agentMetadataBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                // Token usage
-                if let input = currentTask.inputTokens, let output = currentTask.outputTokens {
-                    Label {
-                        Text("\(WorkTask.formatTokenCount(input)) in / \(WorkTask.formatTokenCount(output)) out")
-                    } icon: {
-                        Image(systemName: "gauge.with.dots.needle.bottom.50percent")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                // Attempt count
-                if let attempt = currentTask.attempt, attempt > 0 {
-                    Label("Attempt \(attempt + 1)", systemImage: "arrow.counterclockwise")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                WorkTaskAgentMetadata(task: currentTask)
 
                 Spacer()
 
@@ -126,14 +110,6 @@ struct WorkTaskDetailView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
-            }
-
-            // Error message
-            if let error = currentTask.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red.opacity(0.8))
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.horizontal, 20)

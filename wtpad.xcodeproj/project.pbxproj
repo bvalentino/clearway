@@ -19,6 +19,7 @@
 		23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */; };
 		241D1F1059AE3B7173B40331 /* WorkTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F77888A98CCCBD8410D24DF /* WorkTaskManager.swift */; };
 		2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DB14A8F11663E0841091A1 /* SidebarView.swift */; };
+		35577956CB81F2B26FA10C2B /* WorkTaskAgentMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893BD3DE59D6666BD3578039 /* WorkTaskAgentMetadata.swift */; };
 		39171E29FE8032B712B9BA1D /* DebugTerminalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15DE76037AB236AE890CDD14 /* DebugTerminalSheet.swift */; };
 		401F80E401628A50B236E785 /* WorkTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75CC59B538970C35DC86285 /* WorkTaskCoordinator.swift */; };
 		41549514701263E028D48FDD /* ProjectSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E856EBACD95238A075585AB1 /* ProjectSettings.swift */; };
@@ -29,6 +30,7 @@
 		6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */; };
 		71FA07133B87E4AF06939917 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18B91B5ED14C6B98525B5661 /* Assets.xcassets */; };
 		76B89E0A4E21109E261A57CE /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3465CE0A00F274998269952 /* TodoManager.swift */; };
+		7F5CE153D5A069E2CE03BBC9 /* TaskAsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BFDEDA81A419890B341BF3D /* TaskAsideView.swift */; };
 		867D913ADBC95EB54AC9C885 /* WorkflowConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181B7E4592F231B8B75683F7 /* WorkflowConfig.swift */; };
 		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
 		8E4CBD869B2673C48B42F463 /* WorkTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3C7A6965537B8316465C21 /* WorkTask.swift */; };
@@ -74,6 +76,7 @@
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
+		2BFDEDA81A419890B341BF3D /* TaskAsideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAsideView.swift; sourceTree = "<group>"; };
 		2D3C7A6965537B8316465C21 /* WorkTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTask.swift; sourceTree = "<group>"; };
 		34966E7F83FD3AA781DD252B /* WorkTaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskDetailView.swift; sourceTree = "<group>"; };
 		4359038C55EA5EAD56BC1D4A /* Note.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Note.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 		74342FC29C8E7A6F4789668D /* ClaudeTodoManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodoManager.swift; sourceTree = "<group>"; };
 		7741B9A5C7263C21519C58A7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
+		893BD3DE59D6666BD3578039 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
 		8ABA3DD709EEBE0CD906DE99 /* ClaudeTodo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodo.swift; sourceTree = "<group>"; };
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -164,6 +168,7 @@
 				7741B9A5C7263C21519C58A7 /* SettingsView.swift */,
 				E131E35523E6802F91F45113 /* ShellEnvironment.swift */,
 				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
+				2BFDEDA81A419890B341BF3D /* TaskAsideView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				F5F78047833258F697B4FC40 /* Todo.swift */,
 				F3465CE0A00F274998269952 /* TodoManager.swift */,
@@ -171,6 +176,7 @@
 				F5F5DC308A9728BBB89AFD24 /* TodosView.swift */,
 				181B7E4592F231B8B75683F7 /* WorkflowConfig.swift */,
 				2D3C7A6965537B8316465C21 /* WorkTask.swift */,
+				893BD3DE59D6666BD3578039 /* WorkTaskAgentMetadata.swift */,
 				F75CC59B538970C35DC86285 /* WorkTaskCoordinator.swift */,
 				34966E7F83FD3AA781DD252B /* WorkTaskDetailView.swift */,
 				AAED3D48ED0D3C7B46CC2CDC /* WorkTaskListView.swift */,
@@ -335,6 +341,7 @@
 				0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */,
 				1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */,
 				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
+				7F5CE153D5A069E2CE03BBC9 /* TaskAsideView.swift in Sources */,
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
 				D84AA5A85BFD598DCAC3967E /* Todo.swift in Sources */,
@@ -342,6 +349,7 @@
 				A220EE830CEEABF22E542949 /* TodosPanelView.swift in Sources */,
 				C0E35BDFE5BD15C58381DBBB /* TodosView.swift in Sources */,
 				8E4CBD869B2673C48B42F463 /* WorkTask.swift in Sources */,
+				35577956CB81F2B26FA10C2B /* WorkTaskAgentMetadata.swift in Sources */,
 				401F80E401628A50B236E785 /* WorkTaskCoordinator.swift in Sources */,
 				B506C968297848C109A779D4 /* WorkTaskDetailView.swift in Sources */,
 				1F7BC03D85A09D98E801B6D9 /* WorkTaskListView.swift in Sources */,
