@@ -11,6 +11,7 @@ class ClaudeTodoManager: ObservableObject {
     private var worktreePath: String?
     private var watcherSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
+    private var pendingPolls: [DispatchWorkItem] = []
     private var needsWatcherRebuild = false
 
     private static let claudeDir: String = {
@@ -19,6 +20,7 @@ class ClaudeTodoManager: ObservableObject {
 
     nonisolated deinit {
         pendingReload?.cancel()
+        for poll in pendingPolls { poll.cancel() }
         for source in watcherSources { source.cancel() }
     }
 
@@ -200,6 +202,8 @@ class ClaudeTodoManager: ObservableObject {
     private func watchTodoDirectories() {
         for source in watcherSources { source.cancel() }
         watcherSources = []
+        for poll in pendingPolls { poll.cancel() }
+        pendingPolls = []
 
         guard let worktreePath else { return }
 
@@ -232,6 +236,12 @@ class ClaudeTodoManager: ObservableObject {
                 self?.scheduleReload(rebuildWatchers: false)
             } {
                 watcherSources.append(source)
+            } else {
+                // Tasks directory doesn't exist yet — poll until it appears
+                // so we pick it up when Claude creates it.
+                pollForDirectory(path: tasksDir) { [weak self] in
+                    self?.scheduleReload(rebuildWatchers: true)
+                }
             }
         }
     }
@@ -256,6 +266,30 @@ class ClaudeTodoManager: ObservableObject {
             self.pendingReload = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
+    }
+
+    /// Checks for a directory's existence every 2 seconds, up to 5 times.
+    /// Calls `handler` once when the directory appears, then stops.
+    /// Poll work items are tracked in `pendingPolls` so they can be cancelled
+    /// when watchers are rebuilt.
+    private nonisolated func pollForDirectory(
+        path: String,
+        attempt: Int = 0,
+        handler: @escaping () -> Void
+    ) {
+        guard attempt < 5 else { return }
+        let work = DispatchWorkItem { [weak self] in
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                handler()
+            } else {
+                self?.pollForDirectory(path: path, attempt: attempt + 1, handler: handler)
+            }
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.pendingPolls.append(work)
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0, execute: work)
     }
 
     nonisolated static func makeWatcher(
