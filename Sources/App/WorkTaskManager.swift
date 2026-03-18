@@ -1,21 +1,21 @@
 import Foundation
 
-/// Manages tickets persisted as markdown files in `.wtpad/tickets/`.
+/// Manages tasks persisted as markdown files in `.wtpad/tasks/`.
 ///
-/// Unlike `UserTaskManager` (per-worktree), this is project-scoped — it always
+/// Unlike `TodoManager` (per-worktree), this is project-scoped — it always
 /// reads/writes from the project root (main worktree path).
 @MainActor
-class TicketManager: ObservableObject {
-    @Published var tickets: [Ticket] = []
+class WorkTaskManager: ObservableObject {
+    @Published var tasks: [WorkTask] = []
 
     let projectPath: String
-    let ticketsDirectory: String
+    let tasksDirectory: String
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
 
     init(projectPath: String) {
         self.projectPath = projectPath
-        self.ticketsDirectory = (projectPath as NSString).appendingPathComponent(".wtpad/tickets")
+        self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".wtpad/tasks")
         reload()
         watchDirectory()
     }
@@ -27,42 +27,42 @@ class TicketManager: ObservableObject {
 
     // MARK: - Lookups
 
-    func ticket(forWorktree branch: String) -> Ticket? {
-        tickets.first { $0.worktree == branch }
+    func task(forWorktree branch: String) -> WorkTask? {
+        tasks.first { $0.worktree == branch }
     }
 
     // MARK: - CRUD
 
     @discardableResult
-    func createTicket(title: String) -> Ticket? {
+    func createTask(title: String) -> WorkTask? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let ticket = Ticket(title: trimmed)
-        write(ticket)
+        let task = WorkTask(title: trimmed)
+        write(task)
         reload()
-        return tickets.first { $0.id == ticket.id }
+        return tasks.first { $0.id == task.id }
     }
 
-    func updateTicket(_ ticket: Ticket) {
-        var updated = ticket
+    func updateTask(_ task: WorkTask) {
+        var updated = task
         updated.updatedAt = Date()
         write(updated)
     }
 
-    func setStatus(_ ticket: Ticket, to status: Ticket.Status) {
-        guard ticket.status != status else { return }
-        var updated = ticket
+    func setStatus(_ task: WorkTask, to status: WorkTask.Status) {
+        guard task.status != status else { return }
+        var updated = task
         updated.status = status
-        updateTicket(updated)
+        updateTask(updated)
     }
 
-    func deleteTicket(_ ticket: Ticket) {
-        try? FileManager.default.removeItem(atPath: filePath(for: ticket))
+    func deleteTask(_ task: WorkTask) {
+        try? FileManager.default.removeItem(atPath: filePath(for: task))
     }
 
     // MARK: - Branch Name Derivation
 
-    /// Derives a git branch name from a ticket title.
+    /// Derives a git branch name from a task title.
     /// Slugifies: lowercase, replace non-alphanumeric with `-`, collapse/trim dashes, cap at 50 chars.
     /// Appends a short UUID suffix on collision.
     private static let branchSlugCharacters = CharacterSet.lowercaseLetters.union(.decimalDigits)
@@ -75,7 +75,7 @@ class TicketManager: ObservableObject {
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         let capped = String(slug.prefix(50))
         if capped.isEmpty {
-            return "ticket-\(UUID().uuidString.prefix(8).lowercased())"
+            return "task-\(UUID().uuidString.prefix(8).lowercased())"
         }
         if !existingBranches.contains(capped) { return capped }
         return "\(capped)-\(UUID().uuidString.prefix(8).lowercased())"
@@ -83,39 +83,39 @@ class TicketManager: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Returns the file path for a ticket's markdown file.
-    func filePath(for ticket: Ticket) -> String {
-        (ticketsDirectory as NSString).appendingPathComponent("\(ticket.id.uuidString).md")
+    /// Returns the file path for a task's markdown file.
+    func filePath(for task: WorkTask) -> String {
+        (tasksDirectory as NSString).appendingPathComponent("\(task.id.uuidString).md")
     }
 
-    private func write(_ ticket: Ticket) {
+    private func write(_ task: WorkTask) {
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: ticketsDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let path = filePath(for: ticket)
-        guard let data = ticket.serialized().data(using: .utf8) else { return }
+        try? fm.createDirectory(atPath: tasksDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let path = filePath(for: task)
+        guard let data = task.serialized().data(using: .utf8) else { return }
         fm.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
         if watcherSource == nil { watchDirectory() }
     }
 
     private func reload() {
         let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(atPath: ticketsDirectory) else {
-            tickets = []
+        guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else {
+            tasks = []
             return
         }
 
-        var loaded: [Ticket] = []
+        var loaded: [WorkTask] = []
         for file in files where file.hasSuffix(".md") && UUID(uuidString: (file as NSString).deletingPathExtension) != nil {
-            let path = (ticketsDirectory as NSString).appendingPathComponent(file)
+            let path = (tasksDirectory as NSString).appendingPathComponent(file)
             guard let data = fm.contents(atPath: path),
                   let content = String(data: data, encoding: .utf8),
-                  let ticket = Ticket.parse(from: content) else { continue }
-            loaded.append(ticket)
+                  let task = WorkTask.parse(from: content) else { continue }
+            loaded.append(task)
         }
 
         // Newest first
         let sorted = loaded.sorted { $0.createdAt > $1.createdAt }
-        if sorted != tickets { tickets = sorted }
+        if sorted != tasks { tasks = sorted }
     }
 
     // MARK: - File Watching
@@ -124,9 +124,9 @@ class TicketManager: ObservableObject {
         watcherSource?.cancel()
         watcherSource = nil
 
-        guard FileManager.default.fileExists(atPath: ticketsDirectory) else { return }
+        guard FileManager.default.fileExists(atPath: tasksDirectory) else { return }
 
-        let fd = open(ticketsDirectory, O_EVTONLY)
+        let fd = open(tasksDirectory, O_EVTONLY)
         guard fd >= 0 else { return }
 
         let source = DispatchSource.makeFileSystemObjectSource(

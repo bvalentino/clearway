@@ -64,22 +64,22 @@ struct ProjectContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @StateObject private var worktreeManager: WorktreeManager
     @StateObject private var terminalManager: TerminalManager
-    @StateObject private var claudeTaskManager = ClaudeTaskManager()
-    @StateObject private var userTaskManager = UserTaskManager()
+    @StateObject private var claudeTodoManager = ClaudeTodoManager()
+    @StateObject private var todoManager = TodoManager()
     @StateObject private var notesManager = NotesManager()
-    @StateObject private var ticketManager: TicketManager
-    @StateObject private var ticketCoordinator: TicketCoordinator
+    @StateObject private var workTaskManager: WorkTaskManager
+    @StateObject private var workTaskCoordinator: WorkTaskCoordinator
 
     init(projectPath: String) {
         self.projectPath = projectPath
         let wm = WorktreeManager(projectPath: projectPath)
         let tm = TerminalManager()
-        let ticketMgr = TicketManager(projectPath: projectPath)
+        let taskMgr = WorkTaskManager(projectPath: projectPath)
         _worktreeManager = StateObject(wrappedValue: wm)
         _terminalManager = StateObject(wrappedValue: tm)
-        _ticketManager = StateObject(wrappedValue: ticketMgr)
-        _ticketCoordinator = StateObject(wrappedValue: TicketCoordinator(
-            ticketManager: ticketMgr,
+        _workTaskManager = StateObject(wrappedValue: taskMgr)
+        _workTaskCoordinator = StateObject(wrappedValue: WorkTaskCoordinator(
+            workTaskManager: taskMgr,
             terminalManager: tm,
             worktreeManager: wm
         ))
@@ -89,10 +89,10 @@ struct ProjectContentView: View {
         ContentView()
             .environmentObject(worktreeManager)
             .environmentObject(terminalManager)
-            .environmentObject(claudeTaskManager)
-            .environmentObject(userTaskManager)
+            .environmentObject(claudeTodoManager)
+            .environmentObject(todoManager)
             .environmentObject(notesManager)
-            .environmentObject(ticketManager)
-            .environmentObject(ticketCoordinator)
+            .environmentObject(workTaskManager)
+            .environmentObject(workTaskCoordinator)
     }
 }

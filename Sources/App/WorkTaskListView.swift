@@ -1,24 +1,24 @@
 import SwiftUI
 
-/// The project home — a dispatch board showing all tickets.
-struct TicketListView: View {
-    @EnvironmentObject private var ticketManager: TicketManager
-    var onStart: (Ticket) -> Void
-    var onOpen: (Ticket) -> Void
+/// The project home — a dispatch board showing all tasks.
+struct WorkTaskListView: View {
+    @EnvironmentObject private var workTaskManager: WorkTaskManager
+    var onStart: (WorkTask) -> Void
+    var onOpen: (WorkTask) -> Void
 
-    @State private var editingTicket: Ticket?
+    @State private var editingTask: WorkTask?
 
     var body: some View {
         Group {
-            if ticketManager.tickets.isEmpty {
+            if workTaskManager.tasks.isEmpty {
                 emptyState
             } else {
-                ticketList
+                taskList
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $editingTicket) { ticket in
-            TicketDetailView(ticket: ticket)
+        .sheet(item: $editingTask) { task in
+            WorkTaskDetailView(task: task)
         }
     }
 
@@ -27,10 +27,10 @@ struct TicketListView: View {
             Image(systemName: "ticket")
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
-            Text("No tickets yet")
+            Text("No tasks yet")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Button("New Ticket") {
+            Button("New Task") {
                 createAndEdit()
             }
             .buttonStyle(.borderedProminent)
@@ -38,15 +38,15 @@ struct TicketListView: View {
         }
     }
 
-    private var ticketList: some View {
+    private var taskList: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(ticketManager.tickets) { ticket in
-                    TicketCard(
-                        ticket: ticket,
-                        onEdit: { editingTicket = ticket },
-                        onStart: { onStart(ticket) },
-                        onOpen: { onOpen(ticket) }
+                ForEach(workTaskManager.tasks) { task in
+                    WorkTaskCard(
+                        task: task,
+                        onEdit: { editingTask = task },
+                        onStart: { onStart(task) },
+                        onOpen: { onOpen(task) }
                     )
                 }
             }
@@ -59,39 +59,39 @@ struct TicketListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("New Ticket")
+                .help("New Task")
             }
         }
     }
 
     private func createAndEdit() {
-        if let ticket = ticketManager.createTicket(title: "New Ticket") {
-            editingTicket = ticket
+        if let task = workTaskManager.createTask(title: "New Task") {
+            editingTask = task
         }
     }
 }
 
-// MARK: - Ticket Card
+// MARK: - Task Card
 
-private struct TicketCard: View {
-    let ticket: Ticket
+private struct WorkTaskCard: View {
+    let task: WorkTask
     var onEdit: () -> Void
     var onStart: () -> Void
     var onOpen: () -> Void
-    @EnvironmentObject private var ticketManager: TicketManager
+    @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(ticket.title)
+                Text(task.title)
                     .font(.headline)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                TicketStatusBadge(status: ticket.status)
+                WorkTaskStatusBadge(status: task.status)
 
-                if !ticket.body.isEmpty {
-                    Text(ticket.body.prefix(120))
+                if !task.body.isEmpty {
+                    Text(task.body.prefix(120))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -110,23 +110,23 @@ private struct TicketCard: View {
                 Label("Edit", systemImage: "pencil")
             }
             Divider()
-            if ticket.status == .started || ticket.status == .open {
+            if task.status == .started || task.status == .open {
                 Button {
-                    ticketManager.setStatus(ticket, to: .done)
+                    workTaskManager.setStatus(task, to: .done)
                 } label: {
                     Label("Mark Done", systemImage: "checkmark.circle")
                 }
             }
-            if ticket.status == .done {
+            if task.status == .done {
                 Button {
-                    ticketManager.setStatus(ticket, to: .open)
+                    workTaskManager.setStatus(task, to: .open)
                 } label: {
                     Label("Reopen", systemImage: "arrow.uturn.backward")
                 }
             }
             Divider()
             Button(role: .destructive) {
-                ticketManager.deleteTicket(ticket)
+                workTaskManager.deleteTask(task)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -135,7 +135,7 @@ private struct TicketCard: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        switch ticket.status {
+        switch task.status {
         case .open:
             Button("Start", action: onStart)
                 .buttonStyle(.borderedProminent)
@@ -154,8 +154,8 @@ private struct TicketCard: View {
 
 // MARK: - Status Badge
 
-struct TicketStatusBadge: View {
-    let status: Ticket.Status
+struct WorkTaskStatusBadge: View {
+    let status: WorkTask.Status
 
     var body: some View {
         Text(status.label)

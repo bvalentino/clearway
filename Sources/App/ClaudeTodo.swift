@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// A task created by Claude Code, parsed from `~/.claude/tasks/<session>/<id>.json`.
-struct ClaudeTask: Codable, Identifiable {
+/// A todo created by Claude Code, parsed from `~/.claude/tasks/<session>/<id>.json`.
+struct ClaudeTodo: Codable, Identifiable {
     let id: String
     let subject: String
     let description: String
@@ -33,9 +33,9 @@ struct ClaudeTask: Codable, Identifiable {
     }
 }
 
-/// A group of tasks from a single Claude Code session.
+/// A group of todos from a single Claude Code session.
 struct ClaudeSession: Codable, Identifiable {
     let id: String // session UUID
-    let tasks: [ClaudeTask]
+    let todos: [ClaudeTodo]
     let modificationDate: Date
 }
