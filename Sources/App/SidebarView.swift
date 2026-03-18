@@ -377,12 +377,14 @@ struct CreateWorktreeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var branchName = ""
     @State private var baseBranch = ""
+    @State private var fetchBeforeCreate = true
     @State private var isCreating = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("New Worktree")
                 .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             TextField("Branch name", text: $branchName)
                 .textFieldStyle(.roundedBorder)
@@ -392,10 +394,13 @@ struct CreateWorktreeSheet: View {
                 }
                 .disabled(isCreating)
 
-            TextField("Base branch (optional)", text: $baseBranch)
+            TextField("Base branch (new branches only)", text: $baseBranch)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isCreating)
                 .opacity(isCreating ? 0.5 : 1.0)
+
+            Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
+                .disabled(isCreating)
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -407,9 +412,14 @@ struct CreateWorktreeSheet: View {
                     Task {
                         await worktreeManager.createWorktree(
                             branch: branchName,
-                            base: baseBranch.isEmpty ? nil : baseBranch
+                            base: baseBranch.isEmpty ? nil : baseBranch,
+                            fetch: fetchBeforeCreate
                         )
-                        dismiss()
+                        if worktreeManager.error == nil {
+                            dismiss()
+                        } else {
+                            isCreating = false
+                        }
                     }
                 } label: {
                     if isCreating {
