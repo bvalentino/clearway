@@ -35,9 +35,12 @@ class WorkTaskCoordinator: ObservableObject {
     private let terminalManager: TerminalManager
     private let worktreeManager: WorktreeManager
 
-    /// Lazily loaded workflow config — reloaded on each agent launch.
-    private var workflowConfig: WorkflowConfig?
+    /// Live-reloaded workflow config — watched for changes on disk.
+    @Published private(set) var workflowConfig: WorkflowConfig?
 
+    private var isWatching = false
+    private var watcherSource: DispatchSourceFileSystemObject?
+    private var pendingReload: DispatchWorkItem?
     private var exitObserver: Any?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
@@ -56,10 +59,76 @@ class WorkTaskCoordinator: ObservableObject {
         }
     }
 
-    deinit {
+    nonisolated deinit {
+        pendingReload?.cancel()
+        watcherSource?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    // MARK: - WORKFLOW.md Watching
+
+    /// Start watching WORKFLOW.md for the current project.
+    func startWatching() {
+        guard !isWatching else { return }
+        isWatching = true
+        reloadWorkflowConfig()
+        watchWorkflowFile()
+    }
+
+    private var workflowFilePath: String {
+        (workTaskManager.projectPath as NSString).appendingPathComponent("WORKFLOW.md")
+    }
+
+    private func watchWorkflowFile() {
+        watcherSource?.cancel()
+        watcherSource = nil
+
+        let filePath = workflowFilePath
+        let fd = open(filePath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            let data = source.data
+            let needsRewatch = data.contains(.delete) || data.contains(.rename)
+            self?.scheduleReload(rewatch: needsRewatch)
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        watcherSource = source
+    }
+
+    private nonisolated func scheduleReload(rewatch: Bool = false) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingReload?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.reloadWorkflowConfig()
+                if rewatch {
+                    self.watchWorkflowFile()
+                }
+            }
+            self.pendingReload = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+    }
+
+    private func reloadWorkflowConfig() {
+        guard FileManager.default.fileExists(atPath: workflowFilePath) else {
+            workflowConfig = nil
+            return
+        }
+        if let config = WorkflowConfig.load(projectPath: workTaskManager.projectPath) {
+            workflowConfig = config
+        }
+        // File exists but parse failed — keep last-known-good config
     }
 
     // MARK: - Actions
@@ -76,8 +145,6 @@ class WorkTaskCoordinator: ObservableObject {
 
     func startTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
         guard task.status == .open || task.status == .stopped else { return .ignored }
-
-        workflowConfig = WorkflowConfig.load(projectPath: workTaskManager.projectPath)
 
         // Check trust before executing any hooks
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
@@ -118,8 +185,6 @@ class WorkTaskCoordinator: ObservableObject {
     func continueTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
         guard task.status == .done, let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
-
-        workflowConfig = WorkflowConfig.load(projectPath: workTaskManager.projectPath)
 
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
             return .needsTrust(config)
@@ -185,9 +250,7 @@ class WorkTaskCoordinator: ObservableObject {
     /// Returns the WORKFLOW.md after_create hook command if it exists,
     /// to take precedence over ProjectSettings hooks.
     func workflowAfterCreateHook() -> String? {
-        // Use cached config if available (loaded by startTask), otherwise load fresh
-        let config = workflowConfig ?? WorkflowConfig.load(projectPath: workTaskManager.projectPath)
-        return config?.hooksAfterCreate
+        workflowConfig?.hooksAfterCreate
     }
 
     // MARK: - Agent Launch

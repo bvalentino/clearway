@@ -99,6 +99,8 @@ struct ProjectContentView: View {
                 terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in
                     workTaskCoordinator?.isAgentSurface(surface) ?? false
                 }
+                // Start watching WORKFLOW.md for live config reload
+                workTaskCoordinator.startWatching()
             }
     }
 }
