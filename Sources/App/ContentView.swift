@@ -62,6 +62,8 @@ struct ContentView: View {
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var sidePanelTab: SidePanelTab = .todos
+    @State private var showTrustConfirmation = false
+    @State private var pendingTrustAction: (() -> Void)?
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
@@ -120,6 +122,31 @@ struct ContentView: View {
         } message: {
             Text("This will delete the worktree and its working directory.")
         }
+        .confirmationDialog(
+            "Trust WORKFLOW.md hooks?",
+            isPresented: $showTrustConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Trust & Continue") {
+                workTaskCoordinator.approveTrust()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    pendingTrustAction?()
+                    pendingTrustAction = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingTrustAction = nil
+            }
+        } message: {
+            Text("This project's WORKFLOW.md configures hooks that will run shell commands. Review the file before approving.")
+        }
+        .onChange(of: workTaskCoordinator.pendingAfterRunHook?.id) { _ in
+            guard let hook = workTaskCoordinator.pendingAfterRunHook,
+                  let app = ghosttyApp.app else { return }
+            workTaskCoordinator.pendingAfterRunHook = nil
+            let surface = Ghostty.SurfaceView(app, workingDirectory: hook.worktreePath, command: hookShellCommand(hook.command))
+            hookSheet = HookSheet(title: "After run", command: hook.command, surface: surface, onContinue: {})
+        }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
@@ -146,8 +173,11 @@ struct ContentView: View {
                 workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
             }
 
-            if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
-               let app = ghosttyApp.app {
+            // WORKFLOW.md after_create takes precedence over ProjectSettings
+            let afterCreateCmd = workTaskCoordinator.workflowAfterCreateHook()
+                ?? worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
+
+            if let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
                 hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
             } else {
@@ -334,11 +364,30 @@ struct ContentView: View {
 
     private func startWorkTask(_ task: WorkTask) {
         guard let app = ghosttyApp.app else { return }
-        switch workTaskCoordinator.startTask(task, app: app) {
+        handleStartResult(workTaskCoordinator.startTask(task, app: app)) { startWorkTask(task) }
+    }
+
+    private func continueWorkTask(_ task: WorkTask) {
+        guard let app = ghosttyApp.app else { return }
+        handleStartResult(workTaskCoordinator.continueTask(task, app: app)) { continueWorkTask(task) }
+    }
+
+    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, retryAction: (() -> Void)? = nil) {
+        guard let app = ghosttyApp.app else { return }
+        switch result {
         case .reuse(let wt):
             detailSelection = .worktree(wt)
         case .createWorktree(let branch):
             Task { await worktreeManager.createWorktree(branch: branch) }
+        case .beforeRunHook(let hookCmd, let wt, let onSuccess):
+            let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(hookCmd))
+            hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
+                onSuccess()
+                detailSelection = .worktree(wt)
+            })
+        case .needsTrust:
+            pendingTrustAction = retryAction
+            showTrustConfirmation = true
         case .ignored:
             break
         }
@@ -463,7 +512,8 @@ struct ContentView: View {
             } else {
                 WorkTaskListView(
                     onStart: { startWorkTask($0) },
-                    onOpen: { openTaskWorktree($0) }
+                    onOpen: { openTaskWorktree($0) },
+                    onContinue: { continueWorkTask($0) }
                 )
             }
         }

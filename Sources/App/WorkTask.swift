@@ -11,18 +11,31 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var updatedAt: Date
     var body: String
 
+    var attempt: Int?
+    var errorMessage: String?
+    var inputTokens: Int?
+    var outputTokens: Int?
+
     enum Status: String, CaseIterable {
         case open
         case started
         case done
+        case stopped
 
         var label: String {
             switch self {
             case .open: return "Open"
             case .started: return "Started"
             case .done: return "Done"
+            case .stopped: return "Stopped"
             }
         }
+    }
+
+    /// Combined token count, or nil if no usage data.
+    var totalTokens: Int? {
+        guard inputTokens != nil || outputTokens != nil else { return nil }
+        return (inputTokens ?? 0) + (outputTokens ?? 0)
     }
 
     init(id: UUID = UUID(), title: String, status: Status = .open, worktree: String? = nil, body: String = "") {
@@ -46,6 +59,10 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         lines.append("worktree: \(worktree.map { Self.yamlQuote($0) } ?? "null")")
         lines.append("created_at: \(Self.dateFormatter.string(from: createdAt))")
         lines.append("updated_at: \(Self.dateFormatter.string(from: updatedAt))")
+        if let attempt { lines.append("attempt: \(attempt)") }
+        if let errorMessage { lines.append("error_message: \(Self.yamlQuote(errorMessage))") }
+        if let inputTokens { lines.append("input_tokens: \(inputTokens)") }
+        if let outputTokens { lines.append("output_tokens: \(outputTokens)") }
         lines.append("---")
         if !body.isEmpty {
             lines.append("")
@@ -124,6 +141,10 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
         task.updatedAt = updatedAt
+        task.attempt = fields["attempt"].flatMap { Int($0) }
+        task.errorMessage = fields["error_message"]
+        task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
+        task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
         return task
     }
 
@@ -164,6 +185,18 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             && name.unicodeScalars.allSatisfy { branchNameCharacters.contains($0) }
             && !name.contains("..")
             && !name.hasPrefix("/")
+    }
+
+    // MARK: - Formatting
+
+    /// Format a token count as abbreviated string (e.g., "12.3k", "1.2M").
+    static func formatTokenCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            return String(format: "%.1fM", Double(count) / 1_000_000)
+        } else if count >= 1_000 {
+            return String(format: "%.1fk", Double(count) / 1_000)
+        }
+        return "\(count)"
     }
 
     // MARK: - Date Formatting

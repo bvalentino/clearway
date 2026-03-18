@@ -10,6 +10,7 @@
 		038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */; };
 		06290FABECDDC7A371F4E628 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D100CF5E5C8418A0ADBF27 /* HookTerminalView.swift */; };
 		08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */; };
+		0B9091EB48260DE404DE1BEA /* AgentSessionObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1936F71E657CC9141E7FEF6 /* AgentSessionObserver.swift */; };
 		0DB5C85ACC622C3F3F209F80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741B9A5C7263C21519C58A7 /* SettingsView.swift */; };
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
@@ -28,6 +29,7 @@
 		6744BCB5CCC089545779D11B /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */; };
 		71FA07133B87E4AF06939917 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 18B91B5ED14C6B98525B5661 /* Assets.xcassets */; };
 		76B89E0A4E21109E261A57CE /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3465CE0A00F274998269952 /* TodoManager.swift */; };
+		867D913ADBC95EB54AC9C885 /* WorkflowConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181B7E4592F231B8B75683F7 /* WorkflowConfig.swift */; };
 		8E10EBB29C81C5636D6CD9D1 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70F735E00E89E5639B51D00 /* WorktreeTests.swift */; };
 		8E4CBD869B2673C48B42F463 /* WorkTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3C7A6965537B8316465C21 /* WorkTask.swift */; };
 		8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */; };
@@ -66,6 +68,7 @@
 		0DF450431D96F5EDA07F9E06 /* NotesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesManager.swift; sourceTree = "<group>"; };
 		0F77888A98CCCBD8410D24DF /* WorkTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskManager.swift; sourceTree = "<group>"; };
 		15DE76037AB236AE890CDD14 /* DebugTerminalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTerminalSheet.swift; sourceTree = "<group>"; };
+		181B7E4592F231B8B75683F7 /* WorkflowConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowConfig.swift; sourceTree = "<group>"; };
 		18B91B5ED14C6B98525B5661 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1AFBDB7EEC91459D545D14AE /* TodosPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosPanelView.swift; sourceTree = "<group>"; };
 		1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
@@ -85,6 +88,7 @@
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		AAED3D48ED0D3C7B46CC2CDC /* WorkTaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskListView.swift; sourceTree = "<group>"; };
+		B1936F71E657CC9141E7FEF6 /* AgentSessionObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionObserver.swift; sourceTree = "<group>"; };
 		B25C7DC00406541512BE8A5D /* wtpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wtpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEA490BA81E9C08450AB5D65 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BFF966D4C3D8EB19743FA633 /* wtpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = wtpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -141,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */,
+				B1936F71E657CC9141E7FEF6 /* AgentSessionObserver.swift */,
 				D987FD45FB41C6E0CAE64074 /* BuildInfo.generated.swift */,
 				8ABA3DD709EEBE0CD906DE99 /* ClaudeTodo.swift */,
 				74342FC29C8E7A6F4789668D /* ClaudeTodoManager.swift */,
@@ -164,6 +169,7 @@
 				F3465CE0A00F274998269952 /* TodoManager.swift */,
 				1AFBDB7EEC91459D545D14AE /* TodosPanelView.swift */,
 				F5F5DC308A9728BBB89AFD24 /* TodosView.swift */,
+				181B7E4592F231B8B75683F7 /* WorkflowConfig.swift */,
 				2D3C7A6965537B8316465C21 /* WorkTask.swift */,
 				F75CC59B538970C35DC86285 /* WorkTaskCoordinator.swift */,
 				34966E7F83FD3AA781DD252B /* WorkTaskDetailView.swift */,
@@ -306,6 +312,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ADCDD4D541E164756DC0253A /* AboutView.swift in Sources */,
+				0B9091EB48260DE404DE1BEA /* AgentSessionObserver.swift in Sources */,
 				08E2567ECF29BA1F754A6A24 /* BuildInfo.generated.swift in Sources */,
 				9229595CD2D8DA028BCE03AB /* ClaudeTodo.swift in Sources */,
 				5A13E8839F4CB341BCE2B212 /* ClaudeTodoManager.swift in Sources */,
@@ -339,6 +346,7 @@
 				B506C968297848C109A779D4 /* WorkTaskDetailView.swift in Sources */,
 				1F7BC03D85A09D98E801B6D9 /* WorkTaskListView.swift in Sources */,
 				241D1F1059AE3B7173B40331 /* WorkTaskManager.swift in Sources */,
+				867D913ADBC95EB54AC9C885 /* WorkflowConfig.swift in Sources */,
 				9A69DEA980E9D156F0F038B2 /* Worktree.swift in Sources */,
 				47C4022ECD8251D0E2D34B4B /* WtpadApp.swift in Sources */,
 			);

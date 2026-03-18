@@ -187,6 +187,14 @@ class ClaudeTodoManager: ObservableObject {
             .replacingOccurrences(of: ".", with: "-")
     }
 
+    /// Returns the Claude Code projects directory for a given worktree path.
+    static func projectDir(forWorktreePath path: String) -> String {
+        let encoded = encodePathForClaude(path)
+        return (claudeDir as NSString)
+            .appendingPathComponent("projects")
+            .appending("/\(encoded)")
+    }
+
     // MARK: - File Watching
 
     private func watchTodoDirectories() {
@@ -250,7 +258,7 @@ class ClaudeTodoManager: ObservableObject {
         }
     }
 
-    private nonisolated static func makeWatcher(
+    nonisolated static func makeWatcher(
         path: String,
         handler: @escaping () -> Void
     ) -> DispatchSourceFileSystemObject? {

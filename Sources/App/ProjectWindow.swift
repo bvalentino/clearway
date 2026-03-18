@@ -94,5 +94,11 @@ struct ProjectContentView: View {
             .environmentObject(notesManager)
             .environmentObject(workTaskManager)
             .environmentObject(workTaskCoordinator)
+            .onAppear {
+                // Wire up agent surface check so TerminalManager skips auto-restart for agent surfaces
+                terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in
+                    workTaskCoordinator?.isAgentSurface(surface) ?? false
+                }
+            }
     }
 }

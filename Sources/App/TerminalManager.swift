@@ -164,20 +164,32 @@ class TerminalManager: ObservableObject {
 
     /// Replace the main surface for a worktree with one running the given command.
     /// Used to launch Claude Code in a task's worktree.
-    func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) {
+    /// Returns the new surface.
+    @discardableResult
+    func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) -> Ghostty.SurfaceView {
         let key = worktree.id
-        guard var pane = panes.removeValue(forKey: key) else { return }
-        let oldSurface = pane.main
-        pane.main = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
-        panes[key] = pane
-        objectWillChange.send()
-        // Close after re-inserting so the closeSurface observer can't match the old surface
-        oldSurface.closeSurface()
+        let newSurface = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
+        if var pane = panes.removeValue(forKey: key) {
+            let oldSurface = pane.main
+            pane.main = newSurface
+            panes[key] = pane
+            objectWillChange.send()
+            // Close after re-inserting so the closeSurface observer can't match the old surface
+            oldSurface.closeSurface()
+        }
+        return newSurface
     }
+
+    /// Surfaces that should not be auto-restarted when they exit.
+    /// Set by WorkTaskCoordinator for agent command surfaces.
+    var skipAutoRestart: ((Ghostty.SurfaceView) -> Bool)?
 
     /// Replace a dead surface with a fresh terminal in the same working directory.
     private func replaceSurface(_ deadSurface: Ghostty.SurfaceView) {
         guard let app else { return }
+
+        // Don't auto-restart agent surfaces
+        if let skip = skipAutoRestart, skip(deadSurface) { return }
 
         for (key, pane) in panes {
             let slot: WritableKeyPath<TerminalPane, Ghostty.SurfaceView>
