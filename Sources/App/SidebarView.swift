@@ -13,6 +13,7 @@ struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var projectList: ProjectListManager
+    @EnvironmentObject private var workTaskManager: WorkTaskManager
     @Environment(\.openWindow) private var openWindow
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
@@ -171,7 +172,7 @@ struct SidebarView: View {
         Section {
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), taskStatus: wt.branch.flatMap { workTaskManager.task(forWorktree: $0)?.status }, shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
                     .tag(DetailSelection.worktree(wt))
                     .opacity(!isOpen ? 0.5 : 1.0)
                     .contextMenu {
@@ -299,7 +300,10 @@ struct WorktreeRow: View {
     let worktree: Worktree
     var subtitle: String? = nil
     var hasNotification: Bool = false
+    var taskStatus: WorkTask.Status? = nil
     var shortcutIndex: Int? = nil
+
+    @State private var pulsing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -312,6 +316,9 @@ struct WorktreeRow: View {
                 Text(worktree.displayName)
                     .lineLimit(1)
                 Spacer()
+                if let taskStatus {
+                    taskStatusIndicator(taskStatus)
+                }
                 if hasNotification {
                     Circle()
                         .fill(.blue)
@@ -333,6 +340,33 @@ struct WorktreeRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func taskStatusIndicator(_ status: WorkTask.Status) -> some View {
+        switch status {
+        case .started:
+            Circle()
+                .fill(.green)
+                .frame(width: 7, height: 7)
+                .scaleEffect(pulsing ? 1.3 : 1.0)
+                .opacity(pulsing ? 0.6 : 1.0)
+                .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulsing)
+                .onAppear { pulsing = true }
+                .help("Task running")
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+                .help("Task done")
+        case .stopped:
+            Circle()
+                .fill(.orange)
+                .frame(width: 7, height: 7)
+                .help("Task stopped")
+        case .open:
+            EmptyView()
+        }
     }
 }
 
