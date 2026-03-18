@@ -114,7 +114,6 @@ struct TaskAsideView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(task.status == .started)
             }
         }
     }
