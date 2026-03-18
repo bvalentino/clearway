@@ -163,7 +163,7 @@ class TerminalManager: ObservableObject {
     }
 
     /// Replace the main surface for a worktree with one running the given command.
-    /// Used to launch Claude Code in a ticket's worktree.
+    /// Used to launch Claude Code in a task's worktree.
     func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) {
         let key = worktree.id
         guard var pane = panes.removeValue(forKey: key) else { return }

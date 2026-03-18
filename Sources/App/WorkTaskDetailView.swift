@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// A sheet for editing a ticket's title and markdown body.
-struct TicketDetailView: View {
-    @EnvironmentObject private var ticketManager: TicketManager
+/// A sheet for editing a task's title and markdown body.
+struct WorkTaskDetailView: View {
+    @EnvironmentObject private var workTaskManager: WorkTaskManager
     @Environment(\.dismiss) private var dismiss
 
-    let ticket: Ticket
+    let task: WorkTask
     @State private var title: String
     @State private var bodyText: String
     @State private var pendingSave: DispatchWorkItem?
 
-    init(ticket: Ticket) {
-        self.ticket = ticket
-        _title = State(initialValue: ticket.title)
-        _bodyText = State(initialValue: ticket.body)
+    init(task: WorkTask) {
+        self.task = task
+        _title = State(initialValue: task.title)
+        _bodyText = State(initialValue: task.body)
     }
 
     var body: some View {
@@ -26,7 +26,7 @@ struct TicketDetailView: View {
 
                 Spacer()
 
-                TicketStatusBadge(status: currentTicket.status)
+                WorkTaskStatusBadge(status: currentTask.status)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
@@ -46,7 +46,7 @@ struct TicketDetailView: View {
             }
             ToolbarItem(placement: .destructiveAction) {
                 Button(role: .destructive) {
-                    ticketManager.deleteTicket(currentTicket)
+                    workTaskManager.deleteTask(currentTask)
                     dismiss()
                 } label: {
                     Image(systemName: "trash")
@@ -56,16 +56,16 @@ struct TicketDetailView: View {
         .onChange(of: title) { _ in scheduleSave() }
         .onChange(of: bodyText) { _ in scheduleSave() }
         .onDisappear {
-            // Flush any pending save — guard against deleted ticket
+            // Flush any pending save — guard against deleted task
             pendingSave?.cancel()
-            guard ticketManager.tickets.contains(where: { $0.id == ticket.id }) else { return }
+            guard workTaskManager.tasks.contains(where: { $0.id == task.id }) else { return }
             saveNow()
         }
     }
 
-    /// The latest version of this ticket from the manager.
-    private var currentTicket: Ticket {
-        ticketManager.tickets.first { $0.id == ticket.id } ?? ticket
+    /// The latest version of this task from the manager.
+    private var currentTask: WorkTask {
+        workTaskManager.tasks.first { $0.id == task.id } ?? task
     }
 
     private func scheduleSave() {
@@ -76,9 +76,9 @@ struct TicketDetailView: View {
     }
 
     private func saveNow() {
-        var updated = currentTicket
+        var updated = currentTask
         updated.title = title
         updated.body = bodyText
-        ticketManager.updateTicket(updated)
+        workTaskManager.updateTask(updated)
     }
 }

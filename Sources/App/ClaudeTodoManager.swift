@@ -1,11 +1,11 @@
 import Foundation
 
-/// Reads Claude Code tasks for a given worktree path from `~/.claude/`.
+/// Reads Claude Code todos for a given worktree path from `~/.claude/`.
 ///
 /// Session UUIDs are discovered from `~/.claude/projects/<encoded-path>/`
-/// and their tasks are read from `~/.claude/tasks/<uuid>/`.
+/// and their todos are read from `~/.claude/tasks/<uuid>/`.
 @MainActor
-class ClaudeTaskManager: ObservableObject {
+class ClaudeTodoManager: ObservableObject {
     @Published var sessions: [ClaudeSession] = []
 
     private var worktreePath: String?
@@ -27,7 +27,7 @@ class ClaudeTaskManager: ObservableObject {
         stopWatching()
         worktreePath = path
         reload()
-        watchTaskDirectories()
+        watchTodoDirectories()
     }
 
     func stopWatching() {
@@ -81,19 +81,19 @@ class ClaudeTaskManager: ObservableObject {
                 .appendingPathComponent("tasks")
                 .appending("/\(uuid)")
 
-            guard let taskFiles = try? fm.contentsOfDirectory(atPath: tasksDir) else { continue }
+            guard let todoFiles = try? fm.contentsOfDirectory(atPath: tasksDir) else { continue }
 
-            let jsonFiles = taskFiles.filter { $0.hasSuffix(".json") }
+            let jsonFiles = todoFiles.filter { $0.hasSuffix(".json") }
             guard !jsonFiles.isEmpty else { continue }
 
-            var tasks: [ClaudeTask] = []
+            var todos: [ClaudeTodo] = []
             var latestDate = Date.distantPast
 
             for file in jsonFiles {
                 let filePath = (tasksDir as NSString).appendingPathComponent(file)
                 guard let data = fm.contents(atPath: filePath) else { continue }
-                guard let task = try? decoder.decode(ClaudeTask.self, from: data) else { continue }
-                tasks.append(task)
+                guard let todo = try? decoder.decode(ClaudeTodo.self, from: data) else { continue }
+                todos.append(todo)
 
                 if let attrs = try? fm.attributesOfItem(atPath: filePath),
                    let modDate = attrs[.modificationDate] as? Date,
@@ -102,9 +102,9 @@ class ClaudeTaskManager: ObservableObject {
                 }
             }
 
-            if !tasks.isEmpty {
-                tasks.sort { Int($0.id) ?? 0 < Int($1.id) ?? 0 }
-                newSessions.append(ClaudeSession(id: uuid, tasks: tasks, modificationDate: latestDate))
+            if !todos.isEmpty {
+                todos.sort { Int($0.id) ?? 0 < Int($1.id) ?? 0 }
+                newSessions.append(ClaudeSession(id: uuid, todos: todos, modificationDate: latestDate))
             }
         }
 
@@ -132,8 +132,8 @@ class ClaudeTaskManager: ObservableObject {
         FileManager.default.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
     }
 
-    /// Merges live sessions with cached sessions. Live tasks take precedence;
-    /// cached tasks whose files were deleted are marked completed (Claude Code
+    /// Merges live sessions with cached sessions. Live todos take precedence;
+    /// cached todos whose files were deleted are marked completed (Claude Code
     /// deletes task files when a session finishes).
     private nonisolated static func mergeSessions(live: [ClaudeSession], cached: [ClaudeSession]) -> [ClaudeSession] {
         var sessionsByID: [String: ClaudeSession] = [:]
@@ -141,31 +141,31 @@ class ClaudeTaskManager: ObservableObject {
 
         for session in cached {
             if let liveSession = liveByID[session.id] {
-                // Merge: live tasks win, cached-only tasks marked completed
-                let liveTaskIDs = Set(liveSession.tasks.map(\.id))
-                var tasksByID: [String: ClaudeTask] = [:]
-                for task in session.tasks where !liveTaskIDs.contains(task.id) {
-                    var marked = task
+                // Merge: live todos win, cached-only todos marked completed
+                let liveTodoIDs = Set(liveSession.todos.map(\.id))
+                var todosByID: [String: ClaudeTodo] = [:]
+                for todo in session.todos where !liveTodoIDs.contains(todo.id) {
+                    var marked = todo
                     if marked.status != .completed { marked.status = .completed }
-                    tasksByID[task.id] = marked
+                    todosByID[todo.id] = marked
                 }
-                for task in liveSession.tasks { tasksByID[task.id] = task }
-                let mergedTasks = tasksByID.values.sorted { Int($0.id) ?? 0 < Int($1.id) ?? 0 }
+                for todo in liveSession.todos { todosByID[todo.id] = todo }
+                let mergedTodos = todosByID.values.sorted { Int($0.id) ?? 0 < Int($1.id) ?? 0 }
                 sessionsByID[session.id] = ClaudeSession(
                     id: session.id,
-                    tasks: mergedTasks,
+                    todos: mergedTodos,
                     modificationDate: max(liveSession.modificationDate, session.modificationDate)
                 )
             } else {
-                // Session no longer live — mark all non-completed tasks as completed
-                let tasks = session.tasks.map { task -> ClaudeTask in
-                    guard task.status != .completed else { return task }
-                    var copy = task
+                // Session no longer live — mark all non-completed todos as completed
+                let todos = session.todos.map { todo -> ClaudeTodo in
+                    guard todo.status != .completed else { return todo }
+                    var copy = todo
                     copy.status = .completed
                     return copy
                 }
                 sessionsByID[session.id] = ClaudeSession(
-                    id: session.id, tasks: tasks, modificationDate: session.modificationDate
+                    id: session.id, todos: todos, modificationDate: session.modificationDate
                 )
             }
         }
@@ -189,7 +189,7 @@ class ClaudeTaskManager: ObservableObject {
 
     // MARK: - File Watching
 
-    private func watchTaskDirectories() {
+    private func watchTodoDirectories() {
         for source in watcherSources { source.cancel() }
         watcherSources = []
 
@@ -208,7 +208,7 @@ class ClaudeTaskManager: ObservableObject {
             watcherSources.append(source)
         }
 
-        // Watch each session's tasks directory for task changes
+        // Watch each session's tasks directory for todo changes
         let fm = FileManager.default
         let contents = (try? fm.contentsOfDirectory(atPath: projectDir)) ?? []
         let sessionUUIDs = contents
@@ -242,7 +242,7 @@ class ClaudeTaskManager: ObservableObject {
                 self.needsWatcherRebuild = false
                 self.reload()
                 if shouldRebuild {
-                    self.watchTaskDirectories()
+                    self.watchTodoDirectories()
                 }
             }
             self.pendingReload = work

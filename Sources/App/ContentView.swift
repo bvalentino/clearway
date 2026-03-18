@@ -28,7 +28,7 @@ private func hookShellCommand(_ cmd: String) -> String {
 
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
-    case tickets
+    case tasks
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -38,7 +38,7 @@ enum DetailSelection: Hashable {
 }
 
 private enum SidePanelTab: String, CaseIterable {
-    case tasks = "Tasks"
+    case todos = "Todos"
     case notes = "Notes"
 }
 
@@ -46,12 +46,12 @@ struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
-    @EnvironmentObject private var claudeTaskManager: ClaudeTaskManager
-    @EnvironmentObject private var userTaskManager: UserTaskManager
+    @EnvironmentObject private var claudeTodoManager: ClaudeTodoManager
+    @EnvironmentObject private var todoManager: TodoManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
-    @EnvironmentObject private var ticketCoordinator: TicketCoordinator
-    @State private var detailSelection: DetailSelection? = .tickets
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
     @State private var secondaryHeight: CGFloat = 120
@@ -61,7 +61,7 @@ struct ContentView: View {
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
-    @State private var sidePanelTab: SidePanelTab = .tasks
+    @State private var sidePanelTab: SidePanelTab = .todos
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
@@ -131,8 +131,8 @@ struct ContentView: View {
             terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
-            claudeTaskManager.setWorktreePath(wt.path)
-            userTaskManager.setWorktreePath(wt.path)
+            claudeTodoManager.setWorktreePath(wt.path)
+            todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
@@ -143,7 +143,7 @@ struct ContentView: View {
             detailSelection = .worktree(wt)
 
             let launchClaude = ghosttyApp.app.flatMap { app in
-                ticketCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
+                workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
             }
 
             if let cmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? ""),
@@ -199,8 +199,8 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
-            claudeTaskManager.setWorktreePath(selectedWorktree?.path)
-            userTaskManager.setWorktreePath(selectedWorktree?.path)
+            claudeTodoManager.setWorktreePath(selectedWorktree?.path)
+            todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
             if becomeActiveObserver == nil {
                 becomeActiveObserver = NotificationCenter.default.addObserver(
@@ -232,8 +232,8 @@ struct ContentView: View {
             }
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
-            claudeTaskManager.stopWatching()
-            userTaskManager.stopWatching()
+            claudeTodoManager.stopWatching()
+            todoManager.stopWatching()
             notesManager.stopWatching()
         }
     }
@@ -296,7 +296,7 @@ struct ContentView: View {
         if let main = worktreeManager.worktrees.first(where: \.isMain) {
             detailSelection = .worktree(main)
         } else {
-            detailSelection = .tickets
+            detailSelection = .tasks
         }
     }
 
@@ -314,10 +314,10 @@ struct ContentView: View {
     private func beginRemoveWorktree(_ worktree: Worktree) {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
-        let doRemove = { [weak worktreeManager, weak ticketCoordinator] in
+        let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in
             guard let worktreeManager else { return }
             self.selectFallback()
-            ticketCoordinator?.handleWorktreeRemoved(branch: branch)
+            workTaskCoordinator?.handleWorktreeRemoved(branch: branch)
             worktreeManager.removeWorktree(branch: branch)
         }
 
@@ -330,11 +330,11 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Ticket Actions
+    // MARK: - Task Actions
 
-    private func startTicket(_ ticket: Ticket) {
+    private func startWorkTask(_ task: WorkTask) {
         guard let app = ghosttyApp.app else { return }
-        switch ticketCoordinator.startTicket(ticket, app: app) {
+        switch workTaskCoordinator.startTask(task, app: app) {
         case .reuse(let wt):
             detailSelection = .worktree(wt)
         case .createWorktree(let branch):
@@ -344,8 +344,8 @@ struct ContentView: View {
         }
     }
 
-    private func openTicketWorktree(_ ticket: Ticket) {
-        if let wt = ticketCoordinator.worktreeForTicket(ticket) {
+    private func openTaskWorktree(_ task: WorkTask) {
+        if let wt = workTaskCoordinator.worktreeForTask(task) {
             detailSelection = .worktree(wt)
         }
     }
@@ -422,8 +422,8 @@ struct ContentView: View {
                                 Divider()
 
                                 switch sidePanelTab {
-                                case .tasks:
-                                    TasksPanelView()
+                                case .todos:
+                                    TodosPanelView()
                                 case .notes:
                                     NotesView()
                                 }
@@ -461,9 +461,9 @@ struct ContentView: View {
                     }
                 }
             } else {
-                TicketListView(
-                    onStart: { startTicket($0) },
-                    onOpen: { openTicketWorktree($0) }
+                WorkTaskListView(
+                    onStart: { startWorkTask($0) },
+                    onOpen: { openTaskWorktree($0) }
                 )
             }
         }

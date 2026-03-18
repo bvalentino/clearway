@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Inline play button that sends a task to the active terminal.
+/// Inline play button that sends a todo to the active terminal.
 struct SendToTerminalButton: View {
     var action: () -> Void
     var disabled: Bool = false
@@ -17,25 +17,25 @@ struct SendToTerminalButton: View {
     }
 }
 
-/// Combines user tasks and Claude Code tasks into a single panel.
-struct TasksPanelView: View {
-    @EnvironmentObject private var claudeTaskManager: ClaudeTaskManager
-    @EnvironmentObject private var userTaskManager: UserTaskManager
+/// Combines user todos and Claude Code todos into a single panel.
+struct TodosPanelView: View {
+    @EnvironmentObject private var claudeTodoManager: ClaudeTodoManager
+    @EnvironmentObject private var todoManager: TodoManager
     @EnvironmentObject private var terminalManager: TerminalManager
-    @State private var editingTaskId: Int?
+    @State private var editingTodoId: Int?
     @State private var isCreatingNew = false
-    @State private var newTaskGeneration = 0
-    @State private var selectedTask: TaskSelection?
-    @State private var taskPendingDeletion: UserTask?
+    @State private var newTodoGeneration = 0
+    @State private var selectedTodo: TodoSelection?
+    @State private var todoPendingDeletion: Todo?
     @FocusState private var isListFocused: Bool
 
-    enum TaskSelection: Hashable {
-        case user(Int)
-        case claude(sessionId: String, taskId: String)
+    enum TodoSelection: Hashable {
+        case todo(Int)
+        case claude(sessionId: String, todoId: String)
     }
 
     private var isEmpty: Bool {
-        userTaskManager.tasks.isEmpty && !isCreatingNew && claudeTaskManager.sessions.isEmpty
+        todoManager.todos.isEmpty && !isCreatingNew && claudeTodoManager.sessions.isEmpty
     }
 
     private var canSend: Bool {
@@ -49,7 +49,7 @@ struct TasksPanelView: View {
                     Image(systemName: "checklist")
                         .font(.system(size: 28))
                         .foregroundStyle(.tertiary)
-                    Text("No tasks")
+                    Text("No todos")
                         .foregroundStyle(.secondary)
                         .font(.callout)
                 }
@@ -58,37 +58,37 @@ struct TasksPanelView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(userTaskManager.incompleteTasks) { task in
-                                userTaskRow(task)
+                            ForEach(todoManager.incompleteTodos) { todo in
+                                todoRow(todo)
                             }
 
                             if isCreatingNew {
-                                NewTaskRow(
+                                NewTodoRow(
                                     onCommit: { subject in
-                                        commitNewTask(subject: subject)
+                                        commitNewTodo(subject: subject)
                                     },
                                     onCancel: {
                                         isCreatingNew = false
                                     }
                                 )
-                                .id(newTaskGeneration)
+                                .id(newTodoGeneration)
                             }
 
-                            ForEach(userTaskManager.completedTasks) { task in
-                                userTaskRow(task)
+                            ForEach(todoManager.completedTodos) { todo in
+                                todoRow(todo)
                             }
                         }
 
-                        ForEach(claudeTaskManager.sessions) { session in
+                        ForEach(claudeTodoManager.sessions) { session in
                             ClaudeSessionSection(
                                 session: session,
-                                selectedTaskId: selectedClaudeTaskId(for: session.id),
+                                selectedTodoId: selectedClaudeTodoId(for: session.id),
                                 canSend: canSend,
-                                onSelect: { task in
-                                    selectTask(.claude(sessionId: session.id, taskId: task.id))
+                                onSelect: { todo in
+                                    selectTodo(.claude(sessionId: session.id, todoId: todo.id))
                                 },
-                                onSend: { task in
-                                    sendToTerminal(task.subject)
+                                onSend: { todo in
+                                    sendToTerminal(todo.subject)
                                 }
                             )
                         }
@@ -98,7 +98,7 @@ struct TasksPanelView: View {
                 .focusable()
                 .focused($isListFocused)
                 .onCopyCommand {
-                    guard let text = selectedTaskSubject else { return [] }
+                    guard let text = selectedTodoSubject else { return [] }
                     return [NSItemProvider(object: text as NSString)]
                 }
             }
@@ -107,84 +107,84 @@ struct TasksPanelView: View {
             createButton
         }
         .confirmationDialog(
-            "Delete \"\(taskPendingDeletion?.subject ?? "")\"?",
+            "Delete \"\(todoPendingDeletion?.subject ?? "")\"?",
             isPresented: Binding(
-                get: { taskPendingDeletion != nil },
-                set: { if !$0 { taskPendingDeletion = nil } }
+                get: { todoPendingDeletion != nil },
+                set: { if !$0 { todoPendingDeletion = nil } }
             )
         ) {
             Button("Delete", role: .destructive) {
-                if let task = taskPendingDeletion {
-                    userTaskManager.deleteTask(task)
-                    if selectedTask == .user(task.id) { selectedTask = nil }
+                if let todo = todoPendingDeletion {
+                    todoManager.deleteTodo(todo)
+                    if selectedTodo == .todo(todo.id) { selectedTodo = nil }
                 }
-                taskPendingDeletion = nil
+                todoPendingDeletion = nil
             }
         }
     }
 
-    private var selectedTaskSubject: String? {
-        switch selectedTask {
-        case .user(let id):
-            return userTaskManager.tasks.first { $0.id == id }?.subject
-        case .claude(let sessionId, let taskId):
-            return claudeTaskManager.sessions
+    private var selectedTodoSubject: String? {
+        switch selectedTodo {
+        case .todo(let id):
+            return todoManager.todos.first { $0.id == id }?.subject
+        case .claude(let sessionId, let todoId):
+            return claudeTodoManager.sessions
                 .first { $0.id == sessionId }?
-                .tasks.first { $0.id == taskId }?
+                .todos.first { $0.id == todoId }?
                 .subject
         case nil:
             return nil
         }
     }
 
-    private func selectedClaudeTaskId(for sessionId: String) -> String? {
-        if case .claude(sessionId, let taskId) = selectedTask { return taskId }
+    private func selectedClaudeTodoId(for sessionId: String) -> String? {
+        if case .claude(sessionId, let todoId) = selectedTodo { return todoId }
         return nil
     }
 
-    private func selectTask(_ selection: TaskSelection) {
-        selectedTask = selection
+    private func selectTodo(_ selection: TodoSelection) {
+        selectedTodo = selection
         isCreatingNew = false
-        editingTaskId = nil
+        editingTodoId = nil
         DispatchQueue.main.async { isListFocused = true }
     }
 
-    private func userTaskRow(_ task: UserTask) -> some View {
-        UserTaskRow(
-            task: task,
-            isEditing: editingTaskId == task.id,
-            isSelected: selectedTask == .user(task.id),
+    private func todoRow(_ todo: Todo) -> some View {
+        TodoRow(
+            todo: todo,
+            isEditing: editingTodoId == todo.id,
+            isSelected: selectedTodo == .todo(todo.id),
             canSend: canSend,
-            onSelect: { selectTask(.user(task.id)) },
-            onSend: { sendUserTaskToTerminal(task) },
-            onEditStart: { editingTaskId = task.id },
+            onSelect: { selectTodo(.todo(todo.id)) },
+            onSend: { sendTodoToTerminal(todo) },
+            onEditStart: { editingTodoId = todo.id },
             onEditCommit: { subject in
-                saveEdit(task: task, subject: subject)
+                saveEdit(todo: todo, subject: subject)
             },
-            onEditCancel: { editingTaskId = nil },
-            onDelete: { taskPendingDeletion = task }
+            onEditCancel: { editingTodoId = nil },
+            onDelete: { todoPendingDeletion = todo }
         )
     }
 
     private func startCreating() {
-        editingTaskId = nil
-        newTaskGeneration += 1
+        editingTodoId = nil
+        newTodoGeneration += 1
         isCreatingNew = true
     }
 
-    private func commitNewTask(subject: String) {
+    private func commitNewTodo(subject: String) {
         isCreatingNew = false
-        userTaskManager.createTask(subject: subject)
+        todoManager.createTodo(subject: subject)
         startCreating()
     }
 
-    private func saveEdit(task: UserTask, subject: String) {
+    private func saveEdit(todo: Todo, subject: String) {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        editingTaskId = nil
+        editingTodoId = nil
         if trimmed.isEmpty {
-            taskPendingDeletion = task
-        } else if trimmed != task.subject {
-            userTaskManager.updateTaskSubject(task, to: trimmed)
+            todoPendingDeletion = todo
+        } else if trimmed != todo.subject {
+            todoManager.updateTodoSubject(todo, to: trimmed)
         }
         startCreating()
     }
@@ -195,10 +195,10 @@ struct TasksPanelView: View {
         surface.window?.makeFirstResponder(surface)
     }
 
-    private func sendUserTaskToTerminal(_ task: UserTask) {
-        sendToTerminal(task.subject)
-        if task.status == .pending {
-            userTaskManager.setStatus(task, to: .inProgress)
+    private func sendTodoToTerminal(_ todo: Todo) {
+        sendToTerminal(todo.subject)
+        if todo.status == .pending {
+            todoManager.setStatus(todo, to: .inProgress)
         }
     }
 
@@ -218,13 +218,13 @@ struct TasksPanelView: View {
     }
 }
 
-/// A group of Claude Code tasks from a single session.
+/// A group of Claude Code todos from a single session.
 private struct ClaudeSessionSection: View {
     let session: ClaudeSession
-    var selectedTaskId: String?
+    var selectedTodoId: String?
     var canSend: Bool
-    var onSelect: (ClaudeTask) -> Void
-    var onSend: (ClaudeTask) -> Void
+    var onSelect: (ClaudeTodo) -> Void
+    var onSend: (ClaudeTodo) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -236,22 +236,22 @@ private struct ClaudeSessionSection: View {
                 .padding(.vertical, 2)
                 .background(.orange, in: Capsule())
 
-            ForEach(session.tasks) { task in
-                ClaudeTaskRow(
-                    task: task,
-                    isSelected: selectedTaskId == task.id,
+            ForEach(session.todos) { todo in
+                ClaudeTodoRow(
+                    todo: todo,
+                    isSelected: selectedTodoId == todo.id,
                     canSend: canSend,
-                    onSelect: { onSelect(task) },
-                    onSend: { onSend(task) }
+                    onSelect: { onSelect(todo) },
+                    onSend: { onSend(todo) }
                 )
             }
         }
     }
 }
 
-/// Displays a single Claude Code task.
-private struct ClaudeTaskRow: View {
-    let task: ClaudeTask
+/// Displays a single Claude Code todo.
+private struct ClaudeTodoRow: View {
+    let todo: ClaudeTodo
     var isSelected: Bool
     var canSend: Bool
     var onSelect: () -> Void
@@ -259,19 +259,19 @@ private struct ClaudeTaskRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: task.status.symbol)
+            Image(systemName: todo.status.symbol)
                 .font(.system(size: 16))
-                .foregroundStyle(task.status.color)
+                .foregroundStyle(todo.status.color)
                 .frame(width: 20)
 
-            Text(task.subject)
+            Text(todo.subject)
                 .font(.body)
-                .foregroundStyle(task.status == .completed ? .secondary : .primary)
-                .strikethrough(task.status == .completed)
+                .foregroundStyle(todo.status == .completed ? .secondary : .primary)
+                .strikethrough(todo.status == .completed)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if task.status != .completed {
+            if todo.status != .completed {
                 SendToTerminalButton(action: onSend, disabled: !canSend)
             }
         }
@@ -281,7 +281,7 @@ private struct ClaudeTaskRow: View {
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .contextMenu {
-            if task.status != .completed {
+            if todo.status != .completed {
                 Button { onSend() } label: {
                     Label("Send to Terminal", systemImage: "play.fill")
                 }

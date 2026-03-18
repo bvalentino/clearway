@@ -1,8 +1,8 @@
 import Foundation
 
-/// A ticket — a unit of work persisted as a markdown file with YAML frontmatter
-/// in `.wtpad/tickets/<id>.md`.
-struct Ticket: Identifiable, Equatable, Hashable {
+/// A task — a unit of work persisted as a markdown file with YAML frontmatter
+/// in `.wtpad/tasks/<id>.md`.
+struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
     var status: Status
@@ -37,7 +37,7 @@ struct Ticket: Identifiable, Equatable, Hashable {
 
     // MARK: - Serialization
 
-    /// Serializes the ticket to YAML frontmatter + markdown body.
+    /// Serializes the task to YAML frontmatter + markdown body.
     func serialized() -> String {
         var lines = ["---"]
         lines.append("id: \(id.uuidString)")
@@ -67,9 +67,9 @@ struct Ticket: Identifiable, Equatable, Hashable {
 
     // MARK: - Parsing
 
-    /// Parses a ticket from YAML frontmatter + markdown body.
+    /// Parses a task from YAML frontmatter + markdown body.
     /// Returns nil if the frontmatter is missing required fields.
-    static func parse(from content: String) -> Ticket? {
+    static func parse(from content: String) -> WorkTask? {
         let lines = content.components(separatedBy: "\n")
         guard lines.first == "---" else { return nil }
 
@@ -121,10 +121,10 @@ struct Ticket: Identifiable, Equatable, Hashable {
             body = ""
         }
 
-        var ticket = Ticket(id: id, title: title, status: status, worktree: worktree, body: body)
-        ticket.createdAt = createdAt
-        ticket.updatedAt = updatedAt
-        return ticket
+        var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
+        task.createdAt = createdAt
+        task.updatedAt = updatedAt
+        return task
     }
 
     /// Strip YAML double-quote wrapper and unescape sequences (single-pass to avoid ordering bugs).
