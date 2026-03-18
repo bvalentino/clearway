@@ -173,11 +173,7 @@ class WorkTaskCoordinator: ObservableObject {
 
         var updated = task
         updated.worktree = nil
-        updated.status = .open
-        updated.attempt = nil
-        updated.errorMessage = nil
-        updated.inputTokens = nil
-        updated.outputTokens = nil
+        updated.status = .done
         workTaskManager.updateTask(updated)
     }
 
