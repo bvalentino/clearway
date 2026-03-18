@@ -253,18 +253,37 @@ class WorktreeManager: ObservableObject {
 
     // MARK: - Actions
 
-    /// Create a new worktree: `git worktree add .worktrees/<branch> -b <branch> [<base>]`
-    func createWorktree(branch: String, base: String? = nil) async {
-        guard !branch.contains("..") && !branch.hasPrefix("/") else {
+    /// Create a new worktree. Tries to check out an existing local/remote branch first;
+    /// if none exists, creates a new branch with `-b`.
+    func createWorktree(branch: String, base: String? = nil, fetch: Bool = false) async {
+        guard !branch.contains("..") && !branch.hasPrefix("/") && !branch.hasPrefix("-") else {
             self.error = "Invalid branch name"
+            return
+        }
+        if let base, base.contains("..") || base.hasPrefix("/") || base.hasPrefix("-") {
+            self.error = "Invalid base branch name"
             return
         }
         let projectPath = self.projectPath
         do {
+            if fetch {
+                do {
+                    _ = try await Task.detached { try await Self.runCommand(["git", "fetch"], in: projectPath) }.value
+                } catch {
+                    self.error = "Fetch failed: \(error.localizedDescription). Proceeding with local state."
+                }
+            }
             let worktreePath = (projectPath as NSString).appendingPathComponent(".worktrees/\(branch)")
-            var args = ["git", "worktree", "add", worktreePath, "-b", branch]
-            if let base { args.append(base) }
-            _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
+            // Try checking out an existing branch (local or remote-tracking via --guess-remote)
+            let checkedOut = (try? await Task.detached {
+                try await Self.runCommand(["git", "worktree", "add", "--guess-remote", worktreePath, branch], in: projectPath)
+            }.value) != nil
+            // If no existing branch found, create a new one
+            if !checkedOut {
+                var args = ["git", "worktree", "add", worktreePath, "-b", branch, "--"]
+                if let base { args.append(base) }
+                _ = try await Task.detached { try await Self.runCommand(args, in: projectPath) }.value
+            }
 
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
             self.worktrees = wts
