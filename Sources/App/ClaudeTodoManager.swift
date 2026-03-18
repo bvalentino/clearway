@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Reads Claude Code todos for a given worktree path from `~/.claude/`.
 ///
@@ -8,9 +9,15 @@ import Foundation
 class ClaudeTodoManager: ObservableObject {
     @Published var sessions: [ClaudeSession] = []
 
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.wtpad.mac",
+        category: "claude-todos"
+    )
+
     private var worktreePath: String?
     private var watcherSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
+    private var pendingPolls: [DispatchWorkItem] = []
     private var needsWatcherRebuild = false
 
     private static let claudeDir: String = {
@@ -19,11 +26,13 @@ class ClaudeTodoManager: ObservableObject {
 
     nonisolated deinit {
         pendingReload?.cancel()
+        for poll in pendingPolls { poll.cancel() }
         for source in watcherSources { source.cancel() }
     }
 
     func setWorktreePath(_ path: String?) {
         guard path != worktreePath else { return }
+        Self.logger.info("setWorktreePath: \(path ?? "nil", privacy: .public)")
         stopWatching()
         worktreePath = path
         reload()
@@ -33,8 +42,11 @@ class ClaudeTodoManager: ObservableObject {
     func stopWatching() {
         pendingReload?.cancel()
         pendingReload = nil
+        for poll in pendingPolls { poll.cancel() }
+        pendingPolls = []
         for source in watcherSources { source.cancel() }
         watcherSources = []
+        worktreePath = nil
     }
 
     func reload() {
@@ -52,6 +64,8 @@ class ClaudeTodoManager: ObservableObject {
             let cached = Self.readCache(at: cacheFile)
             let merged = Self.mergeSessions(live: live, cached: cached)
             Self.writeCache(merged, to: cacheFile)
+            let todoCount = merged.reduce(0) { $0 + $1.todos.count }
+            Self.logger.info("reload: \(merged.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cached.count))")
             await MainActor.run {
                 self?.sessions = merged
             }
@@ -200,6 +214,8 @@ class ClaudeTodoManager: ObservableObject {
     private func watchTodoDirectories() {
         for source in watcherSources { source.cancel() }
         watcherSources = []
+        for poll in pendingPolls { poll.cancel() }
+        pendingPolls = []
 
         guard let worktreePath else { return }
 
@@ -211,9 +227,18 @@ class ClaudeTodoManager: ObservableObject {
 
         // Watch the projects directory for new sessions
         if let source = Self.makeWatcher(path: projectDir) { [weak self] in
+            Self.logger.debug("projects dir watcher fired")
             self?.scheduleReload(rebuildWatchers: true)
         } {
+            Self.logger.info("watching projects dir: \(projectDir, privacy: .public)")
             watcherSources.append(source)
+        } else {
+            // Projects directory doesn't exist yet (new worktree, never had Claude).
+            // Poll until Claude creates it.
+            Self.logger.info("projects dir missing, polling: \(projectDir, privacy: .public)")
+            pollForDirectory(path: projectDir) { [weak self] in
+                self?.scheduleReload(rebuildWatchers: true)
+            }
         }
 
         // Watch each session's tasks directory for todo changes
@@ -229,9 +254,19 @@ class ClaudeTodoManager: ObservableObject {
                 .appending("/\(uuid)")
 
             if let source = Self.makeWatcher(path: tasksDir) { [weak self] in
+                Self.logger.debug("tasks dir watcher fired for \(uuid, privacy: .public)")
                 self?.scheduleReload(rebuildWatchers: false)
             } {
+                Self.logger.info("watching tasks dir: \(uuid, privacy: .public)")
                 watcherSources.append(source)
+            } else {
+                // Tasks directory doesn't exist yet — poll until it appears
+                // so we pick it up when Claude creates it.
+                Self.logger.info("tasks dir missing, polling: \(uuid, privacy: .public)")
+                pollForDirectory(path: tasksDir) { [weak self] in
+                    Self.logger.info("poll found tasks dir: \(uuid, privacy: .public)")
+                    self?.scheduleReload(rebuildWatchers: true)
+                }
             }
         }
     }
@@ -256,6 +291,30 @@ class ClaudeTodoManager: ObservableObject {
             self.pendingReload = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
+    }
+
+    /// Checks for a directory's existence every second, up to 30 times.
+    /// Calls `handler` once when the directory appears, then stops.
+    /// Poll work items are tracked in `pendingPolls` so they can be cancelled
+    /// when watchers are rebuilt.
+    private nonisolated func pollForDirectory(
+        path: String,
+        attempt: Int = 0,
+        handler: @escaping () -> Void
+    ) {
+        guard attempt < 30 else { return }
+        let work = DispatchWorkItem { [weak self] in
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                handler()
+            } else {
+                self?.pollForDirectory(path: path, attempt: attempt + 1, handler: handler)
+            }
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.pendingPolls.append(work)
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 
     nonisolated static func makeWatcher(
