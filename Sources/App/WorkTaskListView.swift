@@ -4,11 +4,8 @@ import SwiftUI
 /// Started/stopped/done tasks live in their worktree's aside panel.
 struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    var onStart: (WorkTask) -> Void
-    var onOpen: (WorkTask) -> Void
-    var onContinue: ((WorkTask) -> Void)?
-
-    @State private var editingTask: WorkTask?
+    @Environment(\.openWindow) private var openWindow
+    let projectPath: String
 
     /// Only open tasks appear in the backlog — once started, tasks live in worktrees.
     private var backlogTasks: [WorkTask] {
@@ -35,13 +32,6 @@ struct WorkTaskListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
             createButton
-        }
-        .sheet(item: $editingTask) { task in
-            WorkTaskDetailView(
-                task: task,
-                onStart: { onStart($0) },
-                onContinue: { onContinue?($0) }
-            )
         }
     }
 
@@ -72,10 +62,7 @@ struct WorkTaskListView: View {
                 ForEach(backlogTasks) { task in
                     WorkTaskCard(
                         task: task,
-                        onEdit: { editingTask = task },
-                        onStart: { onStart(task) },
-                        onOpen: { onOpen(task) },
-                        onContinue: { onContinue?(task) }
+                        onEdit: { openTaskWindow(task) }
                     )
                 }
 
@@ -107,8 +94,12 @@ struct WorkTaskListView: View {
 
     private func createAndEdit() {
         if let task = workTaskManager.createTask(title: "New Task") {
-            editingTask = task
+            openTaskWindow(task)
         }
+    }
+
+    private func openTaskWindow(_ task: WorkTask) {
+        openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
     }
 }
 
@@ -117,45 +108,20 @@ struct WorkTaskListView: View {
 private struct WorkTaskCard: View {
     let task: WorkTask
     var onEdit: () -> Void
-    var onStart: () -> Void
-    var onOpen: () -> Void
-    var onContinue: () -> Void
     @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(task.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(task.title)
+                .font(.headline)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 6) {
-                    WorkTaskStatusBadge(status: task.status)
-
-                    if let tokens = task.totalTokens {
-                        Text("\(WorkTask.formatTokenCount(tokens)) tokens")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-
-                if task.status == .stopped, let error = task.errorMessage {
-                    Text(error.components(separatedBy: "\n").first ?? error)
-                        .font(.caption)
-                        .foregroundStyle(.red.opacity(0.8))
-                        .lineLimit(1)
-                } else if !task.body.isEmpty {
-                    Text(task.body.prefix(120))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            actionButton
+            Text(task.createdAt.formatted(.relative(presentation: .named)))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
@@ -163,21 +129,6 @@ private struct WorkTaskCard: View {
         .contextMenu {
             Button { onEdit() } label: {
                 Label("Edit", systemImage: "pencil")
-            }
-            Divider()
-            if task.status == .started || task.status == .open || task.status == .stopped {
-                Button {
-                    workTaskManager.setStatus(task, to: .done)
-                } label: {
-                    Label("Mark Done", systemImage: "checkmark.circle")
-                }
-            }
-            if task.status == .done || task.status == .stopped {
-                Button {
-                    workTaskManager.setStatus(task, to: .open)
-                } label: {
-                    Label("Reopen", systemImage: "arrow.uturn.backward")
-                }
             }
             Divider()
             Button(role: .destructive) {
@@ -188,34 +139,6 @@ private struct WorkTaskCard: View {
         }
     }
 
-    @ViewBuilder
-    private var actionButton: some View {
-        switch task.status {
-        case .open:
-            Button("Start", action: onStart)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-        case .started:
-            Button("Open", action: onOpen)
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-        case .done:
-            if task.worktree != nil {
-                Button("Continue", action: onContinue)
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.green)
-            }
-        case .stopped:
-            Button("Restart", action: onStart)
-                .buttonStyle(.bordered)
-                .tint(.orange)
-                .controlSize(.regular)
-        }
-    }
 }
 
 // MARK: - Status Badge
