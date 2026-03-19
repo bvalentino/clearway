@@ -105,7 +105,7 @@ struct WorkTaskListView: View {
 
 // MARK: - Task Card
 
-private struct WorkTaskCard: View {
+struct WorkTaskCard: View {
     let task: WorkTask
     var onEdit: () -> Void
     @EnvironmentObject private var workTaskManager: WorkTaskManager

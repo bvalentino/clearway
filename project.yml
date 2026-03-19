@@ -10,6 +10,11 @@ settings:
     SWIFT_VERSION: "5.10"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
 
+packages:
+  cmark-gfm:
+    url: https://github.com/brokenhandsio/cmark-gfm.git
+    from: 2.1.0
+
 targets:
   wtpad:
     type: application
@@ -70,7 +75,9 @@ targets:
           fi
         outputFiles:
           - $(PROJECT_DIR)/Sources/App/BuildInfo.generated.swift
-    dependencies: []
+    dependencies:
+      - package: cmark-gfm
+        product: cmark
 
   wtpadTests:
     type: bundle.unit-test
