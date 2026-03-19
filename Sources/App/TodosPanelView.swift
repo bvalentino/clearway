@@ -247,7 +247,7 @@ private struct ClaudeSessionSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
+            HStack {
                 Text("Claude")
                     .font(.caption)
                     .fontWeight(.medium)
@@ -255,6 +255,8 @@ private struct ClaudeSessionSection: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(.orange, in: Capsule())
+
+                Spacer()
 
                 Button { onClear() } label: {
                     Image(systemName: "xmark")
