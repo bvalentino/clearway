@@ -19,6 +19,7 @@ struct SidebarView: View {
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
+    @State private var selectionBeforeSettings: DetailSelection?
 
     private var isSearching: Bool { !searchText.isEmpty }
 
@@ -43,7 +44,13 @@ struct SidebarView: View {
         }
         .overlay(alignment: .bottomLeading) {
             Button {
-                detailSelection = detailSelection == .settings ? .tasks : .settings
+                if detailSelection == .settings {
+                    detailSelection = selectionBeforeSettings ?? .tasks
+                    selectionBeforeSettings = nil
+                } else {
+                    selectionBeforeSettings = detailSelection
+                    detailSelection = .settings
+                }
             } label: {
                 Image(systemName: "gear")
                     .font(.system(size: 16, weight: .medium))
