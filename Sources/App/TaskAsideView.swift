@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// Displays the task linked to the current worktree in the aside panel.
-/// Read-only view of task details with agent metadata and action buttons.
+/// Shows a clickable task card that opens the full task window.
 struct TaskAsideView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
+    @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
+    let projectPath: String
     var onContinue: ((WorkTask) -> Void)?
     var onRestart: ((WorkTask) -> Void)?
     var onMarkDone: ((WorkTask) -> Void)?
@@ -41,14 +43,10 @@ struct TaskAsideView: View {
     private func taskContent(_ task: WorkTask) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Title and status
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(task.title)
-                        .font(.title3.bold())
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    WorkTaskStatusBadge(status: task.status)
-                }
+                WorkTaskCard(
+                    task: task,
+                    onEdit: { openTaskWindow(task) }
+                )
 
                 // Agent metadata
                 if task.status != .open {
@@ -67,7 +65,11 @@ struct TaskAsideView: View {
         }
     }
 
-    // MARK: - Action Buttons
+    // MARK: - Actions
+
+    private func openTaskWindow(_ task: WorkTask) {
+        openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
+    }
 
     @ViewBuilder
     private func actionButtons(_ task: WorkTask) -> some View {

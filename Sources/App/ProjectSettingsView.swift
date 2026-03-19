@@ -71,10 +71,7 @@ struct ProjectSettingsView: View {
                 // MARK: - WORKFLOW.md
 
                 SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
-                    TextEditor(text: $workflowText)
-                        .font(.system(.body, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
+                    MarkdownEditorView(text: $workflowText)
                         .background(Color(.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(

@@ -28,6 +28,11 @@ struct WorkTaskWindow: View {
     @State private var pendingSave: DispatchWorkItem?
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
+    @State private var editorMode: EditorMode = .edit
+
+    private enum EditorMode {
+        case edit, preview
+    }
 
     init(identifier: WorkTaskIdentifier) {
         _workTaskManager = StateObject(wrappedValue: WorkTaskManager(projectPath: identifier.projectPath))
@@ -59,16 +64,29 @@ struct WorkTaskWindow: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                primaryActionButton
+                if task?.worktree == nil {
+                    primaryActionButton
+                }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(EditorMode.edit)
+                    Image(systemName: "eye").tag(EditorMode.preview)
+                }
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview (⌘⇧P)")
             }
 
             ToolbarItem(placement: .destructiveAction) {
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
+                if task?.worktree == nil {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete task")
                 }
-                .help("Delete task")
             }
         }
         .alert(
@@ -90,6 +108,7 @@ struct WorkTaskWindow: View {
             if let task {
                 title = task.title
                 bodyText = task.body
+                editorMode = task.body.isEmpty ? .edit : .preview
             }
         }
         .onChange(of: title) { _ in scheduleSave() }
@@ -98,6 +117,13 @@ struct WorkTaskWindow: View {
             pendingSave?.cancel()
             guard !deleted, task != nil else { return }
             saveNow()
+        }
+        .background {
+            Button("") {
+                editorMode = editorMode == .edit ? .preview : .edit
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .hidden()
         }
     }
 
@@ -121,12 +147,16 @@ struct WorkTaskWindow: View {
 
             Divider()
 
-            // Body editor
-            TextEditor(text: $bodyText)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+            // Body editor / preview
+            Group {
+                switch editorMode {
+                case .edit:
+                    MarkdownEditorView(text: $bodyText)
+                case .preview:
+                    MarkdownPreviewView(markdown: bodyText)
+                }
+            }
+            .id(taskId)
         }
     }
 

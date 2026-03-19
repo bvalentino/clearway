@@ -158,7 +158,7 @@ private struct NoteRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             let now = Date()
-            if now.timeIntervalSince(lastClickTime) < 0.3 {
+            if now.timeIntervalSince(lastClickTime) < NSEvent.doubleClickInterval {
                 onOpen()
             } else {
                 onSelect()

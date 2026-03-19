@@ -19,80 +19,83 @@ struct NoteWindow: View {
     @State private var loaded = false
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
-    @AppStorage("noteFontSize") private var fontSize: Double = 14
+    @State private var editorMode: EditorMode = .edit
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
-        TextEditor(text: $content)
-            .font(.system(size: fontSize))
-            .scrollContentBackground(.hidden)
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.ultraThinMaterial)
-            .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 4) {
-                        Button { fontSize = max(10, fontSize - 1) } label: {
-                            Image(systemName: "textformat.size.smaller")
-                        }
-                        .help("Decrease font size (⌘−)")
-                        .keyboardShortcut("-", modifiers: .command)
-                        .disabled(fontSize <= 10)
-
-                        Button { fontSize = min(28, fontSize + 1) } label: {
-                            Image(systemName: "textformat.size.larger")
-                        }
-                        .help("Increase font size (⌘+)")
-                        .keyboardShortcut("=", modifiers: .command)
-                        .disabled(fontSize >= 28)
-                    }
-                }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            save()
-                            revealInFinder()
-                        } label: {
-                            Label("Reveal in Finder", systemImage: "folder")
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete Note", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .menuIndicator(.hidden)
-                }
-            }
-            .confirmationDialog(
-                "Delete this note?",
-                isPresented: $showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    deleted = true
-                    try? FileManager.default.removeItem(atPath: identifier.filePath)
-                    DispatchQueue.main.async {
-                        NSApplication.shared.keyWindow?.close()
-                    }
-                }
-            } message: {
-                Text("This action cannot be undone.")
-            }
-            .onAppear { loadIfNeeded() }
-            .onDisappear { save() }
+    private enum EditorMode {
+        case edit, preview
     }
 
-    private var title: String {
-        Note.title(from: content)
+    var body: some View {
+        Group {
+            switch editorMode {
+            case .edit:
+                MarkdownEditorView(text: $content)
+            case .preview:
+                MarkdownPreviewView(markdown: content)
+            }
+        }
+        .id(identifier.filename)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial)
+        .navigationTitle(identifier.filename)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(EditorMode.edit)
+                    Image(systemName: "eye").tag(EditorMode.preview)
+                }
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview (⌘⇧P)")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        save()
+                        revealInFinder()
+                    } label: {
+                        Label("Reveal in Finder", systemImage: "folder")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Note", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .menuIndicator(.hidden)
+            }
+        }
+        .confirmationDialog(
+            "Delete this note?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleted = true
+                try? FileManager.default.removeItem(atPath: identifier.filePath)
+                DispatchQueue.main.async {
+                    NSApplication.shared.keyWindow?.close()
+                }
+            }
+        } message: {
+            Text("This action cannot be undone.")
+        }
+        .onAppear { loadIfNeeded() }
+        .onDisappear { save() }
+        // Toggle preview with Cmd+Shift+P (avoids conflict with print)
+        .background {
+            Button("") {
+                editorMode = editorMode == .edit ? .preview : .edit
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .hidden()
+        }
     }
 
     private func loadIfNeeded() {
@@ -102,6 +105,7 @@ struct NoteWindow: View {
            let text = String(data: data, encoding: .utf8) {
             content = text
         }
+        editorMode = content.isEmpty ? .edit : .preview
     }
 
     private func save() {
