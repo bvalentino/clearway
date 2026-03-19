@@ -3,7 +3,6 @@ import SwiftUI
 /// Sheets presented from the sidebar.
 private enum SidebarSheet: String, Identifiable {
     case createWorktree
-    case projectSettings
     case debugTerminal
 
     var id: String { rawValue }
@@ -43,6 +42,7 @@ struct SidebarView: View {
         List(selection: $detailSelection) {
             projectSection
             tasksRow
+            settingsRow
             worktreeSection
         }
         .listStyle(.sidebar)
@@ -54,8 +54,6 @@ struct SidebarView: View {
             switch sheet {
             case .createWorktree:
                 CreateWorktreeSheet()
-            case .projectSettings:
-                ProjectSettingsView(projectPath: worktreeManager.projectPath)
             case .debugTerminal:
                 DebugTerminalSheet(
                     error: worktreeManager.error ?? "",
@@ -126,13 +124,6 @@ struct SidebarView: View {
                     }
                 }
                 .contextMenu {
-                    Button("Project Settings\u{2026}") {
-                        activeSheet = .projectSettings
-                    }
-                    .disabled(path != worktreeManager.projectPath)
-
-                    Divider()
-
                     Button("Remove Project") {
                         projectList.removeProject(path)
                     }
@@ -153,19 +144,23 @@ struct SidebarView: View {
         }
     }
 
-    private var tasksRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "ticket")
+    private var tasksRow: some View { sidebarRow("Tasks", icon: "ticket", selection: .tasks) }
+    private var settingsRow: some View { sidebarRow("Settings", icon: "gear", selection: .settings) }
+
+    private func sidebarRow(_ title: String, icon: String, selection: DetailSelection) -> some View {
+        let isSelected = detailSelection == selection
+        return HStack(spacing: 6) {
+            Image(systemName: icon)
                 .font(.caption)
-                .foregroundStyle(selectedWorktree == nil ? .blue : .secondary)
-            Text("Tasks")
-                .fontWeight(selectedWorktree == nil ? .semibold : .regular)
+                .foregroundStyle(isSelected ? .blue : .secondary)
+            Text(title)
+                .fontWeight(isSelected ? .semibold : .regular)
             Spacer()
         }
         .padding(.vertical, 2)
-        .listRowBackground(selectedWorktree == nil ? Color.accentColor.opacity(0.15) : Color.clear)
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { detailSelection = .tasks }
+        .onTapGesture { detailSelection = selection }
     }
 
     private var worktreeSection: some View {

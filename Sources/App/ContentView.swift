@@ -29,6 +29,7 @@ private func hookShellCommand(_ cmd: String) -> String {
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
     case tasks
+    case settings
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -455,7 +456,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .ready:
-            if let pane = terminalManager.activePane {
+            if let pane = terminalManager.activePane, detailSelection?.worktree != nil {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         VStack(spacing: 0) {
@@ -556,6 +557,8 @@ struct ContentView: View {
                         }
                     }
                 }
+            } else if detailSelection == .settings {
+                ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else {
                 WorkTaskListView(
                     onStart: { startWorkTask($0) },

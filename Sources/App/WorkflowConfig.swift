@@ -5,7 +5,7 @@ import Foundation
 ///
 /// The file uses YAML frontmatter for hooks/agent settings and a markdown
 /// body as the prompt template (Mustache-style `{{ var }}` interpolation).
-struct WorkflowConfig {
+struct WorkflowConfig: Equatable {
     var hooksAfterCreate: String?
     var hooksBeforeRun: String?
     var hooksAfterRun: String?
