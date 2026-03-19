@@ -11,6 +11,7 @@ extension Ghostty {
         @Published var hoverUrl: String?
         @Published var cellSize: NSSize = .zero
         @Published var pwd: String?
+        @Published var childExitCode: UInt32?
 
         /// The working directory passed at initialization, used as a fallback for respawning.
         let initialWorkingDirectory: String?

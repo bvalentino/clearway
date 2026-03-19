@@ -226,6 +226,7 @@ extension Ghostty {
                 guard let surface = surfaceViewFromTarget(target) else { return false }
                 let exitCode = action.action.child_exited.exit_code
                 DispatchQueue.main.async {
+                    surface.childExitCode = exitCode
                     NotificationCenter.default.post(name: .ghosttyChildExited, object: surface, userInfo: [
                         GhosttyNotificationKey.exitCode: exitCode,
                     ])

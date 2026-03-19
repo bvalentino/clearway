@@ -47,19 +47,28 @@ struct HookTerminalView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited, object: surface)) { notification in
             guard let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32
             else { return }
-            if exitCode == 0 {
-                guard !completed else { return }
-                completed = true
-                hook.onContinue()
-                onDismiss()
-            } else {
-                failed = true
-            }
+            handleChildExit(exitCode)
         }
         .onAppear {
+            // Handle the race where the hook process exited before this view rendered,
+            // meaning the .onReceive subscriber missed the ghosttyChildExited notification.
+            if let exitCode = surface.childExitCode {
+                handleChildExit(exitCode)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 surface.window?.makeFirstResponder(surface)
             }
+        }
+    }
+
+    private func handleChildExit(_ exitCode: UInt32) {
+        if exitCode == 0 {
+            guard !completed else { return }
+            completed = true
+            hook.onContinue()
+            onDismiss()
+        } else {
+            failed = true
         }
     }
 
