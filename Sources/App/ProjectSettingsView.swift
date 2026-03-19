@@ -36,6 +36,20 @@ struct ProjectSettingsView: View {
         for interpolation.
         """
 
+    private static let workflowTemplate = """
+        ---
+        hooks:
+          after_create: echo "worktree ready"
+          before_run: echo "starting agent"
+        agent:
+          command: claude
+        ---
+
+        {{ task.title }}
+
+        {{ task.body }}
+        """
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -56,7 +70,7 @@ struct ProjectSettingsView: View {
 
                 // MARK: - WORKFLOW.md
 
-                SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowStatusBadge }) {
+                SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
                     TextEditor(text: $workflowText)
                         .font(.system(.body, design: .monospaced))
                         .scrollContentBackground(.hidden)
@@ -90,6 +104,20 @@ struct ProjectSettingsView: View {
         }
     }
 
+    // MARK: - Trailing Content
+
+    @ViewBuilder
+    private var workflowTrailing: some View {
+        HStack(spacing: 8) {
+            if workflowStatus == .empty {
+                Button("Use Template") { applyTemplate() }
+                    .buttonStyle(.link)
+                    .font(.caption)
+            }
+            workflowStatusBadge
+        }
+    }
+
     // MARK: - Status Badge
 
     @ViewBuilder
@@ -110,6 +138,12 @@ struct ProjectSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
         }
+    }
+
+    // MARK: - Template
+
+    private func applyTemplate() {
+        workflowText = Self.workflowTemplate
     }
 
     // MARK: - File I/O
@@ -158,11 +192,8 @@ struct ProjectSettingsView: View {
 
         let isValid = WorkflowConfig.parse(from: workflowText) != nil
 
-        let url = URL(fileURLWithPath: workflowFilePath)
-        do {
-            try workflowText.data(using: .utf8)?.write(to: url, options: .atomic)
-            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: workflowFilePath)
-        } catch {
+        guard let data = workflowText.data(using: .utf8) else { return }
+        guard fm.createFile(atPath: workflowFilePath, contents: data, attributes: [.posixPermissions: 0o600]) else {
             // Write failed — leave status unchanged
             return
         }
