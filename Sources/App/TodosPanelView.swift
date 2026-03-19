@@ -258,13 +258,10 @@ private struct ClaudeSessionSection: View {
 
                 Spacer()
 
-                Button { onClear() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear Claude Todos")
+                Button("Clear") { onClear() }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
             }
 
             ForEach(session.todos) { todo in
