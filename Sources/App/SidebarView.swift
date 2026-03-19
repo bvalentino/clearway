@@ -11,9 +11,7 @@ private enum SidebarSheet: String, Identifiable {
 struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
-    @EnvironmentObject private var projectList: ProjectListManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    @Environment(\.openWindow) private var openWindow
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
@@ -40,7 +38,6 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $detailSelection) {
-            projectSection
             tasksRow
             settingsRow
             worktreeSection
@@ -101,48 +98,6 @@ struct SidebarView: View {
     }
 
     // MARK: - Sections
-
-    private var filteredProjectPaths: [String] {
-        guard isSearching else { return projectList.projectPaths }
-        return projectList.projectPaths.filter {
-            ($0 as NSString).lastPathComponent.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    private var projectSection: some View {
-        Section {
-            ForEach(filteredProjectPaths, id: \.self) { path in
-                ProjectRow(
-                    path: path,
-                    isActive: path == worktreeManager.projectPath
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if path != worktreeManager.projectPath {
-                        projectList.lastActiveProjectPath = path
-                        openWindow(value: path)
-                    }
-                }
-                .contextMenu {
-                    Button("Remove Project") {
-                        projectList.removeProject(path)
-                    }
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
-                    }
-                }
-            }
-        } header: {
-            HStack {
-                Text("Projects")
-                Spacer()
-                SidebarHeaderButton(systemImage: "plus") {
-                    pickProject()
-                }
-                .padding(.trailing, 6)
-            }
-        }
-    }
 
     private var tasksRow: some View { sidebarRow("Tasks", icon: "ticket", selection: .tasks) }
     private var settingsRow: some View { sidebarRow("Settings", icon: "gear", selection: .settings) }
@@ -262,31 +217,6 @@ struct SidebarView: View {
         return i + 1
     }
 
-    private func pickProject() {
-        if let path = projectList.pickAndAddProject() {
-            openWindow(value: path)
-        }
-    }
-}
-
-// MARK: - Project Row
-
-struct ProjectRow: View {
-    let path: String
-    let isActive: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isActive ? "folder.fill" : "folder")
-                .foregroundStyle(isActive ? .blue : .secondary)
-                .font(.caption)
-            Text(URL(fileURLWithPath: path).lastPathComponent)
-                .fontWeight(isActive ? .semibold : .regular)
-                .lineLimit(1)
-            Spacer()
-        }
-        .contentShape(Rectangle())
-    }
 }
 
 // MARK: - Worktree Row

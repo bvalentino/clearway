@@ -15,6 +15,7 @@
 		0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7413DF158A0D475363F560A /* ProjectListManager.swift */; };
 		12BE305CDFE8F309FCBCB685 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9527908B9C78C4108E22859F /* Ghostty.App.swift */; };
 		1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E131E35523E6802F91F45113 /* ShellEnvironment.swift */; };
+		1735CAC2D79EA8DF8990B232 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B0111D1439D514EF28E3543 /* ProjectSelectorView.swift */; };
 		1F7BC03D85A09D98E801B6D9 /* WorkTaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAED3D48ED0D3C7B46CC2CDC /* WorkTaskListView.swift */; };
 		23F3DE2EA1F241461398F3E8 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */; };
 		241D1F1059AE3B7173B40331 /* WorkTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F77888A98CCCBD8410D24DF /* WorkTaskManager.swift */; };
@@ -89,6 +90,7 @@
 		8346D6DF56660212501AB834 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		893BD3DE59D6666BD3578039 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
 		8ABA3DD709EEBE0CD906DE99 /* ClaudeTodo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodo.swift; sourceTree = "<group>"; };
+		8B0111D1439D514EF28E3543 /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
 		9527908B9C78C4108E22859F /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
 		A80A4415AF3AF0E664DD76BB /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		AAED3D48ED0D3C7B46CC2CDC /* WorkTaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskListView.swift; sourceTree = "<group>"; };
@@ -161,6 +163,7 @@
 				5AB5A8C97B2AF141D8E08761 /* NotesView.swift */,
 				C5719DD840FC11C63AF6F84E /* NoteWindow.swift */,
 				C7413DF158A0D475363F560A /* ProjectListManager.swift */,
+				8B0111D1439D514EF28E3543 /* ProjectSelectorView.swift */,
 				E856EBACD95238A075585AB1 /* ProjectSettings.swift */,
 				E0CE0C805A860E996C7A1418 /* ProjectSettingsView.swift */,
 				1E0C29A6E40E55649C932A94 /* ProjectWindow.swift */,
@@ -334,6 +337,7 @@
 				F0A274036A700D9E70D479AC /* NotesManager.swift in Sources */,
 				EF2E6586623E234DEBF42A75 /* NotesView.swift in Sources */,
 				0FBF93B25F9399F539E34FE5 /* ProjectListManager.swift in Sources */,
+				1735CAC2D79EA8DF8990B232 /* ProjectSelectorView.swift in Sources */,
 				41549514701263E028D48FDD /* ProjectSettings.swift in Sources */,
 				FD5949251B8FFBD40F2937F1 /* ProjectSettingsView.swift in Sources */,
 				8F48AD472EBF014CAEEEACBD /* ProjectWindow.swift in Sources */,

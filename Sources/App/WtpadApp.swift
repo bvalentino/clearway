@@ -85,6 +85,8 @@ struct WtpadApp: App {
         _ghosttyApp = StateObject(wrappedValue: Ghostty.App())
     }
 
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
         WindowGroup(for: String.self) { $projectPath in
             ProjectWindow(projectPath: $projectPath)
@@ -109,6 +111,12 @@ struct WtpadApp: App {
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
             }
+            CommandGroup(replacing: .newItem) {
+                Button("New Window") {
+                    showProjectSelector()
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
         }
 
         WindowGroup(for: NoteIdentifier.self) { $identifier in
@@ -124,6 +132,11 @@ struct WtpadApp: App {
             SettingsView(settings: settings)
                 .preferredColorScheme(.dark)
         }
+    }
 
+    private func showProjectSelector() {
+        ProjectSelectorWindowController.shared.show(projectList: projectList) { [openWindow] path in
+            openWindow(value: path)
+        }
     }
 }

@@ -119,7 +119,7 @@ private struct AboutPropertyRow: View {
     }
 }
 
-private struct VisualEffectBackground: NSViewRepresentable {
+struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .underWindowBackground

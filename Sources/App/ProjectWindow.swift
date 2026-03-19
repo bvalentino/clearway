@@ -7,6 +7,7 @@ import SwiftUI
 struct ProjectWindow: View {
     @Binding var projectPath: String?
     @EnvironmentObject private var projectList: ProjectListManager
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -25,36 +26,43 @@ struct ProjectWindow: View {
     private var content: some View {
         if let path = projectPath {
             ProjectContentView(projectPath: path)
-        } else if let path = projectList.lastActiveProjectPath {
-            // WindowGroup(for:) passes nil on initial launch; redirect to last active project.
-            Color.clear.onAppear { projectPath = path }
         } else {
-            WelcomeView(projectPath: $projectPath)
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(WindowHider { window in
+                    ProjectSelectorWindowController.shared.show(projectList: projectList) { [openWindow] path in
+                        openWindow(value: path)
+                    }
+                    window?.close()
+                })
         }
     }
 }
 
-/// Welcome view shown when no projects have been added.
-struct WelcomeView: View {
-    @Binding var projectPath: String?
-    @EnvironmentObject private var projectList: ProjectListManager
+/// Hides the hosting window immediately when added, then calls back.
+private struct WindowHider: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
 
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "terminal")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("Add a project to get started")
-                .foregroundStyle(.secondary)
-            Button("Add Project") {
-                if let path = projectList.pickAndAddProject() {
-                    projectPath = path
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    func makeNSView(context: Context) -> WindowHiderView {
+        let view = WindowHiderView()
+        view.onWindow = onWindow
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowHiderView, context: Context) {}
+}
+
+private class WindowHiderView: NSView {
+    var onWindow: ((NSWindow?) -> Void)?
+    private var didFire = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window, !didFire else { return }
+        didFire = true
+        window.setFrame(.zero, display: false)
+        window.orderOut(nil)
+        onWindow?(window)
     }
 }
 
