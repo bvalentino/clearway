@@ -64,6 +64,7 @@ struct ContentView: View {
     @State private var flagsMonitor: Any?
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
+    @State private var afterCreateHook: InlineHook?
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
@@ -81,7 +82,7 @@ struct ContentView: View {
             detailView
         }
         .sheet(item: $hookSheet) { hook in
-            HookTerminalSheet(hook: hook, surface: hook.surface)
+            HookTerminalSheet(hook: hook)
         }
         .toolbar {
             if selectedWorktree != nil {
@@ -159,8 +160,8 @@ struct ContentView: View {
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
-            terminalManager.clearNotification(for: wt.id)
             focusPane(\.main)
+            terminalManager.clearNotification(for: wt.id)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
             claudeTodoManager.setWorktreePath(wt.path)
             todoManager.setWorktreePath(wt.path)
@@ -193,13 +194,19 @@ struct ContentView: View {
 
             if let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                hookSheet = HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
+                afterCreateHook = InlineHook(
+                    worktreeId: wt.id,
+                    hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
+                )
             } else {
                 launchClaude?()
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
+            if let hookWt = afterCreateHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
+                afterCreateHook = nil
+            }
             guard let selected = selectedWorktree else { return }
             let refreshed = newWorktrees.first(where: { $0.id == selected.id })
             // Update selection to the refreshed instance so its hash matches
@@ -439,6 +446,10 @@ struct ContentView: View {
         }
     }
 
+    private func finishAfterCreateHook() {
+        afterCreateHook = nil
+    }
+
     // MARK: - Detail View
 
     @ViewBuilder
@@ -468,7 +479,11 @@ struct ContentView: View {
                                 showBorder: shouldShowFocusBorder
                             )
 
-                            if secondaryVisible {
+                            if let inline = afterCreateHook, selectedWorktree?.id == inline.worktreeId {
+                                Divider()
+                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook)
+                                    .frame(height: secondaryHeight)
+                            } else if secondaryVisible {
                                 Divider()
                                     .padding(.vertical, 2)
                                     .contentShape(Rectangle())
