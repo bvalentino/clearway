@@ -18,6 +18,7 @@ class ClaudeTodoManager: ObservableObject {
     private var clearedSessionIds: Set<String> = []
     private var watcherSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
+    private var reloadTask: Task<Void, Never>?
     private var pendingPolls: [DispatchWorkItem] = []
     private var needsWatcherRebuild = false
 
@@ -26,6 +27,7 @@ class ClaudeTodoManager: ObservableObject {
     }()
 
     nonisolated deinit {
+        reloadTask?.cancel()
         pendingReload?.cancel()
         for poll in pendingPolls { poll.cancel() }
         for source in watcherSources { source.cancel() }
@@ -36,11 +38,20 @@ class ClaudeTodoManager: ObservableObject {
         Self.logger.info("setWorktreePath: \(path ?? "nil", privacy: .public)")
         stopWatching()
         worktreePath = path
+        // Immediately load cached sessions so the UI has data right away,
+        // before the async reload fetches live data from ~/.claude/tasks/.
+        if let path {
+            sessions = Self.readCache(at: Self.cacheFilePath(forWorktreePath: path))
+        } else {
+            sessions = []
+        }
         reload()
         watchTodoDirectories()
     }
 
     func stopWatching() {
+        reloadTask?.cancel()
+        reloadTask = nil
         pendingReload?.cancel()
         pendingReload = nil
         for poll in pendingPolls { poll.cancel() }
@@ -52,6 +63,7 @@ class ClaudeTodoManager: ObservableObject {
     }
 
     func reload() {
+        reloadTask?.cancel()
         guard let worktreePath else {
             sessions = []
             return
@@ -62,12 +74,14 @@ class ClaudeTodoManager: ObservableObject {
         let cacheFile = Self.cacheFilePath(forWorktreePath: worktreePath)
 
         let cleared = clearedSessionIds
-        Task.detached { [weak self] in
+        reloadTask = Task.detached { [weak self] in
             let live = Self.loadSessions(claudeDir: claudeDir, encodedPath: encodedPath)
+            guard !Task.isCancelled else { return }
             let cached = Self.readCache(at: cacheFile)
             let merged = Self.mergeSessions(live: live, cached: cached)
                 .filter { !cleared.contains($0.id) }
             Self.writeCache(merged, to: cacheFile)
+            guard !Task.isCancelled else { return }
             let todoCount = merged.reduce(0) { $0 + $1.todos.count }
             Self.logger.info("reload: \(merged.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cached.count))")
             await MainActor.run {
@@ -84,6 +98,7 @@ class ClaudeTodoManager: ObservableObject {
         let fm = FileManager.default
 
         guard let contents = try? fm.contentsOfDirectory(atPath: projectDir) else {
+            Self.logger.debug("loadSessions: no project dir at \(encodedPath, privacy: .public)")
             return []
         }
 
@@ -99,7 +114,10 @@ class ClaudeTodoManager: ObservableObject {
                 .appendingPathComponent("tasks")
                 .appending("/\(uuid)")
 
-            guard let todoFiles = try? fm.contentsOfDirectory(atPath: tasksDir) else { continue }
+            guard let todoFiles = try? fm.contentsOfDirectory(atPath: tasksDir) else {
+                Self.logger.debug("loadSessions: no tasks dir for session \(uuid, privacy: .public)")
+                continue
+            }
 
             let jsonFiles = todoFiles.filter { $0.hasSuffix(".json") }
             guard !jsonFiles.isEmpty else { continue }
