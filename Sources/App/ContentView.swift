@@ -62,6 +62,7 @@ struct ContentView: View {
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
     @State private var flagsMonitor: Any?
+    @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var afterCreateHook: InlineHook?
@@ -274,6 +275,19 @@ struct ContentView: View {
                     debouncedRefresh()
                 }
             }
+            if taskWindowObservers.isEmpty {
+                let actions: [(Notification.Name, (WorkTask) -> Void)] = [
+                    (WorkTaskNotification.start, startWorkTask),
+                    (WorkTaskNotification.continue, continueWorkTask),
+                    (WorkTaskNotification.openWorktree, openTaskWorktree),
+                ]
+                let projectPath = worktreeManager.projectPath
+                taskWindowObservers = actions.map { name, action in
+                    NotificationCenter.default.addObserver(forName: name, object: projectPath, queue: .main) { [self] n in
+                        handleTaskNotification(n, action: action)
+                    }
+                }
+            }
             if flagsMonitor == nil {
                 flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
                     let held = event.modifierFlags.contains(.control)
@@ -298,6 +312,10 @@ struct ContentView: View {
             claudeTodoManager.stopWatching()
             todoManager.stopWatching()
             notesManager.stopWatching()
+            for observer in taskWindowObservers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            taskWindowObservers = []
         }
     }
 
@@ -440,6 +458,17 @@ struct ContentView: View {
         }
     }
 
+    private func handleTaskNotification(_ notification: Notification, action: (WorkTask) -> Void) {
+        // Prefer task data from userInfo (sent by the task window's manager) to avoid
+        // race conditions where our own manager hasn't reloaded from disk yet.
+        if let task = notification.userInfo?[WorkTaskNotification.taskKey] as? WorkTask {
+            action(task)
+        } else if let taskId = notification.object as? UUID,
+                  let task = workTaskManager.tasks.first(where: { $0.id == taskId }) {
+            action(task)
+        }
+    }
+
     private func openTaskWorktree(_ task: WorkTask) {
         if let wt = workTaskCoordinator.worktreeForTask(task) {
             detailSelection = .worktree(wt)
@@ -576,11 +605,7 @@ struct ContentView: View {
             } else if detailSelection == .settings {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else {
-                WorkTaskListView(
-                    onStart: { startWorkTask($0) },
-                    onOpen: { openTaskWorktree($0) },
-                    onContinue: { continueWorkTask($0) }
-                )
+                WorkTaskListView(projectPath: worktreeManager.projectPath)
             }
         }
     }

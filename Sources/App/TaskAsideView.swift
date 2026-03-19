@@ -58,17 +58,6 @@ struct TaskAsideView: View {
                 // Action buttons
                 actionButtons(task)
 
-                if !task.body.isEmpty {
-                    Divider()
-
-                    // Body (read-only)
-                    Text(task.body)
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-
                 // Last updated
                 Text("Updated \(task.updatedAt.formatted(.relative(presentation: .named)))")
                     .font(.caption2)

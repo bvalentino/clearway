@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Displays agent metadata for a task: token usage, attempt count, and error message.
-/// Shared between `TaskAsideView` (aside panel) and `WorkTaskDetailView` (detail sheet).
+/// Shared between `TaskAsideView` (aside panel) and `WorkTaskWindow` (task editor window).
 struct WorkTaskAgentMetadata: View {
     let task: WorkTask
 
