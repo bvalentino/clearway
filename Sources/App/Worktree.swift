@@ -294,7 +294,7 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    /// Remove a worktree: `git worktree remove --force <path>`
+    /// Remove a worktree: `git worktree remove --force --force <path>`
     func removeWorktree(branch: String) {
         let projectPath = self.projectPath
         guard let wt = worktrees.first(where: { $0.branch == branch }),
@@ -305,7 +305,7 @@ class WorktreeManager: ObservableObject {
         worktrees.removeAll { $0.branch == branch }
         Task.detached { [weak self] in
             do {
-                try await Self.runCommand(["git", "worktree", "remove", "--force", worktreePath], in: projectPath)
+                try await Self.runCommand(["git", "worktree", "remove", "--force", "--force", worktreePath], in: projectPath)
                 _ = try? await Self.runCommand(["git", "branch", "-D", "--", branch], in: projectPath)
             } catch {
                 let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
