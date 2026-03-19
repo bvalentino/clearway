@@ -26,7 +26,7 @@ struct TaskAsideView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "ticket")
+            Image(systemName: "tray")
                 .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
             Text("No task linked")

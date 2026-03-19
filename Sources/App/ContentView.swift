@@ -84,31 +84,32 @@ struct ContentView: View {
             HookTerminalSheet(hook: hook, surface: hook.surface)
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showRemoveConfirmation = true
-                } label: {
-                    Image(systemName: "archivebox")
+            if selectedWorktree != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showRemoveConfirmation = true
+                    } label: {
+                        Image(systemName: "archivebox")
+                    }
+                    .help("Remove worktree")
+                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
-                .help("Remove worktree")
-                .disabled(currentWorktree == nil || currentWorktree?.isMain == true || currentWorktree?.branch == nil)
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: toggleSecondaryTerminal) {
+                        Image(systemName: "rectangle.bottomhalf.inset.filled")
+                    }
+                    .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: toggleAside) {
+                        Image(systemName: "sidebar.trailing")
+                    }
+                    .help(asideVisible ? "Hide aside" : "Show aside")
+                }
             }
 
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: toggleSecondaryTerminal) {
-                    Image(systemName: "rectangle.bottomhalf.inset.filled")
-                }
-                .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
-                .disabled(selectedWorktree == nil)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: toggleAside) {
-                    Image(systemName: "sidebar.trailing")
-                }
-                .help(asideVisible ? "Hide aside" : "Show aside")
-                .disabled(selectedWorktree == nil)
-            }
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
