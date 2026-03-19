@@ -9,9 +9,12 @@ struct Note: Identifiable {
     /// When the file was last modified on disk.
     let modificationDate: Date
 
+    /// Content with YAML frontmatter stripped, used for title/preview extraction.
+    private var body: String { Self.contentWithoutFrontmatter(content) }
+
     /// Whether the note has a `# ` heading line.
     var hasHeading: Bool {
-        if let firstLine = content.split(separator: "\n", maxSplits: 1).first {
+        if let firstLine = body.split(separator: "\n", omittingEmptySubsequences: true).first {
             return firstLine.hasPrefix("# ")
         }
         return false
@@ -24,9 +27,9 @@ struct Note: Identifiable {
 
     /// Body text after the title line, for use as a preview snippet.
     var preview: String {
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
-        let body = lines.drop { $0.hasPrefix("# ") }
-        return body.prefix(3).joined(separator: " ")
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: true)
+        let rest = lines.drop { $0.hasPrefix("# ") }
+        return rest.prefix(3).joined(separator: " ")
     }
 
     /// Creation date parsed from the timestamp filename (e.g., `20260315-142129.md`).
@@ -34,9 +37,24 @@ struct Note: Identifiable {
         NotesManager.timestampFormatter.date(from: String(id.dropLast(".md".count)))
     }
 
+    /// Strips YAML frontmatter (delimited by `---`) from the beginning of content.
+    static func contentWithoutFrontmatter(_ content: String) -> String {
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let firstLine = lines.first, firstLine == "---" else {
+            return content
+        }
+        for i in 1..<lines.count {
+            if lines[i] == "---" {
+                return lines.dropFirst(i + 1).joined(separator: "\n")
+            }
+        }
+        return content
+    }
+
     /// Extracts a title from markdown content. Used by both Note and NoteWindow.
     static func title(from content: String) -> String {
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
+        let body = contentWithoutFrontmatter(content)
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: true)
         if let firstLine = lines.first, firstLine.hasPrefix("# ") {
             return String(firstLine.dropFirst(2))
         }
