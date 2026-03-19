@@ -32,7 +32,7 @@ struct NoteWindow: View {
             case .edit:
                 MarkdownEditorView(text: $content)
             case .preview:
-                MarkdownPreviewView(markdown: content)
+                MarkdownPreviewView(markdown: Note.contentWithoutFrontmatter(content))
             }
         }
         .id(identifier.filename)
