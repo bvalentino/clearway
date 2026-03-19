@@ -126,7 +126,7 @@ struct ContentView: View {
                 }
             }
         } message: {
-            Text("This will delete the worktree and its working directory.")
+            Text("This will delete the worktree and its working directory, including any uncommitted changes and untracked files.")
         }
         .confirmationDialog(
             "Trust WORKFLOW.md hooks?",
