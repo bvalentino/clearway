@@ -1,7 +1,13 @@
 import GhosttyKit
 import SwiftUI
 
-/// Identifiable state for presenting a hook terminal sheet.
+/// State for an after-create hook running inline in the secondary terminal slot.
+struct InlineHook {
+    let worktreeId: String
+    let hook: HookSheet
+}
+
+/// Identifiable state for presenting a hook terminal (sheet or inline).
 struct HookSheet: Identifiable {
     let id = UUID()
     let title: String
@@ -13,41 +19,51 @@ struct HookSheet: Identifiable {
     var onForce: (() -> Void)?
 }
 
-/// A modal sheet that runs a hook command in a terminal.
-/// Auto-dismisses on success. On failure, drops into an interactive
-/// shell for debugging with a "Close" button.
-struct HookTerminalSheet: View {
+/// Shared view that runs a hook command in a terminal.
+/// On success, calls `onContinue` then `onDismiss`. On failure, drops into an
+/// interactive shell for debugging with a "Close" button.
+struct HookTerminalView: View {
     let hook: HookSheet
-    @ObservedObject var surface: Ghostty.SurfaceView
-    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var surface: Ghostty.SurfaceView
+    let onDismiss: () -> Void
     @State private var failed = false
+    @State private var completed = false
+
+    init(hook: HookSheet, onDismiss: @escaping () -> Void) {
+        self.hook = hook
+        self._surface = ObservedObject(wrappedValue: hook.surface)
+        self.onDismiss = onDismiss
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            header(failed: failed)
+            header
             Divider()
-            TerminalSurface(surfaceView: hook.surface)
+            TerminalSurface(surfaceView: surface)
         }
-        .frame(minWidth: 600, minHeight: 400)
         .onChange(of: surface.title) { title in
             if title == hookFailedMarker { failed = true }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
-            guard let surface = notification.object as? Ghostty.SurfaceView,
-                  surface === hook.surface,
-                  let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32,
-                  exitCode == 0 else { return }
-            hook.onContinue()
-            dismiss()
+        .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited, object: surface)) { notification in
+            guard let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32
+            else { return }
+            if exitCode == 0 {
+                guard !completed else { return }
+                completed = true
+                hook.onContinue()
+                onDismiss()
+            } else {
+                failed = true
+            }
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                hook.surface.window?.makeFirstResponder(hook.surface)
+                surface.window?.makeFirstResponder(surface)
             }
         }
     }
 
-    private func header(failed: Bool) -> some View {
+    private var header: some View {
         HStack(spacing: 8) {
             if failed {
                 Image(systemName: "xmark.circle.fill")
@@ -69,21 +85,34 @@ struct HookTerminalSheet: View {
             Spacer()
 
             if failed {
-                Button("Close") { dismiss() }
+                Button("Close") { onDismiss() }
                 if let onForce = hook.onForce {
                     Button("Force Remove", role: .destructive) {
                         onForce()
-                        dismiss()
+                        onDismiss()
                     }
                 }
             } else {
                 Button("Run in Background") {
+                    guard !completed else { return }
+                    completed = true
                     hook.onContinue()
-                    dismiss()
+                    onDismiss()
                 }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+}
+
+/// Modal sheet wrapper for hook terminals (before-remove, before-run, after-run).
+struct HookTerminalSheet: View {
+    let hook: HookSheet
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        HookTerminalView(hook: hook) { dismiss() }
+            .frame(minWidth: 600, minHeight: 400)
     }
 }
