@@ -39,8 +39,8 @@ struct ProjectSettingsView: View {
     private static let workflowTemplate = """
         ---
         hooks:
-          after_create: npm install
-          before_run: git pull --rebase
+          after_create: echo "worktree ready"
+          before_run: echo "starting agent"
         agent:
           command: claude
         ---
