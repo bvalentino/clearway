@@ -47,7 +47,7 @@ struct WorkTaskListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "ticket")
+            Image(systemName: "tray")
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
             Text(activeTaskCount > 0 ? "Backlog is empty" : "No tasks yet")

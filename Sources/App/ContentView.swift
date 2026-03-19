@@ -109,6 +109,7 @@ struct ContentView: View {
                     .help(asideVisible ? "Hide aside" : "Show aside")
                 }
             }
+
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",

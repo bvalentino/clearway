@@ -39,11 +39,24 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $detailSelection) {
             tasksRow
-            settingsRow
             worktreeSection
         }
+        .overlay(alignment: .bottomLeading) {
+            Button {
+                detailSelection = detailSelection == .settings ? .tasks : .settings
+            } label: {
+                Image(systemName: "gear")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(detailSelection == .settings ? .primary : .secondary)
+                    .frame(width: 36, height: 36)
+                    .background(.thinMaterial, in: Circle())
+                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+            .help("Project Settings")
+            .padding(12)
+        }
         .listStyle(.sidebar)
-        .searchable(text: $searchText, placement: .sidebar, prompt: "Filter")
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
@@ -99,27 +112,18 @@ struct SidebarView: View {
 
     // MARK: - Sections
 
-    private var tasksRow: some View { sidebarRow("Tasks", icon: "ticket", selection: .tasks) }
-    private var settingsRow: some View { sidebarRow("Settings", icon: "gear", selection: .settings) }
-
-    private func sidebarRow(_ title: String, icon: String, selection: DetailSelection) -> some View {
-        let isSelected = detailSelection == selection
-        return HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(isSelected ? .blue : .secondary)
-            Text(title)
-                .fontWeight(isSelected ? .semibold : .regular)
-            Spacer()
-        }
-        .padding(.vertical, 2)
-        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture { detailSelection = selection }
+    private var tasksRow: some View {
+        let icon = workTaskManager.tasks.contains(where: { $0.status == .open }) ? "tray.full" : "tray"
+        return Label("Tasks", systemImage: icon)
+            .tag(DetailSelection.tasks)
     }
 
     private var worktreeSection: some View {
         Section {
+            SearchField(text: $searchText, placeholder: "Filter")
+                .listRowInsets(EdgeInsets(top: 4, leading: -4, bottom: 4, trailing: -4))
+                .listRowSeparator(.hidden)
+
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
                 WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), taskStatus: wt.branch.flatMap { workTaskManager.task(forWorktree: $0)?.status }, shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
@@ -233,10 +237,16 @@ struct WorktreeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                if worktree.isMain {
-                    Image(systemName: "crown.fill")
+                if let index = shortcutIndex {
+                    Text("⌘\(index)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 20, alignment: .center)
+                } else {
+                    Image(systemName: "arrow.triangle.branch")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 20, alignment: .center)
                 }
                 Text(worktree.displayName)
                     .lineLimit(1)
@@ -249,11 +259,6 @@ struct WorktreeRow: View {
                         .fill(.blue)
                         .frame(width: 7, height: 7)
                         .help("Terminal notification")
-                }
-                if let index = shortcutIndex {
-                    Text("⌘\(index)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
                 }
             }
 
@@ -367,6 +372,42 @@ struct CreateWorktreeSheet: View {
 }
 
 // MARK: - Sidebar Header Button
+
+/// Native NSSearchField wrapped for SwiftUI — matches the system search field appearance.
+private struct SearchField: NSViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = placeholder
+        field.delegate = context.coordinator
+        field.focusRingType = .none
+        field.bezelStyle = .roundedBezel
+        field.controlSize = .regular
+        return field
+    }
+
+    func updateNSView(_ nsView: NSSearchField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    class Coordinator: NSObject, NSSearchFieldDelegate {
+        @Binding var text: String
+        init(text: Binding<String>) { _text = text }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            text = field.stringValue
+        }
+    }
+}
 
 private struct SidebarHeaderButton: View {
     let systemImage: String
