@@ -33,6 +33,9 @@ struct WorkTaskListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottomTrailing) {
+            createButton
+        }
         .sheet(item: $editingTask) { task in
             WorkTaskDetailView(
                 task: task,
@@ -85,16 +88,21 @@ struct WorkTaskListView: View {
             }
             .padding(20)
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    createAndEdit()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("New Task")
-            }
+    }
+
+    private var createButton: some View {
+        Button {
+            createAndEdit()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
+        .buttonStyle(.plain)
+        .padding(12)
     }
 
     private func createAndEdit() {
