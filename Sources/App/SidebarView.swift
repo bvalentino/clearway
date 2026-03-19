@@ -235,21 +235,18 @@ struct WorktreeRow: View {
     @State private var pulsing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        Label {
             HStack(spacing: 4) {
-                if let index = shortcutIndex {
-                    Text("⌘\(index)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 20, alignment: .center)
-                } else {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 20, alignment: .center)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(worktree.displayName)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                Text(worktree.displayName)
-                    .lineLimit(1)
                 Spacer()
                 if let taskStatus {
                     taskStatusIndicator(taskStatus)
@@ -261,15 +258,15 @@ struct WorktreeRow: View {
                         .help("Terminal notification")
                 }
             }
-
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        } icon: {
+            if let index = shortcutIndex {
+                Text("⌘\(index)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+            } else {
+                Image(systemName: "arrow.triangle.branch")
             }
         }
-        .padding(.vertical, 2)
     }
 
     @ViewBuilder
