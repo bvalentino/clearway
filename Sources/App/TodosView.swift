@@ -29,8 +29,9 @@ struct TodoRow: View {
                 }
 
             if isEditing {
-                TextField("New todo", text: $editingSubject)
+                TextField("New todo", text: $editingSubject, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .fixedSize(horizontal: false, vertical: true)
                     .focused($isFocused)
                     .onSubmit { onEditCommit(editingSubject) }
                     .onExitCommand { onEditCancel() }
@@ -111,8 +112,9 @@ struct NewTodoRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
 
-            TextField("New todo", text: $subject)
+            TextField("New todo", text: $subject, axis: .vertical)
                 .textFieldStyle(.plain)
+                .fixedSize(horizontal: false, vertical: true)
                 .focused($isFocused)
                 .onSubmit { onCommit(subject) }
                 .onExitCommand { onCancel() }
