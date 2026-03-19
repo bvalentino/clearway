@@ -27,6 +27,7 @@ struct TodosPanelView: View {
     @State private var newTodoGeneration = 0
     @State private var selectedTodo: TodoSelection?
     @State private var todoPendingDeletion: Todo?
+    @State private var sessionPendingClear: String?
     @FocusState private var isListFocused: Bool
 
     enum TodoSelection: Hashable {
@@ -83,12 +84,11 @@ struct TodosPanelView: View {
                             ClaudeSessionSection(
                                 session: session,
                                 selectedTodoId: selectedClaudeTodoId(for: session.id),
-                                canSend: canSend,
                                 onSelect: { todo in
                                     selectTodo(.claude(sessionId: session.id, todoId: todo.id))
                                 },
-                                onSend: { todo in
-                                    sendToTerminal(todo.subject)
+                                onClear: {
+                                    sessionPendingClear = session.id
                                 }
                             )
                         }
@@ -119,6 +119,26 @@ struct TodosPanelView: View {
                     if selectedTodo == .todo(todo.id) { selectedTodo = nil }
                 }
                 todoPendingDeletion = nil
+            }
+        }
+        .alert(
+            "Clear Claude todos?",
+            isPresented: Binding(
+                get: { sessionPendingClear != nil },
+                set: { if !$0 { sessionPendingClear = nil } }
+            )
+        ) {
+            Button("Clear", role: .destructive) {
+                if let sessionId = sessionPendingClear {
+                    if case .claude(sessionId, _) = selectedTodo {
+                        selectedTodo = nil
+                    }
+                    claudeTodoManager.clearSession(sessionId)
+                }
+                sessionPendingClear = nil
+            }
+            Button("Cancel", role: .cancel) {
+                sessionPendingClear = nil
             }
         }
     }
@@ -222,27 +242,34 @@ struct TodosPanelView: View {
 private struct ClaudeSessionSection: View {
     let session: ClaudeSession
     var selectedTodoId: String?
-    var canSend: Bool
     var onSelect: (ClaudeTodo) -> Void
-    var onSend: (ClaudeTodo) -> Void
+    var onClear: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Claude")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.orange, in: Capsule())
+            HStack(spacing: 6) {
+                Text("Claude")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.orange, in: Capsule())
+
+                Button { onClear() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear Claude Todos")
+            }
 
             ForEach(session.todos) { todo in
                 ClaudeTodoRow(
                     todo: todo,
                     isSelected: selectedTodoId == todo.id,
-                    canSend: canSend,
-                    onSelect: { onSelect(todo) },
-                    onSend: { onSend(todo) }
+                    onSelect: { onSelect(todo) }
                 )
             }
         }
@@ -253,9 +280,7 @@ private struct ClaudeSessionSection: View {
 private struct ClaudeTodoRow: View {
     let todo: ClaudeTodo
     var isSelected: Bool
-    var canSend: Bool
     var onSelect: () -> Void
-    var onSend: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -270,23 +295,11 @@ private struct ClaudeTodoRow: View {
                 .strikethrough(todo.status == .completed)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            if todo.status != .completed {
-                SendToTerminalButton(action: onSend, disabled: !canSend)
-            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(isSelected ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
-        .contextMenu {
-            if todo.status != .completed {
-                Button { onSend() } label: {
-                    Label("Send to Terminal", systemImage: "play.fill")
-                }
-                .disabled(!canSend)
-            }
-        }
     }
 }

@@ -54,7 +54,7 @@ struct TodoRow: View {
                         lastClickTime = now
                     }
 
-                if todo.status != .completed {
+                if todo.status == .pending {
                     SendToTerminalButton(action: onSend, disabled: !canSend)
                 }
             }
@@ -72,7 +72,7 @@ struct TodoRow: View {
                 .disabled(todo.status == status)
             }
             Divider()
-            if todo.status != .completed {
+            if todo.status == .pending {
                 Button { onSend() } label: {
                     Label("Send to Terminal", systemImage: "play.fill")
                 }

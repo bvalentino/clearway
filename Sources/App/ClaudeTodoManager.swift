@@ -15,6 +15,7 @@ class ClaudeTodoManager: ObservableObject {
     )
 
     private var worktreePath: String?
+    private var clearedSessionIds: Set<String> = []
     private var watcherSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
     private var pendingPolls: [DispatchWorkItem] = []
@@ -46,6 +47,7 @@ class ClaudeTodoManager: ObservableObject {
         pendingPolls = []
         for source in watcherSources { source.cancel() }
         watcherSources = []
+        clearedSessionIds = []
         worktreePath = nil
     }
 
@@ -59,10 +61,12 @@ class ClaudeTodoManager: ObservableObject {
         let encodedPath = Self.encodePathForClaude(worktreePath)
         let cacheFile = Self.cacheFilePath(forWorktreePath: worktreePath)
 
+        let cleared = clearedSessionIds
         Task.detached { [weak self] in
             let live = Self.loadSessions(claudeDir: claudeDir, encodedPath: encodedPath)
             let cached = Self.readCache(at: cacheFile)
             let merged = Self.mergeSessions(live: live, cached: cached)
+                .filter { !cleared.contains($0.id) }
             Self.writeCache(merged, to: cacheFile)
             let todoCount = merged.reduce(0) { $0 + $1.todos.count }
             Self.logger.info("reload: \(merged.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cached.count))")
@@ -124,6 +128,19 @@ class ClaudeTodoManager: ObservableObject {
 
         newSessions.sort { $0.modificationDate > $1.modificationDate }
         return newSessions
+    }
+
+    /// Removes a session from the displayed list and cache.
+    /// Does not touch `~/.claude/tasks/` — those files belong to Claude Code.
+    func clearSession(_ sessionId: String) {
+        clearedSessionIds.insert(sessionId)
+        sessions.removeAll { $0.id == sessionId }
+        guard let worktreePath else { return }
+        let cacheFile = Self.cacheFilePath(forWorktreePath: worktreePath)
+        let snapshot = sessions
+        Task.detached {
+            Self.writeCache(snapshot, to: cacheFile)
+        }
     }
 
     // MARK: - Cache
