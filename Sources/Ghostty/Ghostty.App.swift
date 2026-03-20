@@ -260,10 +260,10 @@ extension Ghostty {
             _ userdata: UnsafeMutableRawPointer?,
             location: ghostty_clipboard_e,
             state: UnsafeMutableRawPointer?
-        ) {
-            guard let userdata else { return }
+        ) -> Bool {
+            guard let userdata else { return false }
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-            guard let surface = surfaceView.surface else { return }
+            guard let surface = surfaceView.surface else { return false }
 
             let pasteboard: NSPasteboard = switch location {
             case GHOSTTY_CLIPBOARD_SELECTION:
@@ -276,6 +276,7 @@ extension Ghostty {
             str.withCString { cStr in
                 ghostty_surface_complete_clipboard_request(surface, cStr, state, false)
             }
+            return true
         }
 
         static func confirmReadClipboard(
