@@ -228,7 +228,7 @@ struct WorkTaskWindow: View {
 
 // MARK: - Glass Styling
 
-private extension View {
+extension View {
     @ViewBuilder
     func applyPrimaryActionStyle(tint: Color = .accentColor) -> some View {
         if #available(macOS 26.0, *) {

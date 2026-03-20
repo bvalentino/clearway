@@ -44,6 +44,21 @@ private enum SidePanelTab: String, CaseIterable {
     case notes = "Notes"
 }
 
+/// Tracks the lifecycle of an after-create hook: blocking the main terminal,
+/// running in background, or inactive.
+private enum AfterCreateHookState {
+    case none
+    case blocking(InlineHook)
+    case background(InlineHook)
+
+    var inlineHook: InlineHook? {
+        switch self {
+        case .none: return nil
+        case .blocking(let hook), .background(let hook): return hook
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -66,7 +81,7 @@ struct ContentView: View {
     @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
-    @State private var afterCreateHook: InlineHook?
+    @State private var afterCreateHookState: AfterCreateHookState = .none
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
@@ -162,7 +177,13 @@ struct ContentView: View {
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
-            focusPane(\.main)
+            if case .blocking(let inline) = afterCreateHookState, inline.worktreeId == wt.id {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
+                }
+            } else {
+                focusPane(\.main)
+            }
             terminalManager.clearNotification(for: wt.id)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
             claudeTodoManager.setWorktreePath(wt.path)
@@ -196,10 +217,16 @@ struct ContentView: View {
 
             if let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                afterCreateHook = InlineHook(
+                var continued = false
+                let onContinueOnce: () -> Void = {
+                    guard !continued else { return }
+                    continued = true
+                    launchClaude?()
+                }
+                afterCreateHookState = .blocking(InlineHook(
                     worktreeId: wt.id,
-                    hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: launchClaude ?? {})
-                )
+                    hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: onContinueOnce)
+                ))
             } else {
                 launchClaude?()
             }
@@ -207,8 +234,8 @@ struct ContentView: View {
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
-            if let hookWt = afterCreateHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
-                afterCreateHook = nil
+            if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
+                afterCreateHookState = .none
             }
             guard let selected = selectedWorktree else { return }
             let refreshed = newWorktrees.first(where: { $0.id == selected.id })
@@ -479,7 +506,19 @@ struct ContentView: View {
     }
 
     private func finishAfterCreateHook() {
-        afterCreateHook = nil
+        afterCreateHookState = .none
+    }
+
+    private func dismissAfterCreateOverlay() {
+        guard case .blocking(let inline) = afterCreateHookState else { return }
+        afterCreateHookState = .background(inline)
+        inline.hook.onContinue()
+    }
+
+    private var blockingHook: InlineHook? {
+        guard case .blocking(let inline) = afterCreateHookState,
+              selectedWorktree?.id == inline.worktreeId else { return nil }
+        return inline
     }
 
     // MARK: - Detail View
@@ -510,10 +549,15 @@ struct ContentView: View {
                                 ctrlHeld: ctrlHeld,
                                 showBorder: shouldShowFocusBorder
                             )
+                            .overlay {
+                                if let inline = blockingHook {
+                                    afterCreateBlockingOverlay(hook: inline.hook)
+                                }
+                            }
 
-                            if let inline = afterCreateHook, selectedWorktree?.id == inline.worktreeId {
+                            if let inline = afterCreateHookState.inlineHook, selectedWorktree?.id == inline.worktreeId {
                                 Divider()
-                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook)
+                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: false)
                                     .frame(height: secondaryHeight)
                             } else if secondaryVisible {
                                 Divider()
@@ -611,6 +655,31 @@ struct ContentView: View {
             } else {
                 WorkTaskListView(projectPath: worktreeManager.projectPath)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func afterCreateBlockingOverlay(hook: HookSheet) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+
+            VStack(spacing: 16) {
+                Text("Running After Create Hook")
+                    .font(.title3.bold())
+
+                Text(hook.command)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+
+                Button("Run in Background") {
+                    dismissAfterCreateOverlay()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(32)
         }
     }
 }
