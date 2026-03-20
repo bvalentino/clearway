@@ -26,19 +26,24 @@ struct HookTerminalView: View {
     let hook: HookSheet
     @ObservedObject private var surface: Ghostty.SurfaceView
     let onDismiss: () -> Void
+    let showHeader: Bool
+
     @State private var failed = false
     @State private var completed = false
 
-    init(hook: HookSheet, onDismiss: @escaping () -> Void) {
+    init(hook: HookSheet, onDismiss: @escaping () -> Void, showHeader: Bool = true) {
         self.hook = hook
         self._surface = ObservedObject(wrappedValue: hook.surface)
         self.onDismiss = onDismiss
+        self.showHeader = showHeader
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if showHeader {
+                header
+                Divider()
+            }
             TerminalSurface(surfaceView: surface)
         }
         .onChange(of: surface.title) { title in
