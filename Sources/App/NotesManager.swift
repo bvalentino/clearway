@@ -90,22 +90,26 @@ class NotesManager: ObservableObject {
         notes.removeAll { $0.id == note.id }
     }
 
-    func importNote(from sourcePath: String) {
-        guard let wtpadDir else { return }
+    @discardableResult
+    func importNote(from sourcePath: String) -> String? {
+        guard let wtpadDir else { return nil }
         let fm = FileManager.default
         try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
         // Read source content and write as a new timestamped note
         guard let data = fm.contents(atPath: sourcePath),
-              let content = String(data: data, encoding: .utf8) else { return }
+              let content = String(data: data, encoding: .utf8) else { return nil }
 
         let filename = Self.timestampFormatter.string(from: Date()) + ".md"
         let filePath = (wtpadDir as NSString).appendingPathComponent(filename)
-        fm.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600])
+        guard fm.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            return nil
+        }
 
         // Optimistic insert
         let note = Note(id: filename, content: content, modificationDate: Date())
         notes.insert(note, at: 0)
+        return filename
     }
 
     // MARK: - Loading

@@ -15,7 +15,9 @@ struct NotesView: View {
                 ClipboardImportBanner(
                     filename: (path as NSString).lastPathComponent,
                     onImport: {
-                        notesManager.importNote(from: path)
+                        if let id = notesManager.importNote(from: path) {
+                            openNote(filename: id)
+                        }
                         clipboardPath = nil
                     },
                     onDismiss: {
@@ -44,7 +46,7 @@ struct NotesView: View {
                                 isSelected: selectedNoteId == note.id,
                                 isLast: note.id == notesManager.notes.last?.id,
                                 onSelect: { selectedNoteId = note.id },
-                                onOpen: { openNote(note) }
+                                onOpen: { openNote(filename: note.id) }
                             )
                         }
                     }
@@ -97,9 +99,8 @@ struct NotesView: View {
 
     private var createButton: some View {
         Button {
-            if let id = notesManager.createNote(),
-               let note = notesManager.notes.first(where: { $0.id == id }) {
-                openNote(note)
+            if let id = notesManager.createNote() {
+                openNote(filename: id)
             }
         } label: {
             Image(systemName: "plus")
@@ -113,9 +114,9 @@ struct NotesView: View {
         .padding(12)
     }
 
-    private func openNote(_ note: Note) {
+    private func openNote(filename: String) {
         guard let worktreePath = notesManager.worktreePath else { return }
-        let identifier = NoteIdentifier(worktreePath: worktreePath, filename: note.id)
+        let identifier = NoteIdentifier(worktreePath: worktreePath, filename: filename)
         openWindow(value: identifier)
     }
 }
