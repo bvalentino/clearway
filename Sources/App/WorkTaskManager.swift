@@ -34,9 +34,8 @@ class WorkTaskManager: ObservableObject {
     // MARK: - CRUD
 
     @discardableResult
-    func createTask(title: String) -> WorkTask? {
+    func createTask(title: String = "") -> WorkTask? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
         let task = WorkTask(title: trimmed)
         write(task)
         reload()

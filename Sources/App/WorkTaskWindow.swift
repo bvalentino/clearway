@@ -29,6 +29,7 @@ struct WorkTaskWindow: View {
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
     @State private var editorMode: EditorMode = .edit
+    @FocusState private var isTitleFocused: Bool
 
     private enum EditorMode {
         case edit, preview
@@ -109,6 +110,9 @@ struct WorkTaskWindow: View {
                 title = task.title
                 bodyText = task.body
                 editorMode = task.body.isEmpty ? .edit : .preview
+                if task.title.isEmpty {
+                    DispatchQueue.main.async { isTitleFocused = true }
+                }
             }
         }
         .onChange(of: title) { _ in scheduleSave() }
@@ -135,6 +139,7 @@ struct WorkTaskWindow: View {
             TextField("Title", text: $title)
                 .textFieldStyle(.plain)
                 .font(.title3)
+                .focused($isTitleFocused)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 

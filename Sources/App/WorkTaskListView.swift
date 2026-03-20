@@ -93,7 +93,7 @@ struct WorkTaskListView: View {
     }
 
     private func createAndEdit() {
-        if let task = workTaskManager.createTask(title: "New Task") {
+        if let task = workTaskManager.createTask() {
             openTaskWindow(task)
         }
     }
@@ -112,8 +112,9 @@ struct WorkTaskCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(task.title)
+            Text(task.title.isEmpty ? "Untitled" : task.title)
                 .font(.headline)
+                .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
