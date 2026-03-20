@@ -56,10 +56,28 @@ struct MarkdownEditorView: NSViewRepresentable {
         // Sync text from binding → NSTextView, guarding against feedback loops
         guard !context.coordinator.isUpdating, textView.string != text else { return }
         context.coordinator.isUpdating = true
+
+        // Preserve selection and scroll position across programmatic text replacement
+        let selectedRanges = textView.selectedRanges
+        let scrollOrigin = scrollView.contentView.bounds.origin
+
         textView.string = text
         if !text.isEmpty {
             context.coordinator.highlightAll()
         }
+
+        // Clamp ranges to the new string length to avoid out-of-bounds
+        let length = (textView.string as NSString).length
+        let clamped: [NSValue] = selectedRanges.compactMap { value in
+            let r = value.rangeValue
+            let loc = min(r.location, length)
+            let len = min(r.length, length - loc)
+            return NSValue(range: NSRange(location: loc, length: len))
+        }
+        textView.selectedRanges = clamped.isEmpty ? [NSValue(range: NSRange(location: 0, length: 0))] : clamped
+        scrollView.contentView.scroll(to: scrollOrigin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
         context.coordinator.isUpdating = false
     }
 
@@ -79,6 +97,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         @Binding var text: String
         weak var textView: NSTextView?
         var isUpdating = false
+        private var pendingHighlight: DispatchWorkItem?
 
         init(text: Binding<String>) {
             _text = text
@@ -98,12 +117,38 @@ struct MarkdownEditorView: NSViewRepresentable {
             changeInLength delta: Int
         ) {
             guard !isUpdating, editedMask.contains(.editedCharacters) else { return }
-            MarkdownSyntaxHighlighter.highlight(textStorage: textStorage)
+            // Schedule highlighting after the text system finishes processing
+            // the current edit. Highlighting inside didProcessEditing extends
+            // the edited range to the full document, causing a full layout
+            // invalidation that resets scroll position on long documents.
+            scheduleHighlight()
         }
 
         func highlightAll() {
-            guard let textStorage = textView?.textStorage else { return }
+            guard let textView, let textStorage = textView.textStorage else { return }
+            guard let scrollView = textView.enclosingScrollView else {
+                MarkdownSyntaxHighlighter.highlight(textStorage: textStorage)
+                return
+            }
+
+            let scrollOrigin = scrollView.contentView.bounds.origin
             MarkdownSyntaxHighlighter.highlight(textStorage: textStorage)
+            // Force layout so the content size is finalized, then restore
+            // scroll position before the display pass can jump it.
+            if let textContainer = textView.textContainer {
+                textView.layoutManager?.ensureLayout(for: textContainer)
+            }
+            scrollView.contentView.scroll(to: scrollOrigin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        private func scheduleHighlight() {
+            pendingHighlight?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.highlightAll()
+            }
+            pendingHighlight = work
+            DispatchQueue.main.async(execute: work)
         }
     }
 }

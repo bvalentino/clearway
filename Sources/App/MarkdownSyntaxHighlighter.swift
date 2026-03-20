@@ -26,6 +26,12 @@ enum MarkdownSyntaxHighlighter {
         guard !string.isEmpty else { return }
         let fullRange = NSRange(location: 0, length: (string as NSString).length)
 
+        // Batch all attribute changes into a single layout pass.
+        // Without this, the "reset to base style" step temporarily changes
+        // heading fonts, causing content height to bounce and scroll to jump.
+        textStorage.beginEditing()
+        defer { textStorage.endEditing() }
+
         // Reset to base style
         let baseFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
             ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)

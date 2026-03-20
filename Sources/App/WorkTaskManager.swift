@@ -44,8 +44,16 @@ class WorkTaskManager: ObservableObject {
 
     func updateTask(_ task: WorkTask) {
         var updated = task
-        updated.updatedAt = Date()
+        // Truncate to whole seconds so in-memory Date matches the ISO8601
+        // round-trip through disk, preventing the watcher reload from seeing
+        // a spurious difference and firing a redundant @Published update.
+        updated.updatedAt = Date(timeIntervalSinceReferenceDate: floor(Date().timeIntervalSinceReferenceDate))
         write(updated)
+        // Update in-memory so callers see immediate changes without
+        // waiting for the watcher reload.
+        if let index = tasks.firstIndex(where: { $0.id == updated.id }) {
+            tasks[index] = updated
+        }
     }
 
     func setStatus(_ task: WorkTask, to status: WorkTask.Status) {
