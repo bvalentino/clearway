@@ -12,6 +12,7 @@ struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
+    @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
@@ -133,7 +134,7 @@ struct SidebarView: View {
 
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
+                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), isWorking: isOpen && claudeActivityMonitor.workingWorktreeIds.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
                     .tag(DetailSelection.worktree(wt))
                     .opacity(!isOpen ? 0.5 : 1.0)
                     .contextMenu {
@@ -236,7 +237,9 @@ struct WorktreeRow: View {
     let worktree: Worktree
     var subtitle: String? = nil
     var hasNotification: Bool = false
+    var isWorking: Bool = false
     var shortcutIndex: Int? = nil
+    @State private var glowExpanded = false
 
     var body: some View {
         Label {
@@ -252,7 +255,17 @@ struct WorktreeRow: View {
                     }
                 }
                 Spacer()
-                if hasNotification {
+                if isWorking {
+                    Circle()
+                        .fill(.orange)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: .orange, radius: glowExpanded ? 4 : 1)
+                        .shadow(color: .orange.opacity(0.5), radius: glowExpanded ? 6 : 2)
+                        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: glowExpanded)
+                        .onAppear { glowExpanded = true }
+                        .onDisappear { glowExpanded = false }
+                        .help("Claude is working")
+                } else if hasNotification {
                     Circle()
                         .fill(.blue)
                         .frame(width: 7, height: 7)

@@ -77,6 +77,7 @@ struct ProjectContentView: View {
     @StateObject private var notesManager = NotesManager()
     @StateObject private var workTaskManager: WorkTaskManager
     @StateObject private var workTaskCoordinator: WorkTaskCoordinator
+    @StateObject private var claudeActivityMonitor = ClaudeActivityMonitor()
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -102,6 +103,7 @@ struct ProjectContentView: View {
             .environmentObject(notesManager)
             .environmentObject(workTaskManager)
             .environmentObject(workTaskCoordinator)
+            .environmentObject(claudeActivityMonitor)
             .onAppear {
                 // Wire up agent surface check so TerminalManager skips auto-restart for agent surfaces
                 terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in
