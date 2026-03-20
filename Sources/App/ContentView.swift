@@ -54,6 +54,7 @@ struct ContentView: View {
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
     @State private var lastRefreshDate = Date.distantPast
@@ -204,6 +205,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
+            claudeActivityMonitor.updateWorktrees(newWorktrees)
             terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
             if let hookWt = afterCreateHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
                 afterCreateHook = nil
@@ -256,6 +258,7 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
+            claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             claudeTodoManager.setWorktreePath(selectedWorktree?.path)
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
