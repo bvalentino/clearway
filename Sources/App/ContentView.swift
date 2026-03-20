@@ -194,6 +194,7 @@ struct ContentView: View {
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
 
+            worktreeManager.refreshPRForWorktree(wt.id)
             restoreSidePanelTab(for: wt)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
@@ -229,7 +230,9 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
-            terminalManager.pruneStale(keeping: Set(newWorktrees.map(\.id)))
+            let currentIds = Set(newWorktrees.map(\.id))
+            terminalManager.pruneStale(keeping: currentIds)
+            worktreeManager.prunePRStatuses(keeping: currentIds)
             if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
                 afterCreateHookState = .none
             }
@@ -244,6 +247,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
+            worktreeManager.refreshPRStatuses(openIds: openIds)
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
@@ -439,6 +443,7 @@ struct ContentView: View {
         let now = Date()
         guard now.timeIntervalSince(lastRefreshDate) > 2 else { return }
         lastRefreshDate = now
+        worktreeManager.clearPRCache()
         worktreeManager.refresh()
     }
 
@@ -631,28 +636,51 @@ struct ContentView: View {
                     }
 
                     if let path = selectedWorktree?.path {
-                        HStack {
+                        HStack(spacing: 0) {
                             Text(showCopiedFeedback ? "Copied!" : path)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(showCopiedFeedback ? .primary : .secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .animation(.easeInOut(duration: 0.15), value: showCopiedFeedback)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(path, forType: .string)
+                                    showCopiedFeedback = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                        showCopiedFeedback = false
+                                    }
+                                }
                             Spacer()
+                            if let pr = selectedWorktree.flatMap({ worktreeManager.worktreePRs[$0.id] }) {
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(pr.state.color)
+                                        .frame(width: 6, height: 6)
+                                    Text("#\(pr.number)")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.primary)
+                                    Text("·")
+                                        .foregroundStyle(.tertiary)
+                                    Text(pr.title)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if let url = URL(string: pr.url), url.scheme == "https" {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 10)
                         .padding(.bottom, 12)
                         .background(.bar)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(path, forType: .string)
-                            showCopiedFeedback = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                showCopiedFeedback = false
-                            }
-                        }
                         .overlay(alignment: .top) {
                             Divider()
                         }
