@@ -175,6 +175,10 @@ struct ContentView: View {
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
                 terminalManager.activeSurfaceId = nil
             }
+            // Save the active tab for the worktree we're leaving
+            if let oldId = old?.worktree?.id {
+                terminalManager.setSidePanelTab(sidePanelTab.rawValue, for: oldId)
+            }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
             if case .blocking(let inline) = afterCreateHookState, inline.worktreeId == wt.id {
@@ -190,15 +194,7 @@ struct ContentView: View {
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
 
-            // Auto-select Task tab when navigating to a worktree with an active task,
-            // or fall back to Todos if the new worktree has no task
-            if let branch = wt.branch,
-               let task = workTaskManager.task(forWorktree: branch),
-               task.status == .started {
-                sidePanelTab = .task
-            } else if sidePanelTab == .task {
-                sidePanelTab = .todos
-            }
+            restoreSidePanelTab(for: wt)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -290,11 +286,9 @@ struct ContentView: View {
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
 
-            // Mirror onChange(of: detailSelection) auto-select — onChange doesn't fire for initial value
-            if let branch = selectedWorktree?.branch,
-               let task = workTaskManager.task(forWorktree: branch),
-               task.status == .started {
-                sidePanelTab = .task
+            // onChange(of: detailSelection) doesn't fire for initial value on macOS 13
+            if let wt = selectedWorktree {
+                restoreSidePanelTab(for: wt)
             }
             if becomeActiveObserver == nil {
                 becomeActiveObserver = NotificationCenter.default.addObserver(
@@ -415,6 +409,20 @@ struct ContentView: View {
 
     private func toggleAside() {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
+    }
+
+    /// Restore the stored side panel tab for a worktree, or auto-select on first visit.
+    private func restoreSidePanelTab(for worktree: Worktree) {
+        if let stored = terminalManager.sidePanelTab(for: worktree.id),
+           let tab = SidePanelTab(rawValue: stored) {
+            sidePanelTab = tab
+        } else if let branch = worktree.branch,
+                  let task = workTaskManager.task(forWorktree: branch),
+                  task.status == .started {
+            sidePanelTab = .task
+        } else if sidePanelTab == .task {
+            sidePanelTab = .todos
+        }
     }
 
     private func selectFallback() {

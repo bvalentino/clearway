@@ -37,6 +37,9 @@ class TerminalManager: ObservableObject {
     @Published private var asideVisible: [String: Bool] = [:]
     @Published private var secondaryVisible: [String: Bool] = [:]
 
+    /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
+    private var sidePanelTabs: [String: String] = [:]
+
     var activePane: TerminalPane? {
         guard let id = activeSurfaceId else { return nil }
         return panes[id]
@@ -132,6 +135,18 @@ class TerminalManager: ObservableObject {
         guard let worktreeId else { return }
         secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? true)
     }
+
+    // MARK: - Side Panel Tab
+
+    func sidePanelTab(for worktreeId: String) -> String? {
+        sidePanelTabs[worktreeId]
+    }
+
+    func setSidePanelTab(_ tab: String, for worktreeId: String) {
+        guard sidePanelTabs[worktreeId] != tab else { return }
+        sidePanelTabs[worktreeId] = tab
+    }
+
     /// Get or create terminal panes for the given worktree.
     func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
         self.app = app
@@ -258,6 +273,7 @@ class TerminalManager: ObservableObject {
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)
+        sidePanelTabs.removeValue(forKey: worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
         }
