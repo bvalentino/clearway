@@ -255,22 +255,26 @@ struct WorktreeRow: View {
                     }
                 }
                 Spacer()
-                if isWorking {
-                    Circle()
-                        .fill(.orange)
-                        .frame(width: 7, height: 7)
-                        .shadow(color: .orange, radius: glowExpanded ? 4 : 1)
-                        .shadow(color: .orange.opacity(0.5), radius: glowExpanded ? 6 : 2)
-                        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: glowExpanded)
-                        .onAppear { glowExpanded = true }
-                        .onDisappear { glowExpanded = false }
-                        .help("Claude is working")
-                } else if hasNotification {
-                    Circle()
-                        .fill(.blue)
-                        .frame(width: 7, height: 7)
-                        .help("Terminal notification")
+                Group {
+                    if isWorking {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                            .shadow(color: .orange, radius: glowExpanded ? 4 : 1)
+                            .shadow(color: .orange.opacity(0.5), radius: glowExpanded ? 6 : 2)
+                            .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: glowExpanded)
+                            .onAppear { glowExpanded = true }
+                            .onDisappear { glowExpanded = false }
+                            .transition(.opacity)
+                            .help("Claude is working")
+                    } else if hasNotification {
+                        Circle()
+                            .fill(.blue)
+                            .frame(width: 7, height: 7)
+                            .help("Terminal notification")
+                    }
                 }
+                .animation(.easeOut(duration: 0.6), value: isWorking)
             }
         } icon: {
             if let index = shortcutIndex {

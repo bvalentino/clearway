@@ -3,9 +3,10 @@ import os
 
 /// Monitors Claude Code session activity across all worktrees.
 ///
-/// Watches `~/.claude/projects/<encoded-path>/` for each worktree. When Claude
-/// writes to session JSONL files, the worktree is marked as "working." After
-/// a period of inactivity the working state expires.
+/// Watches `~/.claude/projects/<encoded-path>/` for each worktree. A directory
+/// watcher detects new session files; a per-file watcher on the most recent
+/// JSONL file detects ongoing writes (directory-level `.write` only fires on
+/// file creation/deletion, not on content appends).
 @MainActor
 class ClaudeActivityMonitor: ObservableObject {
     @Published var workingWorktreeIds: Set<String> = []
@@ -16,13 +17,17 @@ class ClaudeActivityMonitor: ObservableObject {
     )
 
     /// How long after the last write event before a worktree stops being "working."
-    private static let expirySeconds: Double = 5.0
+    private static let expirySeconds: Double = 3.0
 
     /// Per-worktree watcher state.
     private struct WatcherState {
-        var source: DispatchSourceFileSystemObject?
+        /// Watches the project directory for new/deleted session files.
+        var dirSource: DispatchSourceFileSystemObject?
+        /// Watches the most recent JSONL file for content appends.
+        var fileSource: DispatchSourceFileSystemObject?
         var expiryTimer: DispatchWorkItem?
         var pollWorkItem: DispatchWorkItem?
+        var projectDir: String
         /// DispatchSource fires an initial `.write` event on resume for existing
         /// directories. Skip events until this flag is set (after a short delay).
         var ready = false
@@ -34,7 +39,8 @@ class ClaudeActivityMonitor: ObservableObject {
         for (_, state) in watchers {
             state.expiryTimer?.cancel()
             state.pollWorkItem?.cancel()
-            state.source?.cancel()
+            state.dirSource?.cancel()
+            state.fileSource?.cancel()
         }
     }
 
@@ -60,12 +66,21 @@ class ClaudeActivityMonitor: ObservableObject {
 
     private func startWatching(worktreeId: String, worktreePath: String) {
         let projectDir = ClaudeTodoManager.projectDir(forWorktreePath: worktreePath)
-        var state = WatcherState()
+        var state = WatcherState(projectDir: projectDir)
 
         if let source = ClaudeTodoManager.makeWatcher(path: projectDir) { [weak self] in
-            self?.handleActivity(worktreeId: worktreeId)
+            self?.handleDirEvent(worktreeId: worktreeId)
         } {
-            state.source = source
+            state.dirSource = source
+            if let result = Self.watchNewestJsonl(
+                in: projectDir, worktreeId: worktreeId, monitor: self
+            ) {
+                state.fileSource = result.source
+                // If the newest file was modified recently, Claude is already active
+                if Date().timeIntervalSince(result.modDate) < Self.expirySeconds {
+                    workingWorktreeIds.insert(worktreeId)
+                }
+            }
             Self.logger.debug("watching: \(projectDir, privacy: .public)")
             // Mark ready after a short delay so the initial spurious event is ignored
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -78,14 +93,12 @@ class ClaudeActivityMonitor: ObservableObject {
         }
 
         watchers[worktreeId] = state
-
-        // Check if Claude is already active (file modified recently)
-        checkInitialActivity(worktreeId: worktreeId, projectDir: projectDir)
     }
 
     private func stopWatching(id: String) {
         guard let state = watchers.removeValue(forKey: id) else { return }
-        state.source?.cancel()
+        state.dirSource?.cancel()
+        state.fileSource?.cancel()
         state.expiryTimer?.cancel()
         state.pollWorkItem?.cancel()
         if workingWorktreeIds.contains(id) {
@@ -93,8 +106,60 @@ class ClaudeActivityMonitor: ObservableObject {
         }
     }
 
+    // MARK: - File Watcher
+
+    /// Finds the most recently modified JSONL file and watches it for writes.
+    /// Returns the watcher source and the newest file's modification date.
+    private nonisolated static func watchNewestJsonl(
+        in projectDir: String,
+        worktreeId: String,
+        monitor: ClaudeActivityMonitor
+    ) -> (source: DispatchSourceFileSystemObject, modDate: Date)? {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(atPath: projectDir) else { return nil }
+
+        var newestPath: String?
+        var newestDate: Date = .distantPast
+
+        for file in contents where file.hasSuffix(".jsonl") {
+            let path = (projectDir as NSString).appendingPathComponent(file)
+            guard let attrs = try? fm.attributesOfItem(atPath: path),
+                  let mod = attrs[.modificationDate] as? Date else { continue }
+            if mod > newestDate {
+                newestDate = mod
+                newestPath = path
+            }
+        }
+
+        guard let path = newestPath else { return nil }
+        guard let source = ClaudeTodoManager.makeWatcher(path: path, handler: { [weak monitor] in
+            monitor?.handleActivity(worktreeId: worktreeId)
+        }) else { return nil }
+        return (source, newestDate)
+    }
+
+    /// Replace the file watcher with one on the current newest JSONL.
+    private func rebuildFileWatcher(worktreeId: String) {
+        guard let state = watchers[worktreeId] else { return }
+        state.fileSource?.cancel()
+        watchers[worktreeId]?.fileSource = Self.watchNewestJsonl(
+            in: state.projectDir, worktreeId: worktreeId, monitor: self
+        )?.source
+    }
+
     // MARK: - Activity Detection
 
+    /// Called when the project directory itself changes (file created/deleted).
+    private nonisolated func handleDirEvent(worktreeId: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.watchers[worktreeId]?.ready == true else { return }
+            // A new session file may have appeared — rewire to the newest one
+            self.rebuildFileWatcher(worktreeId: worktreeId)
+            self.markWorking(worktreeId: worktreeId)
+        }
+    }
+
+    /// Called when a JSONL file is written to (Claude actively working).
     private nonisolated func handleActivity(worktreeId: String) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.watchers[worktreeId]?.ready == true else { return }
@@ -120,31 +185,6 @@ class ClaudeActivityMonitor: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.expirySeconds, execute: work)
     }
 
-    /// Check if any JSONL file was modified recently (within expiry window),
-    /// which means Claude was already active when we started watching.
-    private func checkInitialActivity(worktreeId: String, projectDir: String) {
-        let expirySeconds = Self.expirySeconds
-        Task.detached { [weak self] in
-            let fm = FileManager.default
-            guard let contents = try? fm.contentsOfDirectory(atPath: projectDir) else { return }
-
-            let now = Date()
-
-            for file in contents where file.hasSuffix(".jsonl") {
-                let path = (projectDir as NSString).appendingPathComponent(file)
-                guard let attrs = try? fm.attributesOfItem(atPath: path),
-                      let modDate = attrs[.modificationDate] as? Date else { continue }
-
-                if now.timeIntervalSince(modDate) < expirySeconds {
-                    await MainActor.run {
-                        self?.markWorking(worktreeId: worktreeId)
-                    }
-                    return
-                }
-            }
-        }
-    }
-
     // MARK: - Polling for Missing Directories
 
     private func pollForDirectory(
@@ -159,12 +199,19 @@ class ClaudeActivityMonitor: ObservableObject {
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
                 DispatchQueue.main.async {
                     guard let self, self.watchers[worktreeId] != nil else { return }
-                    // Directory appeared — install the real watcher
+                    // Directory appeared — install the real watchers
                     if let source = ClaudeTodoManager.makeWatcher(path: path) { [weak self] in
-                        self?.handleActivity(worktreeId: worktreeId)
+                        self?.handleDirEvent(worktreeId: worktreeId)
                     } {
-                        self.watchers[worktreeId]?.source = source
+                        self.watchers[worktreeId]?.dirSource = source
+                        self.watchers[worktreeId]?.fileSource = Self.watchNewestJsonl(
+                            in: path, worktreeId: worktreeId, monitor: self
+                        )?.source
                         Self.logger.info("poll found dir, watching: \(path, privacy: .public)")
+                    }
+                    // Mark ready after delay (same as direct path)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.watchers[worktreeId]?.ready = true
                     }
                 }
             } else {
