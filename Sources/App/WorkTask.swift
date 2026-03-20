@@ -113,7 +113,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // Required fields
         guard let idString = fields["id"],
               let id = UUID(uuidString: idString),
-              let title = fields["title"], !title.isEmpty,
+              let title = fields["title"],
               let statusString = fields["status"],
               let status = Status(rawValue: statusString) else { return nil }
 
