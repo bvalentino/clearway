@@ -44,21 +44,34 @@ struct TaskAsideView: View {
             VStack(alignment: .leading, spacing: 16) {
                 WorkTaskCard(
                     task: task,
+                    showStatusBadge: false,
                     onEdit: { openTaskWindow(task) }
                 )
+
+                Divider()
+
+                HStack {
+                    Text("Status")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Picker(selection: Binding(
+                        get: { task.status },
+                        set: { workTaskManager.setStatus(task, to: $0) }
+                    )) {
+                        ForEach(allowedStatuses(for: task), id: \.self) { status in
+                            Text(status.label).tag(status)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
 
                 // Agent metadata (show for tasks that have been worked on)
                 if !task.status.isBacklog {
                     WorkTaskAgentMetadata(task: task)
                 }
-
-                // Action buttons
-                actionButtons(task)
-
-                // Last updated
-                Text("Updated \(task.updatedAt.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
             .padding(16)
         }
@@ -70,71 +83,7 @@ struct TaskAsideView: View {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
     }
 
-    @ViewBuilder
-    private func actionButtons(_ task: WorkTask) -> some View {
-        HStack(spacing: 8) {
-            switch task.status {
-            case .inProgress:
-                Button {
-                    workTaskManager.setStatus(task, to: .readyForReview)
-                } label: {
-                    Label("Ready for Review", systemImage: "eye")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-            case .readyForReview:
-                Button {
-                    workTaskManager.setStatus(task, to: .inProgress)
-                } label: {
-                    Label("Back to In Progress", systemImage: "arrow.uturn.backward")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-            case .done where task.worktree != nil:
-                Button {
-                    onContinue?(task)
-                } label: {
-                    Label("Continue", systemImage: "play")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-            case .canceled:
-                Button {
-                    onRestart?(task)
-                } label: {
-                    Label("Restart", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .tint(.orange)
-                .controlSize(.small)
-
-            default:
-                EmptyView()
-            }
-
-            Spacer()
-
-            if task.status.isActive {
-                Button {
-                    workTaskManager.setStatus(task, to: .canceled)
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-                .controlSize(.small)
-
-                Button {
-                    workTaskManager.setStatus(task, to: .done)
-                } label: {
-                    Label("Mark Done", systemImage: "checkmark.circle")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        }
+    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
+        [.inProgress, .readyForReview, .done, .canceled]
     }
 }

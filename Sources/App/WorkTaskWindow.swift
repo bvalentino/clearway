@@ -68,11 +68,6 @@ struct WorkTaskWindow: View {
                 primaryActionButton
             }
 
-            ToolbarItem(placement: .primaryAction) {
-                if let task, !task.status.isBacklog {
-                    statusPicker
-                }
-            }
 
             ToolbarItem(placement: .primaryAction) {
                 Picker("Mode", selection: $editorMode) {
@@ -200,54 +195,9 @@ struct WorkTaskWindow: View {
                     saveAndPost(WorkTaskNotification.start)
                 }
                 .applyPrimaryActionStyle()
-            case .inProgress, .readyForReview:
-                Button("Open") { saveAndPost(WorkTaskNotification.openWorktree) }
-                    .applyPrimaryActionStyle()
-            case .done where task.worktree != nil:
-                Button("Continue") { saveAndPost(WorkTaskNotification.continue) }
-                    .applyPrimaryActionStyle()
-            case .done:
+            default:
                 EmptyView()
-            case .canceled:
-                Button("Reopen") { reopen(task) }
-                    .applyPrimaryActionStyle()
             }
-        }
-    }
-
-    @ViewBuilder
-    private var statusPicker: some View {
-        if let task {
-            Menu {
-                ForEach(allowedStatuses(for: task), id: \.self) { status in
-                    Button {
-                        saveNow()
-                        workTaskManager.setStatus(task, to: status)
-                    } label: {
-                        if status == task.status {
-                            Label(status.label, systemImage: "checkmark")
-                        } else {
-                            Text(status.label)
-                        }
-                    }
-                    .disabled(status == task.status)
-                }
-            } label: {
-                WorkTaskStatusBadge(status: task.status)
-            }
-            .menuIndicator(.hidden)
-        }
-    }
-
-    /// Returns the statuses the user can transition to from the task editor.
-    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        switch task.status {
-        case .new: return [.new, .readyToStart]
-        case .readyToStart: return [.new, .readyToStart]
-        case .inProgress: return [.inProgress, .readyForReview, .done, .canceled]
-        case .readyForReview: return [.inProgress, .readyForReview, .done, .canceled]
-        case .done: return [.done]
-        case .canceled: return [.new, .canceled]
         }
     }
 

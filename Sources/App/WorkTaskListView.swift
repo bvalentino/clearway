@@ -107,6 +107,7 @@ struct WorkTaskListView: View {
 
 struct WorkTaskCard: View {
     let task: WorkTask
+    var showStatusBadge: Bool = true
     var onEdit: () -> Void
     @EnvironmentObject private var workTaskManager: WorkTaskManager
 
@@ -118,8 +119,10 @@ struct WorkTaskCard: View {
                     .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                WorkTaskStatusBadge(status: task.status)
+                if showStatusBadge {
+                    Spacer()
+                    WorkTaskStatusBadge(status: task.status)
+                }
             }
 
             Text(task.createdAt.formatted(.relative(presentation: .named)))
@@ -173,8 +176,12 @@ struct WorkTaskStatusBadge: View {
         .background(badgeColor.opacity(0.12), in: Capsule())
     }
 
-    private var badgeColor: Color {
-        switch status {
+    private var badgeColor: Color { status.badgeColor }
+}
+
+extension WorkTask.Status {
+    var badgeColor: Color {
+        switch self {
         case .new: return .blue
         case .readyToStart: return .indigo
         case .inProgress: return .green
