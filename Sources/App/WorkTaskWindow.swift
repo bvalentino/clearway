@@ -79,14 +79,19 @@ struct WorkTaskWindow: View {
                 .help("Toggle edit/preview (⌘⇧P)")
             }
 
-            ToolbarItem(placement: .destructiveAction) {
+            ToolbarItem(placement: .primaryAction) {
                 if task?.worktree == nil {
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
+                    Menu {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Task", systemImage: "trash")
+                        }
                     } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "ellipsis")
                     }
-                    .help("Delete task")
+                    .menuIndicator(.hidden)
+                    .help("More actions")
                 }
             }
         }

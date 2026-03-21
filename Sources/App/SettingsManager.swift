@@ -3,6 +3,7 @@ import SwiftUI
 enum SettingsKey {
     static let mainTerminalCommand = "wtpad.mainTerminalCommand"
     static let showFocusBorder = "wtpad.showFocusBorder"
+    static let promptsDirectory = "wtpad.promptsDirectory"
 }
 
 /// Manages user preferences, persisted via UserDefaults.
@@ -28,8 +29,21 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    static let defaultPromptsDirectory = "~/.wtpad/prompts"
+
+    @Published var promptsDirectory: String {
+        didSet {
+            if promptsDirectory.isEmpty || promptsDirectory == Self.defaultPromptsDirectory {
+                UserDefaults.standard.removeObject(forKey: SettingsKey.promptsDirectory)
+            } else {
+                UserDefaults.standard.set(promptsDirectory, forKey: SettingsKey.promptsDirectory)
+            }
+        }
+    }
+
     init() {
         self.mainTerminalCommand = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         self.showFocusBorder = UserDefaults.standard.object(forKey: SettingsKey.showFocusBorder) as? Bool ?? true
+        self.promptsDirectory = UserDefaults.standard.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
     }
 }

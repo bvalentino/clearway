@@ -29,6 +29,7 @@ private func hookShellCommand(_ cmd: String) -> String {
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
     case tasks
+    case prompts
     case settings
     case worktree(Worktree)
 
@@ -42,6 +43,7 @@ private enum SidePanelTab: String, CaseIterable {
     case task = "Task"
     case todos = "Todos"
     case notes = "Notes"
+    case prompts = "Prompts"
 }
 
 /// Tracks the lifecycle of an after-create hook: blocking the main terminal,
@@ -513,6 +515,12 @@ struct ContentView: View {
         }
     }
 
+    private func sendPromptToTerminal(_ prompt: Prompt) {
+        guard let surface = terminalManager.activePane?.main else { return }
+        surface.sendCommand(prompt.content)
+        surface.window?.makeFirstResponder(surface)
+    }
+
     private func openTaskWorktree(_ task: WorkTask) {
         if let wt = workTaskCoordinator.worktreeForTask(task) {
             detailSelection = .worktree(wt)
@@ -630,6 +638,10 @@ struct ContentView: View {
                                     TodosPanelView()
                                 case .notes:
                                     NotesView()
+                                case .prompts:
+                                    PromptsView(onSendToTerminal: { prompt in
+                                        sendPromptToTerminal(prompt)
+                                    })
                                 }
                             }
                             .frame(width: 380)
@@ -689,6 +701,8 @@ struct ContentView: View {
                 }
             } else if detailSelection == .settings {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
+            } else if detailSelection == .prompts {
+                PromptsView()
             } else {
                 WorkTaskListView(projectPath: worktreeManager.projectPath)
             }

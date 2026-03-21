@@ -3,6 +3,8 @@ import SwiftUI
 struct ProjectSettingsView: View {
     let projectPath: String
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var promptManager: PromptManager
     @State private var hooks: ProjectHooks
     @State private var workflowText = ""
     @State private var workflowStatus: WorkflowStatus = .empty
@@ -68,6 +70,15 @@ struct ProjectSettingsView: View {
                     }
                 }
 
+                // MARK: - Prompts
+
+                SettingsSection("Prompts", footer: "Directory where reusable prompt files are stored. Shared across all projects.") {
+                    SettingsRow("Prompts Directory") {
+                        TextField(SettingsManager.defaultPromptsDirectory, text: $settings.promptsDirectory)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+
                 // MARK: - WORKFLOW.md
 
                 SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
@@ -89,6 +100,9 @@ struct ProjectSettingsView: View {
         .onAppear { loadWorkflowFile() }
         .onChange(of: hooks.afterCreate) { _ in hooks.save(for: projectPath) }
         .onChange(of: hooks.beforeRemove) { _ in hooks.save(for: projectPath) }
+        .onChange(of: settings.promptsDirectory) { newValue in
+            promptManager.setDirectory(newValue)
+        }
         .onChange(of: workflowText) { _ in
             guard !isLoading else { return }
             scheduleSave()

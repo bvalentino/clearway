@@ -54,13 +54,13 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     func serialized() -> String {
         var lines = ["---"]
         lines.append("id: \(id.uuidString)")
-        lines.append("title: \(Self.yamlQuote(title))")
+        lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status.rawValue)")
-        lines.append("worktree: \(worktree.map { Self.yamlQuote($0) } ?? "null")")
+        lines.append("worktree: \(worktree.map { YAML.quote($0) } ?? "null")")
         lines.append("created_at: \(Self.dateFormatter.string(from: createdAt))")
         lines.append("updated_at: \(Self.dateFormatter.string(from: updatedAt))")
         if let attempt { lines.append("attempt: \(attempt)") }
-        if let errorMessage { lines.append("error_message: \(Self.yamlQuote(errorMessage))") }
+        if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         if let inputTokens { lines.append("input_tokens: \(inputTokens)") }
         if let outputTokens { lines.append("output_tokens: \(outputTokens)") }
         lines.append("---")
@@ -71,44 +71,12 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         return lines.joined(separator: "\n")
     }
 
-    /// Double-quote a string for YAML, escaping backslashes, double quotes, and control characters.
-    private static func yamlQuote(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
-        return "\"\(escaped)\""
-    }
-
     // MARK: - Parsing
 
     /// Parses a task from YAML frontmatter + markdown body.
     /// Returns nil if the frontmatter is missing required fields.
     static func parse(from content: String) -> WorkTask? {
-        let lines = content.components(separatedBy: "\n")
-        guard lines.first == "---" else { return nil }
-
-        // Find closing ---
-        var endIndex: Int?
-        for i in 1..<lines.count {
-            if lines[i] == "---" {
-                endIndex = i
-                break
-            }
-        }
-        guard let closingIndex = endIndex else { return nil }
-
-        // Parse frontmatter key-value pairs
-        var fields: [String: String] = [:]
-        for i in 1..<closingIndex {
-            let line = lines[i]
-            guard let colonIndex = line.firstIndex(of: ":") else { continue }
-            let key = line[line.startIndex..<colonIndex].trimmingCharacters(in: .whitespaces)
-            let raw = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
-            fields[key] = yamlUnquote(raw)
-        }
+        guard let (fields, body) = YAML.parseFrontmatter(from: content) else { return nil }
 
         // Required fields
         guard let idString = fields["id"],
@@ -126,18 +94,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         let createdAt = fields["created_at"].flatMap { dateFormatter.date(from: $0) } ?? Date()
         let updatedAt = fields["updated_at"].flatMap { dateFormatter.date(from: $0) } ?? Date()
 
-        // Body is everything after the closing --- (skip one blank line if present)
-        var bodyStartIndex = closingIndex + 1
-        if bodyStartIndex < lines.count && lines[bodyStartIndex].isEmpty {
-            bodyStartIndex += 1
-        }
-        let body: String
-        if bodyStartIndex < lines.count {
-            body = lines[bodyStartIndex...].joined(separator: "\n")
-        } else {
-            body = ""
-        }
-
         var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
         task.updatedAt = updatedAt
@@ -146,32 +102,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
         task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
         return task
-    }
-
-    /// Strip YAML double-quote wrapper and unescape sequences (single-pass to avoid ordering bugs).
-    private static func yamlUnquote(_ value: String) -> String {
-        guard value.hasPrefix("\"") && value.hasSuffix("\"") && value.count >= 2 else { return value }
-        let inner = String(value.dropFirst().dropLast())
-        var result = ""
-        var i = inner.startIndex
-        while i < inner.endIndex {
-            if inner[i] == "\\" && inner.index(after: i) < inner.endIndex {
-                let next = inner[inner.index(after: i)]
-                switch next {
-                case "n": result.append("\n")
-                case "r": result.append("\r")
-                case "t": result.append("\t")
-                case "\"": result.append("\"")
-                case "\\": result.append("\\")
-                default: result.append("\\"); result.append(next)
-                }
-                i = inner.index(i, offsetBy: 2)
-            } else {
-                result.append(inner[i])
-                i = inner.index(after: i)
-            }
-        }
-        return result
     }
 
     private static let branchNameCharacters = CharacterSet.lowercaseLetters
