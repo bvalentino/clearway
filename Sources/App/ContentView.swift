@@ -445,6 +445,7 @@ struct ContentView: View {
         lastRefreshDate = now
         worktreeManager.clearPRCache()
         worktreeManager.refresh()
+        worktreeManager.refreshPRStatuses(openIds: terminalManager.openWorktreeIds)
     }
 
     // MARK: - Worktree Removal with Hook
