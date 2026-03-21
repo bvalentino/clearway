@@ -637,9 +637,7 @@ struct ContentView: View {
                                     if let branch = selectedWorktree?.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            projectPath: worktreeManager.projectPath,
-                                            onContinue: { continueWorkTask($0) },
-                                            onRestart: { startWorkTask($0) }
+                                            projectPath: worktreeManager.projectPath
                                         )
                                     }
                                 case .todos:

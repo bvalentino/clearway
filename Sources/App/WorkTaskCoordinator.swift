@@ -365,9 +365,11 @@ class WorkTaskCoordinator: ObservableObject {
         try? FileManager.default.removeItem(atPath: promptFile)
 
         // Don't auto-change status — user may have exited to start a new session.
-        // Just accumulate tokens and clear error on success.
+        // Just accumulate tokens and record error on failure.
         if exitCode == 0 {
             task.errorMessage = nil
+        } else {
+            task.errorMessage = "Agent exited with code \(exitCode)"
         }
 
         accumulateTokens(from: observer, into: &task)
@@ -387,20 +389,19 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Don't clean up — keep the agent surface and observer alive.
         // The process may still be running (e.g., waiting for user permission).
-        // If new JSONL activity is detected, handleSessionActivity will flip back to .inProgress.
         // If the process exits, handleChildExited will fire normally.
         task.errorMessage = "Agent stalled — no activity detected"
         workTaskManager.updateTask(task)
     }
 
     /// Called when any Claude session JSONL activity is detected in a task's worktree.
-    /// If the task is done or stopped, flips it back to started — the user or another
+    /// If the task is done, flips it back to inProgress — the user or another
     /// Claude session is actively working on it.
     private func handleSessionActivity(worktreeId: String) {
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch),
-              task.status == .done || task.status == .canceled else { return }
+              task.status == .done else { return }
 
         Ghostty.logger.info("Session activity detected for worktree \(worktreeId, privacy: .public), resuming task")
         task.status = .inProgress

@@ -68,7 +68,6 @@ struct WorkTaskWindow: View {
                 primaryActionButton
             }
 
-
             ToolbarItem(placement: .primaryAction) {
                 Picker("Mode", selection: $editorMode) {
                     Image(systemName: "pencil").tag(EditorMode.edit)
@@ -199,11 +198,6 @@ struct WorkTaskWindow: View {
                 EmptyView()
             }
         }
-    }
-
-    private func reopen(_ task: WorkTask) {
-        saveNow()
-        workTaskManager.setStatus(task, to: .new)
     }
 
     // MARK: - Helpers

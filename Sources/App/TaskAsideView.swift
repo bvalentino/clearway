@@ -8,8 +8,6 @@ struct TaskAsideView: View {
 
     let worktreeBranch: String
     let projectPath: String
-    var onContinue: ((WorkTask) -> Void)?
-    var onRestart: ((WorkTask) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
