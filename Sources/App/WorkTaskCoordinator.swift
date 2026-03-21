@@ -40,6 +40,7 @@ class WorkTaskCoordinator: ObservableObject {
 
     private var isWatching = false
     private var watcherSource: DispatchSourceFileSystemObject?
+    private var directoryWatcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
     private var exitObserver: Any?
 
@@ -62,6 +63,7 @@ class WorkTaskCoordinator: ObservableObject {
     nonisolated deinit {
         pendingReload?.cancel()
         watcherSource?.cancel()
+        directoryWatcherSource?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -87,7 +89,15 @@ class WorkTaskCoordinator: ObservableObject {
 
         let filePath = workflowFilePath
         let fd = open(filePath, O_EVTONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else {
+            // File doesn't exist — watch the parent directory for its creation.
+            watchDirectoryForFileCreation()
+            return
+        }
+
+        // File exists — cancel any directory watcher and watch the file directly.
+        directoryWatcherSource?.cancel()
+        directoryWatcherSource = nil
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
@@ -102,6 +112,33 @@ class WorkTaskCoordinator: ObservableObject {
         source.setCancelHandler { close(fd) }
         source.resume()
         watcherSource = source
+    }
+
+    /// Watches the project directory for entry changes (file creation/deletion).
+    /// When WORKFLOW.md appears, switches to per-file watching.
+    private func watchDirectoryForFileCreation() {
+        directoryWatcherSource?.cancel()
+        directoryWatcherSource = nil
+
+        let dirPath = workTaskManager.projectPath
+        let fd = open(dirPath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: .write,
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            // Only schedule a reload if WORKFLOW.md actually appeared.
+            // The fileExists check also filters the spurious initial .write
+            // event that fires on resume — the file won't exist yet.
+            guard let self, FileManager.default.fileExists(atPath: self.workflowFilePath) else { return }
+            self.scheduleReload(rewatch: true)
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        directoryWatcherSource = source
     }
 
     private nonisolated func scheduleReload(rewatch: Bool = false) {
