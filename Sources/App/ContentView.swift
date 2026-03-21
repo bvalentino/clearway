@@ -72,7 +72,7 @@ struct ContentView: View {
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
-    @State private var lastRefreshDate = Date.distantPast
+    @State private var pendingRefresh: DispatchWorkItem?
     @State private var secondaryHeight: CGFloat = 120
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
@@ -327,6 +327,8 @@ struct ContentView: View {
             }
         }
         .onDisappear {
+            pendingRefresh?.cancel()
+            pendingRefresh = nil
             if let observer = becomeActiveObserver {
                 NotificationCenter.default.removeObserver(observer)
                 becomeActiveObserver = nil
@@ -440,12 +442,19 @@ struct ContentView: View {
     // MARK: - Refresh
 
     private func debouncedRefresh() {
-        let now = Date()
-        guard now.timeIntervalSince(lastRefreshDate) > 2 else { return }
-        lastRefreshDate = now
-        worktreeManager.clearPRCache()
-        worktreeManager.refresh()
-        worktreeManager.refreshPRStatuses(openIds: terminalManager.openWorktreeIds)
+        pendingRefresh?.cancel()
+        let work = DispatchWorkItem { [weak worktreeManager, weak terminalManager] in
+            guard let worktreeManager, let terminalManager else { return }
+            worktreeManager.refresh(showLoading: false)
+            // Delay PR refresh so it doesn't compete with the worktree UI update.
+            // Don't clear the cache — the 60s TTL handles expiry naturally. This avoids
+            // spawning a gh process for every open worktree on each focus event.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                worktreeManager.refreshPRStatuses(openIds: terminalManager.openWorktreeIds)
+            }
+        }
+        pendingRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     // MARK: - Worktree Removal with Hook

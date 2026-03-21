@@ -90,18 +90,23 @@ class WorktreeManager: ObservableObject {
         for source in titleWatcherSources { source.cancel() }
     }
 
-    func refresh() {
+    func refresh(showLoading: Bool = true) {
         let projectPath = self.projectPath
-        isLoading = true
+        if showLoading { isLoading = true }
         error = nil
 
         Task.detached { [weak self] in
             do {
                 let wts = try await Self.fetchWorktrees(in: projectPath)
+                let titles = Self.fetchTitles(for: wts)
                 await MainActor.run {
-                    self?.worktrees = wts
-                    self?.loadTitles()
-                    self?.isLoading = false
+                    if wts != self?.worktrees {
+                        self?.worktrees = wts
+                    }
+                    if titles != self?.worktreeTitles {
+                        self?.worktreeTitles = titles
+                    }
+                    if self?.isLoading == true { self?.isLoading = false }
                 }
             } catch {
                 await MainActor.run {
@@ -124,16 +129,22 @@ class WorktreeManager: ObservableObject {
 
     /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
     func loadTitles() {
-        var titles: [String: String] = [:]
-        for wt in worktrees where !wt.isMain {
-            guard let path = wt.path else { continue }
-            if let title = Self.readClaudeSessionTitle(forWorktreePath: path) {
-                titles[path] = title
-            }
-        }
+        let titles = Self.fetchTitles(for: worktrees)
         if titles != worktreeTitles {
             worktreeTitles = titles
         }
+    }
+
+    /// Reads Claude Code session titles for the given worktrees off the main thread.
+    nonisolated static func fetchTitles(for worktrees: [Worktree]) -> [String: String] {
+        var titles: [String: String] = [:]
+        for wt in worktrees where !wt.isMain {
+            guard let path = wt.path else { continue }
+            if let title = readClaudeSessionTitle(forWorktreePath: path) {
+                titles[path] = title
+            }
+        }
+        return titles
     }
 
     /// Watches Claude Code session files for title changes for the given worktree path.
@@ -287,10 +298,37 @@ class WorktreeManager: ObservableObject {
     // MARK: - PR Status
 
     /// Refreshes PR status for all open, non-main worktrees with branches.
+    /// Fetches all statuses in parallel and applies them in a single batch update.
     func refreshPRStatuses(openIds: Set<String>) {
-        for wt in worktrees where !wt.isMain && openIds.contains(wt.id) {
-            guard let branch = wt.branch else { continue }
-            fetchAndApplyPR(id: wt.id, branch: branch)
+        let targets = worktrees.compactMap { wt -> (id: String, branch: String)? in
+            guard !wt.isMain, openIds.contains(wt.id), let branch = wt.branch else { return nil }
+            // Respect cache TTL
+            if let lastFetch = prFetchDates[wt.id],
+               Date().timeIntervalSince(lastFetch) < Self.prCacheTTL { return nil }
+            prFetchDates[wt.id] = Date()
+            return (wt.id, branch)
+        }
+        guard !targets.isEmpty else { return }
+        let projectPath = self.projectPath
+        Task.detached { [weak self] in
+            let results = await withTaskGroup(of: (String, PRStatus?).self) { group in
+                for (id, branch) in targets {
+                    group.addTask { (id, await Self.fetchPRStatus(branch: branch, in: projectPath)) }
+                }
+                var collected: [(String, PRStatus?)] = []
+                for await result in group { collected.append(result) }
+                return collected
+            }
+            await MainActor.run {
+                guard let self else { return }
+                var updated = self.worktreePRs
+                for (id, status) in results {
+                    updated[id] = status
+                }
+                if updated != self.worktreePRs {
+                    self.worktreePRs = updated
+                }
+            }
         }
     }
 
@@ -300,11 +338,6 @@ class WorktreeManager: ObservableObject {
               !wt.isMain,
               let branch = wt.branch else { return }
         fetchAndApplyPR(id: id, branch: branch)
-    }
-
-    /// Clears the PR cache so the next refresh re-fetches all statuses.
-    func clearPRCache() {
-        prFetchDates.removeAll()
     }
 
     /// Removes PR data for worktrees that no longer exist.
