@@ -24,6 +24,10 @@ struct SidebarView: View {
 
     private var isSearching: Bool { !searchText.isEmpty }
 
+    private var projectName: String {
+        URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
+    }
+
     private var sortedWorktrees: [Worktree] {
         Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
     }
@@ -65,6 +69,16 @@ struct SidebarView: View {
             .padding(12)
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Text(projectName)
+                .font(.system(size: 13))
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+        }
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
