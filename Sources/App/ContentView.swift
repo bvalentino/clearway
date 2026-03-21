@@ -426,7 +426,7 @@ struct ContentView: View {
             sidePanelTab = tab
         } else if let branch = worktree.branch,
                   let task = workTaskManager.task(forWorktree: branch),
-                  task.status == .started {
+                  task.status == .inProgress {
             sidePanelTab = .task
         } else if sidePanelTab == .task {
             sidePanelTab = .todos
@@ -639,8 +639,7 @@ struct ContentView: View {
                                             worktreeBranch: branch,
                                             projectPath: worktreeManager.projectPath,
                                             onContinue: { continueWorkTask($0) },
-                                            onRestart: { startWorkTask($0) },
-                                            onMarkDone: { workTaskManager.setStatus($0, to: .done) }
+                                            onRestart: { startWorkTask($0) }
                                         )
                                     }
                                 case .todos:

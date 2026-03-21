@@ -136,7 +136,7 @@ struct SidebarView: View {
     // MARK: - Sections
 
     private var tasksRow: some View {
-        let icon = workTaskManager.tasks.contains(where: { $0.status == .open }) ? "tray.full" : "tray"
+        let icon = workTaskManager.tasks.contains(where: { $0.status.isBacklog }) ? "tray.full" : "tray"
         return Label("Tasks", systemImage: icon)
             .tag(DetailSelection.tasks)
     }

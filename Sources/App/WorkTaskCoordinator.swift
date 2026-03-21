@@ -181,7 +181,7 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     func startTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == .open || task.status == .stopped else { return .ignored }
+        guard task.status == .new || task.status == .readyToStart || task.status == .canceled else { return .ignored }
 
         // Check trust before executing any hooks
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
@@ -189,14 +189,14 @@ class WorkTaskCoordinator: ObservableObject {
         }
 
         var updated = task
-        if task.status == .stopped {
+        if task.status == .canceled {
             updated.attempt = (task.attempt ?? 0) + 1
         }
         updated.errorMessage = nil
 
         if let branch = task.worktree,
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
-            updated.status = .started
+            updated.status = .inProgress
             workTaskManager.updateTask(updated)
 
             if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -211,7 +211,7 @@ class WorkTaskCoordinator: ObservableObject {
             let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
             let branch = task.worktree ?? workTaskManager.deriveBranchName(from: task.title, existingBranches: existingBranches)
             updated.worktree = branch
-            updated.status = .started
+            updated.status = .inProgress
             workTaskManager.updateTask(updated)
             pendingLaunch = (id: updated.id, branch: branch)
             return .createWorktree(branch)
@@ -220,7 +220,8 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// Continues a completed task — re-launches agent with a continuation prompt.
     func continueTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == .done, let branch = task.worktree,
+        guard task.status == .done || task.status == .readyForReview,
+              let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
 
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
@@ -229,7 +230,7 @@ class WorkTaskCoordinator: ObservableObject {
 
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
-        updated.status = .started
+        updated.status = .inProgress
         workTaskManager.updateTask(updated)
 
         if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -263,7 +264,7 @@ class WorkTaskCoordinator: ObservableObject {
         return worktreeManager.worktrees.first(where: { $0.branch == branch })
     }
 
-    /// Called when a worktree is removed — resets matching task to open.
+    /// Called when a worktree is removed — marks the task as done and clears the worktree link.
     /// This is the only place that fully tears down both surface and observer.
     func handleWorktreeRemoved(branch: String) {
         guard let task = workTaskManager.task(forWorktree: branch) else { return }
@@ -351,7 +352,7 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Remove the surface tracking but KEEP the session observer alive.
         // If the user manually starts a new Claude session in this worktree,
-        // the observer's onActivity will flip the task back to .started.
+        // the observer's onActivity will flip the task back to .inProgress.
         agentSurfaces.removeValue(forKey: worktreeId)
         let observer = sessionObservers[worktreeId]
 
@@ -363,12 +364,10 @@ class WorkTaskCoordinator: ObservableObject {
         let promptFile = NSTemporaryDirectory() + "wtpad-prompt-\(task.id.uuidString).md"
         try? FileManager.default.removeItem(atPath: promptFile)
 
+        // Don't auto-change status — user may have exited to start a new session.
+        // Just accumulate tokens and clear error on success.
         if exitCode == 0 {
-            task.status = .done
             task.errorMessage = nil
-        } else {
-            task.status = .stopped
-            task.errorMessage = "Agent exited with code \(exitCode)"
         }
 
         accumulateTokens(from: observer, into: &task)
@@ -384,13 +383,12 @@ class WorkTaskCoordinator: ObservableObject {
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch),
-              task.status == .started else { return }
+              task.status == .inProgress else { return }
 
         // Don't clean up — keep the agent surface and observer alive.
         // The process may still be running (e.g., waiting for user permission).
-        // If new JSONL activity is detected, handleAgentResumed will flip back to .started.
+        // If new JSONL activity is detected, handleSessionActivity will flip back to .inProgress.
         // If the process exits, handleChildExited will fire normally.
-        task.status = .stopped
         task.errorMessage = "Agent stalled — no activity detected"
         workTaskManager.updateTask(task)
     }
@@ -402,10 +400,10 @@ class WorkTaskCoordinator: ObservableObject {
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch),
-              task.status == .done || task.status == .stopped else { return }
+              task.status == .done || task.status == .canceled else { return }
 
         Ghostty.logger.info("Session activity detected for worktree \(worktreeId, privacy: .public), resuming task")
-        task.status = .started
+        task.status = .inProgress
         task.errorMessage = nil
         workTaskManager.updateTask(task)
     }

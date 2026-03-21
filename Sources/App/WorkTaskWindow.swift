@@ -65,8 +65,12 @@ struct WorkTaskWindow: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                if task?.worktree == nil {
-                    primaryActionButton
+                primaryActionButton
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                if let task, !task.status.isBacklog {
+                    statusPicker
                 }
             }
 
@@ -80,7 +84,7 @@ struct WorkTaskWindow: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                if task?.worktree == nil {
+                if let task, task.status.isBacklog {
                     Menu {
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
@@ -148,8 +152,8 @@ struct WorkTaskWindow: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 
-            // Agent metadata
-            if task.status != .open {
+            // Agent metadata (show for tasks that have been worked on)
+            if !task.status.isBacklog {
                 WorkTaskAgentMetadata(task: task)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
@@ -176,22 +180,80 @@ struct WorkTaskWindow: View {
     private var primaryActionButton: some View {
         if let task {
             switch task.status {
-            case .open:
-                Button("Start") { saveAndPost(WorkTaskNotification.start) }
+            case .new:
+                Menu("Start Now") {
+                    Button("Ready to Start") {
+                        saveNow()
+                        workTaskManager.setStatus(task, to: .readyToStart)
+                    }
+                } primaryAction: {
+                    saveAndPost(WorkTaskNotification.start)
+                }
+                .applyPrimaryActionStyle()
+            case .readyToStart:
+                Menu("Ready to Start") {
+                    Button("Cancel Ready to Start") {
+                        saveNow()
+                        workTaskManager.setStatus(task, to: .new)
+                    }
+                } primaryAction: {
+                    saveAndPost(WorkTaskNotification.start)
+                }
+                .applyPrimaryActionStyle()
+            case .inProgress, .readyForReview:
+                Button("Open") { saveAndPost(WorkTaskNotification.openWorktree) }
                     .applyPrimaryActionStyle()
-            case .stopped:
-                Button("Restart") { saveAndPost(WorkTaskNotification.start) }
-                    .applyPrimaryActionStyle(tint: .orange)
             case .done where task.worktree != nil:
                 Button("Continue") { saveAndPost(WorkTaskNotification.continue) }
                     .applyPrimaryActionStyle()
             case .done:
                 EmptyView()
-            case .started:
-                Button("Open") { saveAndPost(WorkTaskNotification.openWorktree) }
+            case .canceled:
+                Button("Reopen") { reopen(task) }
                     .applyPrimaryActionStyle()
             }
         }
+    }
+
+    @ViewBuilder
+    private var statusPicker: some View {
+        if let task {
+            Menu {
+                ForEach(allowedStatuses(for: task), id: \.self) { status in
+                    Button {
+                        saveNow()
+                        workTaskManager.setStatus(task, to: status)
+                    } label: {
+                        if status == task.status {
+                            Label(status.label, systemImage: "checkmark")
+                        } else {
+                            Text(status.label)
+                        }
+                    }
+                    .disabled(status == task.status)
+                }
+            } label: {
+                WorkTaskStatusBadge(status: task.status)
+            }
+            .menuIndicator(.hidden)
+        }
+    }
+
+    /// Returns the statuses the user can transition to from the task editor.
+    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
+        switch task.status {
+        case .new: return [.new, .readyToStart]
+        case .readyToStart: return [.new, .readyToStart]
+        case .inProgress: return [.inProgress, .readyForReview, .done, .canceled]
+        case .readyForReview: return [.inProgress, .readyForReview, .done, .canceled]
+        case .done: return [.done]
+        case .canceled: return [.new, .canceled]
+        }
+    }
+
+    private func reopen(_ task: WorkTask) {
+        saveNow()
+        workTaskManager.setStatus(task, to: .new)
     }
 
     // MARK: - Helpers

@@ -17,17 +17,37 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var outputTokens: Int?
 
     enum Status: String, CaseIterable {
-        case open
-        case started
+        case new
+        case readyToStart = "ready_to_start"
+        case inProgress = "in_progress"
+        case readyForReview = "ready_for_review"
         case done
-        case stopped
+        case canceled
 
         var label: String {
             switch self {
-            case .open: return "Open"
-            case .started: return "Started"
+            case .new: return "New"
+            case .readyToStart: return "Ready to Start"
+            case .inProgress: return "In Progress"
+            case .readyForReview: return "Ready for Review"
             case .done: return "Done"
-            case .stopped: return "Stopped"
+            case .canceled: return "Canceled"
+            }
+        }
+
+        /// Whether this status belongs in the backlog (not yet dispatched to a worktree).
+        var isBacklog: Bool { self == .new || self == .readyToStart }
+
+        /// Whether this status represents active work in a worktree.
+        var isActive: Bool { self == .inProgress || self == .readyForReview }
+
+        /// Migrate legacy status values from older task files.
+        init?(migrating rawValue: String) {
+            switch rawValue {
+            case "open": self = .new
+            case "started", "in_progress": self = .inProgress
+            case "stopped": self = .canceled
+            default: self.init(rawValue: rawValue)
             }
         }
     }
@@ -38,7 +58,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         return (inputTokens ?? 0) + (outputTokens ?? 0)
     }
 
-    init(id: UUID = UUID(), title: String, status: Status = .open, worktree: String? = nil, body: String = "") {
+    init(id: UUID = UUID(), title: String, status: Status = .new, worktree: String? = nil, body: String = "") {
         self.id = id
         self.title = title
         self.status = status
@@ -83,7 +103,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
               let id = UUID(uuidString: idString),
               let title = fields["title"],
               let statusString = fields["status"],
-              let status = Status(rawValue: statusString) else { return nil }
+              let status = Status(migrating: statusString) else { return nil }
 
         let worktree: String? = {
             guard let value = fields["worktree"], value != "null", !value.isEmpty else { return nil }

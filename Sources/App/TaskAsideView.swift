@@ -10,7 +10,6 @@ struct TaskAsideView: View {
     let projectPath: String
     var onContinue: ((WorkTask) -> Void)?
     var onRestart: ((WorkTask) -> Void)?
-    var onMarkDone: ((WorkTask) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
@@ -48,8 +47,8 @@ struct TaskAsideView: View {
                     onEdit: { openTaskWindow(task) }
                 )
 
-                // Agent metadata
-                if task.status != .open {
+                // Agent metadata (show for tasks that have been worked on)
+                if !task.status.isBacklog {
                     WorkTaskAgentMetadata(task: task)
                 }
 
@@ -73,40 +72,68 @@ struct TaskAsideView: View {
 
     @ViewBuilder
     private func actionButtons(_ task: WorkTask) -> some View {
-        if task.status != .open {
-            HStack(spacing: 8) {
-                if task.status == .stopped {
-                    Button {
-                        onRestart?(task)
-                    } label: {
-                        Label("Restart", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.orange)
-                    .controlSize(.small)
+        HStack(spacing: 8) {
+            switch task.status {
+            case .inProgress:
+                Button {
+                    workTaskManager.setStatus(task, to: .readyForReview)
+                } label: {
+                    Label("Ready for Review", systemImage: "eye")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
-                if task.status == .done, task.worktree != nil {
-                    Button {
-                        onContinue?(task)
-                    } label: {
-                        Label("Continue", systemImage: "play")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            case .readyForReview:
+                Button {
+                    workTaskManager.setStatus(task, to: .inProgress)
+                } label: {
+                    Label("Back to In Progress", systemImage: "arrow.uturn.backward")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
-                Spacer()
-
-                if task.status != .done {
-                    Button {
-                        onMarkDone?(task)
-                    } label: {
-                        Label("Mark Done", systemImage: "checkmark.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            case .done where task.worktree != nil:
+                Button {
+                    onContinue?(task)
+                } label: {
+                    Label("Continue", systemImage: "play")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+            case .canceled:
+                Button {
+                    onRestart?(task)
+                } label: {
+                    Label("Restart", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .controlSize(.small)
+
+            default:
+                EmptyView()
+            }
+
+            Spacer()
+
+            if task.status.isActive {
+                Button {
+                    workTaskManager.setStatus(task, to: .canceled)
+                } label: {
+                    Label("Cancel", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .controlSize(.small)
+
+                Button {
+                    workTaskManager.setStatus(task, to: .done)
+                } label: {
+                    Label("Mark Done", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
