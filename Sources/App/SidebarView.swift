@@ -45,6 +45,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $detailSelection) {
             tasksRow
+            promptsRow
             worktreeSection
         }
         .overlay(alignment: .bottomLeading) {
@@ -138,6 +139,11 @@ struct SidebarView: View {
         let icon = workTaskManager.tasks.contains(where: { $0.status == .open }) ? "tray.full" : "tray"
         return Label("Tasks", systemImage: icon)
             .tag(DetailSelection.tasks)
+    }
+
+    private var promptsRow: some View {
+        Label("Prompts", systemImage: "text.quote")
+            .tag(DetailSelection.prompts)
     }
 
     private var worktreeSection: some View {

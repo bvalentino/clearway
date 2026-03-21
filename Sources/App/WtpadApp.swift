@@ -137,6 +137,15 @@ struct WtpadApp: App {
         .defaultSize(width: 600, height: 450)
         .windowStyle(.titleBar)
 
+        WindowGroup(for: PromptIdentifier.self) { $identifier in
+            if let identifier {
+                PromptWindow(identifier: identifier)
+                    .preferredColorScheme(.dark)
+            }
+        }
+        .defaultSize(width: 600, height: 450)
+        .windowStyle(.titleBar)
+
         Settings {
             SettingsView(settings: settings)
                 .preferredColorScheme(.dark)

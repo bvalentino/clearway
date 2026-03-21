@@ -78,12 +78,14 @@ struct ProjectContentView: View {
     @StateObject private var workTaskManager: WorkTaskManager
     @StateObject private var workTaskCoordinator: WorkTaskCoordinator
     @StateObject private var claudeActivityMonitor = ClaudeActivityMonitor()
+    @StateObject private var promptManager: PromptManager
 
     init(projectPath: String) {
         self.projectPath = projectPath
         let wm = WorktreeManager(projectPath: projectPath)
         let tm = TerminalManager()
         let taskMgr = WorkTaskManager(projectPath: projectPath)
+        let promptsDir = UserDefaults.standard.string(forKey: SettingsKey.promptsDirectory) ?? SettingsManager.defaultPromptsDirectory
         _worktreeManager = StateObject(wrappedValue: wm)
         _terminalManager = StateObject(wrappedValue: tm)
         _workTaskManager = StateObject(wrappedValue: taskMgr)
@@ -92,6 +94,7 @@ struct ProjectContentView: View {
             terminalManager: tm,
             worktreeManager: wm
         ))
+        _promptManager = StateObject(wrappedValue: PromptManager(directory: promptsDir))
     }
 
     var body: some View {
@@ -104,6 +107,7 @@ struct ProjectContentView: View {
             .environmentObject(workTaskManager)
             .environmentObject(workTaskCoordinator)
             .environmentObject(claudeActivityMonitor)
+            .environmentObject(promptManager)
             .onAppear {
                 // Wire up agent surface check so TerminalManager skips auto-restart for agent surfaces
                 terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in
@@ -111,6 +115,7 @@ struct ProjectContentView: View {
                 }
                 // Start watching WORKFLOW.md for live config reload
                 workTaskCoordinator.startWatching()
+                promptManager.startWatching()
             }
     }
 }
