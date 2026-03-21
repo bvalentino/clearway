@@ -26,7 +26,6 @@ class ClaudeActivityMonitor: ObservableObject {
         /// Watches the most recent JSONL file for content appends.
         var fileSource: DispatchSourceFileSystemObject?
         var expiryTimer: DispatchWorkItem?
-        var pollWorkItem: DispatchWorkItem?
         var projectDir: String
         /// DispatchSource fires an initial `.write` event on resume for existing
         /// directories. Skip events until this flag is set (after a short delay).
@@ -35,20 +34,30 @@ class ClaudeActivityMonitor: ObservableObject {
 
     private var watchers: [String: WatcherState] = [:] // keyed by worktree id
 
+    // MARK: - Parent Directory Watcher (for pending worktrees)
+
+    /// Worktrees whose project directory doesn't exist yet. worktreeId → projectDir
+    private var pendingWorktrees: [String: String] = [:]
+    /// Watches `~/.claude/projects/` for entry changes (subdirectory creation).
+    private var parentDirSource: DispatchSourceFileSystemObject?
+    /// Fallback poll when `~/.claude/projects/` itself doesn't exist.
+    private var parentPollWorkItem: DispatchWorkItem?
+
     nonisolated deinit {
         for (_, state) in watchers {
             state.expiryTimer?.cancel()
-            state.pollWorkItem?.cancel()
             state.dirSource?.cancel()
             state.fileSource?.cancel()
         }
+        parentDirSource?.cancel()
+        parentPollWorkItem?.cancel()
     }
 
     /// Reconcile watchers with the current set of worktrees.
     /// Adds watchers for new worktrees, removes watchers for removed ones.
     func updateWorktrees(_ worktrees: [Worktree]) {
         let currentIds = Set(worktrees.compactMap { $0.path != nil ? $0.id : nil })
-        let watchedIds = Set(watchers.keys)
+        let watchedIds = Set(watchers.keys).union(pendingWorktrees.keys)
 
         // Remove watchers for worktrees that no longer exist
         for id in watchedIds.subtracting(currentIds) {
@@ -68,9 +77,9 @@ class ClaudeActivityMonitor: ObservableObject {
         let projectDir = ClaudeTodoManager.projectDir(forWorktreePath: worktreePath)
         var state = WatcherState(projectDir: projectDir)
 
-        if let source = ClaudeTodoManager.makeWatcher(path: projectDir) { [weak self] in
+        if let source = ClaudeTodoManager.makeWatcher(path: projectDir, handler: { [weak self] in
             self?.handleDirEvent(worktreeId: worktreeId)
-        } {
+        }) {
             state.dirSource = source
             if let result = Self.watchNewestJsonl(
                 in: projectDir, worktreeId: worktreeId, monitor: self
@@ -86,21 +95,49 @@ class ClaudeActivityMonitor: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.watchers[worktreeId]?.ready = true
             }
+            watchers[worktreeId] = state
         } else {
-            // Directory doesn't exist yet — poll for it
-            Self.logger.debug("polling for: \(projectDir, privacy: .public)")
-            pollForDirectory(worktreeId: worktreeId, path: projectDir)
+            // Directory doesn't exist yet — register as pending and watch parent
+            Self.logger.debug("pending: \(projectDir, privacy: .public)")
+            watchers[worktreeId] = state
+            pendingWorktrees[worktreeId] = projectDir
+            ensureParentWatcher()
         }
+    }
 
-        watchers[worktreeId] = state
+    /// Installs real watchers for a worktree whose project directory just appeared.
+    private func installWatchers(worktreeId: String, projectDir: String) {
+        guard watchers[worktreeId] != nil else { return }
+
+        if let source = ClaudeTodoManager.makeWatcher(path: projectDir, handler: { [weak self] in
+            self?.handleDirEvent(worktreeId: worktreeId)
+        }) {
+            watchers[worktreeId]?.dirSource = source
+            if let result = Self.watchNewestJsonl(
+                in: projectDir, worktreeId: worktreeId, monitor: self
+            ) {
+                watchers[worktreeId]?.fileSource = result.source
+                if Date().timeIntervalSince(result.modDate) < Self.expirySeconds {
+                    markWorking(worktreeId: worktreeId)
+                }
+            }
+            Self.logger.info("pending resolved, watching: \(projectDir, privacy: .public)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.watchers[worktreeId]?.ready = true
+            }
+        }
     }
 
     private func stopWatching(id: String) {
-        guard let state = watchers.removeValue(forKey: id) else { return }
-        state.dirSource?.cancel()
-        state.fileSource?.cancel()
-        state.expiryTimer?.cancel()
-        state.pollWorkItem?.cancel()
+        if let state = watchers.removeValue(forKey: id) {
+            state.dirSource?.cancel()
+            state.fileSource?.cancel()
+            state.expiryTimer?.cancel()
+        }
+        pendingWorktrees.removeValue(forKey: id)
+        if pendingWorktrees.isEmpty {
+            tearDownParentWatcher()
+        }
         if workingWorktreeIds.contains(id) {
             workingWorktreeIds.remove(id)
         }
@@ -185,46 +222,79 @@ class ClaudeActivityMonitor: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.expirySeconds, execute: work)
     }
 
-    // MARK: - Polling for Missing Directories
+    // MARK: - Parent Directory Watcher
 
-    private func pollForDirectory(
-        worktreeId: String,
-        path: String,
-        attempt: Int = 0
-    ) {
-        guard attempt < 30 else { return }
-        watchers[worktreeId]?.pollWorkItem?.cancel()
+    /// Ensures a watcher on `~/.claude/projects/` is active to detect when
+    /// pending worktree directories are created. Uses a `fileExists` guard per
+    /// pending entry to keep the handler cheap despite churn from other sessions.
+    private func ensureParentWatcher() {
+        guard parentDirSource == nil else { return }
+
+        let parentDir = ClaudeTodoManager.projectsParentDir
+        if let source = ClaudeTodoManager.makeWatcher(path: parentDir, handler: { [weak self] in
+            self?.checkPendingWorktrees()
+        }) {
+            parentDirSource = source
+            Self.logger.debug("watching parent: \(parentDir, privacy: .public)")
+        } else {
+            // ~/.claude/projects/ doesn't exist yet — poll for it at a long interval
+            Self.logger.debug("parent dir missing, polling: \(parentDir, privacy: .public)")
+            pollForParentDirectory()
+        }
+    }
+
+    /// Checks each pending worktree's project directory. If it now exists,
+    /// installs real watchers and removes it from the pending set.
+    private nonisolated func checkPendingWorktrees() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            var resolved: [String] = []
+            for (worktreeId, projectDir) in self.pendingWorktrees {
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: projectDir, isDirectory: &isDir),
+                   isDir.boolValue {
+                    resolved.append(worktreeId)
+                    self.installWatchers(worktreeId: worktreeId, projectDir: projectDir)
+                }
+            }
+            for id in resolved {
+                self.pendingWorktrees.removeValue(forKey: id)
+            }
+            if self.pendingWorktrees.isEmpty {
+                self.tearDownParentWatcher()
+            }
+        }
+    }
+
+    /// Polls for `~/.claude/projects/` with exponential backoff (10s → 120s cap).
+    private func pollForParentDirectory(interval: Double = 10.0) {
+        parentPollWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
-                DispatchQueue.main.async {
-                    guard let self, self.watchers[worktreeId] != nil else { return }
-                    // Directory appeared — install the real watchers
-                    if let source = ClaudeTodoManager.makeWatcher(path: path) { [weak self] in
-                        self?.handleDirEvent(worktreeId: worktreeId)
-                    } {
-                        self.watchers[worktreeId]?.dirSource = source
-                        self.watchers[worktreeId]?.fileSource = Self.watchNewestJsonl(
-                            in: path, worktreeId: worktreeId, monitor: self
-                        )?.source
-                        Self.logger.info("poll found dir, watching: \(path, privacy: .public)")
-                    }
-                    // Mark ready after delay (same as direct path)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                        self?.watchers[worktreeId]?.ready = true
-                    }
+            let exists = FileManager.default.fileExists(
+                atPath: ClaudeTodoManager.projectsParentDir, isDirectory: &isDir
+            ) && isDir.boolValue
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.pendingWorktrees.isEmpty else {
+                    self?.parentPollWorkItem = nil
+                    return
                 }
-            } else {
-                DispatchQueue.main.async {
-                    self?.pollForDirectory(
-                        worktreeId: worktreeId,
-                        path: path,
-                        attempt: attempt + 1
-                    )
+                if exists {
+                    self.parentPollWorkItem = nil
+                    self.ensureParentWatcher()
+                } else {
+                    self.pollForParentDirectory(interval: min(interval * 2, 120))
                 }
             }
         }
-        watchers[worktreeId]?.pollWorkItem = work
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0, execute: work)
+        parentPollWorkItem = work
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + interval, execute: work)
+    }
+
+    private func tearDownParentWatcher() {
+        parentDirSource?.cancel()
+        parentDirSource = nil
+        parentPollWorkItem?.cancel()
+        parentPollWorkItem = nil
     }
 }

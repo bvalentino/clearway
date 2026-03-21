@@ -236,6 +236,11 @@ class ClaudeTodoManager: ObservableObject {
             .replacingOccurrences(of: ".", with: "-")
     }
 
+    /// The `~/.claude/projects/` parent directory.
+    static let projectsParentDir: String = {
+        (claudeDir as NSString).appendingPathComponent("projects")
+    }()
+
     /// Returns the Claude Code projects directory for a given worktree path.
     static func projectDir(forWorktreePath path: String) -> String {
         let encoded = encodePathForClaude(path)
@@ -269,10 +274,25 @@ class ClaudeTodoManager: ObservableObject {
             watcherSources.append(source)
         } else {
             // Projects directory doesn't exist yet (new worktree, never had Claude).
-            // Poll until Claude creates it.
-            Self.logger.info("projects dir missing, polling: \(projectDir, privacy: .public)")
-            pollForDirectory(path: projectDir) { [weak self] in
+            // Watch the parent (~/.claude/projects/) for its creation instead of
+            // capped polling. The fileExists guard keeps it cheap despite churn
+            // from other Claude sessions writing to sibling directories.
+            let parentDir = Self.projectsParentDir
+            if let parentSource = Self.makeWatcher(path: parentDir, handler: { [weak self] in
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: projectDir, isDirectory: &isDir),
+                      isDir.boolValue else { return }
+                Self.logger.info("parent watcher found projects dir: \(projectDir, privacy: .public)")
                 self?.scheduleReload(rebuildWatchers: true)
+            }) {
+                Self.logger.info("watching parent for projects dir: \(projectDir, privacy: .public)")
+                watcherSources.append(parentSource)
+            } else {
+                // ~/.claude/projects/ itself doesn't exist — poll at a long interval
+                Self.logger.info("projects parent missing, polling: \(parentDir, privacy: .public)")
+                pollForParentDirectory(parentDir: parentDir) { [weak self] in
+                    self?.scheduleReload(rebuildWatchers: true)
+                }
             }
         }
 
@@ -282,6 +302,8 @@ class ClaudeTodoManager: ObservableObject {
         let sessionUUIDs = contents
             .filter { $0.hasSuffix(".jsonl") }
             .map { String($0.dropLast(".jsonl".count)) }
+
+        var pendingTasksDirs: [String] = []
 
         for uuid in sessionUUIDs {
             let tasksDir = (claudeDir as NSString)
@@ -295,13 +317,28 @@ class ClaudeTodoManager: ObservableObject {
                 Self.logger.info("watching tasks dir: \(uuid, privacy: .public)")
                 watcherSources.append(source)
             } else {
-                // Tasks directory doesn't exist yet — poll until it appears
-                // so we pick it up when Claude creates it.
-                Self.logger.info("tasks dir missing, polling: \(uuid, privacy: .public)")
-                pollForDirectory(path: tasksDir) { [weak self] in
-                    Self.logger.info("poll found tasks dir: \(uuid, privacy: .public)")
-                    self?.scheduleReload(rebuildWatchers: true)
+                pendingTasksDirs.append(tasksDir)
+            }
+        }
+
+        // Watch the parent (~/.claude/tasks/) for any pending task directories.
+        // A single parent watcher covers all missing UUIDs. The fileExists guard
+        // keeps it cheap; once any appear, a rebuild picks up the rest.
+        if !pendingTasksDirs.isEmpty {
+            let parentTasksDir = (claudeDir as NSString).appendingPathComponent("tasks")
+            if let parentSource = Self.makeWatcher(path: parentTasksDir, handler: { [weak self] in
+                for path in pendingTasksDirs {
+                    var isDir: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
+                       isDir.boolValue {
+                        Self.logger.info("parent watcher found tasks dir: \(path, privacy: .public)")
+                        self?.scheduleReload(rebuildWatchers: true)
+                        return
+                    }
                 }
+            }) {
+                Self.logger.info("watching parent for \(pendingTasksDirs.count) tasks dirs")
+                watcherSources.append(parentSource)
             }
         }
     }
@@ -328,28 +365,33 @@ class ClaudeTodoManager: ObservableObject {
         }
     }
 
-    /// Checks for a directory's existence every second, up to 30 times.
-    /// Calls `handler` once when the directory appears, then stops.
-    /// Poll work items are tracked in `pendingPolls` so they can be cancelled
-    /// when watchers are rebuilt.
-    private nonisolated func pollForDirectory(
-        path: String,
-        attempt: Int = 0,
+    /// Polls for a parent directory's existence with exponential backoff (10s → 120s cap).
+    /// Used when `~/.claude/projects/` or `~/.claude/tasks/` doesn't exist yet
+    /// (brand-new Claude install). Calls `handler` once when it appears.
+    private nonisolated func pollForParentDirectory(
+        parentDir: String,
+        interval: Double = 10.0,
         handler: @escaping () -> Void
     ) {
-        guard attempt < 30 else { return }
         let work = DispatchWorkItem { [weak self] in
             var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+            if FileManager.default.fileExists(atPath: parentDir, isDirectory: &isDir),
+               isDir.boolValue {
                 handler()
             } else {
-                self?.pollForDirectory(path: path, attempt: attempt + 1, handler: handler)
+                self?.pollForParentDirectory(
+                    parentDir: parentDir,
+                    interval: min(interval * 2, 120),
+                    handler: handler
+                )
             }
         }
         DispatchQueue.main.async { [weak self] in
-            self?.pendingPolls.append(work)
+            guard let self else { return }
+            self.pendingPolls.removeAll { $0.isCancelled }
+            self.pendingPolls.append(work)
         }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0, execute: work)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + interval, execute: work)
     }
 
     nonisolated static func makeWatcher(
