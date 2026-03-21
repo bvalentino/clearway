@@ -8,9 +8,6 @@ struct TaskAsideView: View {
 
     let worktreeBranch: String
     let projectPath: String
-    var onContinue: ((WorkTask) -> Void)?
-    var onRestart: ((WorkTask) -> Void)?
-    var onMarkDone: ((WorkTask) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
@@ -45,21 +42,34 @@ struct TaskAsideView: View {
             VStack(alignment: .leading, spacing: 16) {
                 WorkTaskCard(
                     task: task,
+                    showStatusBadge: false,
                     onEdit: { openTaskWindow(task) }
                 )
 
-                // Agent metadata
-                if task.status != .open {
-                    WorkTaskAgentMetadata(task: task)
+                Divider()
+
+                HStack {
+                    Text("Status")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Picker(selection: Binding(
+                        get: { task.status },
+                        set: { workTaskManager.setStatus(task, to: $0) }
+                    )) {
+                        ForEach(allowedStatuses(for: task), id: \.self) { status in
+                            Text(status.label).tag(status)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
                 }
 
-                // Action buttons
-                actionButtons(task)
-
-                // Last updated
-                Text("Updated \(task.updatedAt.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                // Agent metadata (show for tasks that have been worked on)
+                if !task.status.isBacklog {
+                    WorkTaskAgentMetadata(task: task)
+                }
             }
             .padding(16)
         }
@@ -71,43 +81,7 @@ struct TaskAsideView: View {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
     }
 
-    @ViewBuilder
-    private func actionButtons(_ task: WorkTask) -> some View {
-        if task.status != .open {
-            HStack(spacing: 8) {
-                if task.status == .stopped {
-                    Button {
-                        onRestart?(task)
-                    } label: {
-                        Label("Restart", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.orange)
-                    .controlSize(.small)
-                }
-
-                if task.status == .done, task.worktree != nil {
-                    Button {
-                        onContinue?(task)
-                    } label: {
-                        Label("Continue", systemImage: "play")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
-                Spacer()
-
-                if task.status != .done {
-                    Button {
-                        onMarkDone?(task)
-                    } label: {
-                        Label("Mark Done", systemImage: "checkmark.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-        }
+    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
+        [.inProgress, .readyForReview, .done, .canceled]
     }
 }

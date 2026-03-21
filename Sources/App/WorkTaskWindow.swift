@@ -65,9 +65,7 @@ struct WorkTaskWindow: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                if task?.worktree == nil {
-                    primaryActionButton
-                }
+                primaryActionButton
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -80,7 +78,7 @@ struct WorkTaskWindow: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                if task?.worktree == nil {
+                if let task, task.status.isBacklog {
                     Menu {
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
@@ -148,8 +146,8 @@ struct WorkTaskWindow: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 
-            // Agent metadata
-            if task.status != .open {
+            // Agent metadata (show for tasks that have been worked on)
+            if !task.status.isBacklog {
                 WorkTaskAgentMetadata(task: task)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
@@ -176,20 +174,28 @@ struct WorkTaskWindow: View {
     private var primaryActionButton: some View {
         if let task {
             switch task.status {
-            case .open:
-                Button("Start") { saveAndPost(WorkTaskNotification.start) }
-                    .applyPrimaryActionStyle()
-            case .stopped:
-                Button("Restart") { saveAndPost(WorkTaskNotification.start) }
-                    .applyPrimaryActionStyle(tint: .orange)
-            case .done where task.worktree != nil:
-                Button("Continue") { saveAndPost(WorkTaskNotification.continue) }
-                    .applyPrimaryActionStyle()
-            case .done:
+            case .new:
+                Menu("Start Now") {
+                    Button("Ready to Start") {
+                        saveNow()
+                        workTaskManager.setStatus(task, to: .readyToStart)
+                    }
+                } primaryAction: {
+                    saveAndPost(WorkTaskNotification.start)
+                }
+                .applyPrimaryActionStyle()
+            case .readyToStart:
+                Menu("Ready to Start") {
+                    Button("Cancel Ready to Start") {
+                        saveNow()
+                        workTaskManager.setStatus(task, to: .new)
+                    }
+                } primaryAction: {
+                    saveAndPost(WorkTaskNotification.start)
+                }
+                .applyPrimaryActionStyle()
+            default:
                 EmptyView()
-            case .started:
-                Button("Open") { saveAndPost(WorkTaskNotification.openWorktree) }
-                    .applyPrimaryActionStyle()
             }
         }
     }

@@ -7,14 +7,14 @@ struct WorkTaskListView: View {
     @Environment(\.openWindow) private var openWindow
     let projectPath: String
 
-    /// Only open tasks appear in the backlog — once started, tasks live in worktrees.
+    /// New and ready-to-start tasks appear in the backlog — once started, tasks live in worktrees.
     private var backlogTasks: [WorkTask] {
-        workTaskManager.tasks.filter { $0.status == .open }
+        workTaskManager.tasks.filter { $0.status.isBacklog }
     }
 
     /// Count of tasks that have been dispatched to worktrees.
     private var activeTaskCount: Int {
-        workTaskManager.tasks.filter { $0.status != .open }.count
+        workTaskManager.tasks.filter { $0.status.isActive }.count
     }
 
     private var activeTaskLabel: String {
@@ -107,16 +107,23 @@ struct WorkTaskListView: View {
 
 struct WorkTaskCard: View {
     let task: WorkTask
+    var showStatusBadge: Bool = true
     var onEdit: () -> Void
     @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(task.title.isEmpty ? "Untitled" : task.title)
-                .font(.headline)
-                .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text(task.title.isEmpty ? "Untitled" : task.title)
+                    .font(.headline)
+                    .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if showStatusBadge {
+                    Spacer()
+                    WorkTaskStatusBadge(status: task.status)
+                }
+            }
 
             Text(task.createdAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
@@ -150,7 +157,7 @@ struct WorkTaskStatusBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if status == .started {
+            if status == .inProgress {
                 Circle()
                     .fill(.green)
                     .frame(width: 6, height: 6)
@@ -169,12 +176,18 @@ struct WorkTaskStatusBadge: View {
         .background(badgeColor.opacity(0.12), in: Capsule())
     }
 
-    private var badgeColor: Color {
-        switch status {
-        case .open: return .blue
-        case .started: return .green
+    private var badgeColor: Color { status.badgeColor }
+}
+
+extension WorkTask.Status {
+    var badgeColor: Color {
+        switch self {
+        case .new: return .blue
+        case .readyToStart: return .indigo
+        case .inProgress: return .green
+        case .readyForReview: return .orange
         case .done: return .secondary
-        case .stopped: return .orange
+        case .canceled: return .red
         }
     }
 }
