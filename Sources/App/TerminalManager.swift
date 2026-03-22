@@ -191,6 +191,17 @@ class TerminalManager: ObservableObject {
             objectWillChange.send()
             // Close after re-inserting so the closeSurface observer can't match the old surface
             oldSurface.closeSurface()
+        } else {
+            // Pane doesn't exist yet (e.g. activate() hasn't fired due to SwiftUI batching).
+            // Create the pane now so the surface isn't lost.
+            self.app = app
+            let dir = worktree.path
+            let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
+            panes[key] = TerminalPane(main: newSurface, secondary: secondary)
+            if !openWorktreeIds.contains(key) {
+                openWorktreeIds.insert(key)
+            }
+            objectWillChange.send()
         }
         return newSurface
     }

@@ -52,12 +52,18 @@ private enum AfterCreateHookState {
     case none
     case blocking(InlineHook)
     case background(InlineHook)
+    case failed(InlineHook)
 
     var inlineHook: InlineHook? {
         switch self {
         case .none: return nil
-        case .blocking(let hook), .background(let hook): return hook
+        case .blocking(let hook), .background(let hook), .failed(let hook): return hook
         }
+    }
+
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 
@@ -228,6 +234,18 @@ struct ContentView: View {
                 ))
             } else {
                 launchClaude?()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
+            guard let surface = notification.object as? Ghostty.SurfaceView,
+                  let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32,
+                  let inline = afterCreateHookState.inlineHook,
+                  inline.hook.surface === surface else { return }
+            if exitCode == 0 {
+                inline.hook.onContinue()
+                finishAfterCreateHook()
+            } else {
+                afterCreateHookState = .failed(inline)
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
@@ -588,7 +606,7 @@ struct ContentView: View {
 
                             if let inline = afterCreateHookState.inlineHook, selectedWorktree?.id == inline.worktreeId {
                                 Divider()
-                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: false)
+                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: afterCreateHookState.isFailed)
                                     .frame(height: secondaryHeight)
                             } else if secondaryVisible {
                                 Divider()
