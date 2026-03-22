@@ -69,6 +69,7 @@ struct ProjectSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     Divider()
+                        .padding(.vertical, 12)
                     SettingsRow("Before Worktree Remove") {
                         TextField("Command", text: $hooks.beforeRemove)
                             .textFieldStyle(.roundedBorder)
@@ -87,17 +88,21 @@ struct ProjectSettingsView: View {
                 // MARK: - Automation
 
                 SettingsSection("Automation", footer: "Automatically process tasks marked as Ready to Start.") {
-                    SettingsRow("Polling") {
+                    HStack {
+                        Text("Polling")
+                        Spacer()
                         Picker("", selection: $pollingInterval) {
                             ForEach(ProjectSettings.PollingInterval.allCases, id: \.self) { interval in
                                 Text(interval.label).tag(interval)
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 160)
                     }
                     Divider()
-                    SettingsRow("Maximum In Progress") {
+                        .padding(.vertical, 8)
+                    HStack {
+                        Text("Maximum In Progress")
+                        Spacer()
                         Stepper("\(maxConcurrentAgents)", value: $maxConcurrentAgents, in: 1...16)
                     }
                 }
@@ -282,10 +287,9 @@ private struct SettingsSection<Content: View, Trailing: View>: View {
 
             VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(12)
                 .background(.thickMaterial)
-                .cornerRadius(10)
+                .cornerRadius(12)
 
             if let footer {
                 Text(footer)
@@ -297,7 +301,7 @@ private struct SettingsSection<Content: View, Trailing: View>: View {
     }
 }
 
-/// A labeled row inside a settings card — label on the left, control on the right.
+/// A labeled row inside a settings card — label above, content below.
 private struct SettingsRow<Content: View>: View {
     let label: String
     @ViewBuilder let content: Content
@@ -308,9 +312,9 @@ private struct SettingsRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 6) {
             Text(label)
-            Spacer()
+                .font(.subheadline.weight(.medium))
             content
         }
     }
