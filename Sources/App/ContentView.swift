@@ -482,9 +482,10 @@ struct ContentView: View {
     private func beginRemoveWorktree(_ worktree: Worktree) {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
+        let isSelected = selectedWorktree?.id == worktree.id
         let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in
             guard let worktreeManager else { return }
-            self.selectFallback()
+            if isSelected { self.selectFallback() }
             workTaskCoordinator?.handleWorktreeRemoved(branch: branch)
             worktreeManager.removeWorktree(branch: branch)
         }
