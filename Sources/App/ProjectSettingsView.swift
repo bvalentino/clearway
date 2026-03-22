@@ -69,7 +69,6 @@ struct ProjectSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     Divider()
-                        .padding(.vertical, 12)
                     SettingsRow("Before Worktree Remove") {
                         TextField("Command", text: $hooks.beforeRemove)
                             .textFieldStyle(.roundedBorder)
@@ -88,10 +87,7 @@ struct ProjectSettingsView: View {
                 // MARK: - Automation
 
                 SettingsSection("Automation", footer: "Automatically process tasks marked as Ready to Start.") {
-                    HStack {
-                        Text("Polling")
-                            .font(.subheadline.weight(.medium))
-                        Spacer()
+                    SettingsRow("Polling") {
                         Picker("", selection: $pollingInterval) {
                             ForEach(ProjectSettings.PollingInterval.allCases, id: \.self) { interval in
                                 Text(interval.label).tag(interval)
@@ -101,11 +97,7 @@ struct ProjectSettingsView: View {
                         .frame(width: 160)
                     }
                     Divider()
-                        .padding(.vertical, 12)
-                    HStack {
-                        Text("Maximum In Progress")
-                            .font(.subheadline.weight(.medium))
-                        Spacer()
+                    SettingsRow("Maximum In Progress") {
                         Stepper("\(maxConcurrentAgents)", value: $maxConcurrentAgents, in: 1...16)
                     }
                 }
@@ -290,9 +282,10 @@ private struct SettingsSection<Content: View, Trailing: View>: View {
 
             VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
                 .background(.thickMaterial)
-                .cornerRadius(12)
+                .cornerRadius(10)
 
             if let footer {
                 Text(footer)
@@ -304,7 +297,7 @@ private struct SettingsSection<Content: View, Trailing: View>: View {
     }
 }
 
-/// A labeled row inside a settings card. Renders a divider above when not the first item.
+/// A labeled row inside a settings card — label on the left, control on the right.
 private struct SettingsRow<Content: View>: View {
     let label: String
     @ViewBuilder let content: Content
@@ -315,9 +308,9 @@ private struct SettingsRow<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack {
             Text(label)
-                .font(.subheadline.weight(.medium))
+            Spacer()
             content
         }
     }
