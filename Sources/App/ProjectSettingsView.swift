@@ -6,6 +6,8 @@ struct ProjectSettingsView: View {
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var promptManager: PromptManager
     @State private var hooks: ProjectHooks
+    @State private var maxConcurrentAgents: Int
+    @State private var pollingInterval: ProjectSettings.PollingInterval
     @State private var workflowText = ""
     @State private var workflowStatus: WorkflowStatus = .empty
     /// Suppresses external reload while a local save is pending.
@@ -23,6 +25,8 @@ struct ProjectSettingsView: View {
     init(projectPath: String) {
         self.projectPath = projectPath
         self._hooks = State(initialValue: ProjectHooks.load(for: projectPath))
+        self._maxConcurrentAgents = State(initialValue: ProjectSettings.maxConcurrentAgents(for: projectPath))
+        self._pollingInterval = State(initialValue: ProjectSettings.pollingInterval(for: projectPath))
     }
 
     private var workflowFilePath: String {
@@ -33,9 +37,9 @@ struct ProjectSettingsView: View {
     private static let workflowFooter = """
         Defines how agents handle tasks. YAML frontmatter configures hooks \
         (after_create, before_run, after_run), agent command, and timeout. \
-        The markdown body is the prompt template sent to the agent — use \
-        {{ task.title }}, {{ task.body }}, {{ task.id }}, and {{ attempt }} \
-        for interpolation.
+        The markdown body is the prompt template sent to the agent. \
+        Variables: {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}, \
+        {{ attempt }}, {{ status.ready_for_review }}, {{ status.done }}, etc.
         """
 
     private static let workflowTemplate = """
@@ -47,9 +51,11 @@ struct ProjectSettingsView: View {
           command: claude
         ---
 
-        {{ task.title }}
+        Read the task at {{ task.path }} and complete it.
 
-        {{ task.body }}
+        When done, update the task status to `{{ status.ready_for_review }}` \
+        by editing the `status:` field in the task file's YAML frontmatter. \
+        Once you set the status, do not change it again.
         """
 
     var body: some View {
@@ -79,6 +85,31 @@ struct ProjectSettingsView: View {
                     }
                 }
 
+                // MARK: - Automation
+
+                SettingsSection("Automation", footer: "Automatically process tasks marked as Ready to Start.") {
+                    HStack {
+                        Text("Polling")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Picker("", selection: $pollingInterval) {
+                            ForEach(ProjectSettings.PollingInterval.allCases, id: \.self) { interval in
+                                Text(interval.label).tag(interval)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 160)
+                    }
+                    Divider()
+                        .padding(.vertical, 12)
+                    HStack {
+                        Text("Maximum In Progress")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Stepper("\(maxConcurrentAgents)", value: $maxConcurrentAgents, in: 1...16)
+                    }
+                }
+
                 // MARK: - WORKFLOW.md
 
                 SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
@@ -100,6 +131,18 @@ struct ProjectSettingsView: View {
         .onAppear { loadWorkflowFile() }
         .onChange(of: hooks.afterCreate) { _ in hooks.save(for: projectPath) }
         .onChange(of: hooks.beforeRemove) { _ in hooks.save(for: projectPath) }
+        .onChange(of: maxConcurrentAgents) { newValue in
+            ProjectSettings.setMaxConcurrentAgents(newValue, for: projectPath)
+        }
+        .onChange(of: pollingInterval) { newValue in
+            ProjectSettings.setPollingInterval(newValue, for: projectPath)
+            if newValue == .disabled {
+                workTaskCoordinator.isAutoProcessing = false
+            } else if workTaskCoordinator.isAutoProcessing {
+                // Restart timer with new interval
+                workTaskCoordinator.restartAutoProcessingTimer()
+            }
+        }
         .onChange(of: settings.promptsDirectory) { newValue in
             promptManager.setDirectory(newValue)
         }

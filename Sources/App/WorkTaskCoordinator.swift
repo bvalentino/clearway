@@ -6,7 +6,7 @@ import GhosttyKit
 /// focused on layout and navigation.
 @MainActor
 class WorkTaskCoordinator: ObservableObject {
-    var pendingLaunch: (id: UUID, branch: String)?
+    var pendingLaunch: (id: UUID, branch: String, isAutoStart: Bool)?
 
     /// Published so ContentView can present a HookSheet for the after_run hook.
     /// Uses a unique ID to ensure consecutive identical hooks are not deduplicated by SwiftUI.
@@ -20,11 +20,61 @@ class WorkTaskCoordinator: ObservableObject {
         static func == (lhs: PendingHook, rhs: PendingHook) -> Bool { lhs.id == rhs.id }
     }
 
+    // MARK: - Auto-Processing
+
+    /// Whether the user has toggled auto-processing on.
+    @Published var isAutoProcessing: Bool = false {
+        didSet {
+            if isAutoProcessing {
+                startAutoProcessingTimer()
+            } else {
+                stopAutoProcessingTimer()
+            }
+        }
+    }
+
+    /// Whether auto-processing is available (polling interval is not disabled).
+    var isAutoProcessingEnabled: Bool {
+        pollingInterval != .disabled
+    }
+
+    /// Incremented each time an auto-start result is published, so SwiftUI
+    /// detects changes even if consecutive results have similar structure.
+    @Published var autoStartGeneration: Int = 0
+
+    /// Incremented on each polling tick so the UI can animate a progress ring.
+    @Published var tickGeneration: Int = 0
+
+    /// Result from auto-dispatching a task — ContentView observes `autoStartGeneration`
+    /// and consumes this value to handle worktree creation, hooks, and trust dialogs.
+    var pendingAutoStart: StartResult?
+
+    /// Maximum concurrent agents, read from project settings.
+    var maxConcurrent: Int {
+        ProjectSettings.maxConcurrentAgents(for: workTaskManager.projectPath)
+    }
+
+    /// Polling interval for auto-processing, read from project settings.
+    var pollingInterval: ProjectSettings.PollingInterval {
+        ProjectSettings.pollingInterval(for: workTaskManager.projectPath)
+    }
+
+    /// Number of tasks currently in progress with a live worktree on disk.
+    var inProgressCount: Int {
+        let liveBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
+        return workTaskManager.tasks.filter { task in
+            task.status == .inProgress && task.worktree.map { liveBranches.contains($0) } == true
+        }.count
+    }
+
+    private var autoProcessingTimer: DispatchSourceTimer?
+
     // MARK: - Agent Lifecycle
 
     /// Surfaces running agent commands, keyed by worktree ID.
     /// TerminalManager checks this to skip auto-restart for agent surfaces.
-    private(set) var agentSurfaces: [String: Ghostty.SurfaceView] = [:]
+    /// Published so the UI can display the running agent count.
+    @Published private(set) var agentSurfaces: [String: Ghostty.SurfaceView] = [:]
 
     /// Session observers for running agents, keyed by worktree ID.
     private var sessionObservers: [String: AgentSessionObserver] = [:]
@@ -34,6 +84,9 @@ class WorkTaskCoordinator: ObservableObject {
     private let workTaskManager: WorkTaskManager
     private let terminalManager: TerminalManager
     private let worktreeManager: WorktreeManager
+
+    /// Resolves the current ghostty app reference. Set at init or via `setAppProvider`.
+    private var appProvider: (() -> ghostty_app_t?)?
 
     /// Live-reloaded workflow config — watched for changes on disk.
     @Published private(set) var workflowConfig: WorkflowConfig?
@@ -61,12 +114,18 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     nonisolated deinit {
+        autoProcessingTimer?.cancel()
         pendingReload?.cancel()
         watcherSource?.cancel()
         directoryWatcherSource?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    /// Provide a closure that resolves the current ghostty app reference for auto-processing.
+    func setAppProvider(_ provider: @escaping () -> ghostty_app_t?) {
+        self.appProvider = provider
     }
 
     // MARK: - WORKFLOW.md Watching
@@ -168,6 +227,64 @@ class WorkTaskCoordinator: ObservableObject {
         // File exists but parse failed — keep last-known-good config
     }
 
+    // MARK: - Auto-Processing Timer
+
+    /// Restart the timer with the current polling interval (e.g. after settings change).
+    func restartAutoProcessingTimer() {
+        guard isAutoProcessing else { return }
+        startAutoProcessingTimer()
+    }
+
+    private func startAutoProcessingTimer() {
+        stopAutoProcessingTimer()
+        let interval = pollingInterval
+        guard interval != .disabled else {
+            isAutoProcessing = false
+            return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .seconds(interval.rawValue), repeating: .seconds(interval.rawValue))
+        timer.setEventHandler { [weak self] in
+            self?.tickGeneration += 1
+            self?.autoProcessTick()
+        }
+        timer.resume()
+        autoProcessingTimer = timer
+        // Process immediately on start, but don't bump tickGeneration
+        // (the view animation is already started by onChange(of: isAutoProcessing))
+        autoProcessTick()
+    }
+
+    private func stopAutoProcessingTimer() {
+        autoProcessingTimer?.cancel()
+        autoProcessingTimer = nil
+    }
+
+    private func autoProcessTick() {
+        guard isAutoProcessing, let app = appProvider?() else { return }
+
+        // Don't dispatch if a worktree creation or UI action is already in flight
+        guard pendingLaunch == nil, pendingAutoStart == nil else { return }
+
+        // Check available slots — in-progress tasks occupy worktree slots
+        guard inProgressCount < maxConcurrent else { return }
+
+        // Find the oldest readyToStart task
+        guard let task = workTaskManager.tasks
+            .filter({ $0.status == .readyToStart })
+            .sorted(by: { $0.createdAt < $1.createdAt })
+            .first else { return }
+
+        let result = startTask(task, app: app, isAutoStart: true)
+        switch result {
+        case .ignored, .reuse:
+            break
+        case .createWorktree, .beforeRunHook, .needsTrust:
+            pendingAutoStart = result
+            autoStartGeneration += 1
+        }
+    }
+
     // MARK: - Actions
 
     enum StartResult {
@@ -180,7 +297,7 @@ class WorkTaskCoordinator: ObservableObject {
         case needsTrust(WorkflowConfig)
     }
 
-    func startTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
+    func startTask(_ task: WorkTask, app: ghostty_app_t, isAutoStart: Bool = false) -> StartResult {
         guard task.status == .new || task.status == .readyToStart || task.status == .canceled else { return .ignored }
 
         // Check trust before executing any hooks
@@ -200,7 +317,9 @@ class WorkTaskCoordinator: ObservableObject {
             workTaskManager.updateTask(updated)
 
             if let hookCmd = workflowConfig?.hooksBeforeRun {
-                return .beforeRunHook(hookCommand: hookCmd, worktree: wt) { [weak self] in
+                let taskPath = workTaskManager.filePath(for: updated)
+                let rendered = workflowConfig?.renderHookCommand(hookCmd, task: updated, taskPath: taskPath) ?? hookCmd
+                return .beforeRunHook(hookCommand: rendered, worktree: wt) { [weak self] in
                     self?.launchClaudeCode(for: updated, in: wt, app: app)
                 }
             }
@@ -213,7 +332,7 @@ class WorkTaskCoordinator: ObservableObject {
             updated.worktree = branch
             updated.status = .inProgress
             workTaskManager.updateTask(updated)
-            pendingLaunch = (id: updated.id, branch: branch)
+            pendingLaunch = (id: updated.id, branch: branch, isAutoStart: isAutoStart)
             return .createWorktree(branch)
         }
     }
@@ -234,7 +353,9 @@ class WorkTaskCoordinator: ObservableObject {
         workTaskManager.updateTask(updated)
 
         if let hookCmd = workflowConfig?.hooksBeforeRun {
-            return .beforeRunHook(hookCommand: hookCmd, worktree: wt) { [weak self] in
+            let taskPath = workTaskManager.filePath(for: updated)
+            let rendered = workflowConfig?.renderHookCommand(hookCmd, task: updated, taskPath: taskPath) ?? hookCmd
+            return .beforeRunHook(hookCommand: rendered, worktree: wt) { [weak self] in
                 self?.launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
             }
         }
@@ -248,15 +369,17 @@ class WorkTaskCoordinator: ObservableObject {
         workflowConfig?.markTrusted(forProject: workTaskManager.projectPath)
     }
 
-    /// If a task launch was pending for this branch, returns a closure that launches Claude Code.
-    func completePendingLaunch(branch: String, worktree: Worktree, app: ghostty_app_t) -> (() -> Void)? {
+    /// If a task launch was pending for this branch, returns a closure that launches Claude Code
+    /// and whether this was an auto-start (to skip navigation).
+    func completePendingLaunch(branch: String, worktree: Worktree, app: ghostty_app_t) -> (launch: () -> Void, isAutoStart: Bool)? {
         guard let pending = pendingLaunch, pending.branch == branch,
               let task = workTaskManager.tasks.first(where: { $0.id == pending.id }) else { return nil }
+        let isAutoStart = pending.isAutoStart
         pendingLaunch = nil
 
-        return { [weak self] in
+        return (launch: { [weak self] in
             self?.launchClaudeCode(for: task, in: worktree, app: app)
-        }
+        }, isAutoStart: isAutoStart)
     }
 
     func worktreeForTask(_ task: WorkTask) -> Worktree? {
@@ -298,7 +421,8 @@ class WorkTaskCoordinator: ObservableObject {
         if isContinuation {
             prompt = "Continue working on this task. Review what was done and pick up where you left off."
         } else {
-            prompt = workflowConfig?.renderPrompt(task: task, attempt: task.attempt) ?? task.body
+            let taskPath = workTaskManager.filePath(for: task)
+            prompt = workflowConfig?.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt) ?? task.body
         }
 
         let agentCmd = workflowConfig?.agentCommand ?? "claude"
@@ -377,7 +501,9 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Publish after_run hook for ContentView to present visibly
         if let hookCmd = workflowConfig?.hooksAfterRun, let path = worktree.path {
-            pendingAfterRunHook = PendingHook(command: hookCmd, worktreePath: path)
+            let taskPath = workTaskManager.filePath(for: task)
+            let rendered = workflowConfig?.renderHookCommand(hookCmd, task: task, taskPath: taskPath) ?? hookCmd
+            pendingAfterRunHook = PendingHook(command: rendered, worktreePath: path)
         }
     }
 

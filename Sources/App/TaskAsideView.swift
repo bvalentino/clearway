@@ -43,6 +43,7 @@ struct TaskAsideView: View {
                 WorkTaskCard(
                     task: task,
                     showStatusBadge: false,
+                    showContextMenu: false,
                     onEdit: { openTaskWindow(task) }
                 )
 
