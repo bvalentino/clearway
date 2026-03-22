@@ -176,23 +176,44 @@ struct WorkflowConfig: Equatable {
         return result
     }
 
+    // MARK: - Variable Interpolation
+
+    /// Variables available for hook and prompt interpolation.
+    static func taskVariables(task: WorkTask, taskPath: String?, attempt: Int?) -> [String: String] {
+        var vars: [String: String] = [
+            "task.title": task.title,
+            "task.body": task.body,
+            "task.id": task.id.uuidString,
+        ]
+        if let taskPath {
+            vars["task.path"] = taskPath
+        }
+        if let attempt {
+            vars["attempt"] = String(attempt)
+        }
+        // Status raw values so hooks can update task files
+        for status in WorkTask.Status.allCases {
+            vars["status.\(status.rawValue)"] = status.rawValue
+        }
+        return vars
+    }
+
+    /// Interpolates `{{ var }}` placeholders in a hook command with task variables.
+    /// All values are shell-escaped to prevent injection via crafted task titles or bodies.
+    func renderHookCommand(_ command: String, task: WorkTask, taskPath: String?) -> String {
+        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
+        let escaped = variables.mapValues { shellEscape($0) }
+        return renderTemplate(command, variables: escaped)
+    }
+
     // MARK: - Prompt Rendering
 
     /// Renders the prompt template with task data interpolated.
     /// Uses simple `{{ var }}` Mustache-style replacement.
     /// Unknown variables are left as-is.
-    func renderPrompt(task: WorkTask, attempt: Int?) -> String {
+    func renderPrompt(task: WorkTask, taskPath: String?, attempt: Int?) -> String {
         guard !promptTemplate.isEmpty else { return task.body }
-
-        var variables: [String: String] = [
-            "task.title": task.title,
-            "task.body": task.body,
-            "task.id": task.id.uuidString,
-        ]
-        if let attempt {
-            variables["attempt"] = String(attempt)
-        }
-
+        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: attempt)
         return renderTemplate(promptTemplate, variables: variables)
     }
 

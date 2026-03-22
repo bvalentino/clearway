@@ -116,6 +116,8 @@ struct ProjectContentView: View {
                 // Start watching WORKFLOW.md for live config reload
                 workTaskCoordinator.startWatching()
                 promptManager.startWatching()
+                // Provide app reference for auto-processing
+                workTaskCoordinator.setAppProvider { [weak ghosttyApp] in ghosttyApp?.app }
             }
     }
 }
