@@ -53,6 +53,7 @@
 		C3958CDCB5AE2B73071F5B8A /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C31DD09D4C69C87B557F5C7 /* Ghostty.swift */; };
 		C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CE662F2D877BFB67C37BB0 /* TerminalSurface.swift */; };
 		C7C25F28055DBF9BEFB697E2 /* WorkTaskWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0DF83F49A3E158F3088F87C /* WorkTaskWindow.swift */; };
+		C80427CF4439BCDB926DCFDF /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68050DFB1A2DA14E8957FB77 /* TaskDetailView.swift */; };
 		CCA065AA9E3B149C0F25BA54 /* PromptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C4D75373C176A43E86D2C5 /* PromptWindow.swift */; };
 		D3D76586F15D1E79133B3C8B /* ProjectHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21FB46A23B163C26A6E2869 /* ProjectHooksTests.swift */; };
 		D84AA5A85BFD598DCAC3967E /* Todo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F78047833258F697B4FC40 /* Todo.swift */; };
@@ -98,6 +99,7 @@
 		58E533A1451296215079E188 /* MarkdownPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreviewView.swift; sourceTree = "<group>"; };
 		5AB5A8C97B2AF141D8E08761 /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
 		63E1F3C81285A1CCB1A1F2FB /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		68050DFB1A2DA14E8957FB77 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		69B324481DB038886F84E3C6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E1D01555B16916CD81B458C /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		74342FC29C8E7A6F4789668D /* ClaudeTodoManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodoManager.swift; sourceTree = "<group>"; };
@@ -216,6 +218,7 @@
 				E131E35523E6802F91F45113 /* ShellEnvironment.swift */,
 				03DB14A8F11663E0841091A1 /* SidebarView.swift */,
 				2BFDEDA81A419890B341BF3D /* TaskAsideView.swift */,
+				68050DFB1A2DA14E8957FB77 /* TaskDetailView.swift */,
 				01FB7448B35C6B9FDB865E27 /* TerminalManager.swift */,
 				F5F78047833258F697B4FC40 /* Todo.swift */,
 				F3465CE0A00F274998269952 /* TodoManager.swift */,
@@ -406,6 +409,7 @@
 				1451CEC1D1439FB63557C4BD /* ShellEnvironment.swift in Sources */,
 				2D62F55FAA8E918E156ED1AA /* SidebarView.swift in Sources */,
 				7F5CE153D5A069E2CE03BBC9 /* TaskAsideView.swift in Sources */,
+				C80427CF4439BCDB926DCFDF /* TaskDetailView.swift in Sources */,
 				038871591F5D1D8253532B63 /* TerminalManager.swift in Sources */,
 				C4948D3D9639CAEE9663428B /* TerminalSurface.swift in Sources */,
 				D84AA5A85BFD598DCAC3967E /* Todo.swift in Sources */,

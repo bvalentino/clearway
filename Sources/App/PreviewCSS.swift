@@ -13,8 +13,7 @@ enum PreviewCSS {
         line-height: 1.6;
         color: #E0E0E0;
         background: transparent;
-        max-width: 42em;
-        margin: 0 auto;
+        margin: 0;
         padding: 20px 20px 60px;
         -webkit-font-smoothing: antialiased;
     }

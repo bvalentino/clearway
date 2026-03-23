@@ -90,6 +90,8 @@ struct ContentView: View {
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var afterCreateHookState: AfterCreateHookState = .none
+    @State private var selectedTaskId: UUID?
+    @State private var taskEditorMode: TaskEditorMode = .edit
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
@@ -103,6 +105,8 @@ struct ContentView: View {
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
+        } content: {
+            contentColumn
         } detail: {
             detailView
         }
@@ -191,6 +195,10 @@ struct ContentView: View {
             // Save the active tab for the worktree we're leaving
             if let oldId = old?.worktree?.id {
                 terminalManager.setSidePanelTab(sidePanelTab.rawValue, for: oldId)
+            }
+            // Clear task selection when navigating away from tasks
+            if new != .tasks {
+                selectedTaskId = nil
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
@@ -586,6 +594,23 @@ struct ContentView: View {
         return inline
     }
 
+    // MARK: - Content Column (middle)
+
+    @ViewBuilder
+    private var contentColumn: some View {
+        if detailSelection == .tasks {
+            WorkTaskListView(
+                projectPath: worktreeManager.projectPath,
+                selection: $selectedTaskId,
+                editorMode: $taskEditorMode
+            )
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+        } else {
+            Color.clear
+                .navigationSplitViewColumnWidth(0)
+        }
+    }
+
     // MARK: - Detail View
 
     @ViewBuilder
@@ -743,8 +768,16 @@ struct ContentView: View {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 PromptsView()
-            } else {
-                WorkTaskListView(projectPath: worktreeManager.projectPath)
+            } else if detailSelection == .tasks {
+                if let taskId = selectedTaskId {
+                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode)
+                        .id(taskId)
+                } else {
+                    Text("Select a task")
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
     }

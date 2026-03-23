@@ -6,15 +6,20 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var worktreeManager: WorktreeManager
-    @Environment(\.openWindow) private var openWindow
     let projectPath: String
+    @Binding var selection: UUID?
+    @Binding var editorMode: TaskEditorMode
+    @State private var showDeleteConfirmation = false
 
-    /// New and ready-to-start tasks appear in the backlog — once started, tasks live in worktrees.
+    private var selectedTask: WorkTask? {
+        guard let id = selection else { return nil }
+        return workTaskManager.tasks.first { $0.id == id }
+    }
+
     private var backlogTasks: [WorkTask] {
         workTaskManager.tasks.filter { $0.status.isBacklog }
     }
 
-    /// Count of tasks that have been dispatched to worktrees.
     private var activeTaskCount: Int {
         workTaskManager.tasks.filter { $0.status.isActive }.count
     }
@@ -23,7 +28,6 @@ struct WorkTaskListView: View {
         "\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s") in worktrees"
     }
 
-    /// Number of in-progress tasks with a live worktree on disk.
     private var inProgressCount: Int {
         let liveBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
         return workTaskManager.tasks.filter { task in
@@ -42,12 +46,83 @@ struct WorkTaskListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 8) {
-                if workTaskCoordinator.isAutoProcessingEnabled {
-                    autoProcessButton
+                Button {
+                    createAndEdit()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: 36, height: 36)
+                        .background(.thinMaterial, in: Circle())
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                 }
-                createButton
+                .buttonStyle(.plain)
+                .help("New task")
+
+                if workTaskCoordinator.isAutoProcessingEnabled {
+                    AutoProcessButton(
+                        isAutoProcessing: workTaskCoordinator.isAutoProcessing,
+                        tickGeneration: workTaskCoordinator.tickGeneration,
+                        pollingSeconds: workTaskCoordinator.pollingInterval.rawValue,
+                        inProgressCount: inProgressCount,
+                        maxConcurrent: workTaskCoordinator.maxConcurrent
+                    ) {
+                        workTaskCoordinator.isAutoProcessing.toggle()
+                    }
+                }
             }
             .padding(12)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                let isReady = selectedTask?.status == .readyToStart
+                Button {
+                    guard let task = selectedTask else { return }
+                    workTaskManager.setStatus(task, to: isReady ? .new : .readyToStart)
+                } label: {
+                    Label("Ready to Start", systemImage: isReady ? "checkmark.circle.fill" : "checkmark.circle")
+                }
+                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+
+                Button("Start Now") {
+                    if let task = selectedTask { startTask(task) }
+                }
+                .applyPrimaryActionStyle()
+                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                ControlGroup {
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete task")
+                    .disabled(selectedTask == nil)
+                }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(TaskEditorMode.edit)
+                    Image(systemName: "eye").tag(TaskEditorMode.preview)
+                }
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview (⌘⇧P)")
+                .disabled(selectedTask == nil)
+            }
+        }
+        .alert(
+            "Delete \"\(selectedTask?.title ?? "Untitled")\"?",
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button("Delete", role: .destructive) {
+                if let task = selectedTask { workTaskManager.deleteTask(task) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone.")
         }
     }
 
@@ -64,71 +139,41 @@ struct WorkTaskListView: View {
                     .font(.callout)
                     .foregroundStyle(.tertiary)
             }
-            Button("New Task") {
-                createAndEdit()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
     }
 
     private var taskList: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(backlogTasks) { task in
-                    WorkTaskCard(
-                        task: task,
-                        onEdit: { openTaskWindow(task) },
-                        onStartNow: { startTask(task) },
-                        onReadyToStart: { workTaskManager.setStatus(task, to: .readyToStart) }
-                    )
-                }
-
-                if activeTaskCount > 0 {
-                    Text(activeTaskLabel)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 4)
-                }
+        List(selection: $selection) {
+            ForEach(backlogTasks) { task in
+                WorkTaskRow(task: task)
+                    .tag(task.id)
+                    .contextMenu {
+                        Button { startTask(task) } label: {
+                            Label("Start Now", systemImage: "play.fill")
+                        }
+                        if task.status == .new {
+                            Button { workTaskManager.setStatus(task, to: .readyToStart) } label: {
+                                Label("Ready to Start", systemImage: "clock.arrow.circlepath")
+                            }
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            selection = task.id
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
             }
-            .padding(20)
-        }
-    }
 
-    private var autoProcessButton: some View {
-        AutoProcessButton(
-            isAutoProcessing: workTaskCoordinator.isAutoProcessing,
-            tickGeneration: workTaskCoordinator.tickGeneration,
-            pollingSeconds: workTaskCoordinator.pollingInterval.rawValue,
-            inProgressCount: inProgressCount,
-            maxConcurrent: workTaskCoordinator.maxConcurrent
-        ) {
-            workTaskCoordinator.isAutoProcessing.toggle()
         }
-    }
-
-    private var createButton: some View {
-        Button {
-            createAndEdit()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
+        .listStyle(.inset)
     }
 
     private func createAndEdit() {
         if let task = workTaskManager.createTask() {
-            openTaskWindow(task)
+            selection = task.id
         }
-    }
-
-    private func openTaskWindow(_ task: WorkTask) {
-        openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
     }
 
     private func startTask(_ task: WorkTask) {
@@ -196,6 +241,30 @@ struct WorkTaskCard: View {
 
 }
 
+// MARK: - Task Row (for List selection)
+
+private struct WorkTaskRow: View {
+    let task: WorkTask
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(task.title.isEmpty ? "Untitled" : task.title)
+                    .font(.body)
+                    .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                Spacer()
+                WorkTaskStatusBadge(status: task.status)
+            }
+            Text(task.createdAt.formatted(.relative(presentation: .named)))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 5)
+    }
+}
+
 // MARK: - Auto-Process Button
 
 private struct AutoProcessButton: View {
@@ -212,12 +281,10 @@ private struct AutoProcessButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 ZStack {
-                    // Background ring
                     Circle()
                         .stroke(Color.primary.opacity(0.15), lineWidth: 2)
                         .frame(width: 18, height: 18)
 
-                    // Progress ring (only when auto-processing)
                     if isAutoProcessing {
                         Circle()
                             .trim(from: 0, to: progress)
@@ -241,7 +308,6 @@ private struct AutoProcessButton: View {
         }
         .buttonStyle(.plain)
         .onChange(of: tickGeneration) { _ in
-            // Reset to 0 instantly, then animate to 1 over the polling interval
             progress = 0
             withAnimation(.linear(duration: Double(pollingSeconds))) {
                 progress = 1
@@ -249,7 +315,6 @@ private struct AutoProcessButton: View {
         }
         .onChange(of: isAutoProcessing) { running in
             if running {
-                // Start the fill animation immediately
                 progress = 0
                 withAnimation(.linear(duration: Double(pollingSeconds))) {
                     progress = 1
@@ -271,7 +336,10 @@ struct WorkTaskStatusBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if status == .inProgress {
+            if status == .readyToStart {
+                Image(systemName: "checkmark")
+                    .font(.caption2.weight(.bold))
+            } else if status == .inProgress {
                 Circle()
                     .fill(.green)
                     .frame(width: 6, height: 6)
