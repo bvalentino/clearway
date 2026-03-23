@@ -90,7 +90,7 @@ struct ContentView: View {
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
     @State private var afterCreateHookState: AfterCreateHookState = .none
-    @State private var selectedTask: WorkTask?
+    @State private var selectedTaskId: UUID?
     @State private var taskEditorMode: TaskEditorMode = .edit
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
@@ -198,7 +198,7 @@ struct ContentView: View {
             }
             // Clear task selection when navigating away from tasks
             if new != .tasks {
-                selectedTask = nil
+                selectedTaskId = nil
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
@@ -596,16 +596,12 @@ struct ContentView: View {
 
     // MARK: - Content Column (middle)
 
-    private var showsContentColumn: Bool {
-        detailSelection == .tasks
-    }
-
     @ViewBuilder
     private var contentColumn: some View {
-        if showsContentColumn {
+        if detailSelection == .tasks {
             WorkTaskListView(
                 projectPath: worktreeManager.projectPath,
-                selection: $selectedTask,
+                selection: $selectedTaskId,
                 editorMode: $taskEditorMode
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
@@ -773,9 +769,9 @@ struct ContentView: View {
             } else if detailSelection == .prompts {
                 PromptsView()
             } else if detailSelection == .tasks {
-                if let task = selectedTask {
-                    TaskDetailView(taskId: task.id, editorMode: $taskEditorMode)
-                        .id(task.id)
+                if let taskId = selectedTaskId {
+                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode)
+                        .id(taskId)
                 } else {
                     Text("Select a task")
                         .font(.title3)

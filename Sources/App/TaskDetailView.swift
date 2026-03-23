@@ -48,7 +48,6 @@ struct TaskDetailView: View {
                         MarkdownPreviewView(markdown: bodyText)
                     }
                 }
-                .id(taskId)
 
                 pathBar(for: task)
             }
@@ -65,13 +64,6 @@ struct TaskDetailView: View {
             .onDisappear {
                 pendingSave?.cancel()
                 saveNow()
-            }
-            .background {
-                Button("") {
-                    editorMode = editorMode == .edit ? .preview : .edit
-                }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-                .hidden()
             }
         }
     }

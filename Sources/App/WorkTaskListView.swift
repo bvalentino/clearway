@@ -7,9 +7,14 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var worktreeManager: WorktreeManager
     let projectPath: String
-    @Binding var selection: WorkTask?
+    @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
     @State private var showDeleteConfirmation = false
+
+    private var selectedTask: WorkTask? {
+        guard let id = selection else { return nil }
+        return workTaskManager.tasks.first { $0.id == id }
+    }
 
     private var backlogTasks: [WorkTask] {
         workTaskManager.tasks.filter { $0.status.isBacklog }
@@ -68,39 +73,34 @@ struct WorkTaskListView: View {
             }
             .padding(12)
         }
-        .onChange(of: workTaskManager.tasks) { tasks in
-            guard let selected = selection else { return }
-            let refreshed = tasks.first(where: { $0.id == selected.id })
-            if let refreshed, refreshed != selected {
-                selection = refreshed
-            } else if refreshed == nil {
-                selection = nil
-            }
-        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                let isReady = selection?.status == .readyToStart
+                let isReady = selectedTask?.status == .readyToStart
                 Button {
-                    guard let task = selection else { return }
+                    guard let task = selectedTask else { return }
                     workTaskManager.setStatus(task, to: isReady ? .new : .readyToStart)
                 } label: {
                     Label("Ready to Start", systemImage: isReady ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .disabled(selection == nil || selection?.status.isBacklog != true)
+                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
 
                 Button("Start Now") {
-                    if let task = selection { startTask(task) }
+                    if let task = selectedTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
-                .disabled(selection == nil || selection?.status.isBacklog != true)
+                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+            }
 
-                Button {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
+            ToolbarItem(placement: .primaryAction) {
+                ControlGroup {
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete task")
+                    .disabled(selectedTask == nil)
                 }
-                .help("Delete task")
-                .disabled(selection == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -110,15 +110,15 @@ struct WorkTaskListView: View {
                 }
                 .pickerStyle(.segmented)
                 .help("Toggle edit/preview (⌘⇧P)")
-                .disabled(selection == nil)
+                .disabled(selectedTask == nil)
             }
         }
         .alert(
-            "Delete \"\(selection?.title ?? "Untitled")\"?",
+            "Delete \"\(selectedTask?.title ?? "Untitled")\"?",
             isPresented: $showDeleteConfirmation
         ) {
             Button("Delete", role: .destructive) {
-                if let task = selection { workTaskManager.deleteTask(task) }
+                if let task = selectedTask { workTaskManager.deleteTask(task) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -146,12 +146,10 @@ struct WorkTaskListView: View {
         List(selection: $selection) {
             ForEach(backlogTasks) { task in
                 WorkTaskRow(task: task)
-                    .tag(task)
+                    .tag(task.id)
                     .contextMenu {
-                        if task.status.isBacklog {
-                            Button { startTask(task) } label: {
-                                Label("Start Now", systemImage: "play.fill")
-                            }
+                        Button { startTask(task) } label: {
+                            Label("Start Now", systemImage: "play.fill")
                         }
                         if task.status == .new {
                             Button { workTaskManager.setStatus(task, to: .readyToStart) } label: {
@@ -160,7 +158,8 @@ struct WorkTaskListView: View {
                         }
                         Divider()
                         Button(role: .destructive) {
-                            workTaskManager.deleteTask(task)
+                            selection = task.id
+                            showDeleteConfirmation = true
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -173,7 +172,7 @@ struct WorkTaskListView: View {
 
     private func createAndEdit() {
         if let task = workTaskManager.createTask() {
-            selection = task
+            selection = task.id
         }
     }
 
