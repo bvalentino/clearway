@@ -36,7 +36,7 @@ struct ProjectSettingsView: View {
     private static let hooksFooter = "Variables: {{ branch }}, {{ worktree_path }}, {{ primary_worktree_path }}, {{ repo_path }}"
     private static let workflowFooter = """
         Defines how agents handle tasks. YAML frontmatter configures hooks \
-        (after_create, before_run, after_run), agent command, and timeout. \
+        (after_create, before_run), agent command, and timeout. \
         The markdown body is the prompt template sent to the agent. \
         Variables: {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}, \
         {{ attempt }}, {{ status.ready_for_review }}, {{ status.done }}, etc.

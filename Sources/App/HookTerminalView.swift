@@ -120,7 +120,7 @@ struct HookTerminalView: View {
     }
 }
 
-/// Modal sheet wrapper for hook terminals (before-remove, before-run, after-run).
+/// Modal sheet wrapper for hook terminals (before-remove, before-run).
 struct HookTerminalSheet: View {
     let hook: HookSheet
     @Environment(\.dismiss) private var dismiss

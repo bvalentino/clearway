@@ -8,18 +8,6 @@ import GhosttyKit
 class WorkTaskCoordinator: ObservableObject {
     var pendingLaunch: (id: UUID, branch: String, isAutoStart: Bool)?
 
-    /// Published so ContentView can present a HookSheet for the after_run hook.
-    /// Uses a unique ID to ensure consecutive identical hooks are not deduplicated by SwiftUI.
-    @Published var pendingAfterRunHook: PendingHook?
-
-    struct PendingHook: Identifiable, Equatable {
-        let id = UUID()
-        let command: String
-        let worktreePath: String
-
-        static func == (lhs: PendingHook, rhs: PendingHook) -> Bool { lhs.id == rhs.id }
-    }
-
     // MARK: - Auto-Processing
 
     /// Whether the user has toggled auto-processing on.
@@ -499,13 +487,6 @@ class WorkTaskCoordinator: ObservableObject {
 
         accumulateTokens(from: observer, into: &task)
         workTaskManager.updateTask(task)
-
-        // Publish after_run hook for ContentView to present visibly
-        if let hookCmd = workflowConfig?.hooksAfterRun, let path = worktree.path {
-            let taskPath = workTaskManager.filePath(for: task)
-            let rendered = workflowConfig?.renderHookCommand(hookCmd, task: task, taskPath: taskPath) ?? hookCmd
-            pendingAfterRunHook = PendingHook(command: rendered, worktreePath: path)
-        }
     }
 
     private func handleAgentStalled(worktreeId: String) {
