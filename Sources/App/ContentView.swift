@@ -174,13 +174,6 @@ struct ContentView: View {
         } message: {
             Text("This project's WORKFLOW.md configures hooks that will run shell commands. Review the file before approving.")
         }
-        .onChange(of: workTaskCoordinator.pendingAfterRunHook?.id) { _ in
-            guard let hook = workTaskCoordinator.pendingAfterRunHook,
-                  let app = ghosttyApp.app else { return }
-            workTaskCoordinator.pendingAfterRunHook = nil
-            let surface = Ghostty.SurfaceView(app, workingDirectory: hook.worktreePath, command: hookShellCommand(hook.command))
-            hookSheet = HookSheet(title: "After run", command: hook.command, surface: surface, onContinue: {})
-        }
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
             workTaskCoordinator.pendingAutoStart = nil

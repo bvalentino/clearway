@@ -8,20 +8,19 @@ import Foundation
 struct WorkflowConfig: Equatable {
     var hooksAfterCreate: String?
     var hooksBeforeRun: String?
-    var hooksAfterRun: String?
     var agentCommand: String?
     var agentTimeoutMs: Int?
     var promptTemplate: String
 
     /// Whether this config has any executable content that needs trust approval.
     var hasExecutableConfig: Bool {
-        hooksAfterCreate != nil || hooksBeforeRun != nil || hooksAfterRun != nil || agentCommand != nil
+        hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
     /// Changes when any hook command or agent command changes.
     var hooksFingerprint: String {
-        let content = [hooksAfterCreate, hooksBeforeRun, hooksAfterRun, agentCommand]
+        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
@@ -92,7 +91,6 @@ struct WorkflowConfig: Equatable {
         return WorkflowConfig(
             hooksAfterCreate: frontmatter["hooks.after_create"],
             hooksBeforeRun: frontmatter["hooks.before_run"],
-            hooksAfterRun: frontmatter["hooks.after_run"],
             agentCommand: frontmatter["agent.command"],
             agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
             promptTemplate: body
