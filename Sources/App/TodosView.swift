@@ -23,7 +23,8 @@ struct TodoRow: View {
             Image(systemName: todo.status.symbol)
                 .font(.system(size: 16))
                 .foregroundStyle(todo.status.color)
-                .frame(width: 20)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     todoManager.cycleStatus(todo)
                 }
@@ -110,7 +111,7 @@ struct NewTodoRow: View {
             Image(systemName: "circle")
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
-                .frame(width: 20)
+                .frame(width: 24, height: 24)
 
             TextField("New todo", text: $subject, axis: .vertical)
                 .textFieldStyle(.plain)

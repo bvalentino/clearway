@@ -162,7 +162,8 @@ struct CopyPromptButton: View {
         } label: {
             Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: fontSize))
-                .frame(width: fontSize + 4, height: fontSize + 4)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
                 .foregroundStyle(isCopied ? .green : .secondary)
         }
         .buttonStyle(.plain)
