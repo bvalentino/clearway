@@ -97,6 +97,7 @@ struct ContentView: View {
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
+    @State private var previousDetailSelection: DetailSelection?
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
@@ -184,6 +185,7 @@ struct ContentView: View {
         .navigationTitle(currentWorktree?.displayName ?? projectName)
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
+            previousDetailSelection = old
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
                 terminalManager.activeSurfaceId = nil
             }
@@ -466,6 +468,22 @@ struct ContentView: View {
     }
 
     private func selectFallback() {
+        // Restore the previous selection (e.g. Tasks/Prompts) when the current
+        // worktree was only "selected" because a context menu right-click
+        // changed the List selection.
+        if let prev = previousDetailSelection {
+            previousDetailSelection = nil
+            if case .worktree(let prevWt) = prev,
+               let fresh = worktreeManager.worktrees.first(where: { $0.id == prevWt.id }) {
+                detailSelection = .worktree(fresh)
+                return
+            } else if case .worktree = prev {
+                // Previous worktree no longer exists — fall through to default.
+            } else {
+                detailSelection = prev
+                return
+            }
+        }
         if let main = worktreeManager.worktrees.first(where: \.isMain) {
             detailSelection = .worktree(main)
         } else {
