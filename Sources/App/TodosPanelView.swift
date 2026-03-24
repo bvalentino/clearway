@@ -10,10 +10,13 @@ struct SendToTerminalButton: View {
             Image(systemName: "play.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Send to Terminal")
         .disabled(disabled)
+        .padding(.trailing, -10)
     }
 }
 
