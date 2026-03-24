@@ -139,12 +139,20 @@ struct WorkTaskWindow: View {
     private func taskEditor(_ task: WorkTask) -> some View {
         VStack(spacing: 0) {
             // Title field
-            TextField("Title", text: $title)
-                .textFieldStyle(.plain)
-                .font(.title3)
-                .focused($isTitleFocused)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+            Group {
+                if editorMode == .edit {
+                    TextField("Title", text: $title)
+                        .textFieldStyle(.plain)
+                        .focused($isTitleFocused)
+                } else {
+                    Text(title.isEmpty ? "Title" : title)
+                        .foregroundStyle(title.isEmpty ? .tertiary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .font(.title3)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
 
             // Agent metadata (show for tasks that have been worked on)
             if !task.status.isBacklog {
