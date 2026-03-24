@@ -25,12 +25,20 @@ struct TaskDetailView: View {
     var body: some View {
         if let task {
             VStack(spacing: 0) {
-                TextField("Title", text: $title)
-                    .textFieldStyle(.plain)
-                    .font(.title3)
-                    .focused($isTitleFocused)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
+                Group {
+                    if editorMode == .edit {
+                        TextField("Title", text: $title)
+                            .textFieldStyle(.plain)
+                            .focused($isTitleFocused)
+                    } else {
+                        Text(title.isEmpty ? "Title" : title)
+                            .foregroundStyle(title.isEmpty ? .tertiary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.title3)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
 
                 if !task.status.isBacklog {
                     WorkTaskAgentMetadata(task: task)
