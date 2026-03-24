@@ -92,6 +92,8 @@ struct ContentView: View {
     @State private var afterCreateHookState: AfterCreateHookState = .none
     @State private var selectedTaskId: UUID?
     @State private var taskEditorMode: TaskEditorMode = .edit
+    @State private var selectedPromptId: String?
+    @State private var promptEditorMode: TaskEditorMode = .preview
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
@@ -189,9 +191,12 @@ struct ContentView: View {
             if let oldId = old?.worktree?.id {
                 terminalManager.setSidePanelTab(sidePanelTab.rawValue, for: oldId)
             }
-            // Clear task selection when navigating away from tasks
+            // Clear selection when navigating away from list views
             if new != .tasks {
                 selectedTaskId = nil
+            }
+            if new != .prompts {
+                selectedPromptId = nil
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
@@ -598,6 +603,12 @@ struct ContentView: View {
                 editorMode: $taskEditorMode
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+        } else if detailSelection == .prompts {
+            PromptListView(
+                selection: $selectedPromptId,
+                editorMode: $promptEditorMode
+            )
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         } else {
             Color.clear
                 .navigationSplitViewColumnWidth(0)
@@ -760,7 +771,15 @@ struct ContentView: View {
             } else if detailSelection == .settings {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
-                PromptsView()
+                if let promptId = selectedPromptId {
+                    PromptDetailView(promptId: promptId, editorMode: $promptEditorMode)
+                        .id(promptId)
+                } else {
+                    Text("Select a prompt")
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else if detailSelection == .tasks {
                 if let taskId = selectedTaskId {
                     TaskDetailView(taskId: taskId, editorMode: $taskEditorMode)

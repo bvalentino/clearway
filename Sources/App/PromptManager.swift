@@ -69,15 +69,21 @@ class PromptManager: ObservableObject {
             return nil
         }
 
-        prompts.insert(prompt, at: 0)
+        let insertIndex = prompts.firstIndex { $0.title.localizedCaseInsensitiveCompare(prompt.title) == .orderedDescending } ?? prompts.endIndex
+        prompts.insert(prompt, at: insertIndex)
         return prompt
     }
 
-    /// Updates an existing prompt on disk.
+    /// Updates an existing prompt on disk and re-sorts the in-memory array.
     func updatePrompt(_ prompt: Prompt) {
         let filePath = (directory as NSString).appendingPathComponent(prompt.id)
         guard let data = prompt.serialized().data(using: .utf8) else { return }
         FileManager.default.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600])
+
+        if let index = prompts.firstIndex(where: { $0.id == prompt.id }) {
+            prompts[index] = prompt
+            prompts.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        }
     }
 
     /// Deletes a prompt from disk.
@@ -86,6 +92,10 @@ class PromptManager: ObservableObject {
         try? FileManager.default.removeItem(atPath: filePath)
 
         prompts.removeAll { $0.id == prompt.id }
+    }
+
+    func filePath(for prompt: Prompt) -> String {
+        (directory as NSString).appendingPathComponent(prompt.id)
     }
 
     // MARK: - Loading
@@ -109,7 +119,7 @@ class PromptManager: ObservableObject {
             loaded.append(prompt)
         }
 
-        loaded.sort { $0.modificationDate > $1.modificationDate }
+        loaded.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         return loaded
     }
 
