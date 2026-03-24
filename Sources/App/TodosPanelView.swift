@@ -16,7 +16,7 @@ struct SendToTerminalButton: View {
         .buttonStyle(.plain)
         .help("Send to Terminal")
         .disabled(disabled)
-        .padding(.trailing, -7)
+        .padding(.trailing, -10)
     }
 }
 

@@ -105,6 +105,7 @@ private struct PromptRow: View {
 
             if let onPlay {
                 SendToTerminalButton(action: onPlay)
+                    .padding(.trailing, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
