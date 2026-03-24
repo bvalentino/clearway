@@ -17,7 +17,7 @@ struct PromptWindow: View {
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
     @State private var isLoaded = false
-    @State private var showCopiedFeedback = false
+    @State private var editorMode: TaskEditorMode = .edit
     @FocusState private var isTitleFocused: Bool
 
     init(identifier: PromptIdentifier) {
@@ -50,18 +50,12 @@ struct PromptWindow: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(content, forType: .string)
-                    showCopiedFeedback = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        showCopiedFeedback = false
-                    }
-                } label: {
-                    Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
-                        .frame(width: 16, height: 16)
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(TaskEditorMode.edit)
+                    Image(systemName: "eye").tag(TaskEditorMode.preview)
                 }
-                .help("Copy prompt to clipboard")
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview")
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -115,6 +109,7 @@ struct PromptWindow: View {
         isLoaded = true
         title = prompt.title
         content = prompt.content
+        editorMode = prompt.content.isEmpty ? .edit : .preview
         if prompt.title.isEmpty {
             DispatchQueue.main.async { isTitleFocused = true }
         }
@@ -133,10 +128,14 @@ struct PromptWindow: View {
 
             Divider()
 
-            TextEditor(text: $content)
-                .font(.body.monospaced())
-                .scrollContentBackground(.hidden)
-                .padding(8)
+            Group {
+                switch editorMode {
+                case .edit:
+                    MarkdownEditorView(text: $content)
+                case .preview:
+                    MarkdownPreviewView(markdown: content)
+                }
+            }
         }
     }
 
