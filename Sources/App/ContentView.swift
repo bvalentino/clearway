@@ -3,17 +3,8 @@ import GhosttyKit
 
 private let maxShortcuts = 9
 
-private let wtpadLogo: [String] = [
-    "  ___       _________              _________",
-    "  __ |     / /__  __/_____________ ______  /",
-    "  __ | /| / /__  /  ___  __ \\  __ `/  __  /",
-    "  __ |/ |/ / _  /   __  /_/ / /_/ // /_/ / ",
-    "  ____/|__/  /_/    _  .___/\\__,_/ \\__,_/  ",
-    "                    /_/                      ",
-]
-
 /// Marker set as the terminal title when a hook command fails.
-let hookFailedMarker = "__wtpad_hook_failed__"
+let hookFailedMarker = "__clearway_hook_failed__"
 
 /// Wraps a hook command for use as a Ghostty surface `command:` parameter.
 /// Runs the hook through `/bin/sh`, then drops into the user's shell so

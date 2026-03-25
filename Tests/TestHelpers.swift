@@ -1,4 +1,4 @@
-@testable import wtpad
+@testable import Clearway
 
 func makeWorktree(
     branch: String? = "test",

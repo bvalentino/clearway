@@ -45,7 +45,7 @@ struct WorkflowConfig: Equatable {
     private func trustKey(forProject projectPath: String) -> String {
         let hash = SHA256.hash(data: Data(projectPath.utf8))
         let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "wtpad.workflow.trusted.\(hex)"
+        return "clearway.workflow.trusted.\(hex)"
     }
 
     // MARK: - Loading

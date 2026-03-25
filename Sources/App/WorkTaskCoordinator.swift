@@ -417,7 +417,7 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Write prompt to temp file to handle long prompts safely
         let tempDir = NSTemporaryDirectory()
-        let promptFile = (tempDir as NSString).appendingPathComponent("wtpad-prompt-\(task.id.uuidString).md")
+        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-prompt-\(task.id.uuidString).md")
         FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
 
         // Pipe prompt file to agent command via stdin (same pattern as v1).
@@ -474,7 +474,7 @@ class WorkTaskCoordinator: ObservableObject {
               var task = workTaskManager.task(forWorktree: branch) else { return }
 
         // Clean up temp prompt file
-        let promptFile = NSTemporaryDirectory() + "wtpad-prompt-\(task.id.uuidString).md"
+        let promptFile = NSTemporaryDirectory() + "clearway-prompt-\(task.id.uuidString).md"
         try? FileManager.default.removeItem(atPath: promptFile)
 
         // Don't auto-change status — user may have exited to start a new session.

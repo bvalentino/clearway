@@ -17,7 +17,7 @@ final class ProjectSelectorWindowController: NSWindowController, NSWindowDelegat
         )
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        window.identifier = NSUserInterfaceItemIdentifier("wtpad.projectSelector")
+        window.identifier = NSUserInterfaceItemIdentifier("clearway.projectSelector")
         window.backgroundColor = .clear
         window.hasShadow = true
         window.center()
@@ -130,7 +130,7 @@ struct ProjectSelectorView: View {
                 .frame(width: 96, height: 96)
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
 
-            Text("wtpad")
+            Text("Clearway")
                 .bold()
                 .font(.title2)
         }

@@ -12,7 +12,7 @@ class ClaudeActivityMonitor: ObservableObject {
     @Published var workingWorktreeIds: Set<String> = []
 
     private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wtpad.mac",
+        subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
         category: "claude-activity"
     )
 

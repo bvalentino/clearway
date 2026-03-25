@@ -20,8 +20,8 @@ ghostty/zig-out/
 ghostty/zig-cache/
 ghostty/.zig-cache/
 
-# wtpad
-.wtpad/
+# Clearway
+.clearway/
 .my-dev.json
 
 # Claude

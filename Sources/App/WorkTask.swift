@@ -1,7 +1,7 @@
 import Foundation
 
 /// A task — a unit of work persisted as a markdown file with YAML frontmatter
-/// in `.wtpad/tasks/<id>.md`.
+/// in `.clearway/tasks/<id>.md`.
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String

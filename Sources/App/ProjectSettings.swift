@@ -99,6 +99,6 @@ struct ProjectHooks {
     static func keyPrefix(for projectPath: String) -> String {
         let hash = SHA256.hash(data: Data(projectPath.utf8))
         let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "wtpad.project.\(hex)"
+        return "clearway.project.\(hex)"
     }
 }

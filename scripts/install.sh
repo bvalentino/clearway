@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build wtpad in Release configuration and install to /Applications.
+# Build Clearway in Release configuration and install to /Applications.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,16 +7,16 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 
-PRODUCT_NAME="wtpad"
+PRODUCT_NAME="Clearway"
 
 # Resolve BUILT_PRODUCTS_DIR once, then build.
-BUILD_DIR=$(xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Release -destination 'platform=macOS' \
-  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=wtpad \
+BUILD_DIR=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release -destination 'platform=macOS' \
+  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway \
   -showBuildSettings 2>/dev/null | grep -m1 '^\s*BUILT_PRODUCTS_DIR' | awk '{print $3}')
 
 echo "==> Building $PRODUCT_NAME (Release)..."
-xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Release -destination 'platform=macOS' \
-  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=wtpad build -quiet
+xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release -destination 'platform=macOS' \
+  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway build -quiet
 
 APP_PATH="$BUILD_DIR/$PRODUCT_NAME.app"
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages user-created todos persisted as JSON files in `.wtpad/todos/`.
+/// Manages user-created todos persisted as JSON files in `.clearway/todos/`.
 @MainActor
 class TodoManager: ObservableObject {
     @Published var todos: [Todo] = []
@@ -79,7 +79,7 @@ class TodoManager: ObservableObject {
 
     private var todosDirectory: String? {
         guard let worktreePath else { return nil }
-        return (worktreePath as NSString).appendingPathComponent(".wtpad/todos")
+        return (worktreePath as NSString).appendingPathComponent(".clearway/todos")
     }
 
     private func write(_ todo: Todo) {

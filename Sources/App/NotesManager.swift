@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages markdown notes stored in a worktree's `.wtpad/` directory.
+/// Manages markdown notes stored in a worktree's `.clearway/` directory.
 ///
 /// Notes are plain `.md` files with timestamp-based filenames (e.g., `20260315-142129.md`).
 /// The manager watches the directory for external changes and reloads automatically.
@@ -25,8 +25,8 @@ class NotesManager: ObservableObject {
         watcherSource?.cancel()
     }
 
-    private var wtpadDir: String? {
-        worktreePath.map { ($0 as NSString).appendingPathComponent(".wtpad") }
+    private var clearwayDir: String? {
+        worktreePath.map { ($0 as NSString).appendingPathComponent(".clearway") }
     }
 
     func setWorktreePath(_ path: String?) {
@@ -46,13 +46,13 @@ class NotesManager: ObservableObject {
     }
 
     func reload() {
-        guard let wtpadDir else {
+        guard let clearwayDir else {
             notes = []
             return
         }
 
         Task.detached {
-            let loaded = Self.loadNotes(from: wtpadDir)
+            let loaded = Self.loadNotes(from: clearwayDir)
             await MainActor.run {
                 if loaded != self.notes { self.notes = loaded }
             }
@@ -64,12 +64,12 @@ class NotesManager: ObservableObject {
     /// Creates a new empty note and returns its filename, or `nil` on failure.
     @discardableResult
     func createNote() -> String? {
-        guard let wtpadDir else { return nil }
+        guard let clearwayDir else { return nil }
         let filename = Self.timestampFormatter.string(from: Date()) + ".md"
-        let filePath = (wtpadDir as NSString).appendingPathComponent(filename)
+        let filePath = (clearwayDir as NSString).appendingPathComponent(filename)
 
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? fm.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         guard fm.createFile(atPath: filePath, contents: Data(), attributes: [.posixPermissions: 0o600]) else {
             return nil
         }
@@ -82,8 +82,8 @@ class NotesManager: ObservableObject {
 
 
     func deleteNote(_ note: Note) {
-        guard let wtpadDir else { return }
-        let filePath = (wtpadDir as NSString).appendingPathComponent(note.id)
+        guard let clearwayDir else { return }
+        let filePath = (clearwayDir as NSString).appendingPathComponent(note.id)
         try? FileManager.default.removeItem(atPath: filePath)
 
         // Optimistically remove so the UI updates immediately
@@ -92,16 +92,16 @@ class NotesManager: ObservableObject {
 
     @discardableResult
     func importNote(from sourcePath: String) -> String? {
-        guard let wtpadDir else { return nil }
+        guard let clearwayDir else { return nil }
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? fm.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
         // Read source content and write as a new timestamped note
         guard let data = fm.contents(atPath: sourcePath),
               let content = String(data: data, encoding: .utf8) else { return nil }
 
         let filename = Self.timestampFormatter.string(from: Date()) + ".md"
-        let filePath = (wtpadDir as NSString).appendingPathComponent(filename)
+        let filePath = (clearwayDir as NSString).appendingPathComponent(filename)
         guard fm.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600]) else {
             return nil
         }
@@ -114,15 +114,15 @@ class NotesManager: ObservableObject {
 
     // MARK: - Loading
 
-    private nonisolated static func loadNotes(from wtpadDir: String) -> [Note] {
+    private nonisolated static func loadNotes(from clearwayDir: String) -> [Note] {
         let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(atPath: wtpadDir) else { return [] }
+        guard let contents = try? fm.contentsOfDirectory(atPath: clearwayDir) else { return [] }
 
         let mdFiles = contents.filter { $0.hasSuffix(".md") }
         var loaded: [Note] = []
 
         for file in mdFiles {
-            let filePath = (wtpadDir as NSString).appendingPathComponent(file)
+            let filePath = (clearwayDir as NSString).appendingPathComponent(file)
             guard let data = fm.contents(atPath: filePath),
                   let content = String(data: data, encoding: .utf8),
                   let attrs = try? fm.attributesOfItem(atPath: filePath),
@@ -139,12 +139,12 @@ class NotesManager: ObservableObject {
     // MARK: - File Watching
 
     private func watchDirectory() {
-        guard let wtpadDir else { return }
+        guard let clearwayDir else { return }
 
         // Ensure directory exists so we can watch it
-        try? FileManager.default.createDirectory(atPath: wtpadDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
-        if let source = Self.makeWatcher(path: wtpadDir, handler: { [weak self] in
+        if let source = Self.makeWatcher(path: clearwayDir, handler: { [weak self] in
             self?.scheduleReload()
         }) {
             watcherSource = source

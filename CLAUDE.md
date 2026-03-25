@@ -1,4 +1,4 @@
-# wtpad-mac
+# Clearway
 
 Native macOS terminal app built on libghostty.
 
@@ -27,7 +27,7 @@ Requires: `zig`, `xcodegen`
   - `Ghostty.SurfaceView.swift` — `NSView` hosting a `ghostty_surface_t` (input, rendering)
   - `TerminalSurface.swift` — SwiftUI `NSViewRepresentable` wrapper
 - **Sources/App/** — SwiftUI app entry point
-- **project.yml** — xcodegen spec (generates `wtpad.xcodeproj`)
+- **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 
 ## Rebuilding GhosttyKit
 
@@ -50,10 +50,10 @@ Key patterns:
 
 ## Creating Tasks
 
-Tasks live in `.wtpad/tasks/<UUID>.md` as markdown files with YAML frontmatter. To create a task:
+Tasks live in `.clearway/tasks/<UUID>.md` as markdown files with YAML frontmatter. To create a task:
 
 1. Generate a UUID (e.g. `uuidgen`)
-2. Create `.wtpad/tasks/<UUID>.md` with this format:
+2. Create `.clearway/tasks/<UUID>.md` with this format:
 
 ```markdown
 ---
