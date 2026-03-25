@@ -423,7 +423,8 @@ class WorkTaskCoordinator: ObservableObject {
         // Pipe prompt file to agent command via stdin (same pattern as v1).
         // Both the agent command and file path are positional args to avoid shell injection.
         // $1 is intentionally unquoted so multi-word commands (e.g. "claude --flag") are word-split.
-        let command = "/bin/sh -c " + shellEscape("set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile)
+        // $3 injects the resolved login-shell PATH so tools like `claude` are found.
+        let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
 
         let surface = terminalManager.replaceMainSurface(for: worktree, app: app, command: command)
         agentSurfaces[worktree.id] = surface
