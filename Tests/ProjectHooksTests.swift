@@ -1,5 +1,5 @@
 import XCTest
-@testable import wtpad
+@testable import Clearway
 
 final class ProjectHooksTests: XCTestCase {
 

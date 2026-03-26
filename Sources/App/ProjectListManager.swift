@@ -1,9 +1,9 @@
 import SwiftUI
 
 private enum DefaultsKey {
-    static let projectPaths = "wtpad.projectPaths"
-    static let lastActiveProjectPath = "wtpad.activeProjectPath"
-    static let legacyProjectPath = "wtpad.projectPath"
+    static let projectPaths = "clearway.projectPaths"
+    static let lastActiveProjectPath = "clearway.activeProjectPath"
+    static let legacyProjectPath = "clearway.projectPath"
 }
 
 /// Manages the global list of projects across all windows.

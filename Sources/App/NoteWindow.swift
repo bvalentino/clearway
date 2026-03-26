@@ -7,8 +7,8 @@ struct NoteIdentifier: Codable, Hashable {
     let filename: String
 
     var filePath: String {
-        let wtpadDir = (worktreePath as NSString).appendingPathComponent(".wtpad")
-        return (wtpadDir as NSString).appendingPathComponent(filename)
+        let clearwayDir = (worktreePath as NSString).appendingPathComponent(".clearway")
+        return (clearwayDir as NSString).appendingPathComponent(filename)
     }
 }
 

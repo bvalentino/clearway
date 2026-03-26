@@ -337,10 +337,10 @@ extension Ghostty {
 // MARK: - Notification Names
 
 extension Notification.Name {
-    static let ghosttyCloseSurface = Notification.Name("com.wtpad.ghostty.closeSurface")
-    static let ghosttyChildExited = Notification.Name("com.wtpad.ghostty.childExited")
-    static let ghosttyDesktopNotification = Notification.Name("com.wtpad.ghostty.desktopNotification")
-    static let ghosttyNewWindow = Notification.Name("com.wtpad.ghostty.newWindow")
+    static let ghosttyCloseSurface = Notification.Name("app.getclearway.ghostty.closeSurface")
+    static let ghosttyChildExited = Notification.Name("app.getclearway.ghostty.childExited")
+    static let ghosttyDesktopNotification = Notification.Name("app.getclearway.ghostty.desktopNotification")
+    static let ghosttyNewWindow = Notification.Name("app.getclearway.ghostty.newWindow")
 }
 
 // MARK: - Notification UserInfo Keys

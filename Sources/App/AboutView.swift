@@ -14,7 +14,7 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.identifier = NSUserInterfaceItemIdentifier("wtpad.about")
+        window.identifier = NSUserInterfaceItemIdentifier("clearway.about")
         window.center()
         window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = NSHostingView(rootView: AboutView())
@@ -53,7 +53,7 @@ private struct AboutView: View {
 
             VStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .center, spacing: 8) {
-                    Text("wtpad")
+                    Text("Clearway")
                         .bold()
                         .font(.title)
                     Text("A workspace manager built on Ghostty.")

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// A user-created todo, persisted as JSON in `.wtpad/todos/<id>.json`.
+/// A user-created todo, persisted as JSON in `.clearway/todos/<id>.json`.
 struct Todo: Codable, Identifiable, Equatable {
     let id: Int
     var subject: String

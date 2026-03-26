@@ -10,7 +10,7 @@ class ClaudeTodoManager: ObservableObject {
     @Published var sessions: [ClaudeSession] = []
 
     private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wtpad.mac",
+        subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
         category: "claude-todos"
     )
 
@@ -163,7 +163,7 @@ class ClaudeTodoManager: ObservableObject {
 
     // MARK: - Cache
 
-    private static let cacheFileName = ".wtpad/claude-tasks.json"
+    private static let cacheFileName = ".clearway/claude-tasks.json"
 
     private nonisolated static func cacheFilePath(forWorktreePath path: String) -> String {
         (path as NSString).appendingPathComponent(cacheFileName)

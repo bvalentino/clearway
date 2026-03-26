@@ -1,16 +1,16 @@
-# wtpad
+# Clearway
 
 A native macOS terminal app built on [libghostty](https://ghostty.org/docs/about#libghostty).
 
 ## Architecture
 
-wtpad is a Swift app that embeds [Ghostty's](https://ghostty.org) terminal emulator as a library. The UI is built with **SwiftUI** for app scaffolding (windows, layout) and **AppKit** for the terminal view itself — libghostty renders via Metal into an `NSView` and needs direct access to key events, mouse input, and the macOS input method system (`NSTextInputClient`), which SwiftUI doesn't expose.
+Clearway is a Swift app that embeds [Ghostty's](https://ghostty.org) terminal emulator as a library. The UI is built with **SwiftUI** for app scaffolding (windows, layout) and **AppKit** for the terminal view itself — libghostty renders via Metal into an `NSView` and needs direct access to key events, mouse input, and the macOS input method system (`NSTextInputClient`), which SwiftUI doesn't expose.
 
 ### How the pieces fit together
 
 ```
 ┌─────────────────────────────────────────────┐
-│  WtpadApp (SwiftUI @main)                   │
+│  ClearwayApp (SwiftUI @main)                │
 │  └── ContentView                            │
 │      └── TerminalSurface (NSViewRepresentable) │
 │          └── Ghostty.SurfaceView (NSView)   │
@@ -26,7 +26,7 @@ wtpad is a Swift app that embeds [Ghostty's](https://ghostty.org) terminal emula
   - `Ghostty.SurfaceView` — `NSView` subclass that hosts a terminal surface, handles keyboard/mouse input and IME
   - `TerminalSurface` — thin SwiftUI wrapper via `NSViewRepresentable`
 - **`Sources/App/`** — SwiftUI app entry point and content view
-- **`project.yml`** — [XcodeGen](https://github.com/yonaskolb/XcodeGen) spec that generates `wtpad.xcodeproj`
+- **`project.yml`** — [XcodeGen](https://github.com/yonaskolb/XcodeGen) spec that generates `Clearway.xcodeproj`
 
 ### Key implementation details
 
@@ -59,9 +59,9 @@ This will:
 ./scripts/run.sh     # build + launch
 ```
 
-Or open `wtpad.xcodeproj` in Xcode and hit Run.
+Or open `Clearway.xcodeproj` in Xcode and hit Run.
 
-> **Note:** In git worktrees, the app is automatically named `wtpad (<worktree>)` so it doesn't conflict with the main build.
+> **Note:** In git worktrees, the app is automatically named `Clearway (<worktree>)` so it doesn't conflict with the main build.
 
 ## Install
 
@@ -71,7 +71,7 @@ To build an optimized Release build and install it to `/Applications`:
 ./scripts/install.sh
 ```
 
-After installing, wtpad will appear in Launchpad and Spotlight.
+After installing, Clearway will appear in Launchpad and Spotlight.
 
 ## Rebuilding GhosttyKit
 

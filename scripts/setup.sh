@@ -50,5 +50,5 @@ xcodegen generate
 
 echo "==> Setup complete!"
 echo ""
-echo "Open wtpad.xcodeproj in Xcode, or build from the command line:"
-echo "  xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Debug build"
+echo "Open Clearway.xcodeproj in Xcode, or build from the command line:"
+echo "  xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug build"

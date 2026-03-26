@@ -1,6 +1,6 @@
 import Foundation
 
-/// A markdown note persisted in the worktree's `.wtpad/` directory.
+/// A markdown note persisted in the worktree's `.clearway/` directory.
 struct Note: Identifiable {
     /// The filename (e.g., `20260315-142129.md`), used as a stable identifier.
     let id: String

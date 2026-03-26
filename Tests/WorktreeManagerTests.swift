@@ -1,17 +1,17 @@
 import XCTest
-@testable import wtpad
+@testable import Clearway
 
 @MainActor
 final class ProjectListManagerTests: XCTestCase {
 
-    private let suiteName = "com.wtpad.mac.tests"
+    private let suiteName = "app.getclearway.mac.tests"
 
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier ?? suiteName)
-        UserDefaults.standard.removeObject(forKey: "wtpad.projectPaths")
-        UserDefaults.standard.removeObject(forKey: "wtpad.activeProjectPath")
-        UserDefaults.standard.removeObject(forKey: "wtpad.projectPath")
+        UserDefaults.standard.removeObject(forKey: "clearway.projectPaths")
+        UserDefaults.standard.removeObject(forKey: "clearway.activeProjectPath")
+        UserDefaults.standard.removeObject(forKey: "clearway.projectPath")
     }
 
     // MARK: - Project Management
@@ -75,21 +75,21 @@ final class ProjectListManagerTests: XCTestCase {
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
-        let paths = UserDefaults.standard.stringArray(forKey: "wtpad.projectPaths")
-        let active = UserDefaults.standard.string(forKey: "wtpad.activeProjectPath")
+        let paths = UserDefaults.standard.stringArray(forKey: "clearway.projectPaths")
+        let active = UserDefaults.standard.string(forKey: "clearway.activeProjectPath")
 
         XCTAssertEqual(paths, ["/tmp/project-a", "/tmp/project-b"])
         XCTAssertEqual(active, "/tmp/project-b")
     }
 
     func testMigrationFromSingleProjectPath() {
-        UserDefaults.standard.set("/tmp/legacy-project", forKey: "wtpad.projectPath")
+        UserDefaults.standard.set("/tmp/legacy-project", forKey: "clearway.projectPath")
 
         let manager = ProjectListManager()
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/legacy-project"])
         XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/legacy-project")
-        XCTAssertNil(UserDefaults.standard.string(forKey: "wtpad.projectPath"))
+        XCTAssertNil(UserDefaults.standard.string(forKey: "clearway.projectPath"))
     }
 
     func testEmptyInitialState() {

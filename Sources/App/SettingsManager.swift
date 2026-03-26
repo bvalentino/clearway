@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum SettingsKey {
-    static let mainTerminalCommand = "wtpad.mainTerminalCommand"
-    static let showFocusBorder = "wtpad.showFocusBorder"
-    static let promptsDirectory = "wtpad.promptsDirectory"
+    static let mainTerminalCommand = "clearway.mainTerminalCommand"
+    static let showFocusBorder = "clearway.showFocusBorder"
+    static let promptsDirectory = "clearway.promptsDirectory"
 }
 
 /// Manages user preferences, persisted via UserDefaults.
@@ -29,7 +29,7 @@ class SettingsManager: ObservableObject {
         }
     }
 
-    static let defaultPromptsDirectory = "~/.wtpad/prompts"
+    static let defaultPromptsDirectory = "~/.clearway/prompts"
 
     @Published var promptsDirectory: String {
         didSet {

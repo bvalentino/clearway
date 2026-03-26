@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch the most recent Debug build of wtpad.
+# Launch the most recent Debug build of Clearway.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,14 +11,14 @@ cd "$PROJECT_DIR"
 WORKTREE_DIR="$(basename "$PROJECT_DIR")"
 if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree &>/dev/null \
    && [ "$(git -C "$PROJECT_DIR" worktree list --porcelain | head -1 | awk '{print $2}')" != "$PROJECT_DIR" ]; then
-  PRODUCT_NAME="wtpad ($WORKTREE_DIR)"
+  PRODUCT_NAME="Clearway ($WORKTREE_DIR)"
 else
-  PRODUCT_NAME="wtpad"
+  PRODUCT_NAME="Clearway"
 fi
 
 # Resolve the exact DerivedData path for this project directory.
 # xcodebuild hashes the project path, so each worktree gets its own directory.
-APP_PATH=$(xcodebuild -project wtpad.xcodeproj -scheme wtpad -configuration Debug -showBuildSettings 2>/dev/null \
+APP_PATH=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug -showBuildSettings 2>/dev/null \
     | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')
 
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH/$PRODUCT_NAME.app" ]]; then

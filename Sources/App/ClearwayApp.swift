@@ -74,7 +74,7 @@ struct CloseConfirmation: NSViewRepresentable {
 }
 
 @main
-struct WtpadApp: App {
+struct ClearwayApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
@@ -99,7 +99,7 @@ struct WtpadApp: App {
         .defaultSize(width: 1100, height: 700)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("About wtpad") {
+                Button("About Clearway") {
                     AboutWindowController.shared.show()
                 }
                 Divider()

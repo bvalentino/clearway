@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages reusable prompt files stored in a configurable directory (default `~/.wtpad/prompts/`).
+/// Manages reusable prompt files stored in a configurable directory (default `~/.clearway/prompts/`).
 ///
 /// Prompts are `.md` files with YAML frontmatter for the title and plain text body.
 /// The manager watches the directory for external changes and reloads automatically.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages tasks persisted as markdown files in `.wtpad/tasks/`.
+/// Manages tasks persisted as markdown files in `.clearway/tasks/`.
 ///
 /// Unlike `TodoManager` (per-worktree), this is project-scoped — it always
 /// reads/writes from the project root (main worktree path).
@@ -15,7 +15,7 @@ class WorkTaskManager: ObservableObject {
 
     init(projectPath: String) {
         self.projectPath = projectPath
-        self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".wtpad/tasks")
+        self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".clearway/tasks")
         reload()
         watchDirectory()
     }
