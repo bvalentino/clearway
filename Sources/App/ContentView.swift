@@ -611,13 +611,13 @@ struct ContentView: View {
                 selection: $selectedTaskId,
                 editorMode: $taskEditorMode
             )
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 340)
         } else if detailSelection == .prompts {
             PromptListView(
                 selection: $selectedPromptId,
                 editorMode: $promptEditorMode
             )
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 340)
         } else {
             Color.clear
                 .navigationSplitViewColumnWidth(0)
