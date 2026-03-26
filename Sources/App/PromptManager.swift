@@ -69,8 +69,7 @@ class PromptManager: ObservableObject {
             return nil
         }
 
-        let insertIndex = prompts.firstIndex { $0.title.localizedCaseInsensitiveCompare(prompt.title) == .orderedDescending } ?? prompts.endIndex
-        prompts.insert(prompt, at: insertIndex)
+        prompts = Self.sorted(prompts + [prompt])
         return prompt
     }
 
@@ -82,7 +81,7 @@ class PromptManager: ObservableObject {
 
         if let index = prompts.firstIndex(where: { $0.id == prompt.id }) {
             prompts[index] = prompt
-            prompts.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            prompts = Self.sorted(prompts)
         }
     }
 
@@ -96,6 +95,16 @@ class PromptManager: ObservableObject {
 
     func filePath(for prompt: Prompt) -> String {
         (directory as NSString).appendingPathComponent(prompt.id)
+    }
+
+    // MARK: - Sorting
+
+    /// Sorts prompts with empty-titled prompts first, then alphabetically by title.
+    private nonisolated static func sorted(_ prompts: [Prompt]) -> [Prompt] {
+        prompts.sorted {
+            if $0.title.isEmpty != $1.title.isEmpty { return $0.title.isEmpty }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
     }
 
     // MARK: - Loading
@@ -119,8 +128,7 @@ class PromptManager: ObservableObject {
             loaded.append(prompt)
         }
 
-        loaded.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        return loaded
+        return sorted(loaded)
     }
 
     // MARK: - File Watching
