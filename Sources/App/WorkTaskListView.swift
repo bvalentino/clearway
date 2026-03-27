@@ -1,3 +1,4 @@
+import GhosttyKit
 import SwiftUI
 
 /// The project home — a backlog showing tasks that need shaping or haven't started.
@@ -6,6 +7,8 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var ghosttyApp: Ghostty.App
     let projectPath: String
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
@@ -104,6 +107,15 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
+                Button(action: toggleTaskTerminal) {
+                    Image(systemName: "rectangle.bottomhalf.inset.filled")
+                        .opacity(taskTerminalOpen ? 1 : 0.5)
+                }
+                .help(taskTerminalOpen ? "Hide terminal" : "Show terminal")
+                .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
                 Picker("Mode", selection: $editorMode) {
                     Image(systemName: "pencil").tag(TaskEditorMode.edit)
                     Image(systemName: "eye").tag(TaskEditorMode.preview)
@@ -118,7 +130,10 @@ struct WorkTaskListView: View {
             isPresented: $showDeleteConfirmation
         ) {
             Button("Delete", role: .destructive) {
-                if let task = selectedTask { workTaskManager.deleteTask(task) }
+                if let task = selectedTask {
+                    terminalManager.closeTaskTerminal(task.id)
+                    workTaskManager.deleteTask(task)
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -145,7 +160,7 @@ struct WorkTaskListView: View {
     private var taskList: some View {
         List(selection: $selection) {
             ForEach(backlogTasks) { task in
-                WorkTaskRow(task: task)
+                WorkTaskRow(task: task, hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id))
                     .tag(task.id)
                     .contextMenu {
                         Button { startTask(task) } label: {
@@ -174,6 +189,16 @@ struct WorkTaskListView: View {
         if let task = workTaskManager.createTask() {
             selection = task.id
         }
+    }
+
+    private var taskTerminalOpen: Bool {
+        guard let id = selection else { return false }
+        return terminalManager.isTaskTerminalVisible(for: id)
+    }
+
+    private func toggleTaskTerminal() {
+        guard let id = selection, let app = ghosttyApp.app else { return }
+        terminalManager.toggleTaskTerminal(for: id, app: app, projectPath: projectPath)
     }
 
     private func startTask(_ task: WorkTask) {
@@ -245,6 +270,7 @@ struct WorkTaskCard: View {
 
 private struct WorkTaskRow: View {
     let task: WorkTask
+    var hasActiveTerminal: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -254,6 +280,11 @@ private struct WorkTaskRow: View {
                     .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
                     .lineLimit(1)
                 Spacer()
+                if hasActiveTerminal {
+                    Image(systemName: "terminal")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 WorkTaskStatusBadge(status: task.status)
             }
             Text(task.createdAt.formatted(.relative(presentation: .named)))
