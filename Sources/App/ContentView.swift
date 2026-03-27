@@ -510,6 +510,11 @@ struct ContentView: View {
             guard let worktreeManager else { return }
             if isSelected { self.selectFallback() }
             workTaskCoordinator?.handleWorktreeRemoved(branch: branch)
+            // Close surfaces before triggering the worktree removal. This sends SIGHUP
+            // immediately and ensures deinit is a no-op when SwiftUI tears down the views.
+            // closeWorktree removes the pane from the dict first so the restart observer
+            // can't match and reopen it.
+            self.terminalManager.closeWorktree(worktree.id)
             worktreeManager.removeWorktree(branch: branch)
         }
 
