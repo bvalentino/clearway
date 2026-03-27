@@ -122,6 +122,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
                         Image(systemName: "rectangle.bottomhalf.inset.filled")
+                            .opacity(secondaryVisible ? 1 : 0.5)
                     }
                     .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
                 }
@@ -129,6 +130,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleAside) {
                         Image(systemName: "sidebar.trailing")
+                            .opacity(asideVisible ? 1 : 0.5)
                     }
                     .help(asideVisible ? "Hide aside" : "Show aside")
                 }

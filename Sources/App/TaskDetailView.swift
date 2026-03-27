@@ -8,6 +8,8 @@ enum TaskEditorMode {
 /// Follows the Notes/Mail pattern: click a task in the list, edit it directly here.
 struct TaskDetailView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
+    @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var settings: SettingsManager
 
     let taskId: UUID
     @Binding var editorMode: TaskEditorMode
@@ -15,11 +17,17 @@ struct TaskDetailView: View {
     @State private var title: String = ""
     @State private var bodyText: String = ""
     @State private var pendingSave: DispatchWorkItem?
+    @State private var reloadingCount = 0
     @State private var showCopiedFeedback = false
+    @State private var terminalHeight: CGFloat = 200
     @FocusState private var isTitleFocused: Bool
 
     private var task: WorkTask? {
         workTaskManager.tasks.first { $0.id == taskId }
+    }
+
+    private var terminalVisible: Bool {
+        terminalManager.isTaskTerminalVisible(for: taskId)
     }
 
     var body: some View {
@@ -57,18 +65,60 @@ struct TaskDetailView: View {
                     }
                 }
 
+                if terminalVisible, let surface = terminalManager.existingTaskSurface(for: taskId) {
+                    Divider()
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.resizeUpDown.push()
+                            } else {
+                                NSCursor.pop()
+                            }
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 1)
+                                .onChanged { value in
+                                    terminalHeight = max(80, terminalHeight - value.translation.height)
+                                }
+                        )
+
+                    TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder)
+                        .frame(height: terminalHeight)
+                }
+
                 pathBar(for: task)
             }
             .onAppear {
                 title = task.title
                 bodyText = task.body
-                editorMode = task.body.isEmpty ? .edit : .preview
+                if terminalVisible {
+                    editorMode = .edit
+                } else {
+                    editorMode = task.body.isEmpty ? .edit : .preview
+                }
                 if task.title.isEmpty {
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
             }
-            .onChange(of: title) { _ in scheduleSave() }
-            .onChange(of: bodyText) { _ in scheduleSave() }
+            .onChange(of: title) { _ in
+                guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+                scheduleSave()
+            }
+            .onChange(of: bodyText) { _ in
+                guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+                scheduleSave()
+            }
+            .onChange(of: task.body) { newBody in
+                guard newBody != bodyText, pendingSave == nil else { return }
+                reloadingCount += 1
+                bodyText = newBody
+            }
+            .onChange(of: task.title) { newTitle in
+                guard newTitle != title, pendingSave == nil else { return }
+                reloadingCount += 1
+                title = newTitle
+            }
             .onDisappear {
                 pendingSave?.cancel()
                 saveNow()
@@ -116,7 +166,10 @@ struct TaskDetailView: View {
 
     private func scheduleSave() {
         pendingSave?.cancel()
-        let work = DispatchWorkItem { saveNow() }
+        let work = DispatchWorkItem {
+            saveNow()
+            pendingSave = nil
+        }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
@@ -126,5 +179,22 @@ struct TaskDetailView: View {
         updated.title = title
         updated.body = bodyText
         workTaskManager.updateTask(updated)
+    }
+}
+
+/// Wrapper that observes a surface's focus state for the focus border setting.
+private struct TaskTerminalSurface: View {
+    @ObservedObject var surfaceView: Ghostty.SurfaceView
+    let showBorder: Bool
+
+    var body: some View {
+        TerminalSurface(surfaceView: surfaceView)
+            .overlay {
+                if showBorder && surfaceView.focused {
+                    Rectangle()
+                        .strokeBorder(Color.accentColor, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 }

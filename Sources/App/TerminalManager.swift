@@ -37,6 +37,15 @@ class TerminalManager: ObservableObject {
     @Published private var asideVisible: [String: Bool] = [:]
     @Published private var secondaryVisible: [String: Bool] = [:]
 
+    // MARK: - Task Terminals
+
+    /// Per-task terminal surfaces (one per task, keyed by task UUID).
+    private var taskSurfaces: [UUID: Ghostty.SurfaceView] = [:]
+    /// Task IDs that have an active terminal surface.
+    @Published private(set) var openTaskIds: Set<UUID> = []
+    /// Per-task terminal panel visibility.
+    @Published private var taskTerminalVisible: [UUID: Bool] = [:]
+
     /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
     private var sidePanelTabs: [String: String] = [:]
 
@@ -94,6 +103,9 @@ class TerminalManager: ObservableObject {
         for surface in allSurfaces {
             surface.closeSurface()
         }
+        taskSurfaces.removeAll()
+        openTaskIds.removeAll()
+        taskTerminalVisible.removeAll()
     }
 
     private func handleDesktopNotification(from surface: Ghostty.SurfaceView) {
@@ -217,6 +229,14 @@ class TerminalManager: ObservableObject {
         // Don't auto-restart agent surfaces
         if let skip = skipAutoRestart, skip(deadSurface) { return }
 
+        // Task terminals: remove instead of restarting
+        if let tid = taskId(for: deadSurface) {
+            taskSurfaces.removeValue(forKey: tid)
+            openTaskIds.remove(tid)
+            taskTerminalVisible.removeValue(forKey: tid)
+            return
+        }
+
         for (key, pane) in panes {
             let slot: WritableKeyPath<TerminalPane, Ghostty.SurfaceView>
 
@@ -309,9 +329,61 @@ class TerminalManager: ObservableObject {
         }
     }
 
-    /// All surfaces across all worktrees.
+    // MARK: - Task Terminal Methods
+
+    /// Look up an existing task terminal surface (read-only).
+    func existingTaskSurface(for taskId: UUID) -> Ghostty.SurfaceView? {
+        taskSurfaces[taskId]
+    }
+
+    /// Whether a task's terminal has a running foreground process.
+    func taskHasActiveProcess(_ taskId: UUID) -> Bool {
+        taskSurfaces[taskId]?.needsConfirmQuit ?? false
+    }
+
+    /// Get or create a terminal surface for a task.
+    @discardableResult
+    func taskSurface(for taskId: UUID, app: ghostty_app_t, projectPath: String?) -> Ghostty.SurfaceView {
+        self.app = app
+        if let existing = taskSurfaces[taskId] {
+            return existing
+        }
+        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath)
+        taskSurfaces[taskId] = surface
+        if !openTaskIds.contains(taskId) {
+            openTaskIds.insert(taskId)
+        }
+        return surface
+    }
+
+    /// Whether a task's terminal panel is visible.
+    func isTaskTerminalVisible(for taskId: UUID) -> Bool {
+        taskTerminalVisible[taskId] ?? false
+    }
+
+    /// Toggle a task's terminal panel visibility. Creates the surface on first show.
+    func toggleTaskTerminal(for taskId: UUID, app: ghostty_app_t, projectPath: String?) {
+        let isVisible = taskTerminalVisible[taskId] ?? false
+        if !isVisible { taskSurface(for: taskId, app: app, projectPath: projectPath) }
+        taskTerminalVisible[taskId] = !isVisible
+    }
+
+    /// Close a task's terminal surface. Removes entry first to prevent auto-restart.
+    func closeTaskTerminal(_ taskId: UUID) {
+        guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
+        openTaskIds.remove(taskId)
+        taskTerminalVisible.removeValue(forKey: taskId)
+        surface.closeSurface()
+    }
+
+    /// Find the task ID that owns the given surface.
+    private func taskId(for surface: Ghostty.SurfaceView) -> UUID? {
+        taskSurfaces.first(where: { $0.value === surface })?.key
+    }
+
+    /// All surfaces across all worktrees and tasks.
     var allSurfaces: [Ghostty.SurfaceView] {
-        panes.values.flatMap { [$0.main, $0.secondary] }
+        panes.values.flatMap { [$0.main, $0.secondary] } + taskSurfaces.values
     }
 
 }
