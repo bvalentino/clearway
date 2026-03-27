@@ -78,7 +78,8 @@ class WorktreeManager: ObservableObject {
     }()
 
     private var titleWatcherSources: [DispatchSourceFileSystemObject] = []
-    private var pendingTitleReload: DispatchWorkItem?
+    private var pendingTitleReload: Task<Void, Never>?
+    private var currentTitleWatchPath: String?
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -129,9 +130,14 @@ class WorktreeManager: ObservableObject {
 
     /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
     func loadTitles() {
-        let titles = Self.fetchTitles(for: worktrees)
-        if titles != worktreeTitles {
-            worktreeTitles = titles
+        let worktrees = self.worktrees
+        Task.detached { [weak self] in
+            let titles = Self.fetchTitles(for: worktrees)
+            await MainActor.run { [weak self] in
+                if titles != self?.worktreeTitles {
+                    self?.worktreeTitles = titles
+                }
+            }
         }
     }
 
@@ -154,8 +160,17 @@ class WorktreeManager: ObservableObject {
 
         guard let worktreePath else { return }
 
-        // Read the current value immediately
-        applyTitle(Self.readClaudeSessionTitle(forWorktreePath: worktreePath), for: worktreePath)
+        currentTitleWatchPath = worktreePath
+
+        // Read the current value in the background — JSONL files can be large (100MB+),
+        // so reading them on the main thread causes visible UI freezes.
+        Task.detached { [weak self] in
+            let title = Self.readClaudeSessionTitle(forWorktreePath: worktreePath)
+            await MainActor.run { [weak self] in
+                guard self?.currentTitleWatchPath == worktreePath else { return }
+                self?.applyTitle(title, for: worktreePath)
+            }
+        }
 
         watchClaudeSessionDirectory(forWorktreePath: worktreePath)
     }
@@ -220,6 +235,7 @@ class WorktreeManager: ObservableObject {
     }
 
     private func stopWatchingTitles() {
+        currentTitleWatchPath = nil
         pendingTitleReload?.cancel()
         pendingTitleReload = nil
         for source in titleWatcherSources { source.cancel() }
@@ -230,41 +246,56 @@ class WorktreeManager: ObservableObject {
     private func watchClaudeSessionDirectory(forWorktreePath worktreePath: String) {
         let projectDir = Self.claudeProjectDir(forWorktreePath: worktreePath)
 
-        // Watch the projects directory for new session files — rebuild watchers when directory changes
+        // Watch the projects directory for new session files
         if let source = Self.makeTitleWatcher(path: projectDir) { [weak self] in
             self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: true)
         } {
             titleWatcherSources.append(source)
         }
 
-        // Watch individual JSONL files for title changes within existing sessions
-        let fm = FileManager.default
-        let contents = (try? fm.contentsOfDirectory(atPath: projectDir)) ?? []
-        for file in contents where file.hasSuffix(".jsonl") {
-            let filePath = (projectDir as NSString).appendingPathComponent(file)
-            if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend]) { [weak self] in
-                self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: false)
-            } {
-                titleWatcherSources.append(source)
+        // Watch individual JSONL files for title changes — directory read + N open() calls
+        // moved to background to avoid blocking the main thread in large projects.
+        Task.detached { [weak self] in
+            let fm = FileManager.default
+            let contents = (try? fm.contentsOfDirectory(atPath: projectDir)) ?? []
+            var newSources: [DispatchSourceFileSystemObject] = []
+            for file in contents where file.hasSuffix(".jsonl") {
+                let filePath = (projectDir as NSString).appendingPathComponent(file)
+                if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend]) { [weak self] in
+                    self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: false)
+                } {
+                    newSources.append(source)
+                }
+            }
+            await MainActor.run { [weak self] in
+                guard let self, self.currentTitleWatchPath == worktreePath else {
+                    for source in newSources { source.cancel() }
+                    return
+                }
+                self.titleWatcherSources.append(contentsOf: newSources)
             }
         }
     }
 
     private nonisolated func scheduleTitleReload(forWorktreePath worktreePath: String, rebuildWatchers: Bool) {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             self.pendingTitleReload?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
+            self.pendingTitleReload = Task.detached { [weak self] in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                // Read off main — JSONL files can be large during active sessions.
                 let title = Self.readClaudeSessionTitle(forWorktreePath: worktreePath)
-                self.applyTitle(title, for: worktreePath)
-                if rebuildWatchers {
-                    self.stopWatchingTitles()
-                    self.watchClaudeSessionDirectory(forWorktreePath: worktreePath)
+                await MainActor.run { [weak self] in
+                    guard let self, self.currentTitleWatchPath == worktreePath else { return }
+                    self.applyTitle(title, for: worktreePath)
+                    if rebuildWatchers {
+                        self.stopWatchingTitles()
+                        self.currentTitleWatchPath = worktreePath
+                        self.watchClaudeSessionDirectory(forWorktreePath: worktreePath)
+                    }
                 }
             }
-            self.pendingTitleReload = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }
 
