@@ -187,9 +187,6 @@ struct ContentView: View {
                 terminalManager.setSidePanelTab(sidePanelTab.rawValue, for: oldId)
             }
             // Clear selection when navigating away from list views
-            if new != .tasks {
-                selectedTaskId = nil
-            }
             if new != .prompts {
                 selectedPromptId = nil
             }
