@@ -107,7 +107,14 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button("Plan", action: planTask)
+                Button(action: planTask) {
+                    if workTaskCoordinator.planningConfig != nil {
+                        Text("Plan")
+                    } else {
+                        Image(systemName: "rectangle.bottomhalf.inset.filled")
+                            .opacity(taskTerminalOpen ? 1 : 0.5)
+                    }
+                }
                 .help(taskTerminalOpen ? "Hide planning terminal" : "Plan task")
                 .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
             }
