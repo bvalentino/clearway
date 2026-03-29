@@ -50,9 +50,9 @@ struct WorkflowConfig: Equatable {
 
     // MARK: - Loading
 
-    /// Loads WORKFLOW.md from the project root. Returns nil if the file doesn't exist.
-    static func load(projectPath: String) -> WorkflowConfig? {
-        let path = (projectPath as NSString).appendingPathComponent("WORKFLOW.md")
+    /// Loads a workflow-style markdown file from the project root. Returns nil if the file doesn't exist.
+    static func load(projectPath: String, fileName: String = "WORKFLOW.md") -> WorkflowConfig? {
+        let path = (projectPath as NSString).appendingPathComponent(fileName)
         guard let data = FileManager.default.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else { return nil }
         return parse(from: content)

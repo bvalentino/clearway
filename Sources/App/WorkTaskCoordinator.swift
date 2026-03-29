@@ -79,10 +79,16 @@ class WorkTaskCoordinator: ObservableObject {
     /// Live-reloaded workflow config — watched for changes on disk.
     @Published private(set) var workflowConfig: WorkflowConfig?
 
+    /// Live-reloaded planning config — watched for changes on disk.
+    @Published private(set) var planningConfig: WorkflowConfig?
+
     private var isWatching = false
     private var watcherSource: DispatchSourceFileSystemObject?
     private var directoryWatcherSource: DispatchSourceFileSystemObject?
+    private var planningWatcherSource: DispatchSourceFileSystemObject?
+    private var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
+    private var pendingPlanningReload: DispatchWorkItem?
     private var exitObserver: Any?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
@@ -104,8 +110,11 @@ class WorkTaskCoordinator: ObservableObject {
     nonisolated deinit {
         autoProcessingTimer?.cancel()
         pendingReload?.cancel()
+        pendingPlanningReload?.cancel()
         watcherSource?.cancel()
         directoryWatcherSource?.cancel()
+        planningWatcherSource?.cancel()
+        planningDirectoryWatcherSource?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -118,12 +127,14 @@ class WorkTaskCoordinator: ObservableObject {
 
     // MARK: - WORKFLOW.md Watching
 
-    /// Start watching WORKFLOW.md for the current project.
+    /// Start watching WORKFLOW.md and PLANNING.md for the current project.
     func startWatching() {
         guard !isWatching else { return }
         isWatching = true
         reloadWorkflowConfig()
         watchWorkflowFile()
+        reloadPlanningConfig()
+        watchPlanningFile()
     }
 
     private var workflowFilePath: String {
@@ -213,6 +224,89 @@ class WorkTaskCoordinator: ObservableObject {
             workflowConfig = config
         }
         // File exists but parse failed — keep last-known-good config
+    }
+
+    // MARK: - PLANNING.md Watching
+
+    private var planningFilePath: String {
+        (workTaskManager.projectPath as NSString).appendingPathComponent("PLANNING.md")
+    }
+
+    private func watchPlanningFile() {
+        planningWatcherSource?.cancel()
+        planningWatcherSource = nil
+
+        let filePath = planningFilePath
+        let fd = open(filePath, O_EVTONLY)
+        guard fd >= 0 else {
+            watchDirectoryForPlanningFileCreation()
+            return
+        }
+
+        planningDirectoryWatcherSource?.cancel()
+        planningDirectoryWatcherSource = nil
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            let data = source.data
+            let needsRewatch = data.contains(.delete) || data.contains(.rename)
+            self?.schedulePlanningReload(rewatch: needsRewatch)
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        planningWatcherSource = source
+    }
+
+    private func watchDirectoryForPlanningFileCreation() {
+        planningDirectoryWatcherSource?.cancel()
+        planningDirectoryWatcherSource = nil
+
+        let dirPath = workTaskManager.projectPath
+        let fd = open(dirPath, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: .write,
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            guard let self, FileManager.default.fileExists(atPath: self.planningFilePath) else { return }
+            self.schedulePlanningReload(rewatch: true)
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        planningDirectoryWatcherSource = source
+    }
+
+    private nonisolated func schedulePlanningReload(rewatch: Bool = false) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingPlanningReload?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.reloadPlanningConfig()
+                if rewatch {
+                    self.watchPlanningFile()
+                }
+            }
+            self.pendingPlanningReload = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+    }
+
+    private func reloadPlanningConfig() {
+        guard FileManager.default.fileExists(atPath: planningFilePath) else {
+            planningConfig = nil
+            return
+        }
+        if let config = WorkflowConfig.load(projectPath: workTaskManager.projectPath, fileName: "PLANNING.md") {
+            planningConfig = config
+        }
     }
 
     // MARK: - Auto-Processing Timer

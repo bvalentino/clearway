@@ -43,6 +43,7 @@ The libghostty C API (defined in `ghostty.h`) uses opaque pointer types:
 - `ghostty_config_t` — configuration
 
 Key patterns:
+- To run a command in a terminal without a login shell, pass `command:` to `Ghostty.SurfaceView(app, workingDirectory:, command:)`. Do NOT create a bare surface and then `sendCommand()` — that starts a login shell first, making the command visible in the prompt.
 - Runtime callbacks are registered via `ghostty_runtime_config_s` when creating the app
 - Surface userdata is set via `ghostty_surface_config_s.userdata` and retrieved via `ghostty_surface_userdata()`
 - Key input uses `ghostty_input_key_s` with `keycode` (macOS virtual key code), not a key enum
