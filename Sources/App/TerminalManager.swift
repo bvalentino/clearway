@@ -376,6 +376,15 @@ class TerminalManager: ObservableObject {
         surface.closeSurface()
     }
 
+    /// Open (or retrieve) a task terminal and send a command after a short delay.
+    func openTaskTerminalWithCommand(for taskId: UUID, app: ghostty_app_t, projectPath: String?, command: String) {
+        let surface = taskSurface(for: taskId, app: app, projectPath: projectPath)
+        taskTerminalVisible[taskId] = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            surface.sendCommand(command)
+        }
+    }
+
     /// Find the task ID that owns the given surface.
     private func taskId(for surface: Ghostty.SurfaceView) -> UUID? {
         taskSurfaces.first(where: { $0.value === surface })?.key

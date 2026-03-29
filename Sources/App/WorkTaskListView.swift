@@ -107,11 +107,11 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button(action: toggleTaskTerminal) {
-                    Image(systemName: "rectangle.bottomhalf.inset.filled")
+                Button(action: planTask) {
+                    Image(systemName: "pencil.and.list.clipboard")
                         .opacity(taskTerminalOpen ? 1 : 0.5)
                 }
-                .help(taskTerminalOpen ? "Hide terminal" : "Show terminal")
+                .help(taskTerminalOpen ? "Hide planning terminal" : "Plan task")
                 .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
             }
 
@@ -199,6 +199,38 @@ struct WorkTaskListView: View {
     private func toggleTaskTerminal() {
         guard let id = selection, let app = ghosttyApp.app else { return }
         terminalManager.toggleTaskTerminal(for: id, app: app, projectPath: projectPath)
+    }
+
+    private func planTask() {
+        guard let task = selectedTask, let app = ghosttyApp.app else { return }
+
+        // If already visible, toggle off
+        if taskTerminalOpen {
+            toggleTaskTerminal()
+            return
+        }
+
+        if let planningConfig = workTaskCoordinator.planningConfig {
+            let taskPath = workTaskManager.filePath(for: task)
+            let prompt = planningConfig.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
+            let agentCmd = planningConfig.agentCommand ?? "claude"
+
+            // Write prompt to temp file to handle long prompts safely
+            let tempDir = NSTemporaryDirectory()
+            let promptFile = (tempDir as NSString).appendingPathComponent("clearway-plan-\(task.id.uuidString).md")
+            FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
+
+            let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
+            terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
+        } else {
+            // No PLANNING.md — open terminal with Main Terminal command
+            let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
+            if !command.isEmpty {
+                terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
+            } else {
+                terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
+            }
+        }
     }
 
     private func startTask(_ task: WorkTask) {
