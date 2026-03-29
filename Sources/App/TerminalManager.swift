@@ -376,13 +376,18 @@ class TerminalManager: ObservableObject {
         surface.closeSurface()
     }
 
-    /// Open (or retrieve) a task terminal and send a command after a short delay.
+    /// Open a task terminal that runs the given command directly (no login shell).
+    /// Replaces any existing task surface for the same task.
     func openTaskTerminalWithCommand(for taskId: UUID, app: ghostty_app_t, projectPath: String?, command: String) {
-        let surface = taskSurface(for: taskId, app: app, projectPath: projectPath)
-        taskTerminalVisible[taskId] = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            surface.sendCommand(command)
+        self.app = app
+        // Close existing surface if any
+        if let old = taskSurfaces.removeValue(forKey: taskId) {
+            old.closeSurface()
         }
+        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, command: command)
+        taskSurfaces[taskId] = surface
+        openTaskIds.insert(taskId)
+        taskTerminalVisible[taskId] = true
     }
 
     /// Find the task ID that owns the given surface.

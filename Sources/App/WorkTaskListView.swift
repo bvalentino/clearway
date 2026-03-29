@@ -107,10 +107,7 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button(action: planTask) {
-                    Image(systemName: "pencil.and.list.clipboard")
-                        .opacity(taskTerminalOpen ? 1 : 0.5)
-                }
+                Button("Plan", action: planTask)
                 .help(taskTerminalOpen ? "Hide planning terminal" : "Plan task")
                 .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
             }
