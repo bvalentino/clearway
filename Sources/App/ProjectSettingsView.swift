@@ -299,6 +299,7 @@ struct ProjectSettingsView: View {
 
         let fm = FileManager.default
         if workflowText.isEmpty {
+            try? fm.removeItem(atPath: workflowFilePath)
             workflowStatus = fm.fileExists(atPath: workflowFilePath) ? .loaded : .empty
             return
         }
@@ -353,6 +354,7 @@ struct ProjectSettingsView: View {
 
         let fm = FileManager.default
         if planningText.isEmpty {
+            try? fm.removeItem(atPath: planningFilePath)
             planningStatus = fm.fileExists(atPath: planningFilePath) ? .loaded : .empty
             return
         }
