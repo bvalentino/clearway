@@ -205,7 +205,6 @@ struct ContentView: View {
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
 
-            worktreeManager.refreshPRForWorktree(wt.id)
             restoreSidePanelTab(for: wt)
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
@@ -273,7 +272,6 @@ struct ContentView: View {
             }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
-            worktreeManager.refreshPRStatuses(openIds: openIds)
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
@@ -485,15 +483,8 @@ struct ContentView: View {
 
     private func debouncedRefresh() {
         pendingRefresh?.cancel()
-        let work = DispatchWorkItem { [weak worktreeManager, weak terminalManager] in
-            guard let worktreeManager, let terminalManager else { return }
-            worktreeManager.refresh(showLoading: false)
-            // Delay PR refresh so it doesn't compete with the worktree UI update.
-            // Don't clear the cache — the 60s TTL handles expiry naturally. This avoids
-            // spawning a gh process for every open worktree on each focus event.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                worktreeManager.refreshPRStatuses(openIds: terminalManager.openWorktreeIds)
-            }
+        let work = DispatchWorkItem { [weak worktreeManager] in
+            worktreeManager?.refresh(showLoading: false)
         }
         pendingRefresh = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
@@ -748,27 +739,48 @@ struct ContentView: View {
                                     }
                                 }
                             Spacer()
-                            if let pr = selectedWorktree.flatMap({ worktreeManager.worktreePRs[$0.id] }) {
-                                HStack(spacing: 5) {
-                                    Circle()
-                                        .fill(pr.state.color)
-                                        .frame(width: 6, height: 6)
-                                    Text("#\(pr.number)")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.primary)
-                                    Text("·")
-                                        .foregroundStyle(.tertiary)
-                                    Text(pr.title)
+                            if let wt = currentWorktree, !wt.isMain, wt.branch != nil {
+                                let wtId = wt.id
+                                switch worktreeManager.worktreePRStates[wtId] {
+                                case .loading:
+                                    Text("Checking…")
                                         .font(.system(size: 11))
                                         .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if let url = URL(string: pr.url), url.scheme == "https" {
-                                        NSWorkspace.shared.open(url)
+                                case .result(let pr?):
+                                    HStack(spacing: 5) {
+                                        Text("#\(pr.number)")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                        Text("·")
+                                            .foregroundStyle(.tertiary)
+                                        Text(pr.title)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if let url = URL(string: pr.url), url.scheme == "https" {
+                                            NSWorkspace.shared.open(url)
+                                        }
+                                    }
+                                case .result(nil):
+                                    Text("No PR")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            worktreeManager.checkPR(for: wtId)
+                                        }
+                                case nil:
+                                    Image(systemName: "arrow.triangle.pull")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            worktreeManager.checkPR(for: wtId)
+                                        }
                                 }
                             }
                         }
