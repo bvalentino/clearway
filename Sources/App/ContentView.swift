@@ -413,7 +413,7 @@ struct ContentView: View {
     }
 
     private var shouldShowFocusBorder: Bool {
-        settings.showFocusBorder && (asideVisible || secondaryVisible)
+        settings.showFocusBorder && ghosttyApp.appIsActive && (asideVisible || secondaryVisible)
     }
 
     // MARK: - Pane Focus & Visibility

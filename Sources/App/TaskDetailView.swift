@@ -7,6 +7,7 @@ enum TaskEditorMode {
 /// Inline task editor for the 3-column layout detail pane.
 /// Follows the Notes/Mail pattern: click a task in the list, edit it directly here.
 struct TaskDetailView: View {
+    @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var settings: SettingsManager
@@ -83,7 +84,7 @@ struct TaskDetailView: View {
                                 }
                         )
 
-                    TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder)
+                    TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder && ghosttyApp.appIsActive)
                         .frame(height: terminalHeight)
                 }
 
