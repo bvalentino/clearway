@@ -10,6 +10,7 @@ extension Ghostty {
 
         @Published var readiness: Readiness = .loading
         @Published private(set) var config: Config
+        @Published private(set) var appIsActive: Bool = NSApp?.isActive ?? true
 
         @Published var app: ghostty_app_t? {
             didSet {
@@ -120,11 +121,13 @@ extension Ghostty {
         @objc private func applicationDidBecomeActive(notification: NSNotification) {
             guard let app = self.app else { return }
             ghostty_app_set_focus(app, true)
+            appIsActive = true
         }
 
         @objc private func applicationDidResignActive(notification: NSNotification) {
             guard let app = self.app else { return }
             ghostty_app_set_focus(app, false)
+            appIsActive = false
         }
 
         // MARK: - Helpers
