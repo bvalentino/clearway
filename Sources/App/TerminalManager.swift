@@ -33,7 +33,7 @@ class TerminalManager: ObservableObject {
     @Published private(set) var openWorktreeIds: Set<String> = []
     private var notificationObserver: Any?
 
-    /// Per-worktree panel visibility (defaults to true when absent).
+    /// Per-worktree panel visibility (defaults to false when absent).
     @Published private var asideVisible: [String: Bool] = [:]
     @Published private var secondaryVisible: [String: Bool] = [:]
 
@@ -129,23 +129,23 @@ class TerminalManager: ObservableObject {
     // MARK: - Panel Visibility
 
     func isAsideVisible(for worktreeId: String?) -> Bool {
-        guard let worktreeId else { return true }
-        return asideVisible[worktreeId] ?? true
+        guard let worktreeId else { return false }
+        return asideVisible[worktreeId] ?? false
     }
 
     func isSecondaryVisible(for worktreeId: String?) -> Bool {
-        guard let worktreeId else { return true }
-        return secondaryVisible[worktreeId] ?? true
+        guard let worktreeId else { return false }
+        return secondaryVisible[worktreeId] ?? false
     }
 
     func toggleAside(for worktreeId: String?) {
         guard let worktreeId else { return }
-        asideVisible[worktreeId] = !(asideVisible[worktreeId] ?? true)
+        asideVisible[worktreeId] = !(asideVisible[worktreeId] ?? false)
     }
 
     func toggleSecondary(for worktreeId: String?) {
         guard let worktreeId else { return }
-        secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? true)
+        secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? false)
     }
 
     // MARK: - Side Panel Tab
