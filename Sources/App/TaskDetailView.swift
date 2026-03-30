@@ -20,7 +20,7 @@ struct TaskDetailView: View {
     @State private var pendingSave: DispatchWorkItem?
     @State private var reloadingCount = 0
     @State private var showCopiedFeedback = false
-    @State private var terminalHeight: CGFloat = 200
+    @GestureState private var dragStartHeight: CGFloat?
     @FocusState private var isTitleFocused: Bool
 
     private var task: WorkTask? {
@@ -79,13 +79,18 @@ struct TaskDetailView: View {
                         }
                         .gesture(
                             DragGesture(minimumDistance: 1)
+                                .updating($dragStartHeight) { _, state, _ in
+                                    if state == nil { state = terminalManager.taskTerminalHeight(for: taskId) }
+                                }
                                 .onChanged { value in
-                                    terminalHeight = max(80, terminalHeight - value.translation.height)
+                                    let start = dragStartHeight ?? terminalManager.taskTerminalHeight(for: taskId)
+                                    let newHeight = max(80, start - value.translation.height)
+                                    terminalManager.setTaskTerminalHeight(newHeight, for: taskId)
                                 }
                         )
 
                     TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder && ghosttyApp.appIsActive)
-                        .frame(height: terminalHeight)
+                        .frame(height: terminalManager.taskTerminalHeight(for: taskId))
                 }
 
                 pathBar(for: task)

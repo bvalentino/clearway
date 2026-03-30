@@ -36,6 +36,8 @@ class TerminalManager: ObservableObject {
     /// Per-worktree panel visibility (defaults to true when absent).
     @Published private var asideVisible: [String: Bool] = [:]
     @Published private var secondaryVisible: [String: Bool] = [:]
+    /// Per-worktree secondary terminal panel height.
+    @Published private var secondaryHeights: [String: CGFloat] = [:]
 
     // MARK: - Task Terminals
 
@@ -45,6 +47,8 @@ class TerminalManager: ObservableObject {
     @Published private(set) var openTaskIds: Set<UUID> = []
     /// Per-task terminal panel visibility.
     @Published private var taskTerminalVisible: [UUID: Bool] = [:]
+    /// Per-task terminal panel height.
+    @Published private var taskTerminalHeights: [UUID: CGFloat] = [:]
 
     /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
     private var sidePanelTabs: [String: String] = [:]
@@ -106,6 +110,7 @@ class TerminalManager: ObservableObject {
         taskSurfaces.removeAll()
         openTaskIds.removeAll()
         taskTerminalVisible.removeAll()
+        taskTerminalHeights.removeAll()
     }
 
     private func handleDesktopNotification(from surface: Ghostty.SurfaceView) {
@@ -146,6 +151,17 @@ class TerminalManager: ObservableObject {
     func toggleSecondary(for worktreeId: String?) {
         guard let worktreeId else { return }
         secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? true)
+    }
+
+    func secondaryHeight(for worktreeId: String?) -> CGFloat {
+        guard let worktreeId else { return 120 }
+        return secondaryHeights[worktreeId] ?? 120
+    }
+
+    func setSecondaryHeight(_ height: CGFloat, for worktreeId: String?) {
+        guard let worktreeId else { return }
+        guard secondaryHeights[worktreeId] != height else { return }
+        secondaryHeights[worktreeId] = height
     }
 
     // MARK: - Side Panel Tab
@@ -234,6 +250,7 @@ class TerminalManager: ObservableObject {
             taskSurfaces.removeValue(forKey: tid)
             openTaskIds.remove(tid)
             taskTerminalVisible.removeValue(forKey: tid)
+            taskTerminalHeights.removeValue(forKey: tid)
             return
         }
 
@@ -309,6 +326,7 @@ class TerminalManager: ObservableObject {
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)
+        secondaryHeights.removeValue(forKey: worktreeId)
         sidePanelTabs.removeValue(forKey: worktreeId)
         if activeSurfaceId == worktreeId {
             activeSurfaceId = nil
@@ -366,6 +384,17 @@ class TerminalManager: ObservableObject {
         taskTerminalVisible[taskId] ?? false
     }
 
+    /// The stored terminal panel height for a task, or the default.
+    func taskTerminalHeight(for taskId: UUID) -> CGFloat {
+        taskTerminalHeights[taskId] ?? 200
+    }
+
+    /// Store a task's terminal panel height.
+    func setTaskTerminalHeight(_ height: CGFloat, for taskId: UUID) {
+        guard taskTerminalHeights[taskId] != height else { return }
+        taskTerminalHeights[taskId] = height
+    }
+
     /// Toggle a task's terminal panel visibility. Creates the surface on first show.
     func toggleTaskTerminal(for taskId: UUID, app: ghostty_app_t, projectPath: String?) {
         let isVisible = taskTerminalVisible[taskId] ?? false
@@ -378,6 +407,7 @@ class TerminalManager: ObservableObject {
         guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
         openTaskIds.remove(taskId)
         taskTerminalVisible.removeValue(forKey: taskId)
+        taskTerminalHeights.removeValue(forKey: taskId)
         surface.closeSurface()
     }
 
