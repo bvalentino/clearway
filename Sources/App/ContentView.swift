@@ -542,10 +542,13 @@ struct ContentView: View {
         guard let app = ghosttyApp.app else { return }
         switch result {
         case .reuse(let wt):
+            selectedTaskId = nil
             if !isAutoStart { detailSelection = .worktree(wt) }
         case .createWorktree(let branch):
+            selectedTaskId = nil
             Task { await worktreeManager.createWorktree(branch: branch) }
         case .beforeRunHook(let hookCmd, let wt, let onSuccess):
+            selectedTaskId = nil
             let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(hookCmd))
             hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
                 onSuccess()
