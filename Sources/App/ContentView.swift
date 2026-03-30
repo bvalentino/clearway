@@ -72,7 +72,7 @@ struct ContentView: View {
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
-    @State private var secondaryHeight: CGFloat = 120
+    @GestureState private var dragStartSecondaryHeight: CGFloat?
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
@@ -665,7 +665,7 @@ struct ContentView: View {
                             if let inline = afterCreateHookState.inlineHook, selectedWorktree?.id == inline.worktreeId {
                                 Divider()
                                 HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: afterCreateHookState.isFailed)
-                                    .frame(height: secondaryHeight)
+                                    .frame(height: terminalManager.secondaryHeight(for: selectedWorktree?.id))
                             } else if secondaryVisible {
                                 Divider()
                                     .padding(.vertical, 2)
@@ -679,8 +679,13 @@ struct ContentView: View {
                                     }
                                     .gesture(
                                         DragGesture(minimumDistance: 1)
+                                            .updating($dragStartSecondaryHeight) { _, state, _ in
+                                                if state == nil { state = terminalManager.secondaryHeight(for: selectedWorktree?.id) }
+                                            }
                                             .onChanged { value in
-                                                secondaryHeight = max(80, secondaryHeight - value.translation.height)
+                                                let start = dragStartSecondaryHeight ?? terminalManager.secondaryHeight(for: selectedWorktree?.id)
+                                                let newHeight = max(80, start - value.translation.height)
+                                                terminalManager.setSecondaryHeight(newHeight, for: selectedWorktree?.id)
                                             }
                                     )
 
@@ -690,7 +695,7 @@ struct ContentView: View {
                                     ctrlHeld: ctrlHeld,
                                     showBorder: shouldShowFocusBorder
                                 )
-                                .frame(height: secondaryHeight)
+                                .frame(height: terminalManager.secondaryHeight(for: selectedWorktree?.id))
                             }
                         }
 
