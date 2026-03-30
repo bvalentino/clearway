@@ -13,6 +13,7 @@ struct WorkTaskListView: View {
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
     @State private var showDeleteConfirmation = false
+    @State private var taskToForceDelete: WorkTask?
 
     private var selectedTask: WorkTask? {
         guard let id = selection else { return nil }
@@ -97,7 +98,9 @@ struct WorkTaskListView: View {
             ToolbarItem(placement: .primaryAction) {
                 ControlGroup {
                     Button {
-                        showDeleteConfirmation = true
+                        if let task = selectedTask {
+                            confirmDeleteTask(task)
+                        }
                     } label: {
                         Image(systemName: "trash")
                     }
@@ -143,6 +146,24 @@ struct WorkTaskListView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+        .confirmationDialog(
+            "Delete \"\(taskToForceDelete?.title ?? "Untitled")\"?",
+            isPresented: Binding(
+                get: { taskToForceDelete != nil },
+                set: { if !$0 { taskToForceDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let task = taskToForceDelete {
+                    terminalManager.closeTaskTerminal(task.id)
+                    workTaskManager.deleteTask(task)
+                }
+                taskToForceDelete = nil
+            }
+        } message: {
+            Text("There are processes still running in this task's terminal.")
+        }
     }
 
     private var emptyState: some View {
@@ -178,7 +199,7 @@ struct WorkTaskListView: View {
                         Divider()
                         Button(role: .destructive) {
                             selection = task.id
-                            showDeleteConfirmation = true
+                            confirmDeleteTask(task)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -234,6 +255,14 @@ struct WorkTaskListView: View {
             } else {
                 terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
             }
+        }
+    }
+
+    private func confirmDeleteTask(_ task: WorkTask) {
+        if terminalManager.taskHasActiveProcess(task.id) {
+            taskToForceDelete = task
+        } else {
+            showDeleteConfirmation = true
         }
     }
 
