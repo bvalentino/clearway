@@ -27,28 +27,16 @@ struct Worktree: Identifiable, Hashable {
 
 // MARK: - PR Status
 
-/// PR state as reported by GitHub.
-enum PRState: String, Equatable {
-    case open = "OPEN"
-    case merged = "MERGED"
-    case closed = "CLOSED"
-
-    /// Color matching GitHub's PR state indicators.
-    var color: Color {
-        switch self {
-        case .open: return .green
-        case .merged: return .purple
-        case .closed: return .red
-        }
-    }
-}
-
 /// PR information fetched from `gh pr list` for a worktree's branch.
 struct PRStatus: Equatable {
     let number: Int
     let title: String
-    let state: PRState
     let url: String
+}
+
+enum PRFetchState: Equatable {
+    case loading
+    case result(PRStatus?)
 }
 
 // MARK: - Manager
@@ -65,13 +53,8 @@ class WorktreeManager: ObservableObject {
     @Published var lastCreatedBranch: String?
     /// Titles read from Claude Code session JSONL files, keyed by worktree path.
     @Published var worktreeTitles: [String: String] = [:]
-    /// PR status for worktrees, keyed by worktree ID.
-    @Published var worktreePRs: [String: PRStatus] = [:]
-
-    /// Tracks when each worktree's PR status was last fetched, keyed by worktree ID.
-    private var prFetchDates: [String: Date] = [:]
-    /// Cache TTL for PR status fetches.
-    private static let prCacheTTL: TimeInterval = 60
+    /// PR fetch state for worktrees, keyed by worktree ID.
+    @Published var worktreePRStates: [String: PRFetchState] = [:]
 
     private static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
@@ -328,72 +311,25 @@ class WorktreeManager: ObservableObject {
 
     // MARK: - PR Status
 
-    /// Refreshes PR status for all open, non-main worktrees with branches.
-    /// Fetches all statuses in parallel and applies them in a single batch update.
-    func refreshPRStatuses(openIds: Set<String>) {
-        let targets = worktrees.compactMap { wt -> (id: String, branch: String)? in
-            guard !wt.isMain, openIds.contains(wt.id), let branch = wt.branch else { return nil }
-            // Respect cache TTL
-            if let lastFetch = prFetchDates[wt.id],
-               Date().timeIntervalSince(lastFetch) < Self.prCacheTTL { return nil }
-            prFetchDates[wt.id] = Date()
-            return (wt.id, branch)
-        }
-        guard !targets.isEmpty else { return }
+    /// Checks PR status for a single worktree (user-initiated).
+    func checkPR(for worktreeId: String) {
+        guard let wt = worktrees.first(where: { $0.id == worktreeId }),
+              let branch = wt.branch,
+              worktreePRStates[worktreeId] != .loading else { return }
+        worktreePRStates[worktreeId] = .loading
         let projectPath = self.projectPath
         Task.detached { [weak self] in
-            let results = await withTaskGroup(of: (String, PRStatus?).self) { group in
-                for (id, branch) in targets {
-                    group.addTask { (id, await Self.fetchPRStatus(branch: branch, in: projectPath)) }
-                }
-                var collected: [(String, PRStatus?)] = []
-                for await result in group { collected.append(result) }
-                return collected
-            }
+            let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
             await MainActor.run {
-                guard let self else { return }
-                var updated = self.worktreePRs
-                for (id, status) in results {
-                    updated[id] = status
-                }
-                if updated != self.worktreePRs {
-                    self.worktreePRs = updated
-                }
+                self?.worktreePRStates[worktreeId] = .result(status)
             }
         }
-    }
-
-    /// Refreshes PR status for a single worktree, respecting cache TTL.
-    func refreshPRForWorktree(_ id: String) {
-        guard let wt = worktrees.first(where: { $0.id == id }),
-              !wt.isMain,
-              let branch = wt.branch else { return }
-        fetchAndApplyPR(id: id, branch: branch)
     }
 
     /// Removes PR data for worktrees that no longer exist.
     func prunePRStatuses(keeping ids: Set<String>) {
-        for key in worktreePRs.keys where !ids.contains(key) {
-            worktreePRs.removeValue(forKey: key)
-            prFetchDates.removeValue(forKey: key)
-        }
-    }
-
-    private func fetchAndApplyPR(id: String, branch: String) {
-        if let lastFetch = prFetchDates[id],
-           Date().timeIntervalSince(lastFetch) < Self.prCacheTTL {
-            return
-        }
-        let projectPath = self.projectPath
-        prFetchDates[id] = Date()
-        Task.detached { [weak self] in
-            let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
-            await MainActor.run {
-                guard let self else { return }
-                if self.worktreePRs[id] != status {
-                    self.worktreePRs[id] = status
-                }
-            }
+        for key in worktreePRStates.keys where !ids.contains(key) {
+            worktreePRStates.removeValue(forKey: key)
         }
     }
 
@@ -555,7 +491,7 @@ class WorktreeManager: ObservableObject {
             "--head", branch,
             "--state", "all",
             "--limit", "1",
-            "--json", "number,title,state,url",
+            "--json", "number,title,url",
         ]
         guard let data = try? await runCommand(args, in: directory) else { return nil }
         guard let prs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
@@ -563,11 +499,9 @@ class WorktreeManager: ObservableObject {
 
         guard let number = pr["number"] as? Int,
               let title = pr["title"] as? String,
-              let stateRaw = pr["state"] as? String,
-              let state = PRState(rawValue: stateRaw),
               let url = pr["url"] as? String else { return nil }
 
-        return PRStatus(number: number, title: title, state: state, url: url)
+        return PRStatus(number: number, title: title, url: url)
     }
 
     enum WorktreeError: LocalizedError {
