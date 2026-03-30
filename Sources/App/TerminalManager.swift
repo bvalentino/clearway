@@ -263,6 +263,11 @@ class TerminalManager: ObservableObject {
             objectWillChange.send()
             panes[key]![keyPath: slot] = newSurface
 
+            // Secondary terminal: hide the panel instead of respawning visibly.
+            if slot == \.secondary {
+                secondaryVisible[key] = false
+            }
+
             return
         }
     }
