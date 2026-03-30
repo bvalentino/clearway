@@ -10,11 +10,11 @@ import Foundation
 ///
 /// Prompt content here...
 /// ```
-struct Prompt: Identifiable {
+struct Prompt: Identifiable, Hashable {
     let id: String
     var title: String
     var content: String
-    let modificationDate: Date
+    var modificationDate: Date
 
     var preview: String {
         content.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
@@ -40,16 +40,5 @@ struct Prompt: Identifiable {
         guard let (fields, body) = YAML.parseFrontmatter(from: fileContent),
               let title = fields["title"] else { return nil }
         return Prompt(id: filename, title: title, content: body, modificationDate: modificationDate)
-    }
-}
-
-extension Prompt: Hashable {
-    static func == (lhs: Prompt, rhs: Prompt) -> Bool {
-        lhs.id == rhs.id && lhs.modificationDate == rhs.modificationDate
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(modificationDate)
     }
 }

@@ -75,6 +75,9 @@ class PromptManager: ObservableObject {
 
     /// Updates an existing prompt on disk and re-sorts the in-memory array.
     func updatePrompt(_ prompt: Prompt) {
+        var prompt = prompt
+        prompt.modificationDate = Date()
+
         let filePath = (directory as NSString).appendingPathComponent(prompt.id)
         guard let data = prompt.serialized().data(using: .utf8) else { return }
         FileManager.default.createFile(atPath: filePath, contents: data, attributes: [.posixPermissions: 0o600])

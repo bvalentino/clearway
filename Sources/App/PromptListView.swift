@@ -94,6 +94,7 @@ struct PromptListView: View {
             ForEach(promptManager.prompts) { prompt in
                 PromptListRow(prompt: prompt)
                     .tag(prompt.id)
+                    .id(prompt)
                     .contextMenu {
                         Button {
                             openPrompt(prompt)
