@@ -72,7 +72,6 @@ struct ContentView: View {
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
-    @GestureState private var dragStartSecondaryHeight: CGFloat?
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
     @State private var ctrlHeld = false
@@ -678,12 +677,8 @@ struct ContentView: View {
                                 }
                                 .gesture(
                                     DragGesture(minimumDistance: 1)
-                                        .updating($dragStartSecondaryHeight) { _, state, _ in
-                                            if state == nil { state = terminalManager.secondaryHeight(for: selectedWorktree?.id) }
-                                        }
                                         .onChanged { value in
-                                            let start = dragStartSecondaryHeight ?? terminalManager.secondaryHeight(for: selectedWorktree?.id)
-                                            let newHeight = max(80, start - value.translation.height)
+                                            let newHeight = max(80, terminalManager.secondaryHeight(for: selectedWorktree?.id) - value.translation.height)
                                             terminalManager.setSecondaryHeight(newHeight, for: selectedWorktree?.id)
                                         }
                                 )
