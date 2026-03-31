@@ -194,6 +194,11 @@ class TerminalManager: ObservableObject {
             openWorktreeIds.insert(key)
         }
 
+        if !worktree.isMain {
+            asideVisible[key] = true
+            secondaryVisible[key] = true
+        }
+
         // Run startup command in main terminal
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         if !command.isEmpty {
@@ -228,6 +233,10 @@ class TerminalManager: ObservableObject {
             panes[key] = TerminalPane(main: newSurface, secondary: secondary)
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.insert(key)
+            }
+            if !worktree.isMain {
+                asideVisible[key] = true
+                secondaryVisible[key] = true
             }
             objectWillChange.send()
         }
