@@ -30,7 +30,7 @@ class TerminalManager: ObservableObject {
     @Published private(set) var notifiedWorktrees: Set<String> = []
     /// Worktree IDs that have active terminal panes. Must stay in sync with
     /// `panes.keys` — all pane mutations should go through `removeSurface` or `closeWorktree`.
-    @Published private(set) var openWorktreeIds: Set<String> = []
+    @Published private(set) var openWorktreeIds: [String] = []
     private var notificationObserver: Any?
 
     /// Per-worktree panel visibility (defaults to false when absent).
@@ -191,7 +191,7 @@ class TerminalManager: ObservableObject {
         let tp = TerminalPane(main: main, secondary: secondary)
         panes[key] = tp
         if !openWorktreeIds.contains(key) {
-            openWorktreeIds.insert(key)
+            openWorktreeIds.append(key)
         }
 
         // Run startup command in main terminal
@@ -227,7 +227,7 @@ class TerminalManager: ObservableObject {
             let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
             panes[key] = TerminalPane(main: newSurface, secondary: secondary)
             if !openWorktreeIds.contains(key) {
-                openWorktreeIds.insert(key)
+                openWorktreeIds.append(key)
             }
             objectWillChange.send()
         }
@@ -321,7 +321,7 @@ class TerminalManager: ObservableObject {
     }
 
     private func cleanupState(for worktreeId: String) {
-        openWorktreeIds.remove(worktreeId)
+        openWorktreeIds.removeAll(where: { $0 == worktreeId })
         notifiedWorktrees.remove(worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)

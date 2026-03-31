@@ -461,11 +461,12 @@ struct ContentView: View {
         if let prev = previousDetailSelection {
             previousDetailSelection = nil
             if case .worktree(let prevWt) = prev,
-               let fresh = worktreeManager.worktrees.first(where: { $0.id == prevWt.id }) {
+               let fresh = worktreeManager.worktrees.first(where: { $0.id == prevWt.id }),
+               fresh.isMain || terminalManager.openWorktreeIds.contains(fresh.id) {
                 detailSelection = .worktree(fresh)
                 return
             } else if case .worktree = prev {
-                // Previous worktree no longer exists — fall through to default.
+                // Previous worktree is closed or no longer exists — fall through to default.
             } else {
                 detailSelection = prev
                 return
