@@ -273,14 +273,7 @@ extension Ghostty {
             interpretKeyEvents([event])
 
             // Sync preedit state
-            if markedText.length > 0 {
-                let str = markedText.string
-                str.withCString { cStr in
-                    ghostty_surface_preedit(surface, cStr, UInt(str.utf8.count))
-                }
-            } else if markedTextBefore {
-                ghostty_surface_preedit(surface, nil, 0)
-            }
+            syncPreedit(clearIfNeeded: markedTextBefore)
 
             if let list = keyTextAccumulator, !list.isEmpty {
                 for text in list {
@@ -314,6 +307,18 @@ extension Ghostty {
             keyEvent.composing = false
             keyEvent.text = nil
             ghostty_surface_key(surface, keyEvent)
+        }
+
+        private func syncPreedit(clearIfNeeded: Bool = true) {
+            guard let surface = surfacePtr else { return }
+            if markedText.length > 0 {
+                let str = markedText.string
+                str.withCString { cStr in
+                    ghostty_surface_preedit(surface, cStr, UInt(str.utf8.count))
+                }
+            } else if clearIfNeeded {
+                ghostty_surface_preedit(surface, nil, 0)
+            }
         }
 
         /// Whether ghostty handles this codepoint internally (control chars, function keys).
@@ -441,7 +446,7 @@ extension Ghostty {
                 return
             }
 
-            markedText = NSMutableAttributedString()
+            unmarkText()
 
             if keyTextAccumulator != nil {
                 keyTextAccumulator?.append(str)
@@ -459,12 +464,16 @@ extension Ghostty {
             } else if let s = string as? String {
                 markedText = NSMutableAttributedString(string: s)
             }
+            if keyTextAccumulator == nil {
+                syncPreedit()
+            }
         }
 
         func unmarkText() {
-            markedText = NSMutableAttributedString()
-            guard let surface = surfacePtr else { return }
-            ghostty_surface_preedit(surface, nil, 0)
+            if markedText.length > 0 {
+                markedText.mutableString.setString("")
+                syncPreedit()
+            }
         }
 
         func selectedRange() -> NSRange {
