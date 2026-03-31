@@ -661,27 +661,32 @@ struct ContentView: View {
                                 HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: afterCreateHookState.isFailed)
                                     .frame(height: terminalManager.secondaryHeight(for: selectedWorktree?.id))
                             } else if secondaryVisible {
-                                Divider()
-                                    .padding(.vertical, 2)
-                                    .contentShape(Rectangle())
-                                    .onHover { hovering in
-                                        if hovering {
-                                            NSCursor.resizeUpDown.push()
-                                        } else {
-                                            NSCursor.pop()
-                                        }
+                                VStack(spacing: 0) {
+                                    Divider()
+                                    Capsule()
+                                        .fill(.tertiary)
+                                        .frame(width: 36, height: 5)
+                                        .padding(.vertical, 3)
+                                }
+                                .contentShape(Rectangle())
+                                .onHover { hovering in
+                                    if hovering {
+                                        NSCursor.resizeUpDown.push()
+                                    } else {
+                                        NSCursor.pop()
                                     }
-                                    .gesture(
-                                        DragGesture(minimumDistance: 1)
-                                            .updating($dragStartSecondaryHeight) { _, state, _ in
-                                                if state == nil { state = terminalManager.secondaryHeight(for: selectedWorktree?.id) }
-                                            }
-                                            .onChanged { value in
-                                                let start = dragStartSecondaryHeight ?? terminalManager.secondaryHeight(for: selectedWorktree?.id)
-                                                let newHeight = max(80, start - value.translation.height)
-                                                terminalManager.setSecondaryHeight(newHeight, for: selectedWorktree?.id)
-                                            }
-                                    )
+                                }
+                                .gesture(
+                                    DragGesture(minimumDistance: 1)
+                                        .updating($dragStartSecondaryHeight) { _, state, _ in
+                                            if state == nil { state = terminalManager.secondaryHeight(for: selectedWorktree?.id) }
+                                        }
+                                        .onChanged { value in
+                                            let start = dragStartSecondaryHeight ?? terminalManager.secondaryHeight(for: selectedWorktree?.id)
+                                            let newHeight = max(80, start - value.translation.height)
+                                            terminalManager.setSecondaryHeight(newHeight, for: selectedWorktree?.id)
+                                        }
+                                )
 
                                 FocusableTerminal(
                                     surfaceView: pane.secondary,
