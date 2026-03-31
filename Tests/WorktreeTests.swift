@@ -133,7 +133,7 @@ final class WorktreeTests: XCTestCase {
             makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false),
             makeWorktree(branch: "main", path: "/tmp/main", isMain: true),
         ]
-        let sorted = Worktree.sorted(worktrees, openIds: Set(worktrees.map(\.id)))
+        let sorted = Worktree.sorted(worktrees, openIds: worktrees.map(\.id))
         XCTAssertEqual(sorted[0].branch, "main")
         XCTAssertEqual(sorted[1].branch, "feature")
     }
