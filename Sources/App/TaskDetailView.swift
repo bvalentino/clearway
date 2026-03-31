@@ -20,7 +20,6 @@ struct TaskDetailView: View {
     @State private var pendingSave: DispatchWorkItem?
     @State private var reloadingCount = 0
     @State private var showCopiedFeedback = false
-    @GestureState private var dragStartHeight: CGFloat?
     @FocusState private var isTitleFocused: Bool
 
     private var task: WorkTask? {
@@ -67,27 +66,28 @@ struct TaskDetailView: View {
                 }
 
                 if terminalVisible, let surface = terminalManager.existingTaskSurface(for: taskId) {
-                    Divider()
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
-                        .onHover { hovering in
-                            if hovering {
-                                NSCursor.resizeUpDown.push()
-                            } else {
-                                NSCursor.pop()
-                            }
+                    VStack(spacing: 0) {
+                        Divider()
+                        Capsule()
+                            .fill(.tertiary)
+                            .frame(width: 36, height: 5)
+                            .padding(.vertical, 3)
+                    }
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering {
+                            NSCursor.resizeUpDown.push()
+                        } else {
+                            NSCursor.pop()
                         }
-                        .gesture(
-                            DragGesture(minimumDistance: 1)
-                                .updating($dragStartHeight) { _, state, _ in
-                                    if state == nil { state = terminalManager.taskTerminalHeight(for: taskId) }
-                                }
-                                .onChanged { value in
-                                    let start = dragStartHeight ?? terminalManager.taskTerminalHeight(for: taskId)
-                                    let newHeight = max(80, start - value.translation.height)
-                                    terminalManager.setTaskTerminalHeight(newHeight, for: taskId)
-                                }
-                        )
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                let newHeight = max(80, terminalManager.taskTerminalHeight(for: taskId) - value.translation.height)
+                                terminalManager.setTaskTerminalHeight(newHeight, for: taskId)
+                            }
+                    )
 
                     TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder && ghosttyApp.appIsActive)
                         .frame(height: terminalManager.taskTerminalHeight(for: taskId))
