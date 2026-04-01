@@ -113,7 +113,7 @@ class AgentSessionObserver: ObservableObject {
 
             let (input, output) = Self.parseTokenUsage(from: content)
 
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self else { return }
                 if input > 0, input != self.inputTokens { self.inputTokens = input }
                 if output > 0, output != self.outputTokens { self.outputTokens = output }
@@ -148,8 +148,8 @@ class AgentSessionObserver: ObservableObject {
     }
 
     // Pre-compiled regex patterns for token extraction
-    private static let inputTokensRegex = try! NSRegularExpression(pattern: "\"input_tokens\"\\s*:\\s*(\\d+)")
-    private static let outputTokensRegex = try! NSRegularExpression(pattern: "\"output_tokens\"\\s*:\\s*(\\d+)")
+    private nonisolated static let inputTokensRegex = try! NSRegularExpression(pattern: "\"input_tokens\"\\s*:\\s*(\\d+)")
+    private nonisolated static let outputTokensRegex = try! NSRegularExpression(pattern: "\"output_tokens\"\\s*:\\s*(\\d+)")
 
     /// Extracts an integer value for a JSON field using a pre-compiled regex.
     private nonisolated static func extractInt(from json: String, regex: NSRegularExpression) -> Int? {

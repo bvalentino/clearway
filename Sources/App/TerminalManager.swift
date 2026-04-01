@@ -67,7 +67,9 @@ class TerminalManager: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self, let surface = notification.object as? Ghostty.SurfaceView else { return }
-            self.handleDesktopNotification(from: surface)
+            MainActor.assumeIsolated {
+                self.handleDesktopNotification(from: surface)
+            }
         }
 
         closeSurfaceObserver = NotificationCenter.default.addObserver(
