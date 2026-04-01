@@ -61,11 +61,13 @@ struct NotesView: View {
             clipboardTimer?.invalidate()
             notesManager.lastClipboardChangeCount = NSPasteboard.general.changeCount
             checkClipboard()
-            clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-                let count = NSPasteboard.general.changeCount
-                if count != notesManager.lastClipboardChangeCount {
-                    notesManager.lastClipboardChangeCount = count
-                    checkClipboard()
+            clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [notesManager] _ in
+                MainActor.assumeIsolated {
+                    let count = NSPasteboard.general.changeCount
+                    if count != notesManager.lastClipboardChangeCount {
+                        notesManager.lastClipboardChangeCount = count
+                        checkClipboard()
+                    }
                 }
             }
         }

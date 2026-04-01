@@ -14,7 +14,7 @@ class NotesManager: ObservableObject {
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
 
-    static let timestampFormatter: DateFormatter = {
+    nonisolated static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter

@@ -1,3 +1,4 @@
+@preconcurrency import Dispatch
 import Foundation
 import os
 
@@ -9,7 +10,7 @@ import os
 class ClaudeTodoManager: ObservableObject {
     @Published var sessions: [ClaudeSession] = []
 
-    private static let logger = Logger(
+    private nonisolated static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
         category: "claude-todos"
     )
@@ -84,7 +85,7 @@ class ClaudeTodoManager: ObservableObject {
             guard !Task.isCancelled else { return }
             let todoCount = merged.reduce(0) { $0 + $1.todos.count }
             Self.logger.info("reload: \(merged.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cached.count))")
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 self?.sessions = merged
             }
         }
@@ -163,7 +164,7 @@ class ClaudeTodoManager: ObservableObject {
 
     // MARK: - Cache
 
-    private static let cacheFileName = ".clearway/claude-tasks.json"
+    private nonisolated static let cacheFileName = ".clearway/claude-tasks.json"
 
     private nonisolated static func cacheFilePath(forWorktreePath path: String) -> String {
         (path as NSString).appendingPathComponent(cacheFileName)
@@ -266,10 +267,10 @@ class ClaudeTodoManager: ObservableObject {
             .appending("/\(encodedPath)")
 
         // Watch the projects directory for new sessions
-        if let source = Self.makeWatcher(path: projectDir) { [weak self] in
+        if let source = Self.makeWatcher(path: projectDir, handler: { [weak self] in
             Self.logger.debug("projects dir watcher fired")
             self?.scheduleReload(rebuildWatchers: true)
-        } {
+        }) {
             Self.logger.info("watching projects dir: \(projectDir, privacy: .public)")
             watcherSources.append(source)
         } else {
@@ -310,10 +311,10 @@ class ClaudeTodoManager: ObservableObject {
                 .appendingPathComponent("tasks")
                 .appending("/\(uuid)")
 
-            if let source = Self.makeWatcher(path: tasksDir) { [weak self] in
+            if let source = Self.makeWatcher(path: tasksDir, handler: { [weak self] in
                 Self.logger.debug("tasks dir watcher fired for \(uuid, privacy: .public)")
                 self?.scheduleReload(rebuildWatchers: false)
-            } {
+            }) {
                 Self.logger.info("watching tasks dir: \(uuid, privacy: .public)")
                 watcherSources.append(source)
             } else {

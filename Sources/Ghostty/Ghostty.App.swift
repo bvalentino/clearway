@@ -259,6 +259,7 @@ extension Ghostty {
             }
         }
 
+        @discardableResult
         static func readClipboard(
             _ userdata: UnsafeMutableRawPointer?,
             location: ghostty_clipboard_e,

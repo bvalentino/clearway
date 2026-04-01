@@ -58,7 +58,7 @@ class WorktreeManager: ObservableObject {
     /// PR fetch state for worktrees, keyed by worktree ID.
     @Published var worktreePRStates: [String: PRFetchState] = [:]
 
-    private static let claudeDir: String = {
+    private nonisolated static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
     }()
 
@@ -85,7 +85,7 @@ class WorktreeManager: ObservableObject {
             do {
                 let wts = try await Self.fetchWorktrees(in: projectPath)
                 let titles = Self.fetchTitles(for: wts)
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     if wts != self?.worktrees {
                         self?.worktrees = wts
                     }
@@ -95,7 +95,7 @@ class WorktreeManager: ObservableObject {
                     if self?.isLoading == true { self?.isLoading = false }
                 }
             } catch {
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     self?.error = error.localizedDescription
                     self?.worktrees = []
                     self?.isLoading = false
@@ -232,9 +232,9 @@ class WorktreeManager: ObservableObject {
         let projectDir = Self.claudeProjectDir(forWorktreePath: worktreePath)
 
         // Watch the projects directory for new session files
-        if let source = Self.makeTitleWatcher(path: projectDir) { [weak self] in
+        if let source = Self.makeTitleWatcher(path: projectDir, handler: { [weak self] in
             self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: true)
-        } {
+        }) {
             titleWatcherSources.append(source)
         }
 
@@ -246,13 +246,13 @@ class WorktreeManager: ObservableObject {
             var newSources: [DispatchSourceFileSystemObject] = []
             for file in contents where file.hasSuffix(".jsonl") {
                 let filePath = (projectDir as NSString).appendingPathComponent(file)
-                if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend]) { [weak self] in
+                if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend], handler: { [weak self] in
                     self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: false)
-                } {
+                }) {
                     newSources.append(source)
                 }
             }
-            await MainActor.run { [weak self] in
+            await MainActor.run { [weak self, newSources] in
                 guard let self, self.currentTitleWatchPath == worktreePath else {
                     for source in newSources { source.cancel() }
                     return
@@ -322,7 +322,7 @@ class WorktreeManager: ObservableObject {
         let projectPath = self.projectPath
         Task.detached { [weak self] in
             let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 self?.worktreePRStates[worktreeId] = .result(status)
             }
         }
@@ -393,7 +393,7 @@ class WorktreeManager: ObservableObject {
                 _ = try? await Self.runCommand(["git", "branch", "-D", "--", branch], in: projectPath)
             } catch {
                 let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     self?.worktrees = wts
                     self?.error = error.localizedDescription
                 }

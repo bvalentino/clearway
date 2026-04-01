@@ -247,7 +247,7 @@ extension Ghostty {
         }
 
         override func keyDown(with event: NSEvent) {
-            guard let surface = surfacePtr else {
+            guard surfacePtr != nil else {
                 interpretKeyEvents([event])
                 return
             }
