@@ -70,6 +70,7 @@ private class WindowHiderView: NSView {
 struct ProjectContentView: View {
     let projectPath: String
     @EnvironmentObject private var ghosttyApp: Ghostty.App
+    @EnvironmentObject private var settings: SettingsManager
     @StateObject private var worktreeManager: WorktreeManager
     @StateObject private var terminalManager: TerminalManager
     @StateObject private var claudeTodoManager = ClaudeTodoManager()
@@ -118,6 +119,9 @@ struct ProjectContentView: View {
                 promptManager.startWatching()
                 // Provide app reference for auto-processing
                 workTaskCoordinator.setAppProvider { [weak ghosttyApp] in ghosttyApp?.app }
+            }
+            .onChange(of: settings.promptsDirectory) { newValue in
+                promptManager.setDirectory(newValue)
             }
     }
 }
