@@ -29,6 +29,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // When the last window was closed, termination is triggered by
+        // applicationShouldTerminateAfterLastWindowClosed — the window-level
+        // close confirmation already handled prompting, so skip here.
+        guard sender.windows.contains(where: \.isVisible),
+              TerminalManager.needsConfirmQuit else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "Quit Clearway?"
+        alert.informativeText = "There are processes still running in your terminals."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         TerminalManager.closeAllManagers()
     }
