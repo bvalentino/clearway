@@ -58,6 +58,11 @@ private enum AfterCreateHookState {
     }
 }
 
+/// Tracks the content column width without triggering SwiftUI view updates.
+private class ColumnWidthTracker {
+    var width: CGFloat = 340
+}
+
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -88,6 +93,8 @@ struct ContentView: View {
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
     @State private var previousDetailSelection: DetailSelection?
+    @State private var columnWidthTracker = ColumnWidthTracker()
+    @SceneStorage("listsColumnIdeal") private var listsColumnIdeal: Double = 340
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
@@ -178,6 +185,9 @@ struct ContentView: View {
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
+            if old == .tasks || old == .prompts {
+                listsColumnIdeal = columnWidthTracker.width
+            }
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
                 terminalManager.activeSurfaceId = nil
             }
@@ -350,6 +360,9 @@ struct ContentView: View {
             }
         }
         .onDisappear {
+            if detailSelection == .tasks || detailSelection == .prompts {
+                listsColumnIdeal = columnWidthTracker.width
+            }
             pendingRefresh?.cancel()
             pendingRefresh = nil
             if let observer = becomeActiveObserver {
@@ -609,16 +622,30 @@ struct ContentView: View {
                 selection: $selectedTaskId,
                 editorMode: $taskEditorMode
             )
-            .navigationSplitViewColumnWidth(min: 200, ideal: 340)
+            .background(columnWidthReader)
+            .navigationSplitViewColumnWidth(min: 200, ideal: listsColumnIdeal)
         } else if detailSelection == .prompts {
             PromptListView(
                 selection: $selectedPromptId,
                 editorMode: $promptEditorMode
             )
-            .navigationSplitViewColumnWidth(min: 200, ideal: 340)
+            .background(columnWidthReader)
+            .navigationSplitViewColumnWidth(min: 200, ideal: listsColumnIdeal)
         } else {
             Color.clear
                 .navigationSplitViewColumnWidth(0)
+        }
+    }
+
+    private var columnWidthReader: some View {
+        GeometryReader { geo in
+            Color.clear
+                .onAppear {
+                    if geo.size.width >= 200 { columnWidthTracker.width = geo.size.width }
+                }
+                .onChange(of: geo.size.width) { _, newValue in
+                    if newValue >= 200 { columnWidthTracker.width = newValue }
+                }
         }
     }
 
