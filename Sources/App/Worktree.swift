@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyKit
 import SwiftUI
 
 // MARK: - Model
@@ -453,10 +454,17 @@ class WorktreeManager: ObservableObject {
                 try await Self.runCommand(["git", "worktree", "remove", "--force", "--force", worktreePath], in: projectPath)
                 _ = try? await Self.runCommand(["git", "branch", "-D", "--", branch], in: projectPath)
             } catch {
-                let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
-                await MainActor.run { [weak self] in
-                    self?.worktrees = wts
-                    self?.error = error.localizedDescription
+                Ghostty.logger.warning("git worktree remove failed: \(error.localizedDescription)")
+                do {
+                    try FileManager.default.removeItem(atPath: worktreePath)
+                    _ = try? await Self.runCommand(["git", "worktree", "prune"], in: projectPath)
+                    _ = try? await Self.runCommand(["git", "branch", "-D", "--", branch], in: projectPath)
+                } catch {
+                    let wts = (try? await Self.fetchWorktrees(in: projectPath)) ?? []
+                    await MainActor.run { [weak self] in
+                        self?.worktrees = wts
+                        self?.error = error.localizedDescription
+                    }
                 }
             }
         }
