@@ -7,6 +7,7 @@ struct PromptListView: View {
     @Binding var selection: String?
     @Binding var editorMode: TaskEditorMode
     @State private var showDeleteConfirmation = false
+    @State private var isCopied = false
 
     private var selectedPrompt: Prompt? {
         guard let id = selection else { return nil }
@@ -46,12 +47,18 @@ struct PromptListView: View {
                         let text = "# \(prompt.title)\n\n\(prompt.content)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
+                        isCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            isCopied = false
+                        }
                     }
                 } label: {
-                    Image(systemName: "doc.on.doc")
+                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        .foregroundStyle(isCopied ? .green : .primary)
                 }
                 .help("Copy prompt")
                 .disabled(selectedPrompt == nil)
+                .animation(.easeInOut(duration: 0.15), value: isCopied)
             }
 
             ToolbarItem(placement: .primaryAction) {
