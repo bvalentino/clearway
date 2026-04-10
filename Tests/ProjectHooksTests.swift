@@ -73,6 +73,27 @@ final class ProjectHooksTests: XCTestCase {
         XCTAssertEqual(result, "cleanup 'feature-auth'")
     }
 
+    // MARK: - Hook chaining
+
+    func testChainCommandsBothPresent() {
+        XCTAssertEqual(
+            ProjectHooks.chainCommands("echo project", "echo workflow"),
+            "(echo project) && (echo workflow)"
+        )
+    }
+
+    func testChainCommandsFirstOnly() {
+        XCTAssertEqual(ProjectHooks.chainCommands("echo project", nil), "echo project")
+    }
+
+    func testChainCommandsSecondOnly() {
+        XCTAssertEqual(ProjectHooks.chainCommands(nil, "echo workflow"), "echo workflow")
+    }
+
+    func testChainCommandsNeitherReturnsNil() {
+        XCTAssertNil(ProjectHooks.chainCommands(nil, nil))
+    }
+
     // MARK: - Persistence
 
     func testSaveAndLoad() {

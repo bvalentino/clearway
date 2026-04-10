@@ -490,8 +490,7 @@ class WorkTaskCoordinator: ObservableObject {
         agentSurfaces.values.contains(where: { $0 === surface })
     }
 
-    /// Returns the WORKFLOW.md after_create hook command if it exists,
-    /// to take precedence over ProjectSettings hooks.
+    /// Returns the WORKFLOW.md after_create hook command if configured.
     func workflowAfterCreateHook() -> String? {
         workflowConfig?.hooksAfterCreate
     }

@@ -42,7 +42,6 @@ struct ProjectSettingsView: View {
         (projectPath as NSString).appendingPathComponent("PLANNING.md")
     }
 
-    private static let hooksFooter = "Variables: {{ branch }}, {{ worktree_path }}, {{ primary_worktree_path }}, {{ repo_path }}"
     private static let workflowFooter = """
         Defines how agents handle tasks. YAML frontmatter configures hooks \
         (after_create, before_run), agent command, and timeout. \
@@ -90,7 +89,7 @@ struct ProjectSettingsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 // MARK: - Hooks
 
-                SettingsSection("Hooks", footer: Self.hooksFooter) {
+                SettingsSection("Hooks") {
                     SettingsRow("After Worktree Create") {
                         TextField("Command", text: $hooks.afterCreate)
                             .textFieldStyle(.roundedBorder)
