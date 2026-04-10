@@ -43,7 +43,7 @@ struct PromptListView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if let prompt = selectedPrompt {
-                        let text = "# \(prompt.title)\n\(prompt.content)"
+                        let text = "# \(prompt.title)\n\n\(prompt.content)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     }
@@ -119,7 +119,7 @@ struct PromptListView: View {
                             Label("Open in Window", systemImage: "arrow.up.right.square")
                         }
                         Button {
-                            let text = "# \(prompt.title)\n\(prompt.content)"
+                            let text = "# \(prompt.title)\n\n\(prompt.content)"
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(text, forType: .string)
                         } label: {

@@ -80,7 +80,7 @@ struct WorkTaskWindow: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
-                        let text = "# \(title)\n\(bodyText)"
+                        let text = "# \(title)\n\n\(bodyText)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     } label: {

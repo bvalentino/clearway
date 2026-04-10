@@ -98,7 +98,7 @@ struct WorkTaskListView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if let task = selectedTask {
-                        let text = "# \(task.title)\n\(task.body)"
+                        let text = "# \(task.title)\n\n\(task.body)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     }

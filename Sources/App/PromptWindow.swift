@@ -60,7 +60,7 @@ struct PromptWindow: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
-                        let text = "# \(title)\n\(content)"
+                        let text = "# \(title)\n\n\(content)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     } label: {
