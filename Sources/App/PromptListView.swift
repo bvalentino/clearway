@@ -54,7 +54,7 @@ struct PromptListView: View {
                     }
                 } label: {
                     Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(isCopied ? .green : .primary)
+                        .foregroundStyle(isCopied ? AnyShapeStyle(.green) : AnyShapeStyle(.tint))
                 }
                 .help("Copy prompt")
                 .disabled(selectedPrompt == nil)
