@@ -217,6 +217,15 @@ struct ContentView: View {
 
             restoreSidePanelTab(for: wt)
         }
+        .onChange(of: selectedTaskId) { newId in
+            guard let newId,
+                  let task = workTaskManager.tasks.first(where: { $0.id == newId }) else { return }
+            if terminalManager.isTaskTerminalVisible(for: newId) {
+                taskEditorMode = .edit
+            } else {
+                taskEditorMode = task.body.isEmpty ? .edit : .preview
+            }
+        }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }

@@ -98,11 +98,6 @@ struct TaskDetailView: View {
             .onAppear {
                 title = task.title
                 bodyText = task.body
-                if terminalVisible {
-                    editorMode = .edit
-                } else {
-                    editorMode = task.body.isEmpty ? .edit : .preview
-                }
                 if task.title.isEmpty {
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
