@@ -23,6 +23,11 @@ class ClaudeTodoManager: ObservableObject {
     private var pendingPolls: [DispatchWorkItem] = []
     private var needsWatcherRebuild = false
 
+    // Periodic poll safety net — catches events missed by DispatchSource watchers.
+    private var pollTimer: DispatchSourceTimer?
+    private var pollInterval: Double = 1.0
+    private static let pollIntervalCap: Double = 15.0
+
     private static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
     }()
@@ -30,6 +35,7 @@ class ClaudeTodoManager: ObservableObject {
     nonisolated deinit {
         reloadTask?.cancel()
         pendingReload?.cancel()
+        pollTimer?.cancel()
         for poll in pendingPolls { poll.cancel() }
         for source in watcherSources { source.cancel() }
     }
@@ -48,6 +54,7 @@ class ClaudeTodoManager: ObservableObject {
         }
         reload()
         watchTodoDirectories()
+        startPollTimer()
     }
 
     func stopWatching() {
@@ -55,6 +62,8 @@ class ClaudeTodoManager: ObservableObject {
         reloadTask = nil
         pendingReload?.cancel()
         pendingReload = nil
+        pollTimer?.cancel()
+        pollTimer = nil
         for poll in pendingPolls { poll.cancel() }
         pendingPolls = []
         for source in watcherSources { source.cancel() }
@@ -250,6 +259,40 @@ class ClaudeTodoManager: ObservableObject {
             .appending("/\(encoded)")
     }
 
+    // MARK: - Poll Safety Net
+
+    /// Starts a periodic timer that calls `reload()` as a fallback when
+    /// DispatchSource watchers miss events. Uses exponential backoff
+    /// (1s → 15s cap) to minimize overhead when idle.
+    private func startPollTimer() {
+        pollTimer?.cancel()
+        guard worktreePath != nil else {
+            pollTimer = nil
+            return
+        }
+        pollInterval = 1.0
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + pollInterval, leeway: .milliseconds(100))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.worktreePath != nil else { return }
+            self.reload()
+            self.pollInterval = min(self.pollInterval * 2, Self.pollIntervalCap)
+            self.pollTimer?.schedule(
+                deadline: .now() + self.pollInterval,
+                leeway: .milliseconds(100)
+            )
+        }
+        pollTimer = timer
+        timer.resume()
+    }
+
+    /// Resets backoff to 1s — called when a watcher fires, indicating activity.
+    private func resetPollInterval() {
+        pollInterval = 1.0
+        pollTimer?.schedule(deadline: .now() + pollInterval, leeway: .milliseconds(100))
+    }
+
     // MARK: - File Watching
 
     private func watchTodoDirectories() {
@@ -352,6 +395,8 @@ class ClaudeTodoManager: ObservableObject {
             guard let self else { return }
             self.pendingReload?.cancel()
             if rebuildWatchers { self.needsWatcherRebuild = true }
+            // Watcher fired — reset backoff so poll ticks fast while active
+            self.resetPollInterval()
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 let shouldRebuild = self.needsWatcherRebuild
@@ -402,9 +447,11 @@ class ClaudeTodoManager: ObservableObject {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
 
+        // Broad mask catches atomic file operations (write-to-temp → rename)
+        // that .write alone can miss. The poll safety net covers remaining gaps.
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: .write,
+            eventMask: [.write, .attrib, .rename, .link, .extend],
             queue: .global(qos: .utility)
         )
         source.setEventHandler(handler: handler)
