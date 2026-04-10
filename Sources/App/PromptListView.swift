@@ -58,7 +58,7 @@ struct PromptListView: View {
                     Image(systemName: "eye").tag(TaskEditorMode.preview)
                 }
                 .pickerStyle(.segmented)
-                .help("Toggle edit/preview (⌘⇧P)")
+                .help("Toggle edit/preview")
                 .disabled(selectedPrompt == nil)
             }
         }

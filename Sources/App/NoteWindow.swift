@@ -46,7 +46,7 @@ struct NoteWindow: View {
                     Image(systemName: "eye").tag(EditorMode.preview)
                 }
                 .pickerStyle(.segmented)
-                .help("Toggle edit/preview (⌘⇧P)")
+                .help("Toggle edit/preview")
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -88,14 +88,6 @@ struct NoteWindow: View {
         }
         .onAppear { loadIfNeeded() }
         .onDisappear { save() }
-        // Toggle preview with Cmd+Shift+P (avoids conflict with print)
-        .background {
-            Button("") {
-                editorMode = editorMode == .edit ? .preview : .edit
-            }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
-            .hidden()
-        }
     }
 
     private func loadIfNeeded() {

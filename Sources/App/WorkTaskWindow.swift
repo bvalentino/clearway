@@ -74,7 +74,7 @@ struct WorkTaskWindow: View {
                     Image(systemName: "eye").tag(EditorMode.preview)
                 }
                 .pickerStyle(.segmented)
-                .help("Toggle edit/preview (⌘⇧P)")
+                .help("Toggle edit/preview")
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -124,13 +124,6 @@ struct WorkTaskWindow: View {
             pendingSave?.cancel()
             guard !deleted, task != nil else { return }
             saveNow()
-        }
-        .background {
-            Button("") {
-                editorMode = editorMode == .edit ? .preview : .edit
-            }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
-            .hidden()
         }
     }
 
