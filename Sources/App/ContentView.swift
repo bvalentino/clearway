@@ -241,9 +241,9 @@ struct ContentView: View {
                 detailSelection = .worktree(wt)
             }
 
-            // WORKFLOW.md after_create takes precedence over ProjectSettings
-            let afterCreateCmd = workTaskCoordinator.workflowAfterCreateHook()
-                ?? worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
+            let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
+            let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
+            let afterCreateCmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd)
 
             if !isAutoStart, let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))

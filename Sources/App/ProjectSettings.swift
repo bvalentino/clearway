@@ -78,6 +78,16 @@ struct ProjectHooks {
             .replacingOccurrences(of: "{{ repo_path }}", with: shellEscape(context.primaryWorktreePath))
     }
 
+    /// Chains two optional shell commands with `&&`, returning nil if both are nil.
+    static func chainCommands(_ first: String?, _ second: String?) -> String? {
+        switch (first, second) {
+        case let (a?, b?): "(\(a)) && (\(b))"
+        case let (a?, nil): a
+        case let (nil, b?): b
+        case (nil, nil): nil
+        }
+    }
+
     // MARK: - Persistence
 
     static func load(for projectPath: String, defaults: UserDefaults = .standard) -> ProjectHooks {
