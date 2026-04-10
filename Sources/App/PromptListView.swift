@@ -43,6 +43,17 @@ struct PromptListView: View {
             ToolbarItem(placement: .primaryAction) {
                 ControlGroup {
                     Button {
+                        if let content = selectedPrompt?.content {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(content, forType: .string)
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .help("Copy prompt")
+                    .disabled(selectedPrompt == nil)
+
+                    Button {
                         showDeleteConfirmation = true
                     } label: {
                         Image(systemName: "trash")

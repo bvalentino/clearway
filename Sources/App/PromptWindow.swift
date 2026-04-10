@@ -59,6 +59,13 @@ struct PromptWindow: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(content, forType: .string)
+                    } label: {
+                        Label("Copy Prompt", systemImage: "doc.on.doc")
+                    }
+
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
