@@ -41,17 +41,21 @@ struct PromptListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        if let prompt = selectedPrompt {
-                            let text = "# \(prompt.title)\n\(prompt.content)"
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(text, forType: .string)
-                        }
-                    } label: {
-                        Label("Copy Prompt", systemImage: "doc.on.doc")
+                Button {
+                    if let prompt = selectedPrompt {
+                        let text = "# \(prompt.title)\n\(prompt.content)"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
                     }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .help("Copy prompt")
+                .disabled(selectedPrompt == nil)
+            }
 
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
