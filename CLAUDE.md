@@ -8,7 +8,7 @@ Native macOS terminal app built on libghostty.
 ./scripts/setup.sh
 ```
 
-Requires: `zig`, `xcodegen`
+Requires: `zig`, `xcodegen`, `swiftlint`
 
 ## Build & Run (Debug)
 
@@ -16,6 +16,16 @@ Requires: `zig`, `xcodegen`
 ./scripts/build.sh   # build only
 ./scripts/run.sh     # build + launch
 ```
+
+## Linting
+
+SwiftLint runs as a post-build script phase. To lint manually:
+
+```bash
+swiftlint lint --quiet
+```
+
+All new code must pass `swiftlint lint` with zero errors before committing. Warnings are acceptable for now but should not be introduced in new code.
 
 ## Architecture
 

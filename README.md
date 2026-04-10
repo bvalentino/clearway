@@ -39,6 +39,7 @@ Clearway is a Swift app that embeds [Ghostty's](https://ghostty.org) terminal em
 
 - [Zig](https://ziglang.org/) — `brew install zig`
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) — `brew install xcodegen`
+- [SwiftLint](https://github.com/realm/SwiftLint) — `brew install swiftlint`
 - Xcode 16+
 
 ## Setup
@@ -72,6 +73,16 @@ To build an optimized Release build and install it to `/Applications`:
 ```
 
 After installing, Clearway will appear in Launchpad and Spotlight.
+
+## Linting
+
+[SwiftLint](https://github.com/realm/SwiftLint) runs automatically as a post-build script phase in Xcode. To lint manually:
+
+```bash
+swiftlint lint --quiet
+```
+
+Configuration is in `.swiftlint.yml`.
 
 ## Rebuilding GhosttyKit
 
