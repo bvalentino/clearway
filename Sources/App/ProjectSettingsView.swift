@@ -134,10 +134,10 @@ struct ProjectSettingsView: View {
                     }
                 }
 
-                // MARK: - WORKFLOW.md
+                // MARK: - PLANNING.md
 
-                SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
-                    MarkdownEditorView(text: $workflowText)
+                SettingsSection("PLANNING.md", footer: Self.planningFooter, trailing: { planningTrailing }) {
+                    MarkdownEditorView(text: $planningText)
                         .background(Color(.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(
@@ -148,10 +148,10 @@ struct ProjectSettingsView: View {
                         .padding(4)
                 }
 
-                // MARK: - PLANNING.md
+                // MARK: - WORKFLOW.md
 
-                SettingsSection("PLANNING.md", footer: Self.planningFooter, trailing: { planningTrailing }) {
-                    MarkdownEditorView(text: $planningText)
+                SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
+                    MarkdownEditorView(text: $workflowText)
                         .background(Color(.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(
