@@ -44,14 +44,14 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $detailSelection) {
-            tasksRow
+            planningRow
             promptsRow
             worktreeSection
         }
         .overlay(alignment: .bottomLeading) {
             Button {
                 if detailSelection == .settings {
-                    detailSelection = selectionBeforeSettings ?? .tasks
+                    detailSelection = selectionBeforeSettings ?? .planning
                     selectionBeforeSettings = nil
                 } else {
                     selectionBeforeSettings = detailSelection
@@ -135,10 +135,10 @@ struct SidebarView: View {
 
     // MARK: - Sections
 
-    private var tasksRow: some View {
+    private var planningRow: some View {
         let icon = workTaskManager.tasks.contains(where: { $0.status.isBacklog }) ? "tray.full" : "tray"
-        return Label("Tasks", systemImage: icon)
-            .tag(DetailSelection.tasks)
+        return Label("Planning", systemImage: icon)
+            .tag(DetailSelection.planning)
     }
 
     private var promptsRow: some View {

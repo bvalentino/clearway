@@ -19,7 +19,7 @@ private func hookShellCommand(_ cmd: String) -> String {
 
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
-    case tasks
+    case planning
     case prompts
     case settings
     case worktree(Worktree)
@@ -74,7 +74,7 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
-    @State private var detailSelection: DetailSelection? = .tasks
+    @State private var detailSelection: DetailSelection? = .planning
     @State private var becomeActiveObserver: Any?
     @State private var resignActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
@@ -186,7 +186,7 @@ struct ContentView: View {
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
-            if old == .tasks || old == .prompts {
+            if old == .planning || old == .prompts {
                 listsColumnIdeal = columnWidthTracker.width
             }
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
@@ -384,7 +384,7 @@ struct ContentView: View {
             }
         }
         .onDisappear {
-            if detailSelection == .tasks || detailSelection == .prompts {
+            if detailSelection == .planning || detailSelection == .prompts {
                 listsColumnIdeal = columnWidthTracker.width
             }
             pendingRefresh?.cancel()
@@ -517,7 +517,7 @@ struct ContentView: View {
         if let main = worktreeManager.worktrees.first(where: \.isMain) {
             detailSelection = .worktree(main)
         } else {
-            detailSelection = .tasks
+            detailSelection = .planning
         }
     }
 
@@ -645,7 +645,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var contentColumn: some View {
-        if detailSelection == .tasks {
+        if detailSelection == .planning {
             WorkTaskListView(
                 projectPath: worktreeManager.projectPath,
                 selection: $selectedTaskId,
@@ -870,7 +870,7 @@ struct ContentView: View {
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            } else if detailSelection == .tasks {
+            } else if detailSelection == .planning {
                 if let taskId = selectedTaskId {
                     TaskDetailView(taskId: taskId, editorMode: $taskEditorMode)
                         .id(taskId)
