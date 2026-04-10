@@ -102,26 +102,34 @@ Clearway is distributed outside the Mac App Store, so Release builds must be **s
 ### Release flow
 
 ```bash
-./scripts/release.sh    # builds Release, signs with Developer ID + hardened runtime, zips
-./scripts/notarize.sh   # submits zip, waits, staples ticket, verifies with spctl
+./scripts/release.sh        # builds Release, signs with Developer ID + hardened runtime, zips
+./scripts/notarize.sh       # submits zip, waits, staples ticket, verifies with spctl
+./scripts/package-dmg.sh    # wraps stapled .app in signed + notarized + stapled DMG
 ```
 
 Outputs in `release/`:
 
-- `Clearway-<version>-<sha>.zip` — signed but **not** notarized. Do not distribute.
-- `Clearway-<version>-<sha>-notarized.zip` — signed **and** stapled. **This is the artifact to distribute.**
+- `Clearway-<version>-<sha>.zip` — signed but **not** notarized. Intermediate artifact.
+- `Clearway-<version>-<sha>-notarized.zip` — signed and stapled. Valid to distribute if you prefer a zip.
+- `Clearway-<version>-<sha>.dmg` — signed, notarized, and stapled DMG with a drag-to-Applications layout. **This is the preferred distributable.**
+
+Both the DMG and the `.app` inside it are stapled, so extracting the app and deleting the DMG still works offline.
 
 ### Verifying a build manually
 
 ```bash
-# Unzip and check signature + Gatekeeper verdict
+# DMG
+spctl -a -t open --context context:primary-signature -vv release/Clearway-*.dmg
+xcrun stapler validate release/Clearway-*.dmg
+
+# Or the .app inside the notarized zip
 unzip -o release/Clearway-*-notarized.zip -d /tmp/clearway-check
 codesign -dvv /tmp/clearway-check/Clearway.app
 spctl -a -vv /tmp/clearway-check/Clearway.app
 xcrun stapler validate /tmp/clearway-check/Clearway.app
 ```
 
-`spctl` should report `accepted, source=Notarized Developer ID`.
+`spctl` should report `accepted, source=Notarized Developer ID` for both.
 
 ### Troubleshooting
 
