@@ -109,7 +109,7 @@ struct WorkTaskListView: View {
                     }
                 } label: {
                     Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(isCopied ? AnyShapeStyle(.green) : AnyShapeStyle(.tint))
+                        .foregroundStyle(isCopied ? .green : .secondary)
                 }
                 .help("Copy task")
                 .disabled(selectedTask == nil)
