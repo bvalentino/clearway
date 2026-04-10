@@ -643,7 +643,7 @@ struct ContentView: View {
                 .onAppear {
                     if geo.size.width >= 200 { columnWidthTracker.width = geo.size.width }
                 }
-                .onChange(of: geo.size.width) { _, newValue in
+                .onChange(of: geo.size.width) { newValue in
                     if newValue >= 200 { columnWidthTracker.width = newValue }
                 }
         }
