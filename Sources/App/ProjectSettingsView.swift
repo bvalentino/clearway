@@ -3,8 +3,6 @@ import SwiftUI
 struct ProjectSettingsView: View {
     let projectPath: String
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
-    @EnvironmentObject private var settings: SettingsManager
-    @EnvironmentObject private var promptManager: PromptManager
     @State private var hooks: ProjectHooks
     @State private var maxConcurrentAgents: Int
     @State private var pollingInterval: ProjectSettings.PollingInterval
@@ -102,15 +100,6 @@ struct ProjectSettingsView: View {
                     }
                 }
 
-                // MARK: - Prompts
-
-                SettingsSection("Prompts", footer: "Directory where reusable prompt files are stored. Shared across all projects.") {
-                    SettingsRow("Prompts Directory") {
-                        TextField(SettingsManager.defaultPromptsDirectory, text: $settings.promptsDirectory)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-
                 // MARK: - Automation
 
                 SettingsSection("Automation", footer: "Automatically process tasks marked as Ready to Start.") {
@@ -182,9 +171,6 @@ struct ProjectSettingsView: View {
                 // Restart timer with new interval
                 workTaskCoordinator.restartAutoProcessingTimer()
             }
-        }
-        .onChange(of: settings.promptsDirectory) { newValue in
-            promptManager.setDirectory(newValue)
         }
         .onChange(of: workflowText) { _ in
             guard !isLoading else { return }
