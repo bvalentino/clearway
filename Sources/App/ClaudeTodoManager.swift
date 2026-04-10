@@ -22,6 +22,7 @@ class ClaudeTodoManager: ObservableObject {
     private var reloadTask: Task<Void, Never>?
     private var pendingPolls: [DispatchWorkItem] = []
     private var needsWatcherRebuild = false
+    private nonisolated static let cacheWriteQueue = DispatchQueue(label: "app.getclearway.claude-cache")
 
     private static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
@@ -42,7 +43,9 @@ class ClaudeTodoManager: ObservableObject {
         // Immediately load cached sessions so the UI has data right away,
         // before the async reload fetches live data from ~/.claude/tasks/.
         if let path {
-            sessions = Self.readCache(at: Self.cacheFilePath(forWorktreePath: path))
+            let cache = Self.readCache(at: Self.cacheFilePath(forWorktreePath: path))
+            sessions = cache.sessions
+            clearedSessionIds = cache.hiddenSessionIds
         } else {
             sessions = []
         }
@@ -74,19 +77,22 @@ class ClaudeTodoManager: ObservableObject {
         let encodedPath = Self.encodePathForClaude(worktreePath)
         let cacheFile = Self.cacheFilePath(forWorktreePath: worktreePath)
 
-        let cleared = clearedSessionIds
         reloadTask = Task.detached { [weak self] in
             let live = Self.loadSessions(claudeDir: claudeDir, encodedPath: encodedPath)
             guard !Task.isCancelled else { return }
-            let cached = Self.readCache(at: cacheFile)
-            let merged = Self.mergeSessions(live: live, cached: cached)
-                .filter { !cleared.contains($0.id) }
-            Self.writeCache(merged, to: cacheFile)
+            let cache = Self.readCache(at: cacheFile)
+            let merged = Self.mergeSessions(live: live, cached: cache.sessions)
             guard !Task.isCancelled else { return }
-            let todoCount = merged.reduce(0) { $0 + $1.todos.count }
-            Self.logger.info("reload: \(merged.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cached.count))")
             await MainActor.run { [weak self] in
-                self?.sessions = merged
+                guard let self else { return }
+                let hiddenIds = self.clearedSessionIds
+                let visible = merged.filter { !hiddenIds.contains($0.id) }
+                self.sessions = visible
+                let todoCount = visible.reduce(0) { $0 + $1.todos.count }
+                Self.logger.info("reload: \(visible.count) sessions, \(todoCount) todos (live=\(live.count), cached=\(cache.sessions.count))")
+                Self.cacheWriteQueue.async {
+                    Self.writeCache(visible, hiddenSessionIds: hiddenIds, to: cacheFile)
+                }
             }
         }
     }
@@ -156,13 +162,19 @@ class ClaudeTodoManager: ObservableObject {
         sessions.removeAll { $0.id == sessionId }
         guard let worktreePath else { return }
         let cacheFile = Self.cacheFilePath(forWorktreePath: worktreePath)
-        let snapshot = sessions
-        Task.detached {
-            Self.writeCache(snapshot, to: cacheFile)
+        let sessionsSnapshot = sessions
+        let hiddenSnapshot = clearedSessionIds
+        Self.cacheWriteQueue.async {
+            Self.writeCache(sessionsSnapshot, hiddenSessionIds: hiddenSnapshot, to: cacheFile)
         }
     }
 
     // MARK: - Cache
+
+    private struct CacheContainer: Codable {
+        var sessions: [ClaudeSession]
+        var hiddenSessionIds: Set<String>
+    }
 
     private nonisolated static let cacheFileName = ".clearway/claude-tasks.json"
 
@@ -170,13 +182,23 @@ class ClaudeTodoManager: ObservableObject {
         (path as NSString).appendingPathComponent(cacheFileName)
     }
 
-    private nonisolated static func readCache(at path: String) -> [ClaudeSession] {
-        guard let data = FileManager.default.contents(atPath: path) else { return [] }
-        return (try? JSONDecoder().decode([ClaudeSession].self, from: data)) ?? []
+    private nonisolated static func readCache(at path: String) -> (sessions: [ClaudeSession], hiddenSessionIds: Set<String>) {
+        guard let data = FileManager.default.contents(atPath: path) else { return ([], []) }
+        if let container = try? JSONDecoder().decode(CacheContainer.self, from: data) {
+            return (container.sessions, container.hiddenSessionIds)
+        }
+        // Backward compatibility: old format was bare [ClaudeSession]
+        let sessions = (try? JSONDecoder().decode([ClaudeSession].self, from: data)) ?? []
+        return (sessions, [])
     }
 
-    private nonisolated static func writeCache(_ sessions: [ClaudeSession], to path: String) {
-        guard let data = try? JSONEncoder().encode(sessions) else { return }
+    private nonisolated static func writeCache(
+        _ sessions: [ClaudeSession],
+        hiddenSessionIds: Set<String>,
+        to path: String
+    ) {
+        let container = CacheContainer(sessions: sessions, hiddenSessionIds: hiddenSessionIds)
+        guard let data = try? JSONEncoder().encode(container) else { return }
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
