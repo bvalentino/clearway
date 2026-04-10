@@ -334,8 +334,10 @@ struct ContentView: View {
                     object: nil,
                     queue: .main
                 ) { [self] _ in
-                    worktreeManager.cancelBackgroundRefresh()
-                    debouncedRefresh()
+                    Task { @MainActor in
+                        worktreeManager.cancelBackgroundRefresh()
+                        debouncedRefresh()
+                    }
                 }
             }
             if resignActiveObserver == nil {
@@ -344,7 +346,9 @@ struct ContentView: View {
                     object: nil,
                     queue: .main
                 ) { [self] _ in
-                    worktreeManager.refreshInBackground(openWorktreeIds: terminalManager.openWorktreeIds)
+                    Task { @MainActor in
+                        worktreeManager.refreshInBackground(openWorktreeIds: terminalManager.openWorktreeIds)
+                    }
                 }
             }
             if taskWindowObservers.isEmpty {

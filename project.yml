@@ -55,6 +55,15 @@ targets:
         CLANG_ENABLE_MODULES: YES
         SWIFT_INCLUDE_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
+    postBuildScripts:
+      - name: SwiftLint
+        basedOnDependencyAnalysis: false
+        script: |
+          if command -v swiftlint >/dev/null 2>&1; then
+            swiftlint lint --quiet
+          else
+            echo "warning: SwiftLint not installed — brew install swiftlint"
+          fi
     preBuildScripts:
       - name: Generate BuildInfo
         script: |

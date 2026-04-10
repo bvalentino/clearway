@@ -80,7 +80,6 @@ class NotesManager: ObservableObject {
         return filename
     }
 
-
     func deleteNote(_ note: Note) {
         guard let clearwayDir else { return }
         let filePath = (clearwayDir as NSString).appendingPathComponent(note.id)

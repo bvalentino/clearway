@@ -1,0 +1,38 @@
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - Sources/App/BuildInfo.generated.swift
+  - Sources/Ghostty
+
+disabled_rules:
+  - identifier_name
+  - trailing_comma
+  - multiple_closures_with_trailing_closure
+  - implicit_optional_initialization
+  - force_try
+  - force_cast
+  - for_where
+  - large_tuple
+  - nesting
+
+line_length:
+  warning: 200
+  error: 300
+
+type_body_length:
+  warning: 500
+  error: 800
+
+file_length:
+  warning: 700
+  error: 1000
+
+function_body_length:
+  warning: 100
+  error: 150
+
+cyclomatic_complexity:
+  warning: 20
+  error: 30

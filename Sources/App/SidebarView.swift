@@ -154,7 +154,16 @@ struct SidebarView: View {
 
             ForEach(filteredWorktrees) { wt in
                 let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
-                WorktreeRow(worktree: wt, subtitle: worktreeManager.subtitle(for: wt), hasNotification: terminalManager.notifiedWorktrees.contains(wt.id), isWorking: isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id), shortcutIndex: isSearching || !isOpen ? nil : shortcutIndex(for: wt))
+                let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
+                let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
+                let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
+                WorktreeRow(
+                    worktree: wt,
+                    subtitle: worktreeManager.subtitle(for: wt),
+                    hasNotification: hasNotification,
+                    isWorking: isWorking,
+                    shortcutIndex: shortcut
+                )
                     .tag(DetailSelection.worktree(wt))
                     .opacity(!isOpen ? 0.5 : 1.0)
                     .contextMenu {

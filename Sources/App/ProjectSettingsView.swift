@@ -441,4 +441,3 @@ private struct SettingsRow<Content: View>: View {
         }
     }
 }
-

@@ -18,7 +18,6 @@
 		269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4224CF2CA76BDF5405FD737D /* Ghostty.swift */; };
 		2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */; };
 		2BF186BD2AAC70BBA557891C /* ProjectHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */; };
-		A5C9283AAB384C01A93CBE96 /* PromptManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F89D5F039CA942AEA0F2AAE3 /* PromptManagerTests.swift */; };
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
 		3C18348092C81FF44FD574A6 /* NotesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */; };
@@ -33,6 +32,7 @@
 		580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867076303E561F4171EF4C92 /* PreviewCSS.swift */; };
 		583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */; };
 		5BC05BCB16F127EF9EEEFB9F /* ProjectSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9329F0AF3D9A7FF50F684992 /* ProjectSettingsView.swift */; };
+		63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E372333888BC8E073569810 /* PromptManagerTests.swift */; };
 		69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */; };
 		6CB2E8C06F348EF807A2431D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F058F6484B056DE5C42A4C /* ContentView.swift */; };
 		7551EBE1429FFD9A379C730C /* DebugTerminalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */; };
@@ -93,6 +93,7 @@
 		1B14527F0BC588875644727E /* ClaudeTodo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodo.swift; sourceTree = "<group>"; };
 		1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
+		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
 		32483ACE7E2BCCF4724CC79E /* AgentSessionObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionObserver.swift; sourceTree = "<group>"; };
 		3E00D38FF787B79BF5C000ED /* Clearway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clearway.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
@@ -137,7 +138,6 @@
 		DE8B00CA361A6115A796C1D2 /* WorkflowConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowConfig.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectHooksTests.swift; sourceTree = "<group>"; };
-		F89D5F039CA942AEA0F2AAE3 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
 		E4FED179216122D158BE6A56 /* PromptDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptDetailView.swift; sourceTree = "<group>"; };
 		E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTerminalSheet.swift; sourceTree = "<group>"; };
 		EB42EDB75EED976AD230B319 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -175,7 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */,
-				F89D5F039CA942AEA0F2AAE3 /* PromptManagerTests.swift */,
+				2E372333888BC8E073569810 /* PromptManagerTests.swift */,
 				0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */,
 				6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */,
 				BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */,
@@ -279,6 +279,7 @@
 				3C90281E30846A7DB0538E47 /* Sources */,
 				9A4468458EE7BF681552B08D /* Resources */,
 				E0D2FEF719280E7DF2AF5F6C /* Frameworks */,
+				E4C30596A3613D00F7E6B517 /* SwiftLint */,
 			);
 			buildRules = (
 			);
@@ -375,6 +376,25 @@
 			shellPath = /bin/sh;
 			shellScript = "COMMIT=$(git -C \"$PROJECT_DIR\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(echo \"$COMMIT\" | tr -cd 'a-zA-Z0-9._-')\nTMPFILE=$(mktemp)\ncat > \"$TMPFILE\" <<SWIFT\n// Auto-generated at build time — do not edit.\nenum BuildInfo {\n    static let commit = \"$COMMIT\"\n}\nSWIFT\nTARGET=\"$PROJECT_DIR/Sources/App/BuildInfo.generated.swift\"\nif ! cmp -s \"$TMPFILE\" \"$TARGET\"; then\n  mv \"$TMPFILE\" \"$TARGET\"\nelse\n  rm \"$TMPFILE\"\nfi\n";
 		};
+		E4C30596A3613D00F7E6B517 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if command -v swiftlint >/dev/null 2>&1; then\n  swiftlint lint --quiet\nelse\n  echo \"warning: SwiftLint not installed — brew install swiftlint\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -445,7 +465,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2BF186BD2AAC70BBA557891C /* ProjectHooksTests.swift in Sources */,
-				A5C9283AAB384C01A93CBE96 /* PromptManagerTests.swift in Sources */,
+				63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */,
 				D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */,
 				8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */,
 				2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */,
