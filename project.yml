@@ -31,7 +31,6 @@ targets:
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: 1
         CODE_SIGN_ENTITLEMENTS: Clearway.entitlements
-        CODE_SIGN_IDENTITY: "-"
         FRAMEWORK_SEARCH_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64"
         HEADER_SEARCH_PATHS:
@@ -55,6 +54,16 @@ targets:
         CLANG_ENABLE_MODULES: YES
         SWIFT_INCLUDE_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers"
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application: Bruno Valentino (76AEQBHY3K)"
+          DEVELOPMENT_TEAM: 76AEQBHY3K
+          ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          OTHER_CODE_SIGN_FLAGS: "--timestamp"
     postBuildScripts:
       - name: SwiftLint
         basedOnDependencyAnalysis: false
