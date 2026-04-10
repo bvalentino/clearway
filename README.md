@@ -92,12 +92,16 @@ Clearway is distributed outside the Mac App Store, so Release builds must be **s
    mv ~/Downloads/AuthKey_*.p8 ~/.appstoreconnect/
    chmod 600 ~/.appstoreconnect/AuthKey_*.p8
    ```
-   The Key ID and Issuer ID are hardcoded in `scripts/notarize.sh`. If you rotate the key, update them there.
+   From the same page, note the **Key ID** (10-character identifier next to your key) and the **Issuer ID** (UUID at the top of the page). You will need both in step 3.
 
-3. **Export `ASC_API_KEY_PATH`** in your shell (add to `~/.zshrc` for persistence):
+3. **Export the notarization environment variables** in your shell (add to `~/.zshrc` for persistence):
    ```bash
-   export ASC_API_KEY_PATH=~/.appstoreconnect/AuthKey_WA4BFSM2PC.p8
+   export ASC_API_KEY_PATH=~/.appstoreconnect/AuthKey_<YOUR_KEY_ID>.p8
+   export ASC_API_KEY_ID=<YOUR_KEY_ID>           # 10-char string, e.g. ABCDE12345
+   export ASC_API_ISSUER_ID=<YOUR_ISSUER_UUID>   # UUID from App Store Connect
    ```
+
+   All three are required — `scripts/notarize.sh` and `scripts/package-dmg.sh` will refuse to run if any are unset. They are intentionally not committed to the repo.
 
 ### Release flow
 

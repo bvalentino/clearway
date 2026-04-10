@@ -8,18 +8,19 @@
 # Run ./scripts/release.sh first to produce the signed zip.
 #
 # Required environment:
-#   ASC_API_KEY_PATH  absolute path to your App Store Connect API .p8 file
-#                     (keep this OUTSIDE the repo, e.g. ~/.appstoreconnect/AuthKey_XXXXX.p8)
+#   ASC_API_KEY_PATH   absolute path to your App Store Connect API .p8 file
+#                      (keep this OUTSIDE the repo, e.g. ~/.appstoreconnect/AuthKey_XXXXX.p8)
+#   ASC_API_KEY_ID     your App Store Connect API Key ID (10-char identifier)
+#   ASC_API_ISSUER_ID  your App Store Connect Issuer ID (UUID)
 set -euo pipefail
 
 : "${ASC_API_KEY_PATH:?Set ASC_API_KEY_PATH to your App Store Connect API .p8 file path}"
+: "${ASC_API_KEY_ID:?Set ASC_API_KEY_ID to your App Store Connect API Key ID}"
+: "${ASC_API_ISSUER_ID:?Set ASC_API_ISSUER_ID to your App Store Connect Issuer ID}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RELEASE_DIR="$PROJECT_DIR/release"
-
-ASC_KEY_ID="WA4BFSM2PC"
-ASC_ISSUER_ID="69a6de7c-c161-47e3-e053-5b8c7c11a4d1"
 
 if [ ! -f "$ASC_API_KEY_PATH" ]; then
   echo "Error: ASC_API_KEY_PATH points to a file that doesn't exist: $ASC_API_KEY_PATH"
@@ -48,8 +49,8 @@ SUBMIT_LOG=$(mktemp)
 set +e
 xcrun notarytool submit "$ZIP_PATH" \
   --key "$ASC_API_KEY_PATH" \
-  --key-id "$ASC_KEY_ID" \
-  --issuer "$ASC_ISSUER_ID" \
+  --key-id "$ASC_API_KEY_ID" \
+  --issuer "$ASC_API_ISSUER_ID" \
   --wait 2>&1 | tee "$SUBMIT_LOG"
 set -e
 
@@ -63,8 +64,8 @@ if [ "$FINAL_STATUS" != "Accepted" ]; then
   echo ""
   xcrun notarytool log "$SUBMISSION_ID" \
     --key "$ASC_API_KEY_PATH" \
-    --key-id "$ASC_KEY_ID" \
-    --issuer "$ASC_ISSUER_ID" || true
+    --key-id "$ASC_API_KEY_ID" \
+    --issuer "$ASC_API_ISSUER_ID" || true
   exit 1
 fi
 
