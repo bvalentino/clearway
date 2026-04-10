@@ -7,6 +7,7 @@ struct PromptListView: View {
     @Binding var selection: String?
     @Binding var editorMode: TaskEditorMode
     @State private var showDeleteConfirmation = false
+    @State private var isCopied = false
 
     private var selectedPrompt: Prompt? {
         guard let id = selection else { return nil }
@@ -41,15 +42,46 @@ struct PromptListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                ControlGroup {
-                    Button {
+                Button {
+                    if let prompt = selectedPrompt {
+                        let text = "# \(prompt.title)\n\n\(prompt.content)"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        isCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            isCopied = false
+                        }
+                    }
+                } label: {
+                    Group {
+                        if isCopied {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "doc.on.doc")
+                        }
+                    }
+                    .frame(width: 16)
+                }
+                .help("Copy prompt")
+                .disabled(selectedPrompt == nil)
+                .animation(.easeInOut(duration: 0.15), value: isCopied)
+                .onChange(of: selection) { _ in isCopied = false }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
-                        Image(systemName: "trash")
+                        Label("Delete Prompt", systemImage: "trash")
                     }
-                    .help("Delete prompt")
-                    .disabled(selectedPrompt == nil)
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More actions")
+                .disabled(selectedPrompt == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -102,8 +134,9 @@ struct PromptListView: View {
                             Label("Open in Window", systemImage: "arrow.up.right.square")
                         }
                         Button {
+                            let text = "# \(prompt.title)\n\n\(prompt.content)"
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(prompt.content, forType: .string)
+                            NSPasteboard.general.setString(text, forType: .string)
                         } label: {
                             Label("Copy Prompt", systemImage: "doc.on.doc")
                         }

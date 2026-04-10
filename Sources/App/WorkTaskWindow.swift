@@ -78,19 +78,27 @@ struct WorkTaskWindow: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                if let task, task.status.isBacklog {
-                    Menu {
+                Menu {
+                    Button {
+                        let text = "# \(title)\n\n\(bodyText)"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    } label: {
+                        Label("Copy Task", systemImage: "doc.on.doc")
+                    }
+
+                    if let task, task.status.isBacklog {
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
                         } label: {
                             Label("Delete Task", systemImage: "trash")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
                     }
-                    .menuIndicator(.hidden)
-                    .help("More actions")
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More actions")
             }
         }
         .alert(

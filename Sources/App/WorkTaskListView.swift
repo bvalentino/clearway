@@ -13,6 +13,7 @@ struct WorkTaskListView: View {
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
     @State private var showDeleteConfirmation = false
+    @State private var isCopied = false
     @State private var taskToForceDelete: WorkTask?
 
     private var selectedTask: WorkTask? {
@@ -96,17 +97,48 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                ControlGroup {
-                    Button {
+                Button {
+                    if let task = selectedTask {
+                        let text = "# \(task.title)\n\n\(task.body)"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        isCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            isCopied = false
+                        }
+                    }
+                } label: {
+                    Group {
+                        if isCopied {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "doc.on.doc")
+                        }
+                    }
+                    .frame(width: 16)
+                }
+                .help("Copy task")
+                .disabled(selectedTask == nil)
+                .animation(.easeInOut(duration: 0.15), value: isCopied)
+                .onChange(of: selection) { _ in isCopied = false }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(role: .destructive) {
                         if let task = selectedTask {
                             confirmDeleteTask(task)
                         }
                     } label: {
-                        Image(systemName: "trash")
+                        Label("Delete Task", systemImage: "trash")
                     }
-                    .help("Delete task")
-                    .disabled(selectedTask == nil)
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More actions")
+                .disabled(selectedTask == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
