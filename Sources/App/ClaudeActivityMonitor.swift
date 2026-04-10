@@ -17,7 +17,7 @@ class ClaudeActivityMonitor: ObservableObject {
     )
 
     /// How long after the last write event before a worktree stops being "working."
-    private static let expirySeconds: Double = 3.0
+    private static let expirySeconds: Double = 8.0
 
     /// Per-worktree watcher state.
     private struct WatcherState {
@@ -27,9 +27,9 @@ class ClaudeActivityMonitor: ObservableObject {
         var fileSource: DispatchSourceFileSystemObject?
         var expiryTimer: DispatchWorkItem?
         var projectDir: String
-        /// DispatchSource fires an initial `.write` event on resume for existing
-        /// directories. Skip events until this flag is set (after a short delay).
-        var ready = false
+        /// DispatchSource fires an initial event on resume for existing directories.
+        /// Skip events before this timestamp (50ms after watcher creation).
+        var readyAfter: Date = .distantFuture
     }
 
     private var watchers: [String: WatcherState] = [:] // keyed by worktree id
@@ -91,10 +91,7 @@ class ClaudeActivityMonitor: ObservableObject {
                 }
             }
             Self.logger.debug("watching: \(projectDir, privacy: .public)")
-            // Mark ready after a short delay so the initial spurious event is ignored
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.watchers[worktreeId]?.ready = true
-            }
+            state.readyAfter = Date().addingTimeInterval(0.05)
             watchers[worktreeId] = state
         } else {
             // Directory doesn't exist yet — register as pending and watch parent
@@ -122,9 +119,7 @@ class ClaudeActivityMonitor: ObservableObject {
                 }
             }
             Self.logger.info("pending resolved, watching: \(projectDir, privacy: .public)")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.watchers[worktreeId]?.ready = true
-            }
+            watchers[worktreeId]?.readyAfter = Date().addingTimeInterval(0.05)
         }
     }
 
@@ -189,7 +184,9 @@ class ClaudeActivityMonitor: ObservableObject {
     /// Called when the project directory itself changes (file created/deleted).
     private nonisolated func handleDirEvent(worktreeId: String) {
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.watchers[worktreeId]?.ready == true else { return }
+            guard let self,
+                  let state = self.watchers[worktreeId],
+                  Date() >= state.readyAfter else { return }
             // A new session file may have appeared — rewire to the newest one
             self.rebuildFileWatcher(worktreeId: worktreeId)
             self.markWorking(worktreeId: worktreeId)
@@ -199,7 +196,9 @@ class ClaudeActivityMonitor: ObservableObject {
     /// Called when a JSONL file is written to (Claude actively working).
     private nonisolated func handleActivity(worktreeId: String) {
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.watchers[worktreeId]?.ready == true else { return }
+            guard let self,
+                  let state = self.watchers[worktreeId],
+                  Date() >= state.readyAfter else { return }
             self.markWorking(worktreeId: worktreeId)
         }
     }
