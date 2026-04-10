@@ -60,8 +60,9 @@ struct PromptWindow: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
+                        let text = "# \(title)\n\(content)"
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(content, forType: .string)
+                        NSPasteboard.general.setString(text, forType: .string)
                     } label: {
                         Label("Copy Prompt", systemImage: "doc.on.doc")
                     }

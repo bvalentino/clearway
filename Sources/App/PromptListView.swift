@@ -43,9 +43,10 @@ struct PromptListView: View {
             ToolbarItem(placement: .primaryAction) {
                 ControlGroup {
                     Button {
-                        if let content = selectedPrompt?.content {
+                        if let prompt = selectedPrompt {
+                            let text = "# \(prompt.title)\n\(prompt.content)"
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(content, forType: .string)
+                            NSPasteboard.general.setString(text, forType: .string)
                         }
                     } label: {
                         Image(systemName: "doc.on.doc")
@@ -113,8 +114,9 @@ struct PromptListView: View {
                             Label("Open in Window", systemImage: "arrow.up.right.square")
                         }
                         Button {
+                            let text = "# \(prompt.title)\n\(prompt.content)"
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(prompt.content, forType: .string)
+                            NSPasteboard.general.setString(text, forType: .string)
                         } label: {
                             Label("Copy Prompt", systemImage: "doc.on.doc")
                         }
