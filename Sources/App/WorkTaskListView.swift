@@ -114,6 +114,7 @@ struct WorkTaskListView: View {
                 .help("Copy task")
                 .disabled(selectedTask == nil)
                 .animation(.easeInOut(duration: 0.15), value: isCopied)
+                .onChange(of: selection) { _ in isCopied = false }
             }
 
             ToolbarItem(placement: .primaryAction) {

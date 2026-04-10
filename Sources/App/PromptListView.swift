@@ -59,6 +59,7 @@ struct PromptListView: View {
                 .help("Copy prompt")
                 .disabled(selectedPrompt == nil)
                 .animation(.easeInOut(duration: 0.15), value: isCopied)
+                .onChange(of: selection) { _ in isCopied = false }
             }
 
             ToolbarItem(placement: .primaryAction) {
