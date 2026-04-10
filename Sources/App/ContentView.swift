@@ -606,7 +606,7 @@ struct ContentView: View {
 
     private func sendPromptToTerminal(_ prompt: Prompt) {
         guard let surface = terminalManager.activePane?.main else { return }
-        surface.sendCommand(prompt.content)
+        surface.sendPaste(prompt.content)
         surface.window?.makeFirstResponder(surface)
     }
 
