@@ -1,0 +1,17 @@
+{
+  "name": "clearway-website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Landing page for Clearway (getclearway.app)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "tailwindcss": "^4.0.0",
+    "vite": "^8.0.8"
+  }
+}
