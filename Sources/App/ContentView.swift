@@ -71,6 +71,7 @@ struct ContentView: View {
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var becomeActiveObserver: Any?
+    @State private var resignActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
@@ -323,7 +324,17 @@ struct ContentView: View {
                     object: nil,
                     queue: .main
                 ) { [self] _ in
+                    worktreeManager.cancelBackgroundRefresh()
                     debouncedRefresh()
+                }
+            }
+            if resignActiveObserver == nil {
+                resignActiveObserver = NotificationCenter.default.addObserver(
+                    forName: NSApplication.didResignActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { [self] _ in
+                    worktreeManager.refreshInBackground(openWorktreeIds: terminalManager.openWorktreeIds)
                 }
             }
             if taskWindowObservers.isEmpty {
@@ -352,9 +363,14 @@ struct ContentView: View {
         .onDisappear {
             pendingRefresh?.cancel()
             pendingRefresh = nil
+            worktreeManager.cancelBackgroundRefresh()
             if let observer = becomeActiveObserver {
                 NotificationCenter.default.removeObserver(observer)
                 becomeActiveObserver = nil
+            }
+            if let observer = resignActiveObserver {
+                NotificationCenter.default.removeObserver(observer)
+                resignActiveObserver = nil
             }
             if let monitor = flagsMonitor {
                 NSEvent.removeMonitor(monitor)
