@@ -1,6 +1,6 @@
 # Clearway — Landing Page
 
-Static landing page for Clearway, served at [getclearway.app](https://getclearway.app).
+Landing page for [Clearway](../README.md). Served at [getclearway.app](https://getclearway.app).
 
 ## Stack
 
