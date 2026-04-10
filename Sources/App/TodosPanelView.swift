@@ -30,7 +30,8 @@ struct TodosPanelView: View {
     @State private var newTodoGeneration = 0
     @State private var selectedTodo: TodoSelection?
     @State private var todoPendingDeletion: Todo?
-    @State private var sessionPendingClear: String?
+    @State private var sessionConfirmingClear: String?
+    @State private var confirmResetTask: Task<Void, Never>?
     @FocusState private var isListFocused: Bool
 
     enum TodoSelection: Hashable {
@@ -87,11 +88,28 @@ struct TodosPanelView: View {
                             ClaudeSessionSection(
                                 session: session,
                                 selectedTodoId: selectedClaudeTodoId(for: session.id),
+                                isConfirming: sessionConfirmingClear == session.id,
                                 onSelect: { todo in
                                     selectTodo(.claude(sessionId: session.id, todoId: todo.id))
                                 },
+                                onConfirmStart: {
+                                    sessionConfirmingClear = session.id
+                                    confirmResetTask?.cancel()
+                                    confirmResetTask = Task {
+                                        try? await Task.sleep(for: .seconds(3))
+                                        if !Task.isCancelled {
+                                            sessionConfirmingClear = nil
+                                        }
+                                    }
+                                },
                                 onClear: {
-                                    sessionPendingClear = session.id
+                                    if case .claude(session.id, _) = selectedTodo {
+                                        selectedTodo = nil
+                                    }
+                                    claudeTodoManager.clearSession(session.id)
+                                    sessionConfirmingClear = nil
+                                    confirmResetTask?.cancel()
+                                    confirmResetTask = nil
                                 }
                             )
                         }
@@ -124,25 +142,9 @@ struct TodosPanelView: View {
                 todoPendingDeletion = nil
             }
         }
-        .alert(
-            "Clear Claude todos?",
-            isPresented: Binding(
-                get: { sessionPendingClear != nil },
-                set: { if !$0 { sessionPendingClear = nil } }
-            )
-        ) {
-            Button("Clear", role: .destructive) {
-                if let sessionId = sessionPendingClear {
-                    if case .claude(sessionId, _) = selectedTodo {
-                        selectedTodo = nil
-                    }
-                    claudeTodoManager.clearSession(sessionId)
-                }
-                sessionPendingClear = nil
-            }
-            Button("Cancel", role: .cancel) {
-                sessionPendingClear = nil
-            }
+        .onDisappear {
+            confirmResetTask?.cancel()
+            confirmResetTask = nil
         }
     }
 
@@ -245,7 +247,9 @@ struct TodosPanelView: View {
 private struct ClaudeSessionSection: View {
     let session: ClaudeSession
     var selectedTodoId: String?
+    var isConfirming: Bool
     var onSelect: (ClaudeTodo) -> Void
+    var onConfirmStart: () -> Void
     var onClear: () -> Void
 
     var body: some View {
@@ -261,10 +265,16 @@ private struct ClaudeSessionSection: View {
 
                 Spacer()
 
-                Button("Clear") { onClear() }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .buttonStyle(.plain)
+                Button(isConfirming ? "Confirm clear" : "Clear") {
+                    if isConfirming {
+                        onClear()
+                    } else {
+                        onConfirmStart()
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(isConfirming ? .orange : .secondary)
+                .buttonStyle(.plain)
             }
 
             ForEach(session.todos) { todo in
