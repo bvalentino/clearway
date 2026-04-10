@@ -265,7 +265,7 @@ private struct ClaudeSessionSection: View {
 
                 Spacer()
 
-                Button(isConfirming ? "Confirm" : "Clear") {
+                Button(isConfirming ? "Confirm clear" : "Clear") {
                     if isConfirming {
                         onClear()
                     } else {
