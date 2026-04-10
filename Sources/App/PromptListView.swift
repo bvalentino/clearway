@@ -41,7 +41,7 @@ struct PromptListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                ControlGroup {
+                Menu {
                     Button {
                         if let prompt = selectedPrompt {
                             let text = "# \(prompt.title)\n\(prompt.content)"
@@ -49,19 +49,20 @@ struct PromptListView: View {
                             NSPasteboard.general.setString(text, forType: .string)
                         }
                     } label: {
-                        Image(systemName: "doc.on.doc")
+                        Label("Copy Prompt", systemImage: "doc.on.doc")
                     }
-                    .help("Copy prompt")
-                    .disabled(selectedPrompt == nil)
 
-                    Button {
+                    Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
-                        Image(systemName: "trash")
+                        Label("Delete Prompt", systemImage: "trash")
                     }
-                    .help("Delete prompt")
-                    .disabled(selectedPrompt == nil)
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More actions")
+                .disabled(selectedPrompt == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
