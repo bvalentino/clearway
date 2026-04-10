@@ -416,6 +416,52 @@ extension Ghostty {
             sendEnter()
         }
 
+        /// Send text to the terminal via bracketed paste, preserving newlines.
+        ///
+        /// Uses ghostty's paste action (which handles bracketed paste mode negotiation)
+        /// by temporarily placing the text on the system clipboard, then restoring the
+        /// previous clipboard contents.
+        func sendPaste(_ text: String, submit: Bool = true) {
+            guard let surface = surfacePtr else { return }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+
+            let pasteboard = NSPasteboard.general
+            let savedItems = pasteboard.pasteboardItems?.map { item -> [NSPasteboard.PasteboardType: Data] in
+                var dict: [NSPasteboard.PasteboardType: Data] = [:]
+                for type in item.types {
+                    if let data = item.data(forType: type) {
+                        dict[type] = data
+                    }
+                }
+                return dict
+            } ?? []
+
+            pasteboard.clearContents()
+            pasteboard.setString(trimmed, forType: .string)
+
+            // ghostty_surface_binding_action reads the clipboard synchronously
+            // before returning — the restore below is safe.
+            let action = "paste_from_clipboard"
+            _ = ghostty_surface_binding_action(
+                surface, action, UInt(action.utf8.count)
+            )
+
+            if submit {
+                sendEnter()
+            }
+
+            pasteboard.clearContents()
+            let items = savedItems.map { dict -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                for (type, data) in dict {
+                    item.setData(data, forType: type)
+                }
+                return item
+            }
+            pasteboard.writeObjects(items)
+        }
+
         /// Simulate pressing the Enter/Return key.
         private func sendEnter() {
             guard let surface = surfacePtr else { return }
