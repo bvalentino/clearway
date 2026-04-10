@@ -5,19 +5,18 @@ import XCTest
 final class ProjectListManagerTests: XCTestCase {
 
     private let suiteName = "app.getclearway.mac.tests"
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier ?? suiteName)
-        UserDefaults.standard.removeObject(forKey: "clearway.projectPaths")
-        UserDefaults.standard.removeObject(forKey: "clearway.activeProjectPath")
-        UserDefaults.standard.removeObject(forKey: "clearway.projectPath")
+        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults.removePersistentDomain(forName: suiteName)
     }
 
     // MARK: - Project Management
 
     func testAddProject() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/project-a"])
@@ -25,7 +24,7 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testAddMultipleProjects() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
@@ -34,7 +33,7 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testAddDuplicateProjectIsNoop() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-a")
 
@@ -42,7 +41,7 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testRemoveProject() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
         manager.removeProject("/tmp/project-a")
@@ -51,7 +50,7 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testRemoveActiveProjectSwitchesToFirst() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
@@ -62,7 +61,7 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testRemoveLastProjectClearsActive() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.removeProject("/tmp/project-a")
 
@@ -71,29 +70,27 @@ final class ProjectListManagerTests: XCTestCase {
     }
 
     func testPersistence() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
         manager.addProject("/tmp/project-a")
         manager.addProject("/tmp/project-b")
 
-        let paths = UserDefaults.standard.stringArray(forKey: "clearway.projectPaths")
-        let active = UserDefaults.standard.string(forKey: "clearway.activeProjectPath")
-
-        XCTAssertEqual(paths, ["/tmp/project-a", "/tmp/project-b"])
-        XCTAssertEqual(active, "/tmp/project-b")
+        let restored = ProjectListManager(defaults: testDefaults)
+        XCTAssertEqual(restored.projectPaths, ["/tmp/project-a", "/tmp/project-b"])
+        XCTAssertEqual(restored.lastActiveProjectPath, "/tmp/project-b")
     }
 
     func testMigrationFromSingleProjectPath() {
-        UserDefaults.standard.set("/tmp/legacy-project", forKey: "clearway.projectPath")
+        testDefaults.set("/tmp/legacy-project", forKey: "clearway.projectPath")
 
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
 
         XCTAssertEqual(manager.projectPaths, ["/tmp/legacy-project"])
         XCTAssertEqual(manager.lastActiveProjectPath, "/tmp/legacy-project")
-        XCTAssertNil(UserDefaults.standard.string(forKey: "clearway.projectPath"))
+        XCTAssertNil(testDefaults.string(forKey: "clearway.projectPath"))
     }
 
     func testEmptyInitialState() {
-        let manager = ProjectListManager()
+        let manager = ProjectListManager(defaults: testDefaults)
 
         XCTAssertTrue(manager.projectPaths.isEmpty)
         XCTAssertNil(manager.lastActiveProjectPath)

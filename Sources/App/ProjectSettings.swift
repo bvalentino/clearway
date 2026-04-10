@@ -80,18 +80,16 @@ struct ProjectHooks {
 
     // MARK: - Persistence
 
-    static func load(for projectPath: String) -> ProjectHooks {
+    static func load(for projectPath: String, defaults: UserDefaults = .standard) -> ProjectHooks {
         let prefix = ProjectHooks.keyPrefix(for: projectPath)
-        let defaults = UserDefaults.standard
         return ProjectHooks(
             afterCreate: defaults.string(forKey: "\(prefix).hook.post_create") ?? "",
             beforeRemove: defaults.string(forKey: "\(prefix).hook.pre_remove") ?? ""
         )
     }
 
-    func save(for projectPath: String) {
+    func save(for projectPath: String, defaults: UserDefaults = .standard) {
         let prefix = ProjectHooks.keyPrefix(for: projectPath)
-        let defaults = UserDefaults.standard
         defaults.set(afterCreate, forKey: "\(prefix).hook.post_create")
         defaults.set(beforeRemove, forKey: "\(prefix).hook.pre_remove")
     }
