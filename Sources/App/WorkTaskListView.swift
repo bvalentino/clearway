@@ -96,17 +96,34 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                ControlGroup {
-                    Button {
+                Button {
+                    if let task = selectedTask {
+                        let text = "# \(task.title)\n\(task.body)"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .help("Copy task")
+                .disabled(selectedTask == nil)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(role: .destructive) {
                         if let task = selectedTask {
                             confirmDeleteTask(task)
                         }
                     } label: {
-                        Image(systemName: "trash")
+                        Label("Delete Task", systemImage: "trash")
                     }
-                    .help("Delete task")
-                    .disabled(selectedTask == nil)
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More actions")
+                .disabled(selectedTask == nil)
             }
 
             ToolbarItem(placement: .primaryAction) {
