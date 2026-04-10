@@ -3,6 +3,15 @@ import XCTest
 
 final class ProjectHooksTests: XCTestCase {
 
+    private let suiteName = "app.getclearway.mac.tests.hooks"
+    private var testDefaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults.removePersistentDomain(forName: suiteName)
+    }
+
     private let context = ProjectHooks.Context(
         branch: "feature-auth",
         worktreePath: "/Users/dev/project/.worktrees/feature-auth",
@@ -72,16 +81,16 @@ final class ProjectHooksTests: XCTestCase {
             afterCreate: "echo create",
             beforeRemove: "echo remove"
         )
-        hooks.save(for: path)
+        hooks.save(for: path, defaults: testDefaults)
 
-        let loaded = ProjectHooks.load(for: path)
+        let loaded = ProjectHooks.load(for: path, defaults: testDefaults)
         XCTAssertEqual(loaded.afterCreate, "echo create")
         XCTAssertEqual(loaded.beforeRemove, "echo remove")
     }
 
     func testLoadDefaultsToEmpty() {
         let path = "/tmp/nonexistent-\(UUID().uuidString)"
-        let loaded = ProjectHooks.load(for: path)
+        let loaded = ProjectHooks.load(for: path, defaults: testDefaults)
         XCTAssertEqual(loaded.afterCreate, "")
         XCTAssertEqual(loaded.beforeRemove, "")
     }

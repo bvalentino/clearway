@@ -12,31 +12,37 @@ private enum DefaultsKey {
 /// have been added and which was last active (for restoring on launch).
 @MainActor
 class ProjectListManager: ObservableObject {
+    // Assigned before @Published properties so didSet observers can use it.
+    // didSet does not fire during the designated initializer's own assignments.
+    private let defaults: UserDefaults
+
     @Published var projectPaths: [String] = [] {
         didSet {
-            UserDefaults.standard.set(projectPaths, forKey: DefaultsKey.projectPaths)
+            defaults.set(projectPaths, forKey: DefaultsKey.projectPaths)
         }
     }
 
     @Published var lastActiveProjectPath: String? {
         didSet {
             if let path = lastActiveProjectPath {
-                UserDefaults.standard.set(path, forKey: DefaultsKey.lastActiveProjectPath)
+                defaults.set(path, forKey: DefaultsKey.lastActiveProjectPath)
             } else {
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.lastActiveProjectPath)
+                defaults.removeObject(forKey: DefaultsKey.lastActiveProjectPath)
             }
         }
     }
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+
         // Migrate from single project path
-        if let single = UserDefaults.standard.string(forKey: DefaultsKey.legacyProjectPath) {
+        if let single = defaults.string(forKey: DefaultsKey.legacyProjectPath) {
             self.projectPaths = [single]
             self.lastActiveProjectPath = single
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.legacyProjectPath)
+            defaults.removeObject(forKey: DefaultsKey.legacyProjectPath)
         } else {
-            self.projectPaths = UserDefaults.standard.stringArray(forKey: DefaultsKey.projectPaths) ?? []
-            self.lastActiveProjectPath = UserDefaults.standard.string(forKey: DefaultsKey.lastActiveProjectPath)
+            self.projectPaths = defaults.stringArray(forKey: DefaultsKey.projectPaths) ?? []
+            self.lastActiveProjectPath = defaults.string(forKey: DefaultsKey.lastActiveProjectPath)
         }
     }
 
