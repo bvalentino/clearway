@@ -62,6 +62,7 @@ class WorktreeManager: ObservableObject {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
     }()
 
+    private var backgroundRefreshTask: Task<Void, Never>?
     private var titleWatcherSources: [DispatchSourceFileSystemObject] = []
     private var pendingTitleReload: Task<Void, Never>?
     private var currentTitleWatchPath: String?
@@ -72,6 +73,7 @@ class WorktreeManager: ObservableObject {
     }
 
     nonisolated deinit {
+        backgroundRefreshTask?.cancel()
         pendingTitleReload?.cancel()
         for source in titleWatcherSources { source.cancel() }
     }
@@ -83,15 +85,9 @@ class WorktreeManager: ObservableObject {
 
         Task.detached { [weak self] in
             do {
-                let wts = try await Self.fetchWorktrees(in: projectPath)
-                let titles = Self.fetchTitles(for: wts)
+                let (wts, titles) = try await Self.fetchWorktreesAndTitles(in: projectPath)
                 await MainActor.run { [weak self] in
-                    if wts != self?.worktrees {
-                        self?.worktrees = wts
-                    }
-                    if titles != self?.worktreeTitles {
-                        self?.worktreeTitles = titles
-                    }
+                    self?.applyWorktreeRefresh(wts, titles: titles)
                     if self?.isLoading == true { self?.isLoading = false }
                 }
             } catch {
@@ -102,6 +98,17 @@ class WorktreeManager: ObservableObject {
                 }
             }
         }
+    }
+
+    private nonisolated static func fetchWorktreesAndTitles(in directory: String) async throws -> ([Worktree], [String: String]) {
+        let wts = try await fetchWorktrees(in: directory)
+        let titles = fetchTitles(for: wts)
+        return (wts, titles)
+    }
+
+    private func applyWorktreeRefresh(_ worktrees: [Worktree], titles: [String: String]) {
+        if worktrees != self.worktrees { self.worktrees = worktrees }
+        if titles != self.worktreeTitles { self.worktreeTitles = titles }
     }
 
     // MARK: - Titles (from Claude Code sessions)
@@ -326,6 +333,60 @@ class WorktreeManager: ObservableObject {
                 self?.worktreePRStates[worktreeId] = .result(status)
             }
         }
+    }
+
+    /// Schedules a background refresh 5 seconds from now. Call `cancelBackgroundRefresh()`
+    /// when the app returns to foreground to abort — avoids stale results overwriting
+    /// a foreground refresh. Intentionally never sets `.loading` PR states so cancellation
+    /// doesn't leave the UI in a half-loaded state.
+    func refreshInBackground(openWorktreeIds: [String]) {
+        backgroundRefreshTask?.cancel()
+        let projectPath = self.projectPath
+        let openIds = Set(openWorktreeIds)
+        backgroundRefreshTask = Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            // Phase 1: refresh worktree list + titles
+            guard let (wts, titles) = try? await Self.fetchWorktreesAndTitles(in: projectPath) else { return }
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                self?.applyWorktreeRefresh(wts, titles: titles)
+            }
+
+            // Phase 2: fetch PR status for each open worktree with a branch
+            guard !Task.isCancelled else { return }
+            let branchesById = wts.compactMap { wt -> (id: String, branch: String)? in
+                guard let branch = wt.branch, openIds.contains(wt.id) else { return nil }
+                return (wt.id, branch)
+            }
+            let prResults = await withTaskGroup(of: (String, PRStatus?).self) { group -> [(String, PRStatus?)] in
+                for (id, branch) in branchesById {
+                    group.addTask {
+                        let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
+                        return (id, status)
+                    }
+                }
+                var results: [(String, PRStatus?)] = []
+                for await result in group {
+                    guard !Task.isCancelled else { return results }
+                    results.append(result)
+                }
+                return results
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                for (id, status) in prResults {
+                    self?.worktreePRStates[id] = .result(status)
+                }
+            }
+        }
+    }
+
+    /// Cancels any in-flight background refresh.
+    func cancelBackgroundRefresh() {
+        backgroundRefreshTask?.cancel()
+        backgroundRefreshTask = nil
     }
 
     /// Removes PR data for worktrees that no longer exist.
