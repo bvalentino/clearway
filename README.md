@@ -2,8 +2,6 @@
 
 A native macOS app for orchestrating AI sessions across git worktrees. Built on [Ghostty](https://ghostty.org).
 
-Write tasks as markdown, queue them up, and Clearway dispatches each one to an AI session in its own worktree — with a project-centric sidebar for tracking progress, todos, notes, and prompts across every run.
-
 ## Architecture
 
 Clearway is a Swift app that embeds [Ghostty's](https://ghostty.org) terminal emulator as a library. The UI is built with **SwiftUI** for app scaffolding (windows, layout) and **AppKit** for the terminal view itself — libghostty renders via Metal into an `NSView` and needs direct access to key events, mouse input, and the macOS input method system (`NSTextInputClient`), which SwiftUI doesn't expose.
