@@ -1,6 +1,8 @@
 # Clearway
 
-A native macOS terminal app built on [libghostty](https://ghostty.org/docs/about#libghostty).
+A native macOS app for orchestrating AI sessions across git worktrees. Built on [Ghostty](https://ghostty.org).
+
+Write tasks as markdown, queue them up, and Clearway dispatches each one to an AI session in its own worktree — with a project-centric sidebar for tracking progress, todos, notes, and prompts across every run.
 
 ## Architecture
 
