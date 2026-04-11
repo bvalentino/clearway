@@ -12,7 +12,7 @@
 #
 # Required environment:
 #   SPARKLE_PRIVATE_KEY_PATH  absolute path to the exported Sparkle ed25519
-#                             private key (see README)
+#                             private key (see RELEASING.md in the repo root)
 #
 # Release notes for Sparkle's update dialog are NOT hand-written per release.
 # The <description> CDATA is auto-populated with a short stub that links to
@@ -37,7 +37,7 @@ cd "$PROJECT_DIR"
 
 clearway_read_versions
 
-: "${SPARKLE_PRIVATE_KEY_PATH:?Set SPARKLE_PRIVATE_KEY_PATH to the path of your exported Sparkle private key (see README)}"
+: "${SPARKLE_PRIVATE_KEY_PATH:?Set SPARKLE_PRIVATE_KEY_PATH to the path of your exported Sparkle private key (see RELEASING.md in the repo root)}"
 
 if [ ! -r "$SPARKLE_PRIVATE_KEY_PATH" ]; then
   echo "Error: SPARKLE_PRIVATE_KEY_PATH is not a readable file: $SPARKLE_PRIVATE_KEY_PATH"
