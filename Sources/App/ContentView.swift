@@ -753,16 +753,7 @@ struct ContentView: View {
                         if asideVisible {
                             Divider()
                             VStack(spacing: 0) {
-                                Picker("", selection: $sidePanelTab) {
-                                    ForEach(availableSidePanelTabs, id: \.self) { tab in
-                                        Text(tab.rawValue).tag(tab)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-
-                                Divider()
+                                sidePanelTabStrip
 
                                 switch sidePanelTab {
                                 case .task:
@@ -882,6 +873,60 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Side Panel Tab Strip
+
+    @ViewBuilder
+    private var sidePanelTabStrip: some View {
+        if #available(macOS 26.0, *) {
+            HStack(spacing: 2) {
+                ForEach(availableSidePanelTabs, id: \.self) { tab in
+                    sidePanelTabButton(for: tab)
+                }
+            }
+            .padding(4)
+            .glassEffect(in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+        } else {
+            Picker("", selection: $sidePanelTab) {
+                ForEach(availableSidePanelTabs, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+        }
+    }
+
+    @available(macOS 26.0, *)
+    @ViewBuilder
+    private func sidePanelTabButton(for tab: SidePanelTab) -> some View {
+        let isSelected = sidePanelTab == tab
+        Button {
+            sidePanelTab = tab
+        } label: {
+            Text(tab.rawValue)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .background {
+                    if isSelected {
+                        Capsule().fill(Color.accentColor)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
