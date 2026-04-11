@@ -231,18 +231,21 @@ release. Fix the underlying bug, rebuild, and re-run the dry-run from step 1.
 Prerequisites every release:
 
 1. Start from `main` with a clean tree: `git checkout main && git pull --ff-only`.
-2. Decide the new `MARKETING_VERSION` (the user-visible version). Bump it in `project.yml` — e.g. from `"1.0.0"` to `"1.0.1"`. `CURRENT_PROJECT_VERSION` (the build number Sparkle compares) is bumped automatically by `release.sh`; do not touch it manually.
-3. Confirm `ASC_API_KEY_PATH`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, and `SPARKLE_PRIVATE_KEY_PATH` are exported (ideally permanently in `~/.zshrc`). No per-release release-notes file is needed — the appcast's Sparkle update-dialog description is auto-generated as a link to the GitHub release page, and the GitHub release body is auto-generated from merged PRs by `gh release create --generate-notes`.
+2. Confirm `ASC_API_KEY_PATH`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, and `SPARKLE_PRIVATE_KEY_PATH` are exported (ideally permanently in `~/.zshrc`). No per-release release-notes file is needed — the appcast's Sparkle update-dialog description is auto-generated as a link to the GitHub release page, and the GitHub release body is auto-generated from merged PRs by `gh release create --generate-notes`.
 
 Then the pipeline itself:
 
 ```bash
-./scripts/release.sh        # bumps CURRENT_PROJECT_VERSION, builds signed Release, zips
+./scripts/release.sh        # prompts for new MARKETING_VERSION (empty = keep current),
+                            # bumps CURRENT_PROJECT_VERSION, regenerates xcodeproj,
+                            # builds signed Release, zips
 ./scripts/notarize.sh       # submits zip, waits, staples ticket, verifies with spctl
 ./scripts/package-dmg.sh    # wraps stapled .app in signed + notarized + stapled DMG
 ./scripts/publish-update.sh # signs DMG, writes docs/appcast.xml, copies DMG to
                             # release/Clearway.dmg, prints gh release cmd
 ```
+
+`release.sh` shows the current `MARKETING_VERSION` and prompts for the new one at the top of its run — enter e.g. `1.0.1` to bump, or press Enter to keep the current value. Both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` are then written to `project.yml` and `xcodegen generate` propagates them into `Clearway.xcodeproj/project.pbxproj` before `xcodebuild` runs.
 
 Total wall-clock time is about 10 minutes — dominated by two notary round-trips (one for the `.app` inside the zip, one for the DMG wrapper).
 

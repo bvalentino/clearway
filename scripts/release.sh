@@ -12,11 +12,13 @@ cd "$PROJECT_DIR"
 
 PRODUCT_NAME="Clearway"
 clearway_read_versions
+clearway_prompt_marketing_version
 VERSION="$MARKETING_VERSION"
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Bump CURRENT_PROJECT_VERSION in project.yml and regenerate the xcodeproj so
-# the new build number is baked into project.pbxproj before xcodebuild runs.
+# both the new marketing version and build number are baked into project.pbxproj
+# before xcodebuild runs.
 clearway_bump_build_number
 xcodegen generate
 
