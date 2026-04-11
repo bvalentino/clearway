@@ -80,6 +80,27 @@ if [ ! -f "$DMG_PATH" ]; then
   exit 1
 fi
 
+# --- Notarization / Gatekeeper guardrail --------------------------------------
+# package-dmg.sh notarizes, staples, and Gatekeeper-validates the DMG it
+# produces, but this script may be invoked with an arbitrary path. Signing
+# and publishing an un-stapled or pre-notarization DMG would mean the appcast
+# advertises an EdDSA-valid but Gatekeeper-rejected update — so verify the
+# DMG itself passes stapler + spctl before we touch anything else.
+echo "==> Validating $(basename "$DMG_PATH") is stapled and notarized..."
+if ! xcrun stapler validate "$DMG_PATH" >/dev/null 2>&1; then
+  echo "Error: $DMG_PATH is not stapled."
+  echo "       Only notarized+stapled DMGs should be published. Re-run"
+  echo "       ./scripts/package-dmg.sh (which notarizes and staples) and"
+  echo "       point this script at the resulting DMG."
+  exit 1
+fi
+if ! spctl -a -t open --context context:primary-signature "$DMG_PATH" >/dev/null 2>&1; then
+  echo "Error: Gatekeeper rejected $DMG_PATH."
+  echo "       spctl output (for diagnosis):"
+  spctl -a -t open --context context:primary-signature -vv "$DMG_PATH" || true
+  exit 1
+fi
+
 # --- Version guardrail ---------------------------------------------------------
 # Mount the DMG read-only, read the bundled .app's CFBundleVersion, compare with
 # project.yml's CURRENT_PROJECT_VERSION, and detach immediately via trap so a
@@ -105,6 +126,22 @@ fi
 APP_IN_DMG=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.app" -type d | head -1)
 if [ -z "$APP_IN_DMG" ]; then
   echo "Error: no .app found inside $DMG_PATH"
+  exit 1
+fi
+
+# Defense in depth: even if the outer DMG is stapled, confirm the inner .app
+# is also stapled and Gatekeeper-acceptable. This catches the "stale DMG with
+# same CFBundleVersion but unnotarized .app" class of operator error.
+if ! xcrun stapler validate "$APP_IN_DMG" >/dev/null 2>&1; then
+  echo "Error: $(basename "$APP_IN_DMG") inside the DMG is not stapled."
+  echo "       Re-run ./scripts/notarize.sh → ./scripts/package-dmg.sh to produce"
+  echo "       a notarized+stapled DMG before publishing."
+  exit 1
+fi
+if ! spctl -a -t exec "$APP_IN_DMG" >/dev/null 2>&1; then
+  echo "Error: Gatekeeper rejected $(basename "$APP_IN_DMG") inside the DMG."
+  echo "       spctl output (for diagnosis):"
+  spctl -a -t exec -vv "$APP_IN_DMG" || true
   exit 1
 fi
 
