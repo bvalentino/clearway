@@ -1,5 +1,6 @@
 import SwiftUI
 import GhosttyKit
+import Sparkle
 
 /// Configure environment and call ghostty_init once at process startup,
 /// before any config/app is created.
@@ -97,10 +98,16 @@ struct ClearwayApp: App {
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
     @StateObject private var settings = SettingsManager()
+    private let updaterController: SPUStandardUpdaterController
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
         _ghosttyApp = StateObject(wrappedValue: Ghostty.App())
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
     }
 
     @Environment(\.openWindow) private var openWindow
@@ -120,6 +127,7 @@ struct ClearwayApp: App {
                 Button("About Clearway") {
                     AboutWindowController.shared.show()
                 }
+                CheckForUpdatesView(updater: updaterController.updater)
                 Divider()
                 Button("Ghostty Settings\u{2026}") {
                     ghosttyApp.openConfigFile()
@@ -173,6 +181,41 @@ struct ClearwayApp: App {
     private func showProjectSelector() {
         ProjectSelectorWindowController.shared.show(projectList: projectList) { [openWindow] path in
             openWindow(value: path)
+        }
+    }
+}
+
+/// Menu item that drives Sparkle's "Check for Updates…" flow and
+/// disables itself while an update check is already in progress.
+private struct CheckForUpdatesView: View {
+    @ObservedObject private var checkForUpdatesViewModel: CheckForUpdatesViewModel
+    private let updater: SPUUpdater
+
+    init(updater: SPUUpdater) {
+        self.updater = updater
+        self.checkForUpdatesViewModel = CheckForUpdatesViewModel(updater: updater)
+    }
+
+    var body: some View {
+        Button("Check for Updates\u{2026}") {
+            updater.checkForUpdates()
+        }
+        .disabled(!checkForUpdatesViewModel.canCheckForUpdates)
+    }
+}
+
+/// Observes `SPUUpdater.canCheckForUpdates` so the menu item reflects
+/// Sparkle's internal "check already in progress" state.
+@MainActor
+private final class CheckForUpdatesViewModel: ObservableObject {
+    @Published var canCheckForUpdates = false
+    private var observation: NSKeyValueObservation?
+
+    init(updater: SPUUpdater) {
+        observation = updater.observe(\.canCheckForUpdates, options: [.initial]) { [weak self] updater, _ in
+            Task { @MainActor in
+                self?.canCheckForUpdates = updater.canCheckForUpdates
+            }
         }
     }
 }

@@ -18,6 +18,7 @@
 		269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4224CF2CA76BDF5405FD737D /* Ghostty.swift */; };
 		2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */; };
 		2BF186BD2AAC70BBA557891C /* ProjectHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */; };
+		2E94F35E227CD1A673BF7C0E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A834CA46BCB2AE8057A4A151 /* Sparkle */; };
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
 		3C18348092C81FF44FD574A6 /* NotesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */; };
@@ -153,6 +154,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B04975A2CFF84C4577C01698 /* cmark in Frameworks */,
+				2E94F35E227CD1A673BF7C0E /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,6 +281,8 @@
 				3C90281E30846A7DB0538E47 /* Sources */,
 				9A4468458EE7BF681552B08D /* Resources */,
 				E0D2FEF719280E7DF2AF5F6C /* Frameworks */,
+				E5A9A68B0F924E199B2EE9F1 /* Inject Sparkle Info.plist keys */,
+				42D905E6CF53FC22AE2DABFA /* Re-sign Sparkle helpers */,
 				E4C30596A3613D00F7E6B517 /* SwiftLint */,
 			);
 			buildRules = (
@@ -288,6 +292,7 @@
 			name = Clearway;
 			packageProductDependencies = (
 				56382C26DF738F11CBAD2CFC /* cmark */,
+				A834CA46BCB2AE8057A4A151 /* Sparkle */,
 			);
 			productName = Clearway;
 			productReference = 3E00D38FF787B79BF5C000ED /* Clearway.app */;
@@ -332,6 +337,7 @@
 			mainGroup = A614019FF2C644C322B19FAD;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				4D3019AEFAC59B45DF5CF058 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				287807A13F4C2CDD9DBC91D9 /* XCRemoteSwiftPackageReference "cmark-gfm" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -376,6 +382,26 @@
 			shellPath = /bin/sh;
 			shellScript = "COMMIT=$(git -C \"$PROJECT_DIR\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(echo \"$COMMIT\" | tr -cd 'a-zA-Z0-9._-')\nTMPFILE=$(mktemp)\ncat > \"$TMPFILE\" <<SWIFT\n// Auto-generated at build time — do not edit.\nenum BuildInfo {\n    static let commit = \"$COMMIT\"\n}\nSWIFT\nTARGET=\"$PROJECT_DIR/Sources/App/BuildInfo.generated.swift\"\nif ! cmp -s \"$TMPFILE\" \"$TARGET\"; then\n  mv \"$TMPFILE\" \"$TARGET\"\nelse\n  rm \"$TMPFILE\"\nfi\n";
 		};
+		42D905E6CF53FC22AE2DABFA /* Re-sign Sparkle helpers */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework",
+			);
+			name = "Re-sign Sparkle helpers";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nIDENTITY=\"Developer ID Application: Bruno Valentino (76AEQBHY3K)\"\nFRAMEWORK=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Frameworks/Sparkle.framework\"\nif [ ! -e \"$FRAMEWORK\" ]; then\n  echo \"warning: Sparkle.framework not found at $FRAMEWORK — skipping re-sign\"\n  exit 0\nfi\nsign_path() {\n  local target=\"$1\"\n  if [ ! -e \"$target\" ]; then\n    echo \"warning: Sparkle re-sign target missing: $target\"\n    return 0\n  fi\n  echo \"==> re-signing $(basename \"$target\")\"\n  /usr/bin/codesign --force --options runtime --timestamp --sign \"$IDENTITY\" \"$target\"\n}\nsign_path \"$FRAMEWORK/Versions/B/XPCServices/Downloader.xpc\"\nsign_path \"$FRAMEWORK/Versions/B/XPCServices/Installer.xpc\"\nsign_path \"$FRAMEWORK/Versions/B/Updater.app\"\nsign_path \"$FRAMEWORK/Versions/B/Autoupdate\"\nsign_path \"$FRAMEWORK\"\n/usr/bin/codesign --verify --deep --strict --verbose=2 \"$FRAMEWORK\"\n";
+		};
 		E4C30596A3613D00F7E6B517 /* SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -394,6 +420,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if command -v swiftlint >/dev/null 2>&1; then\n  swiftlint lint --quiet\nelse\n  echo \"warning: SwiftLint not installed — brew install swiftlint\"\nfi\n";
+		};
+		E5A9A68B0F924E199B2EE9F1 /* Inject Sparkle Info.plist keys */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Inject Sparkle Info.plist keys";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"warning: Sparkle inject — Info.plist not found at $PLIST; skipping.\"\n  exit 0\nfi\nplutil -replace SUFeedURL -string \"$SPARKLE_FEED_URL\" \"$PLIST\"\nplutil -replace SUPublicEDKey -string \"$SPARKLE_PUBLIC_KEY\" \"$PLIST\"\nplutil -replace SUEnableAutomaticChecks -bool YES \"$PLIST\"\nplutil -replace SUScheduledCheckInterval -integer 86400 \"$PLIST\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -525,6 +571,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac;
 				PRODUCT_NAME = Clearway;
 				SDKROOT = macosx;
+				SPARKLE_FEED_URL = "https://bvalentino.github.io/clearway/appcast.xml";
+				SPARKLE_PUBLIC_KEY = "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY=";
 				SWIFT_INCLUDE_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
 				);
@@ -728,6 +776,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac;
 				PRODUCT_NAME = Clearway;
 				SDKROOT = macosx;
+				SPARKLE_FEED_URL = "https://bvalentino.github.io/clearway/appcast.xml";
+				SPARKLE_PUBLIC_KEY = "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY=";
 				SWIFT_INCLUDE_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
 				);
@@ -806,6 +856,14 @@
 				minimumVersion = 2.1.0;
 			};
 		};
+		4D3019AEFAC59B45DF5CF058 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -813,6 +871,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 287807A13F4C2CDD9DBC91D9 /* XCRemoteSwiftPackageReference "cmark-gfm" */;
 			productName = cmark;
+		};
+		A834CA46BCB2AE8057A4A151 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D3019AEFAC59B45DF5CF058 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
