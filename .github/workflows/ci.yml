@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --quiet
+
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: brew install zig xcodegen
+
+      - name: Determine cache key inputs
+        id: cache-keys
+        run: |
+          echo "zig-version=$(zig version)" >> "$GITHUB_OUTPUT"
+          echo "ghostty-sha=$(git rev-parse HEAD:ghostty)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore GhosttyKit cache
+        id: xcframework-cache
+        uses: actions/cache@v4
+        with:
+          path: ghostty/macos/GhosttyKit.xcframework
+          key: ghostty-xcframework-${{ runner.os }}-zig-${{ steps.cache-keys.outputs.zig-version }}-${{ steps.cache-keys.outputs.ghostty-sha }}
+
+      - name: Ensure Metal Toolchain
+        if: steps.xcframework-cache.outputs.cache-hit != 'true'
+        run: |
+          if ! xcrun metal --version &> /dev/null; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+
+      - name: Build GhosttyKit
+        if: steps.xcframework-cache.outputs.cache-hit != 'true'
+        run: cd ghostty && zig build -Demit-xcframework=true -Doptimize=ReleaseFast
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Create BuildInfo placeholder
+        run: |
+          cat > Sources/App/BuildInfo.generated.swift <<'SWIFT'
+          // Auto-generated at build time — do not edit.
+          enum BuildInfo {
+              static let commit = "ci"
+          }
+          SWIFT
+
+      - name: Build
+        run: >
+          xcodebuild -project Clearway.xcodeproj -scheme Clearway
+          -configuration Debug -destination 'platform=macOS'
+          CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Test
+        run: >
+          xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests
+          -configuration Debug -destination 'platform=macOS'
+          CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          test
