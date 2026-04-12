@@ -20,6 +20,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         case new
         case readyToStart = "ready_to_start"
         case inProgress = "in_progress"
+        case qa
         case readyForReview = "ready_for_review"
         case done
         case canceled
@@ -29,6 +30,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             case .new: return "New"
             case .readyToStart: return "Ready to Start"
             case .inProgress: return "In Progress"
+            case .qa: return "QA"
             case .readyForReview: return "Ready for Review"
             case .done: return "Done"
             case .canceled: return "Canceled"
@@ -39,7 +41,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         var isBacklog: Bool { self == .new || self == .readyToStart }
 
         /// Whether this status represents active work in a worktree.
-        var isActive: Bool { self == .inProgress || self == .readyForReview }
+        var isActive: Bool { self == .inProgress || self == .qa || self == .readyForReview }
 
         /// Migrate legacy status values from older task files.
         init?(migrating rawValue: String) {

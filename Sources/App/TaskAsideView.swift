@@ -116,6 +116,6 @@ struct TaskAsideView: View {
     }
 
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        [.inProgress, .readyForReview, .done, .canceled]
+        [.inProgress, .qa, .readyForReview, .done, .canceled]
     }
 }

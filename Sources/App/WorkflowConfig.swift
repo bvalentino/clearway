@@ -11,6 +11,7 @@ struct WorkflowConfig: Equatable {
     var agentCommand: String?
     var agentTimeoutMs: Int?
     var stateCommandInProgress: String?
+    var stateCommandQa: String?
     var stateCommandReadyForReview: String?
     var stateCommandDone: String?
     var stateCommandCanceled: String?
@@ -19,16 +20,18 @@ struct WorkflowConfig: Equatable {
     /// Whether this config has any executable content that needs trust approval.
     var hasExecutableConfig: Bool {
         hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
-            || stateCommandInProgress != nil || stateCommandReadyForReview != nil
-            || stateCommandDone != nil || stateCommandCanceled != nil
+            || stateCommandInProgress != nil || stateCommandQa != nil
+            || stateCommandReadyForReview != nil || stateCommandDone != nil
+            || stateCommandCanceled != nil
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
     /// Changes when any hook command, agent command, or state command changes.
     var hooksFingerprint: String {
         let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
-                       stateCommandInProgress, stateCommandReadyForReview,
-                       stateCommandDone, stateCommandCanceled]
+                       stateCommandInProgress, stateCommandQa,
+                       stateCommandReadyForReview, stateCommandDone,
+                       stateCommandCanceled]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
@@ -102,6 +105,7 @@ struct WorkflowConfig: Equatable {
             agentCommand: frontmatter["agent.command"],
             agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
             stateCommandInProgress: frontmatter["state_commands.in_progress"],
+            stateCommandQa: frontmatter["state_commands.qa"],
             stateCommandReadyForReview: frontmatter["state_commands.ready_for_review"],
             stateCommandDone: frontmatter["state_commands.done"],
             stateCommandCanceled: frontmatter["state_commands.canceled"],
@@ -220,6 +224,7 @@ struct WorkflowConfig: Equatable {
     func stateCommand(for status: WorkTask.Status) -> String? {
         switch status {
         case .inProgress: return stateCommandInProgress
+        case .qa: return stateCommandQa
         case .readyForReview: return stateCommandReadyForReview
         case .done: return stateCommandDone
         case .canceled: return stateCommandCanceled

@@ -421,7 +421,7 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// Continues a completed task — re-launches agent with a continuation prompt.
     func continueTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == .done || task.status == .readyForReview,
+        guard task.status == .done || task.status == .readyForReview || task.status == .qa,
               let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
 

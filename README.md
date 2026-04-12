@@ -57,7 +57,7 @@ Configuration is in `.swiftlint.yml`.
 
 A project can define task-lifecycle behavior in a `WORKFLOW.md` at its root. The file uses YAML frontmatter for configuration and a markdown body as the agent prompt template.
 
-State commands surface a play button next to the status picker in the task aside panel. Clicking it pastes the rendered command into the active terminal. Recognized keys under `state_commands`: `in_progress`, `ready_for_review`, `done`, `canceled`.
+State commands surface a play button next to the status picker in the task aside panel. Clicking it pastes the rendered command into the active terminal. Recognized keys under `state_commands`: `in_progress`, `qa`, `ready_for_review`, `done`, `canceled`.
 
 ```markdown
 ---
