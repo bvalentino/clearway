@@ -430,7 +430,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nGIT_DIST=\"$PROJECT_DIR/Resources/git-dist\"\nif [ -x \"$GIT_DIST/git\" ] && [ -x \"$GIT_DIST/git-core/git-remote-https\" ]; then\n  echo \"note: Bundled git runtime already present at $GIT_DIST — skipping build\"\n  exit 0\nfi\necho \"==> Building bundled git runtime for Release...\"\n\"$PROJECT_DIR/scripts/bundle-git.sh\"\n";
+			shellScript = "set -e\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nGIT_DIST=\"$PROJECT_DIR/Resources/git-dist\"\n# Always rebuild from the pinned source for Release to guarantee\n# provenance — never reuse a stale or locally modified payload.\nif [ -d \"$GIT_DIST\" ]; then\n  echo \"==> Removing existing git-dist to rebuild from pinned source...\"\n  rm -rf \"$GIT_DIST\"\nfi\necho \"==> Building bundled git runtime for Release...\"\n\"$PROJECT_DIR/scripts/bundle-git.sh\"\n";
 		};
 		E4C30596A3613D00F7E6B517 /* SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
