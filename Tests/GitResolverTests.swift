@@ -28,7 +28,9 @@ final class GitResolverTests: XCTestCase {
     func testResolvedPathIsOneOfExpectedLocations() {
         let resolved = GitResolver.resolvedPath
         let allExpected = GitResolver.searchPaths + [
-            Bundle.main.resourceURL?.appendingPathComponent("git").path,
+            Bundle.main.resourceURL?
+                .appendingPathComponent("git-dist")
+                .appendingPathComponent("git").path,
             "/usr/bin/git", // last-resort fallback
         ].compactMap { $0 }
         XCTAssertTrue(

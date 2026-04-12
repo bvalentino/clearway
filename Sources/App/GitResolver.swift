@@ -28,8 +28,7 @@ enum GitResolver {
         }
 
         // Fallback: bundled git inside the app bundle
-        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("git").path,
-           fm.isExecutableFile(atPath: bundled) {
+        if let bundled = bundledGitPath, fm.isExecutableFile(atPath: bundled) {
             logger.warning("No system git found; using bundled git at \(bundled, privacy: .public)")
             return bundled
         }
@@ -38,5 +37,32 @@ enum GitResolver {
         // doesn't exist — callers already handle errors from runCommand.
         logger.error("No git binary found in well-known locations or app bundle")
         return "/usr/bin/git"
+    }()
+
+    /// Path to the bundled git binary, or nil if not present.
+    private static let bundledGitPath: String? = {
+        Bundle.main.resourceURL?
+            .appendingPathComponent("git-dist")
+            .appendingPathComponent("git")
+            .path
+    }()
+
+    /// `GIT_EXEC_PATH` for the bundled git runtime (points to the git-core
+    /// directory containing transport helpers like git-remote-https).
+    /// Nil when using a system git installation.
+    static let execPath: String? = {
+        guard let bundled = bundledGitPath,
+              resolvedPath == bundled else {
+            return nil
+        }
+        let gitCorePath = (bundled as NSString)
+            .deletingLastPathComponent
+            .appending("/git-core")
+        guard FileManager.default.fileExists(atPath: gitCorePath) else {
+            logger.warning("Bundled git-core directory missing at \(gitCorePath, privacy: .public)")
+            return nil
+        }
+        logger.info("Using bundled GIT_EXEC_PATH: \(gitCorePath, privacy: .public)")
+        return gitCorePath
     }()
 }

@@ -149,6 +149,25 @@ targets:
               exit 1
             fi
           done
+      - name: "Verify bundled git runtime"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          GIT_DIST="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Resources/git-dist"
+          if [ "$CONFIGURATION" = "Release" ]; then
+            if [ ! -x "$GIT_DIST/git" ]; then
+              echo "error: Bundled git binary missing at $GIT_DIST/git — run ./scripts/bundle-git.sh" >&2
+              exit 1
+            fi
+            if [ ! -x "$GIT_DIST/git-core/git-remote-https" ]; then
+              echo "error: git-remote-https missing at $GIT_DIST/git-core/ — remote operations will fail" >&2
+              exit 1
+            fi
+          else
+            if [ ! -d "$GIT_DIST" ]; then
+              echo "warning: Bundled git runtime not found at $GIT_DIST (Debug build — optional)"
+            fi
+          fi
       - name: SwiftLint
         basedOnDependencyAnalysis: false
         script: |

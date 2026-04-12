@@ -292,6 +292,7 @@
 				E0D2FEF719280E7DF2AF5F6C /* Frameworks */,
 				E5A9A68B0F924E199B2EE9F1 /* Inject Sparkle Info.plist keys */,
 				42D905E6CF53FC22AE2DABFA /* Re-sign Sparkle helpers */,
+				ABD4A4576B84C26318A58643 /* Verify bundled git runtime */,
 				E4C30596A3613D00F7E6B517 /* SwiftLint */,
 			);
 			buildRules = (
@@ -410,6 +411,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nIDENTITY=\"Developer ID Application: Bruno Valentino (76AEQBHY3K)\"\nAPP=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app\"\nFRAMEWORK=\"$APP/Contents/Frameworks/Sparkle.framework\"\n# On Release builds every step of Sparkle wiring is load-bearing, so\n# fail the build if anything is missing. Using Versions/Current keeps\n# this working if Sparkle bumps its internal framework version letter.\nif [ ! -d \"$FRAMEWORK\" ]; then\n  echo \"error: Sparkle.framework not found at $FRAMEWORK\" >&2\n  exit 1\nfi\nVERSIONS_CURRENT=\"$FRAMEWORK/Versions/Current\"\nif [ ! -e \"$VERSIONS_CURRENT\" ]; then\n  echo \"error: $VERSIONS_CURRENT missing — Sparkle framework layout unexpected\" >&2\n  exit 1\nfi\nsign_path() {\n  local target=\"$1\"\n  if [ ! -e \"$target\" ]; then\n    echo \"error: Sparkle re-sign target missing: $target\" >&2\n    exit 1\n  fi\n  echo \"==> re-signing $(basename \"$target\")\"\n  /usr/bin/codesign --force --options runtime --timestamp --sign \"$IDENTITY\" \"$target\"\n}\nsign_path \"$VERSIONS_CURRENT/XPCServices/Downloader.xpc\"\nsign_path \"$VERSIONS_CURRENT/XPCServices/Installer.xpc\"\nsign_path \"$VERSIONS_CURRENT/Updater.app\"\nsign_path \"$VERSIONS_CURRENT/Autoupdate\"\nsign_path \"$FRAMEWORK\"\n/usr/bin/codesign --verify --deep --strict --verbose=2 \"$FRAMEWORK\"\n# Post-verification: confirm the Sparkle plist keys made it into the\n# final app so a silent skip in the inject phase cannot slip through.\nAPP_PLIST=\"$APP/Contents/Info.plist\"\nif [ ! -f \"$APP_PLIST\" ]; then\n  echo \"error: Info.plist missing at $APP_PLIST after build\" >&2\n  exit 1\nfi\nfor key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUScheduledCheckInterval; do\n  if ! /usr/bin/plutil -extract \"$key\" raw -o - \"$APP_PLIST\" >/dev/null 2>&1; then\n    echo \"error: $key missing from $APP_PLIST — Sparkle inject phase did not run\" >&2\n    exit 1\n  fi\ndone\n";
+		};
+		ABD4A4576B84C26318A58643 /* Verify bundled git runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify bundled git runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nGIT_DIST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Resources/git-dist\"\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  if [ ! -x \"$GIT_DIST/git\" ]; then\n    echo \"error: Bundled git binary missing at $GIT_DIST/git — run ./scripts/bundle-git.sh\" >&2\n    exit 1\n  fi\n  if [ ! -x \"$GIT_DIST/git-core/git-remote-https\" ]; then\n    echo \"error: git-remote-https missing at $GIT_DIST/git-core/ — remote operations will fail\" >&2\n    exit 1\n  fi\nelse\n  if [ ! -d \"$GIT_DIST\" ]; then\n    echo \"warning: Bundled git runtime not found at $GIT_DIST (Debug build — optional)\"\n  fi\nfi\n";
 		};
 		E4C30596A3613D00F7E6B517 /* SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;

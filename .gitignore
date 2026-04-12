@@ -7,7 +7,7 @@ Sources/App/BuildInfo.generated.swift
 # Build artifacts
 build/
 release/
-Resources/git
+Resources/git-dist
 
 # OS
 .DS_Store
