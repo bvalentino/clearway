@@ -42,8 +42,10 @@ struct ProjectSettingsView: View {
 
     private static let workflowFooter = """
         Defines how agents handle tasks. YAML frontmatter configures hooks \
-        (after_create, before_run), agent command, and timeout. \
-        The markdown body is the prompt template sent to the agent. \
+        (after_create, before_run), agent command, timeout, and state commands \
+        (in_progress, ready_for_review, done, canceled) that surface a play button \
+        in the task aside panel. The markdown body is the prompt template sent to \
+        the agent, and also the in_progress play-button fallback. \
         Variables: {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}, \
         {{ attempt }}, {{ status.ready_for_review }}, {{ status.done }}, etc.
         """
@@ -55,6 +57,10 @@ struct ProjectSettingsView: View {
           before_run: echo "starting agent"
         agent:
           command: claude
+        state_commands:
+          ready_for_review: REPLACE ME
+          done: REPLACE ME
+          canceled: REPLACE ME
         ---
 
         Read the task at {{ task.path }} and complete it.
