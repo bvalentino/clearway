@@ -157,11 +157,10 @@ final class WorktreeManagerTests: XCTestCase {
         let jsonl = "{\"type\":\"custom-title\",\"customTitle\":\"My Claude Title\",\"sessionId\":\"test\"}\n"
         try jsonl.write(toFile: sessionFile, atomically: true, encoding: .utf8)
 
-        let manager = WorktreeManager(projectPath: "/tmp/test")
-        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
-        manager.loadTitles()
+        let worktrees = [makeWorktree(path: worktreePath, isMain: false)]
+        let titles = WorktreeManager.fetchTitles(for: worktrees)
 
-        XCTAssertEqual(manager.worktreeTitles[worktreePath], "My Claude Title")
+        XCTAssertEqual(titles[worktreePath], "My Claude Title")
 
         try fm.removeItem(atPath: projectDir)
     }
@@ -185,11 +184,10 @@ final class WorktreeManagerTests: XCTestCase {
         """
         try jsonl.write(toFile: sessionFile, atomically: true, encoding: .utf8)
 
-        let manager = WorktreeManager(projectPath: "/tmp/test")
-        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
-        manager.loadTitles()
+        let worktrees = [makeWorktree(path: worktreePath, isMain: false)]
+        let titles = WorktreeManager.fetchTitles(for: worktrees)
 
-        XCTAssertEqual(manager.worktreeTitles[worktreePath], "Updated Title")
+        XCTAssertEqual(titles[worktreePath], "Updated Title")
 
         try fm.removeItem(atPath: projectDir)
     }
@@ -220,11 +218,10 @@ final class WorktreeManagerTests: XCTestCase {
         let fileSize = attrs[.size] as! UInt64
         XCTAssertGreaterThan(fileSize, 16384, "Test file should be larger than 16KB to exceed head+tail window")
 
-        let manager = WorktreeManager(projectPath: "/tmp/test")
-        manager.worktrees = [makeWorktree(path: worktreePath, isMain: false)]
-        manager.loadTitles()
+        let worktrees = [makeWorktree(path: worktreePath, isMain: false)]
+        let titles = WorktreeManager.fetchTitles(for: worktrees)
 
-        XCTAssertEqual(manager.worktreeTitles[worktreePath], "Early Title")
+        XCTAssertEqual(titles[worktreePath], "Early Title")
 
         try fm.removeItem(atPath: projectDir)
     }
