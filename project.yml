@@ -149,7 +149,7 @@ targets:
               exit 1
             fi
           done
-      - name: "Verify bundled git runtime"
+      - name: "Sign and verify bundled git runtime"
         basedOnDependencyAnalysis: false
         script: |
           set -e
@@ -163,6 +163,22 @@ targets:
               echo "error: git-remote-https missing at $GIT_DIST/git-core/ — remote operations will fail" >&2
               exit 1
             fi
+            IDENTITY="Developer ID Application: Bruno Valentino (76AEQBHY3K)"
+            # Sign each Mach-O binary under git-dist (main binary + helpers)
+            for binary in "$GIT_DIST/git" "$GIT_DIST/git-core/"*; do
+              [ -f "$binary" ] || continue
+              if file "$binary" | grep -q "Mach-O"; then
+                echo "==> signing $(basename "$binary")"
+                /usr/bin/codesign --force --options runtime --timestamp --sign "$IDENTITY" "$binary"
+              fi
+            done
+            # Verify all signatures
+            for binary in "$GIT_DIST/git" "$GIT_DIST/git-core/"*; do
+              [ -f "$binary" ] || continue
+              if file "$binary" | grep -q "Mach-O"; then
+                /usr/bin/codesign --verify --strict --verbose=2 "$binary"
+              fi
+            done
           else
             if [ ! -d "$GIT_DIST" ]; then
               echo "warning: Bundled git runtime not found at $GIT_DIST (Debug build — optional)"

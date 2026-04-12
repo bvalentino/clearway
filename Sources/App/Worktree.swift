@@ -533,11 +533,11 @@ class WorktreeManager: ObservableObject {
         if args.first == "git" {
             process.executableURL = URL(fileURLWithPath: GitResolver.resolvedPath)
             process.arguments = Array(args.dropFirst())
+            var env = ShellEnvironment.processEnvironment
             if let execPath = GitResolver.execPath {
-                var env = ShellEnvironment.processEnvironment
                 env["GIT_EXEC_PATH"] = execPath
-                process.environment = env
             }
+            process.environment = env
         } else {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = args

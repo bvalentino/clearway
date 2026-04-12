@@ -6,8 +6,8 @@
 #   Resources/git-dist/git              — universal main binary
 #   Resources/git-dist/git-core/        — transport helpers (GIT_EXEC_PATH target)
 #
-# Usage: ./scripts/bundle-git.sh [git-version]
-#   e.g. ./scripts/bundle-git.sh 2.47.1
+# Usage: ./scripts/bundle-git.sh [git-version] [sha256]
+#   e.g. ./scripts/bundle-git.sh 2.47.1 f3d8f9bb23ae...
 #
 # Prerequisites: Xcode (or Command Line Tools) — provides the compiler,
 # system curl, and system zlib that git links against.
@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 GIT_VERSION="${1:-2.47.1}"
+GIT_SHA256="${2:-f3d8f9bb23ae392374e91cd9d395970dabc5b9c5ee72f39884613cd84a6ed310}"
 GIT_TARBALL="git-${GIT_VERSION}.tar.xz"
 GIT_URL="https://mirrors.edge.kernel.org/pub/software/scm/git/${GIT_TARBALL}"
 BUILD_DIR="$(mktemp -d)"
@@ -29,6 +30,15 @@ echo "==> Downloading git ${GIT_VERSION}..."
 curl --fail --show-error --location \
   --retry 3 --retry-delay 5 --retry-all-errors \
   -o "$BUILD_DIR/$GIT_TARBALL" "$GIT_URL"
+
+echo "==> Verifying SHA256..."
+ACTUAL_SHA256=$(shasum -a 256 "$BUILD_DIR/$GIT_TARBALL" | awk '{print $1}')
+if [ "$ACTUAL_SHA256" != "$GIT_SHA256" ]; then
+  echo "error: SHA256 mismatch for ${GIT_TARBALL}" >&2
+  echo "  expected: ${GIT_SHA256}" >&2
+  echo "  got:      ${ACTUAL_SHA256}" >&2
+  exit 1
+fi
 
 echo "==> Extracting..."
 tar xf "$BUILD_DIR/$GIT_TARBALL" -C "$BUILD_DIR"
