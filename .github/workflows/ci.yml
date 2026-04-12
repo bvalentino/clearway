@@ -12,7 +12,7 @@ concurrency:
 jobs:
   lint:
     name: SwiftLint
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -26,7 +26,7 @@ jobs:
 
   build-and-test:
     name: Build & Test
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -99,7 +99,6 @@ jobs:
           -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
           -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
-          SWIFT_VERSION=6
           build
 
       - name: Test
@@ -109,5 +108,4 @@ jobs:
           -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
           -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
-          SWIFT_VERSION=6
           test
