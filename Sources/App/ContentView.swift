@@ -439,8 +439,7 @@ struct ContentView: View {
                     || code == kVK_Return || code == kVK_ANSI_KeypadEnter else {
                 return event
             }
-            guard let tableView = NSApp.keyWindow?.firstResponder as? NSTableView,
-                  tableView.isSidebarTableView else { return event }
+            guard NSApp.keyWindow?.firstResponder is NSTableView else { return event }
             if code == kVK_UpArrow || code == kVK_DownArrow {
                 sidebarArrowKeyInFlight = true
                 DispatchQueue.main.async { sidebarArrowKeyInFlight = false }

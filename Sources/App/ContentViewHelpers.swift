@@ -112,18 +112,6 @@ struct WorktreeStatusBar: View {
     }
 }
 
-extension NSTableView {
-    /// True when this table view is the backing view (or descendant) of the sidebar `List`.
-    var isSidebarTableView: Bool {
-        var view: NSView? = self
-        while let current = view {
-            if current.accessibilityIdentifier() == "SidebarList" { return true }
-            view = current.superview
-        }
-        return false
-    }
-}
-
 /// A terminal pane that observes its surface's focus state and draws a border when focused.
 struct FocusableTerminal: View {
     @ObservedObject var surfaceView: Ghostty.SurfaceView

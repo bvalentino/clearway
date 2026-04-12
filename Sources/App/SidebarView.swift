@@ -69,7 +69,6 @@ struct SidebarView: View {
             .padding(12)
         }
         .listStyle(.sidebar)
-        .accessibilityIdentifier("SidebarList")
         .safeAreaInset(edge: .top, spacing: 0) {
             Text(projectName)
                 .font(.system(size: 13))
