@@ -106,13 +106,12 @@ struct HookTerminalView: View {
                         onDismiss()
                     }
                 }
-            } else {
-                Button("Run in Background") {
-                    guard !completed else { return }
-                    completed = true
-                    hook.onContinue()
-                    onDismiss()
-                }
+            }
+            Button("Run in Background") {
+                guard !completed else { return }
+                completed = true
+                hook.onContinue()
+                onDismiss()
             }
         }
         .padding(.horizontal, 12)
