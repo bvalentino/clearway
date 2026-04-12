@@ -18,20 +18,25 @@ struct WorkflowConfig: Equatable {
     var promptTemplate: String
 
     /// Whether this config has any executable content that needs trust approval.
+    /// The prompt template is included because the in-progress play button pastes
+    /// it into the active terminal, so body changes must require re-approval.
     var hasExecutableConfig: Bool {
         hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
             || stateCommandInProgress != nil || stateCommandQa != nil
             || stateCommandReadyForReview != nil || stateCommandDone != nil
             || stateCommandCanceled != nil
+            || !promptTemplate.isEmpty
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
-    /// Changes when any hook command, agent command, or state command changes.
+    /// Changes when any hook command, agent command, state command, or prompt
+    /// template body changes.
     var hooksFingerprint: String {
         let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
                        stateCommandInProgress, stateCommandQa,
                        stateCommandReadyForReview, stateCommandDone,
-                       stateCommandCanceled]
+                       stateCommandCanceled,
+                       promptTemplate.isEmpty ? nil : promptTemplate]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
