@@ -53,6 +53,11 @@ struct MarkdownEditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
+        // Refresh the coordinator's binding so derived bindings (e.g. body-only views
+        // that remap into a larger buffer) see the current getter/setter rather than
+        // the one captured at makeCoordinator time.
+        context.coordinator.updateBinding(_text)
+
         // Sync text from binding → NSTextView, guarding against feedback loops
         guard !context.coordinator.isUpdating, textView.string != text else { return }
         context.coordinator.isUpdating = true
@@ -101,6 +106,12 @@ struct MarkdownEditorView: NSViewRepresentable {
 
         init(text: Binding<String>) {
             _text = text
+        }
+
+        /// Refresh the backing binding when the parent rebuilds with a different
+        /// getter/setter (e.g. derived body-only bindings that swap semantics at runtime).
+        func updateBinding(_ binding: Binding<String>) {
+            _text = binding
         }
 
         func textDidChange(_ notification: Notification) {

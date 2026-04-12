@@ -31,7 +31,20 @@ struct WorkTaskWindow: View {
     @State private var deleted = false
     @State private var editorMode: EditorMode = .edit
     @State private var showCopiedFeedback = false
+    @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     @FocusState private var isTitleFocused: Bool
+
+    /// Editor binding — full serialized text when frontmatter is shown, body-only
+    /// when hidden (writes merge back into `editorText`, preserving frontmatter).
+    private var editorBinding: Binding<String> {
+        if showFrontmatter {
+            return $editorText
+        }
+        return Binding(
+            get: { YAML.bodyText(in: editorText) },
+            set: { newBody in editorText = YAML.replacingBody(in: editorText, with: newBody) }
+        )
+    }
 
     private enum EditorMode {
         case edit, preview
@@ -204,7 +217,7 @@ struct WorkTaskWindow: View {
             Group {
                 switch editorMode {
                 case .edit:
-                    MarkdownEditorView(text: $editorText)
+                    MarkdownEditorView(text: editorBinding)
                 case .preview:
                     MarkdownPreviewView(markdown: WorkTask.parse(from: editorText)?.body ?? "")
                 }

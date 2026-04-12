@@ -20,7 +20,20 @@ struct TaskDetailView: View {
     @State private var pendingSave: DispatchWorkItem?
     @State private var reloadingCount = 0
     @State private var showCopiedFeedback = false
+    @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     @FocusState private var isTitleFocused: Bool
+
+    /// Editor binding — full serialized text when frontmatter is shown, body-only
+    /// when hidden (writes merge back into `editorText`, preserving frontmatter).
+    private var editorBinding: Binding<String> {
+        if showFrontmatter {
+            return $editorText
+        }
+        return Binding(
+            get: { YAML.bodyText(in: editorText) },
+            set: { newBody in editorText = YAML.replacingBody(in: editorText, with: newBody) }
+        )
+    }
 
     private var task: WorkTask? {
         workTaskManager.tasks.first { $0.id == taskId }
@@ -84,7 +97,7 @@ struct TaskDetailView: View {
                 Group {
                     switch editorMode {
                     case .edit:
-                        MarkdownEditorView(text: $editorText)
+                        MarkdownEditorView(text: editorBinding)
                     case .preview:
                         MarkdownPreviewView(markdown: WorkTask.parse(from: editorText)?.body ?? "")
                     }

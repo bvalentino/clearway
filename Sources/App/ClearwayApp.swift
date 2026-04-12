@@ -98,6 +98,7 @@ struct ClearwayApp: App {
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
     @StateObject private var settings = SettingsManager()
+    @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     private let updaterController: SPUStandardUpdaterController
 
     init() {
@@ -142,6 +143,11 @@ struct ClearwayApp: App {
                     showProjectSelector()
                 }
                 .keyboardShortcut("n", modifiers: .command)
+            }
+            CommandGroup(after: .sidebar) {
+                Toggle(isOn: $showFrontmatter) {
+                    Label("Show Frontmatter", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
             }
         }
 
