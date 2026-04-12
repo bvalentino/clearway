@@ -65,9 +65,6 @@ jobs:
             cd ghostty && zig build -Demit-xcframework=true -Demit-macos-app=false -Doptimize=ReleaseFast
           fi
 
-      - name: Generate Xcode project
-        run: xcodegen generate
-
       - name: Create BuildInfo placeholder
         run: |
           cat > Sources/App/BuildInfo.generated.swift <<'SWIFT'
@@ -76,6 +73,9 @@ jobs:
               static let commit = "ci"
           }
           SWIFT
+
+      - name: Generate Xcode project
+        run: xcodegen generate
 
       - name: Restore Swift packages cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
