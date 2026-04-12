@@ -1,0 +1,14 @@
+This file lists licenses for third-party software bundled in Clearway.
+
+================================================================================
+Git
+================================================================================
+
+Git is licensed under the GNU General Public License version 2.
+
+Source code: https://github.com/git/git
+License: https://github.com/git/git/blob/master/COPYING
+
+The bundled git binary (Resources/git) is built from unmodified source using
+scripts/bundle-git.sh. Per GPL v2 Section 3, the complete corresponding source
+code is available at the URL above.

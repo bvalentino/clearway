@@ -24,6 +24,11 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+    resources:
+      - path: Resources
+        optional: true
+      - path: THIRD-PARTY-LICENSES
+        optional: true
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
