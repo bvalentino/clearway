@@ -51,14 +51,6 @@ struct PromptWindow: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Picker("Mode", selection: $editorMode) {
-                    Image(systemName: "pencil").tag(TaskEditorMode.edit)
-                    Image(systemName: "eye").tag(TaskEditorMode.preview)
-                }
-                .pickerStyle(.segmented)
-                .help("Toggle edit/preview")
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
                         let text = "# \(title)\n\n\(content)"
@@ -78,6 +70,14 @@ struct PromptWindow: View {
                 }
                 .menuIndicator(.hidden)
                 .help("More actions")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(TaskEditorMode.edit)
+                    Image(systemName: "eye").tag(TaskEditorMode.preview)
+                }
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview")
             }
         }
         .alert(

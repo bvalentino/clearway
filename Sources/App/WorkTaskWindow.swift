@@ -70,15 +70,6 @@ struct WorkTaskWindow: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Picker("Mode", selection: $editorMode) {
-                    Image(systemName: "pencil").tag(EditorMode.edit)
-                    Image(systemName: "eye").tag(EditorMode.preview)
-                }
-                .pickerStyle(.segmented)
-                .help("Toggle edit/preview")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
                         let text = "# \(title)\n\n\(bodyText)"
@@ -100,6 +91,15 @@ struct WorkTaskWindow: View {
                 }
                 .menuIndicator(.hidden)
                 .help("More actions")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Mode", selection: $editorMode) {
+                    Image(systemName: "pencil").tag(EditorMode.edit)
+                    Image(systemName: "eye").tag(EditorMode.preview)
+                }
+                .pickerStyle(.segmented)
+                .help("Toggle edit/preview")
             }
         }
         .alert(
