@@ -6,6 +6,17 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 1.1.0</title>
+      <pubDate>Sun, 12 Apr 2026 04:23:53 +0000</pubDate>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <p>See the <a href="https://github.com/bvalentino/clearway/releases/tag/v1.1.0">v1.1.0 release notes on GitHub</a> for details.</p>
+      ]]></description>
+      <enclosure url="https://github.com/bvalentino/clearway/releases/download/v1.1.0/Clearway-1.1.0-aec182b.dmg" length="10612927" type="application/octet-stream" sparkle:edSignature="Hmdwl+/L9eJu3Nbr2x2Qn2NkaEx5v4AF7JgcGhAoioOKI49ZYZWrdVoSXasgM6sE8f/XnGIboxbrhJ8+s4mXAA=="/>
+    </item>
+    <item>
       <title>Version 1.0.1</title>
       <pubDate>Sat, 11 Apr 2026 22:11:10 +0000</pubDate>
       <sparkle:version>2</sparkle:version>
