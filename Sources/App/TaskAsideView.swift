@@ -95,7 +95,14 @@ struct TaskAsideView: View {
         guard let config = workTaskCoordinator.workflowConfig,
               config.stateCommand(for: task.status) != nil else { return }
         if !config.isTrusted(forProject: projectPath) {
-            onRequestTrust?({ sendStateCommandToTerminal(task) })
+            // Bind the retry to the pane that was active when the user clicked.
+            // If they switch worktrees before approving trust, drop the action
+            // rather than paste into the wrong terminal.
+            let expectedPaneId = terminalManager.activeSurfaceId
+            onRequestTrust?({
+                guard terminalManager.activeSurfaceId == expectedPaneId else { return }
+                sendStateCommandToTerminal(task)
+            })
             return
         }
         guard let rendered = config.renderStateCommand(
