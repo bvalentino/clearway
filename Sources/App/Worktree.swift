@@ -525,12 +525,21 @@ class WorktreeManager: ObservableObject {
     }
 
     @discardableResult
-    private static func runCommand(_ args: [String], in directory: String) async throws -> Data {
+    static func runCommand(_ args: [String], in directory: String) async throws -> Data {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = args
+
+        // For git commands, use the resolved git path directly — no PATH needed.
+        // For everything else (e.g. `gh`), use /usr/bin/env with the resolved PATH.
+        if args.first == "git" {
+            process.executableURL = URL(fileURLWithPath: GitResolver.resolvedPath)
+            process.arguments = Array(args.dropFirst())
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = args
+            process.environment = ShellEnvironment.processEnvironment
+        }
+
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
-        process.environment = ShellEnvironment.processEnvironment
 
         let stdout = Pipe()
         let stderr = Pipe()
