@@ -99,6 +99,7 @@ jobs:
           -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
           -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          SWIFT_VERSION=6
           build
 
       - name: Test
@@ -108,4 +109,5 @@ jobs:
           -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
           -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          SWIFT_VERSION=6
           test
