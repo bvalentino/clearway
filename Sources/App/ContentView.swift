@@ -61,8 +61,8 @@ struct ContentView: View {
             get: { sidebarSelection },
             set: { new in
                 if sidebarSelection != new { sidebarSelection = new }
-                // Arrow-key nav over a closed worktree does not commit to detailSelection.
-                if sidebarArrowKeyInFlight, let wt = new?.worktree, !terminalManager.isOpen(wt) { return }
+                // Arrow-key nav never commits — the user must press Enter to switch.
+                if sidebarArrowKeyInFlight { return }
                 if detailSelection != new { detailSelection = new }
             }
         )
