@@ -10,6 +10,7 @@ enum MarkdownTheme {
     static let code = NSColor(red: 0.9, green: 0.45, blue: 0.45, alpha: 1)
     static let link = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1)
     static let blockquote = NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)
+    static let frontmatter = NSColor(red: 0.55, green: 0.55, blue: 0.65, alpha: 1)
 }
 
 /// Applies regex-based Markdown syntax highlighting to an NSTextStorage.
@@ -43,8 +44,13 @@ enum MarkdownSyntaxHighlighter {
             .paragraphStyle: paragraph,
         ], range: fullRange)
 
-        // Collect fenced code block ranges first to skip them in later patterns
+        // Collect ranges that should be skipped by later markdown patterns
         var codeBlockRanges: [NSRange] = []
+
+        // Frontmatter pass — must run before fenced code so the range is in codeBlockRanges
+        applyFrontmatter(textStorage: textStorage, string: string, fullRange: fullRange, codeBlockRanges: &codeBlockRanges)
+
+        // Collect fenced code block ranges to skip them in later patterns
         fencedCodeRegex.enumerateMatches(in: string, range: fullRange) { match, _, _ in
             guard let match else { return }
             codeBlockRanges.append(match.range)
@@ -149,7 +155,43 @@ enum MarkdownSyntaxHighlighter {
         }
     }
 
+    // MARK: - Private
+
+    private static func applyFrontmatter(
+        textStorage: NSTextStorage,
+        string: String,
+        fullRange: NSRange,
+        codeBlockRanges: inout [NSRange]
+    ) {
+        guard let fmMatch = frontmatterRegex.firstMatch(in: string, range: fullRange) else { return }
+        codeBlockRanges.append(fmMatch.range)
+        // Paint the entire block in the muted blue-gray base color (values + whitespace)
+        textStorage.addAttribute(.foregroundColor, value: MarkdownTheme.frontmatter, range: fmMatch.range)
+        // Color opening `---`
+        let openingRange = NSRange(location: fmMatch.range.location, length: 3)
+        textStorage.addAttribute(.foregroundColor, value: MarkdownTheme.syntax, range: openingRange)
+        // Color closing `---`: one `\n` past the end of the body capture group
+        let bodyGroup = fmMatch.range(at: 1)
+        let closingRange = NSRange(location: bodyGroup.location + bodyGroup.length + 1, length: 3)
+        textStorage.addAttribute(.foregroundColor, value: MarkdownTheme.syntax, range: closingRange)
+        // Color YAML keys (group 1) and colons (group 2) within the body
+        frontmatterKeyRegex.enumerateMatches(in: string, range: bodyGroup) { keyMatch, _, _ in
+            guard let keyMatch else { return }
+            textStorage.addAttribute(.foregroundColor, value: MarkdownTheme.heading, range: keyMatch.range(at: 1))
+            textStorage.addAttribute(.foregroundColor, value: MarkdownTheme.syntax, range: keyMatch.range(at: 2))
+        }
+    }
+
     // MARK: - Regex Patterns
+
+    private static let frontmatterRegex = try! NSRegularExpression(
+        pattern: "\\A---[ \\t]*\\n([\\s\\S]*?)\\n---[ \\t]*(?:\\n|\\z)"
+    )
+
+    private static let frontmatterKeyRegex = try! NSRegularExpression(
+        pattern: "^([\\w][\\w\\s.-]*)(:)",
+        options: .anchorsMatchLines
+    )
 
     private static let fencedCodeRegex = try! NSRegularExpression(
         pattern: "^(`{3,})[^`]*$\\n([\\s\\S]*?)^\\1\\s*$",

@@ -15,8 +15,8 @@ struct TaskDetailView: View {
     let taskId: UUID
     @Binding var editorMode: TaskEditorMode
 
-    @State private var title: String = ""
-    @State private var bodyText: String = ""
+    @State private var editorText: String = ""
+    @State private var frontmatterError: Bool = false
     @State private var pendingSave: DispatchWorkItem?
     @State private var reloadingCount = 0
     @State private var showCopiedFeedback = false
@@ -24,6 +24,23 @@ struct TaskDetailView: View {
 
     private var task: WorkTask? {
         workTaskManager.tasks.first { $0.id == taskId }
+    }
+
+    private var title: String {
+        WorkTask.parseTitle(from: editorText) ?? ""
+    }
+
+    private var titleBinding: Binding<String> {
+        Binding(
+            get: { title },
+            set: { newTitle in
+                editorText = WorkTask.replacingTitle(in: editorText, with: newTitle)
+            }
+        )
+    }
+
+    private var taskSerialized: String {
+        task?.serialized() ?? ""
     }
 
     private var terminalVisible: Bool {
@@ -35,7 +52,7 @@ struct TaskDetailView: View {
             VStack(spacing: 0) {
                 Group {
                     if editorMode == .edit {
-                        TextField("Title", text: $title)
+                        TextField("Title", text: titleBinding)
                             .textFieldStyle(.plain)
                             .focused($isTitleFocused)
                     } else {
@@ -48,6 +65,14 @@ struct TaskDetailView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 
+                if editorMode == .edit, frontmatterError {
+                    Text("Invalid frontmatter — changes won't save until fixed")
+                        .font(.caption)
+                        .foregroundStyle(.red.opacity(0.8))
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 4)
+                }
+
                 if !task.status.isBacklog {
                     WorkTaskAgentMetadata(task: task)
                         .padding(.horizontal, 20)
@@ -59,9 +84,9 @@ struct TaskDetailView: View {
                 Group {
                     switch editorMode {
                     case .edit:
-                        MarkdownEditorView(text: $bodyText)
+                        MarkdownEditorView(text: $editorText)
                     case .preview:
-                        MarkdownPreviewView(markdown: bodyText)
+                        MarkdownPreviewView(markdown: WorkTask.parse(from: editorText)?.body ?? "")
                     }
                 }
 
@@ -96,29 +121,21 @@ struct TaskDetailView: View {
                 pathBar(for: task)
             }
             .onAppear {
-                title = task.title
-                bodyText = task.body
+                editorText = task.serialized()
                 if task.title.isEmpty {
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
             }
-            .onChange(of: title) { _ in
+            .onChange(of: editorText) { _ in
                 guard reloadingCount <= 0 else { reloadingCount -= 1; return }
                 scheduleSave()
             }
-            .onChange(of: bodyText) { _ in
-                guard reloadingCount <= 0 else { reloadingCount -= 1; return }
-                scheduleSave()
-            }
-            .onChange(of: task.body) { newBody in
-                guard newBody != bodyText, pendingSave == nil else { return }
+            .onChange(of: taskSerialized) { newSerialized in
+                // Preserve in-flight user edits: skip sync while a save is pending,
+                // and skip while the buffer holds invalid frontmatter the user is still fixing.
+                guard newSerialized != editorText, pendingSave == nil, !frontmatterError else { return }
                 reloadingCount += 1
-                bodyText = newBody
-            }
-            .onChange(of: task.title) { newTitle in
-                guard newTitle != title, pendingSave == nil else { return }
-                reloadingCount += 1
-                title = newTitle
+                editorText = newSerialized
             }
             .onDisappear {
                 pendingSave?.cancel()
@@ -161,8 +178,7 @@ struct TaskDetailView: View {
     // MARK: - Save
 
     private var isDirty: Bool {
-        guard let task else { return false }
-        return task.title != title || task.body != bodyText
+        task.map { editorText != $0.serialized() } ?? false
     }
 
     private func scheduleSave() {
@@ -176,10 +192,23 @@ struct TaskDetailView: View {
     }
 
     private func saveNow() {
-        guard isDirty, var updated = task else { return }
-        updated.title = title
-        updated.body = bodyText
-        workTaskManager.updateTask(updated)
+        guard let existing = task, editorText != existing.serialized() else { return }
+        let success = workTaskManager.updateFromRawContent(editorText, expectedId: taskId)
+        if success {
+            frontmatterError = false
+            // Resync editorText to pick up the new updated_at stamp. Only bump
+            // reloadingCount when the string actually changes, otherwise
+            // onChange won't fire to decrement it and the next user edit gets swallowed.
+            if let updated = task {
+                let newSerialized = updated.serialized()
+                if newSerialized != editorText {
+                    reloadingCount += 1
+                    editorText = newSerialized
+                }
+            }
+        } else {
+            frontmatterError = true
+        }
     }
 }
 
