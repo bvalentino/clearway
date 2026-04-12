@@ -10,17 +10,33 @@ struct WorkflowConfig: Equatable {
     var hooksBeforeRun: String?
     var agentCommand: String?
     var agentTimeoutMs: Int?
+    var stateCommandInProgress: String?
+    var stateCommandQa: String?
+    var stateCommandReadyForReview: String?
+    var stateCommandDone: String?
+    var stateCommandCanceled: String?
     var promptTemplate: String
 
     /// Whether this config has any executable content that needs trust approval.
+    /// The prompt template is included because the in-progress play button pastes
+    /// it into the active terminal, so body changes must require re-approval.
     var hasExecutableConfig: Bool {
         hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
+            || stateCommandInProgress != nil || stateCommandQa != nil
+            || stateCommandReadyForReview != nil || stateCommandDone != nil
+            || stateCommandCanceled != nil
+            || !promptTemplate.isEmpty
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
-    /// Changes when any hook command or agent command changes.
+    /// Changes when any hook command, agent command, state command, or prompt
+    /// template body changes.
     var hooksFingerprint: String {
-        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand]
+        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
+                       stateCommandInProgress, stateCommandQa,
+                       stateCommandReadyForReview, stateCommandDone,
+                       stateCommandCanceled,
+                       promptTemplate.isEmpty ? nil : promptTemplate]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
@@ -93,6 +109,11 @@ struct WorkflowConfig: Equatable {
             hooksBeforeRun: frontmatter["hooks.before_run"],
             agentCommand: frontmatter["agent.command"],
             agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
+            stateCommandInProgress: frontmatter["state_commands.in_progress"],
+            stateCommandQa: frontmatter["state_commands.qa"],
+            stateCommandReadyForReview: frontmatter["state_commands.ready_for_review"],
+            stateCommandDone: frontmatter["state_commands.done"],
+            stateCommandCanceled: frontmatter["state_commands.canceled"],
             promptTemplate: body
         )
     }
@@ -182,6 +203,7 @@ struct WorkflowConfig: Equatable {
             "task.title": task.title,
             "task.body": task.body,
             "task.id": task.id.uuidString,
+            "task.worktree": task.worktree ?? "",
         ]
         if let taskPath {
             vars["task.path"] = taskPath
@@ -202,6 +224,40 @@ struct WorkflowConfig: Equatable {
         let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
         let escaped = variables.mapValues { shellEscape($0) }
         return renderTemplate(command, variables: escaped)
+    }
+
+    func stateCommand(for status: WorkTask.Status) -> String? {
+        switch status {
+        case .inProgress: return stateCommandInProgress
+        case .qa: return stateCommandQa
+        case .readyForReview: return stateCommandReadyForReview
+        case .done: return stateCommandDone
+        case .canceled: return stateCommandCanceled
+        case .new, .readyToStart: return nil
+        }
+    }
+
+    /// Whether the play button should appear for this status. In-progress falls back
+    /// to the WORKFLOW.md body when no explicit frontmatter command is defined.
+    func hasStateCommand(for status: WorkTask.Status) -> Bool {
+        if stateCommand(for: status) != nil { return true }
+        if status == .inProgress, !promptTemplate.isEmpty { return true }
+        return false
+    }
+
+    func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
+        // State commands are pasted into whatever the active terminal is running
+        // — usually an agent like Claude, not a shell — so values are interpolated
+        // as-is without shell escaping. Callers that need shell-safe quoting should
+        // write it explicitly in WORKFLOW.md, e.g. `--title "{{ task.title }}"`.
+        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
+        if let cmd = stateCommand(for: status) {
+            return renderTemplate(cmd, variables: variables)
+        }
+        if status == .inProgress, !promptTemplate.isEmpty {
+            return renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
+        }
+        return nil
     }
 
     // MARK: - Prompt Rendering

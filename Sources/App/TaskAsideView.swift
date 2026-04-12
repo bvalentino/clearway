@@ -4,10 +4,13 @@ import SwiftUI
 /// Shows a clickable task card that opens the full task window.
 struct TaskAsideView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @EnvironmentObject private var terminalManager: TerminalManager
     @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
     let projectPath: String
+    var onRequestTrust: ((@escaping () -> Void) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
@@ -65,6 +68,12 @@ struct TaskAsideView: View {
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
+                    if workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true {
+                        SendToTerminalButton(
+                            action: { sendStateCommandToTerminal(task) },
+                            disabled: terminalManager.activePane == nil
+                        )
+                    }
                 }
 
                 // Agent metadata (show for tasks that have been worked on)
@@ -82,7 +91,31 @@ struct TaskAsideView: View {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
     }
 
+    private func sendStateCommandToTerminal(_ task: WorkTask) {
+        guard let config = workTaskCoordinator.workflowConfig,
+              config.hasStateCommand(for: task.status) else { return }
+        if !config.isTrusted(forProject: projectPath) {
+            // Bind the retry to the pane that was active when the user clicked.
+            // If they switch worktrees before approving trust, drop the action
+            // rather than paste into the wrong terminal.
+            let expectedPaneId = terminalManager.activeSurfaceId
+            onRequestTrust?({
+                guard terminalManager.activeSurfaceId == expectedPaneId else { return }
+                sendStateCommandToTerminal(task)
+            })
+            return
+        }
+        guard let rendered = config.renderStateCommand(
+            for: task.status,
+            task: task,
+            taskPath: workTaskManager.filePath(for: task)
+        ),
+        let surface = terminalManager.activePane?.main else { return }
+        surface.sendPaste(rendered)
+        surface.window?.makeFirstResponder(surface)
+    }
+
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        [.inProgress, .readyForReview, .done, .canceled]
+        [.inProgress, .qa, .readyForReview, .done, .canceled]
     }
 }

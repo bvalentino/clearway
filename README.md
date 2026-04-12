@@ -53,6 +53,32 @@ swiftlint lint --quiet
 
 Configuration is in `.swiftlint.yml`.
 
+## Task workflows (`WORKFLOW.md`)
+
+A project can define task-lifecycle behavior in a `WORKFLOW.md` at its root. The file uses YAML frontmatter for configuration and a markdown body as the agent prompt template.
+
+State commands surface a play button next to the status picker in the task aside panel. Clicking it pastes the rendered command into the active terminal. Recognized keys under `state_commands`: `in_progress`, `qa`, `ready_for_review`, `done`, `canceled`.
+
+```markdown
+---
+agent:
+  command: claude
+state_commands:
+  ready_for_review: /codex:adversarial-review
+---
+Work on the following task:
+
+{{ task.title }}
+
+{{ task.body }}
+```
+
+Template variables (substituted as `{{ var }}`, interpolated as-is — add your own quoting if a state command targets a shell):
+
+- `task.title`, `task.body`, `task.id`, `task.worktree`, `task.path`
+- `attempt`
+- `status.<name>` for each status raw value
+
 ## Architecture
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the libghostty wrapper, Swift/AppKit/SwiftUI layering, runtime callback flow, and instructions for rebuilding the GhosttyKit framework.

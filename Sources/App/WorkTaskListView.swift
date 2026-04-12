@@ -495,6 +495,7 @@ extension WorkTask.Status {
         case .new: return .blue
         case .readyToStart: return .indigo
         case .inProgress: return .green
+        case .qa: return .purple
         case .readyForReview: return .orange
         case .done: return .secondary
         case .canceled: return .red
