@@ -56,6 +56,17 @@ class WorkTaskManager: ObservableObject {
         }
     }
 
+    /// Parses raw frontmatter+body content and saves the task if valid.
+    /// Returns true on success. Returns false (and does not save) if
+    /// the YAML is unparseable or the parsed id doesn't match expectedId.
+    func updateFromRawContent(_ content: String, expectedId: UUID) -> Bool {
+        guard let parsed = WorkTask.parse(from: content), parsed.id == expectedId else {
+            return false
+        }
+        updateTask(parsed)
+        return true
+    }
+
     func setStatus(_ task: WorkTask, to status: WorkTask.Status) {
         guard task.status != status else { return }
         var updated = task

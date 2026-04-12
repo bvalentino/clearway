@@ -39,6 +39,53 @@ enum YAML {
         return result
     }
 
+    // MARK: - Body Split Helpers
+
+    /// Returns the body portion of a frontmatter-tagged document (everything after the
+    /// closing `---` delimiter and its blank separator line). Falls back to the full
+    /// text when the frontmatter is malformed or missing, so the user can still see and
+    /// edit whatever is there.
+    static func bodyText(in text: String) -> String {
+        guard let range = bodyRange(in: text) else { return text }
+        return String(text[range])
+    }
+
+    /// Replaces the body portion of a frontmatter-tagged document while preserving the
+    /// frontmatter block verbatim. Ensures the result keeps the canonical `\n\n`
+    /// separator between the closing `---` and the body. When no well-formed frontmatter
+    /// is present, returns the new body as-is.
+    static func replacingBody(in text: String, with newBody: String) -> String {
+        guard let range = bodyRange(in: text) else { return newBody }
+        let before = text[..<range.lowerBound]
+        let trailingNewlines = before.reversed().prefix(while: { $0 == "\n" }).count
+        let needed = newBody.isEmpty ? 0 : max(0, 2 - trailingNewlines)
+        let separator = String(repeating: "\n", count: needed)
+        return text.replacingCharacters(in: range, with: separator + newBody)
+    }
+
+    /// Character range covering the body (after closing `---` and optional blank separator).
+    /// Returns nil when the document has no valid frontmatter delimiters.
+    private static func bodyRange(in text: String) -> Range<String.Index>? {
+        guard text.hasPrefix("---\n") else { return nil }
+        let afterOpening = text.index(text.startIndex, offsetBy: 4)
+        var searchStart = afterOpening
+        while let match = text.range(of: "\n---", range: searchStart..<text.endIndex) {
+            let afterDelim = match.upperBound
+            if afterDelim == text.endIndex {
+                return text.endIndex..<text.endIndex
+            }
+            if text[afterDelim] == "\n" {
+                var bodyStart = text.index(after: afterDelim)
+                if bodyStart < text.endIndex, text[bodyStart] == "\n" {
+                    bodyStart = text.index(after: bodyStart)
+                }
+                return bodyStart..<text.endIndex
+            }
+            searchStart = text.index(after: match.lowerBound)
+        }
+        return nil
+    }
+
     /// Parses YAML frontmatter from a string. Returns the key-value fields and the body after the closing `---`.
     /// Returns nil if the string doesn't start with `---` or has no closing delimiter.
     static func parseFrontmatter(from content: String) -> (fields: [String: String], body: String)? {

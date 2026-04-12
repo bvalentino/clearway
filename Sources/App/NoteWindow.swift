@@ -21,10 +21,23 @@ struct NoteWindow: View {
     @State private var deleted = false
     @State private var editorMode: EditorMode = .edit
     @State private var showCopiedFeedback = false
+    @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     private enum EditorMode {
         case edit, preview
+    }
+
+    /// Editor binding — full content when frontmatter is shown, body-only when hidden.
+    /// Writes merge back into `content`, preserving any frontmatter verbatim.
+    private var editorBinding: Binding<String> {
+        if showFrontmatter {
+            return $content
+        }
+        return Binding(
+            get: { YAML.bodyText(in: content) },
+            set: { newBody in content = YAML.replacingBody(in: content, with: newBody) }
+        )
     }
 
     var body: some View {
@@ -32,7 +45,7 @@ struct NoteWindow: View {
             Group {
                 switch editorMode {
                 case .edit:
-                    MarkdownEditorView(text: $content)
+                    MarkdownEditorView(text: editorBinding)
                 case .preview:
                     MarkdownPreviewView(markdown: Note.contentWithoutFrontmatter(content))
                 }

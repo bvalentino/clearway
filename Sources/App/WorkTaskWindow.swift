@@ -23,14 +23,28 @@ struct WorkTaskWindow: View {
     @StateObject private var workTaskManager: WorkTaskManager
     let taskId: UUID
 
-    @State private var title: String = ""
-    @State private var bodyText: String = ""
+    @State private var editorText: String = ""
+    @State private var frontmatterError: Bool = false
     @State private var pendingSave: DispatchWorkItem?
+    @State private var reloadingCount = 0
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
     @State private var editorMode: EditorMode = .edit
     @State private var showCopiedFeedback = false
+    @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     @FocusState private var isTitleFocused: Bool
+
+    /// Editor binding — full serialized text when frontmatter is shown, body-only
+    /// when hidden (writes merge back into `editorText`, preserving frontmatter).
+    private var editorBinding: Binding<String> {
+        if showFrontmatter {
+            return $editorText
+        }
+        return Binding(
+            get: { YAML.bodyText(in: editorText) },
+            set: { newBody in editorText = YAML.replacingBody(in: editorText, with: newBody) }
+        )
+    }
 
     private enum EditorMode {
         case edit, preview
@@ -43,6 +57,23 @@ struct WorkTaskWindow: View {
 
     private var task: WorkTask? {
         workTaskManager.tasks.first { $0.id == taskId }
+    }
+
+    private var title: String {
+        WorkTask.parseTitle(from: editorText) ?? ""
+    }
+
+    private var titleBinding: Binding<String> {
+        Binding(
+            get: { title },
+            set: { newTitle in
+                editorText = WorkTask.replacingTitle(in: editorText, with: newTitle)
+            }
+        )
+    }
+
+    private var taskSerialized: String {
+        task?.serialized() ?? ""
     }
 
     var body: some View {
@@ -72,7 +103,8 @@ struct WorkTaskWindow: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
-                        let text = "# \(title)\n\n\(bodyText)"
+                        let parsedBody = WorkTask.parse(from: editorText)?.body ?? ""
+                        let text = "# \(title)\n\n\(parsedBody)"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     } label: {
@@ -119,16 +151,24 @@ struct WorkTaskWindow: View {
         }
         .onAppear {
             if let task {
-                title = task.title
-                bodyText = task.body
+                editorText = task.serialized()
                 editorMode = task.body.isEmpty ? .edit : .preview
                 if task.title.isEmpty {
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
             }
         }
-        .onChange(of: title) { _ in scheduleSave() }
-        .onChange(of: bodyText) { _ in scheduleSave() }
+        .onChange(of: editorText) { _ in
+            guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+            scheduleSave()
+        }
+        .onChange(of: taskSerialized) { newSerialized in
+            // Preserve in-flight user edits: skip sync while a save is pending,
+            // and skip while the buffer holds invalid frontmatter the user is still fixing.
+            guard newSerialized != editorText, pendingSave == nil, !frontmatterError else { return }
+            reloadingCount += 1
+            editorText = newSerialized
+        }
         .onDisappear {
             pendingSave?.cancel()
             guard !deleted, task != nil else { return }
@@ -143,7 +183,7 @@ struct WorkTaskWindow: View {
             // Title field
             Group {
                 if editorMode == .edit {
-                    TextField("Title", text: $title)
+                    TextField("Title", text: titleBinding)
                         .textFieldStyle(.plain)
                         .focused($isTitleFocused)
                 } else {
@@ -155,6 +195,14 @@ struct WorkTaskWindow: View {
             .font(.title3)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+
+            if editorMode == .edit, frontmatterError {
+                Text("Invalid frontmatter — changes won't save until fixed")
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.8))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 4)
+            }
 
             // Agent metadata (show for tasks that have been worked on)
             if !task.status.isBacklog {
@@ -169,9 +217,9 @@ struct WorkTaskWindow: View {
             Group {
                 switch editorMode {
                 case .edit:
-                    MarkdownEditorView(text: $bodyText)
+                    MarkdownEditorView(text: editorBinding)
                 case .preview:
-                    MarkdownPreviewView(markdown: bodyText)
+                    MarkdownPreviewView(markdown: WorkTask.parse(from: editorText)?.body ?? "")
                 }
             }
             .id(taskId)
@@ -262,21 +310,33 @@ struct WorkTaskWindow: View {
 
     private func scheduleSave() {
         pendingSave?.cancel()
-        let work = DispatchWorkItem { saveNow() }
+        let work = DispatchWorkItem {
+            saveNow()
+            pendingSave = nil
+        }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     private var isDirty: Bool {
-        guard let task else { return false }
-        return task.title != title || task.body != bodyText
+        task.map { editorText != $0.serialized() } ?? false
     }
 
     private func saveNow() {
-        guard !deleted, isDirty, var updated = task else { return }
-        updated.title = title
-        updated.body = bodyText
-        workTaskManager.updateTask(updated)
+        guard !deleted, let existing = task, editorText != existing.serialized() else { return }
+        let success = workTaskManager.updateFromRawContent(editorText, expectedId: taskId)
+        if success {
+            frontmatterError = false
+            if let updated = task {
+                let newSerialized = updated.serialized()
+                if newSerialized != editorText {
+                    reloadingCount += 1
+                    editorText = newSerialized
+                }
+            }
+        } else {
+            frontmatterError = true
+        }
     }
 }
 
