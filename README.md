@@ -73,7 +73,7 @@ Work on the following task:
 {{ task.body }}
 ```
 
-Template variables (substituted as `{{ var }}`, shell-escaped inside commands):
+Template variables (substituted as `{{ var }}`, interpolated as-is — add your own quoting if a state command targets a shell):
 
 - `task.title`, `task.body`, `task.id`, `task.worktree`, `task.path`
 - `attempt`

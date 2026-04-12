@@ -241,11 +241,14 @@ struct WorkflowConfig: Equatable {
     }
 
     func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
+        // State commands are pasted into whatever the active terminal is running
+        // — usually an agent like Claude, not a shell — so values are interpolated
+        // as-is without shell escaping. Callers that need shell-safe quoting should
+        // write it explicitly in WORKFLOW.md, e.g. `--title "{{ task.title }}"`.
+        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
         if let cmd = stateCommand(for: status) {
-            return renderHookCommand(cmd, task: task, taskPath: taskPath)
+            return renderTemplate(cmd, variables: variables)
         }
-        // In-progress fallback: render the prompt template (no shell escaping — it's
-        // meant to be pasted into an agent session, not a shell).
         if status == .inProgress, !promptTemplate.isEmpty {
             return renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
         }
