@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --quiet
+
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Restore Homebrew cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/downloads
+            ~/Library/Caches/Homebrew/xcodegen--*
+          key: brew-${{ runner.os }}-xcodegen-1
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Cache GhosttyKit.xcframework
+        id: xcframework-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: ghostty/macos/GhosttyKit.xcframework
+          key: ghosttykit-${{ hashFiles('.gitmodules', 'ghostty') }}
+
+      - name: Download or build GhosttyKit.xcframework
+        if: steps.xcframework-cache.outputs.cache-hit != 'true'
+        run: |
+          if ./scripts/download-prebuilt-ghosttykit.sh; then
+            echo "Downloaded pre-built xcframework"
+          else
+            echo "Pre-built release not available, building from source"
+            brew install zig
+            if ! xcrun metal --version &> /dev/null; then
+              xcodebuild -downloadComponent MetalToolchain
+            fi
+            cd ghostty && zig build -Demit-xcframework=true -Demit-macos-app=false -Doptimize=ReleaseFast
+          fi
+
+      - name: Create BuildInfo placeholder
+        run: |
+          cat > Sources/App/BuildInfo.generated.swift <<'SWIFT'
+          // Auto-generated at build time — do not edit.
+          enum BuildInfo {
+              static let commit = "ci"
+          }
+          SWIFT
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Restore Swift packages cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: .ci-source-packages
+          key: spm-${{ runner.os }}-${{ hashFiles('Clearway.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Resolve Swift packages
+        run: |
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          mkdir -p "$SOURCE_PACKAGES_DIR"
+          xcodebuild -project Clearway.xcodeproj -scheme Clearway \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+            -resolvePackageDependencies
+
+      - name: Build
+        run: >
+          xcodebuild -project Clearway.xcodeproj -scheme Clearway
+          -configuration Debug -destination 'platform=macOS'
+          -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
+          -disableAutomaticPackageResolution
+          CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Test
+        run: >
+          xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests
+          -configuration Debug -destination 'platform=macOS'
+          -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
+          -disableAutomaticPackageResolution
+          CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
+          test
