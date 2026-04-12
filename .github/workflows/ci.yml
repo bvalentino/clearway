@@ -51,9 +51,19 @@ jobs:
           path: ghostty/macos/GhosttyKit.xcframework
           key: ghosttykit-${{ hashFiles('.gitmodules', 'ghostty') }}
 
-      - name: Download pre-built GhosttyKit.xcframework
+      - name: Download or build GhosttyKit.xcframework
         if: steps.xcframework-cache.outputs.cache-hit != 'true'
-        run: ./scripts/download-prebuilt-ghosttykit.sh
+        run: |
+          if ./scripts/download-prebuilt-ghosttykit.sh; then
+            echo "Downloaded pre-built xcframework"
+          else
+            echo "Pre-built release not available, building from source"
+            brew install zig
+            if ! xcrun metal --version &> /dev/null; then
+              xcodebuild -downloadComponent MetalToolchain
+            fi
+            cd ghostty && zig build -Demit-xcframework=true -Demit-macos-app=false -Doptimize=ReleaseFast
+          fi
 
       - name: Generate Xcode project
         run: xcodegen generate
