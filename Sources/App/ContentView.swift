@@ -254,7 +254,7 @@ struct ContentView: View {
                         guard !continued else { return }
                         continued = true
                         pending?.launch()
-                    })
+                    }, allowContinueOnFailure: true)
                 ))
             } else {
                 pending?.launch()

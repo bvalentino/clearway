@@ -17,6 +17,9 @@ struct HookSheet: Identifiable {
     let onContinue: () -> Void
     /// Called when the user clicks "Force remove" after a before-remove hook fails. Nil for after-create hooks.
     var onForce: (() -> Void)?
+    /// When true, "Run in Background" remains available even after the hook fails (e.g. after-create hooks).
+    /// When false (default), failure hides the button so the hook acts as a blocking gate.
+    var allowContinueOnFailure: Bool = false
 }
 
 /// Shared view that runs a hook command in a terminal.
@@ -106,7 +109,8 @@ struct HookTerminalView: View {
                         onDismiss()
                     }
                 }
-            } else {
+            }
+            if !failed || hook.allowContinueOnFailure {
                 Button("Run in Background") {
                     guard !completed else { return }
                     completed = true
