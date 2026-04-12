@@ -24,6 +24,11 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+    resources:
+      - path: Resources
+        optional: true
+      - path: THIRD-PARTY-LICENSES
+        optional: true
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -144,6 +149,41 @@ targets:
               exit 1
             fi
           done
+      - name: "Sign and verify bundled git runtime"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          GIT_DIST="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Resources/git-dist"
+          if [ "$CONFIGURATION" = "Release" ]; then
+            if [ ! -x "$GIT_DIST/git" ]; then
+              echo "error: Bundled git binary missing at $GIT_DIST/git — run ./scripts/bundle-git.sh" >&2
+              exit 1
+            fi
+            if [ ! -x "$GIT_DIST/git-core/git-remote-https" ]; then
+              echo "error: git-remote-https missing at $GIT_DIST/git-core/ — remote operations will fail" >&2
+              exit 1
+            fi
+            IDENTITY="Developer ID Application: Bruno Valentino (76AEQBHY3K)"
+            # Sign each Mach-O binary under git-dist (main binary + helpers)
+            for binary in "$GIT_DIST/git" "$GIT_DIST/git-core/"*; do
+              [ -f "$binary" ] || continue
+              if file "$binary" | grep -q "Mach-O"; then
+                echo "==> signing $(basename "$binary")"
+                /usr/bin/codesign --force --options runtime --timestamp --sign "$IDENTITY" "$binary"
+              fi
+            done
+            # Verify all signatures
+            for binary in "$GIT_DIST/git" "$GIT_DIST/git-core/"*; do
+              [ -f "$binary" ] || continue
+              if file "$binary" | grep -q "Mach-O"; then
+                /usr/bin/codesign --verify --strict --verbose=2 "$binary"
+              fi
+            done
+          else
+            if [ ! -d "$GIT_DIST" ]; then
+              echo "warning: Bundled git runtime not found at $GIT_DIST (Debug build — optional)"
+            fi
+          fi
       - name: SwiftLint
         basedOnDependencyAnalysis: false
         script: |
@@ -153,6 +193,22 @@ targets:
             echo "warning: SwiftLint not installed — brew install swiftlint"
           fi
     preBuildScripts:
+      - name: Bundle git runtime (Release)
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          if [ "$CONFIGURATION" != "Release" ]; then
+            exit 0
+          fi
+          GIT_DIST="$PROJECT_DIR/Resources/git-dist"
+          # Always rebuild from the pinned source for Release to guarantee
+          # provenance — never reuse a stale or locally modified payload.
+          if [ -d "$GIT_DIST" ]; then
+            echo "==> Removing existing git-dist to rebuild from pinned source..."
+            rm -rf "$GIT_DIST"
+          fi
+          echo "==> Building bundled git runtime for Release..."
+          "$PROJECT_DIR/scripts/bundle-git.sh"
       - name: Generate BuildInfo
         script: |
           COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
