@@ -14,7 +14,7 @@ jobs:
     name: SwiftLint
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
@@ -28,37 +28,32 @@ jobs:
     name: Build & Test
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Install dependencies
-        run: brew install zig xcodegen
+      - name: Restore Homebrew cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/downloads
+            ~/Library/Caches/Homebrew/xcodegen--*
+          key: brew-${{ runner.os }}-xcodegen-1
 
-      - name: Determine cache key inputs
-        id: cache-keys
-        run: |
-          echo "zig-version=$(zig version)" >> "$GITHUB_OUTPUT"
-          echo "ghostty-sha=$(git rev-parse HEAD:ghostty)" >> "$GITHUB_OUTPUT"
+      - name: Install xcodegen
+        run: brew install xcodegen
 
-      - name: Restore GhosttyKit cache
+      - name: Cache GhosttyKit.xcframework
         id: xcframework-cache
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: ghostty/macos/GhosttyKit.xcframework
-          key: ghostty-xcframework-${{ runner.os }}-zig-${{ steps.cache-keys.outputs.zig-version }}-${{ steps.cache-keys.outputs.ghostty-sha }}
+          key: ghosttykit-${{ hashFiles('.gitmodules', 'ghostty') }}
 
-      - name: Ensure Metal Toolchain
+      - name: Download pre-built GhosttyKit.xcframework
         if: steps.xcframework-cache.outputs.cache-hit != 'true'
-        run: |
-          if ! xcrun metal --version &> /dev/null; then
-            xcodebuild -downloadComponent MetalToolchain
-          fi
-
-      - name: Build GhosttyKit
-        if: steps.xcframework-cache.outputs.cache-hit != 'true'
-        run: cd ghostty && zig build -Demit-xcframework=true -Doptimize=ReleaseFast
+        run: ./scripts/download-prebuilt-ghosttykit.sh
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -72,10 +67,27 @@ jobs:
           }
           SWIFT
 
+      - name: Restore Swift packages cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: .ci-source-packages
+          key: spm-${{ runner.os }}-${{ hashFiles('Clearway.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Resolve Swift packages
+        run: |
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          mkdir -p "$SOURCE_PACKAGES_DIR"
+          xcodebuild -project Clearway.xcodeproj -scheme Clearway \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+            -resolvePackageDependencies
+
       - name: Build
         run: >
           xcodebuild -project Clearway.xcodeproj -scheme Clearway
           -configuration Debug -destination 'platform=macOS'
+          -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
+          -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
           build
 
@@ -83,5 +95,7 @@ jobs:
         run: >
           xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests
           -configuration Debug -destination 'platform=macOS'
+          -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
+          -disableAutomaticPackageResolution
           CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO
           test

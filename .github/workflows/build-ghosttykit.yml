@@ -1,0 +1,77 @@
+name: Build GhosttyKit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-ghosttykit:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Get ghostty SHA
+        id: ghostty-sha
+        run: |
+          SHA=$(git -C ghostty rev-parse HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Ghostty SHA: $SHA"
+
+      - name: Check if xcframework release already exists
+        id: check-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}"
+          if gh release view "$TAG" --repo bvalentino/ghostty >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists, skipping build"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG not found, will build"
+          fi
+
+      - name: Install zig
+        if: steps.check-release.outputs.exists == 'false'
+        run: brew install zig
+
+      - name: Ensure Metal Toolchain
+        if: steps.check-release.outputs.exists == 'false'
+        run: |
+          if ! xcrun metal --version &> /dev/null; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+
+      - name: Build GhosttyKit.xcframework
+        if: steps.check-release.outputs.exists == 'false'
+        run: cd ghostty && zig build -Demit-xcframework=true -Demit-macos-app=false -Doptimize=ReleaseFast
+
+      - name: Package xcframework
+        if: steps.check-release.outputs.exists == 'false'
+        run: tar czf GhosttyKit.xcframework.tar.gz -C ghostty/macos GhosttyKit.xcframework
+
+      - name: Upload xcframework release
+        if: steps.check-release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GHOSTTY_RELEASE_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GHOSTTY_RELEASE_TOKEN not available (fork PR), skipping upload"
+            exit 0
+          fi
+          TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}"
+          gh release create "$TAG" \
+            --repo bvalentino/ghostty \
+            --title "GhosttyKit xcframework (${{ steps.ghostty-sha.outputs.sha }})" \
+            --notes "Pre-built GhosttyKit.xcframework for ghostty commit ${{ steps.ghostty-sha.outputs.sha }}" \
+            GhosttyKit.xcframework.tar.gz
+          echo "Published release $TAG"
