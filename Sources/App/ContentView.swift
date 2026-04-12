@@ -827,6 +827,8 @@ struct ContentView: View {
                     sidePanelTabButton(for: tab)
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Side panel tab")
             .padding(4)
             .glassEffect(in: Capsule())
             .overlay(
@@ -836,11 +838,14 @@ struct ContentView: View {
             .padding(.horizontal, 12)
             .padding(.top, 12)
         } else {
-            Picker("", selection: $sidePanelTab) {
+            Picker(selection: $sidePanelTab) {
                 ForEach(availableSidePanelTabs, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
+            } label: {
+                Text("Side panel tab")
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
