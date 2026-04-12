@@ -13,6 +13,7 @@ struct SidebarView: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @Binding var sidebarSelection: DetailSelection?
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
@@ -40,10 +41,8 @@ struct SidebarView: View {
         }
     }
 
-    private var selectedWorktree: Worktree? { detailSelection?.worktree }
-
     var body: some View {
-        List(selection: $detailSelection) {
+        List(selection: $sidebarSelection) {
             planningRow
             promptsRow
             worktreeSection
@@ -70,6 +69,7 @@ struct SidebarView: View {
             .padding(12)
         }
         .listStyle(.sidebar)
+        .accessibilityIdentifier("SidebarList")
         .safeAreaInset(edge: .top, spacing: 0) {
             Text(projectName)
                 .font(.system(size: 13))
@@ -153,7 +153,7 @@ struct SidebarView: View {
                 .listRowSeparator(.hidden)
 
             ForEach(filteredWorktrees) { wt in
-                let isOpen = wt.isMain || terminalManager.openWorktreeIds.contains(wt.id)
+                let isOpen = terminalManager.isOpen(wt)
                 let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
                 let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
                 let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
@@ -228,7 +228,7 @@ struct SidebarView: View {
                 terminalManager.closeWorktree(wt.id)
             }
         }
-        .disabled(wt.isMain || !terminalManager.openWorktreeIds.contains(wt.id))
+        .disabled(wt.isMain || !terminalManager.isOpen(wt))
 
         Button("Remove Worktree") {
             worktreeToRemove = wt

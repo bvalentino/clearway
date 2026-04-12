@@ -3,21 +3,6 @@ import GhosttyKit
 
 private let maxShortcuts = 9
 
-/// Marker set as the terminal title when a hook command fails.
-let hookFailedMarker = "__clearway_hook_failed__"
-
-/// Wraps a hook command for use as a Ghostty surface `command:` parameter.
-/// Runs the hook through `/bin/sh`, then drops into the user's shell so
-/// the terminal stays interactive for debugging.
-private func hookShellCommand(_ cmd: String) -> String {
-    var shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/sh"
-    if !shell.hasPrefix("/") || shell.contains("'") || shell.contains(" ") {
-        shell = "/bin/sh"
-    }
-    let exportPath = "export PATH=\(shellEscape(ShellEnvironment.path)); "
-    return "/bin/sh -c \(shellEscape(exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
-}
-
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
     case planning
@@ -29,39 +14,6 @@ enum DetailSelection: Hashable {
         if case .worktree(let wt) = self { return wt }
         return nil
     }
-}
-
-private enum SidePanelTab: String, CaseIterable {
-    case task = "Task"
-    case todos = "Todos"
-    case notes = "Notes"
-    case prompts = "Prompts"
-}
-
-/// Tracks the lifecycle of an after-create hook: blocking the main terminal,
-/// running in background, or inactive.
-private enum AfterCreateHookState {
-    case none
-    case blocking(InlineHook)
-    case background(InlineHook)
-    case failed(InlineHook)
-
-    var inlineHook: InlineHook? {
-        switch self {
-        case .none: return nil
-        case .blocking(let hook), .background(let hook), .failed(let hook): return hook
-        }
-    }
-
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
-}
-
-/// Tracks the content column width without triggering SwiftUI view updates.
-private class ColumnWidthTracker {
-    var width: CGFloat = 340
 }
 
 struct ContentView: View {
@@ -76,6 +28,10 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @State private var detailSelection: DetailSelection? = .planning
+    @State private var sidebarSelection: DetailSelection? = .planning
+    /// True during the synchronous tick of an arrow keyDown in the sidebar.
+    @State private var sidebarArrowKeyInFlight = false
+    @State private var sidebarKeyMonitor: Any?
     @State private var becomeActiveObserver: Any?
     @State private var resignActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
@@ -100,9 +56,22 @@ struct ContentView: View {
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
+    private var sidebarSelectionBinding: Binding<DetailSelection?> {
+        Binding(
+            get: { sidebarSelection },
+            set: { new in
+                if sidebarSelection != new { sidebarSelection = new }
+                // Arrow-key nav over a closed worktree does not commit to detailSelection.
+                if sidebarArrowKeyInFlight, let wt = new?.worktree, !terminalManager.isOpen(wt) { return }
+                if detailSelection != new { detailSelection = new }
+            }
+        )
+    }
+
     var body: some View {
         NavigationSplitView {
             SidebarView(
+                sidebarSelection: sidebarSelectionBinding,
                 detailSelection: $detailSelection,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
@@ -187,6 +156,7 @@ struct ContentView: View {
         .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
+            if sidebarSelection != new { sidebarSelection = new }
             if old == .planning || old == .prompts {
                 listsColumnIdeal = columnWidthTracker.width
             }
@@ -207,7 +177,7 @@ struct ContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
                 }
-            } else {
+            } else if !sidebarArrowKeyInFlight {
                 focusPane(\.main)
             }
             terminalManager.clearNotification(for: wt.id)
@@ -383,6 +353,7 @@ struct ContentView: View {
                     return event
                 }
             }
+            installSidebarKeyMonitor()
         }
         .onDisappear {
             if detailSelection == .planning || detailSelection == .prompts {
@@ -403,6 +374,7 @@ struct ContentView: View {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
             }
+            removeSidebarKeyMonitor()
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
             claudeTodoManager.stopWatching()
@@ -454,6 +426,40 @@ struct ContentView: View {
 
     private var shouldShowFocusBorder: Bool {
         settings.showFocusBorder && ghosttyApp.appIsActive && (asideVisible || secondaryVisible)
+    }
+
+    // MARK: - Sidebar Key Monitor
+
+    private func installSidebarKeyMonitor() {
+        guard sidebarKeyMonitor == nil else { return }
+        sidebarKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            let code = event.keyCode
+            // Fast path: skip the firstResponder check for keys we don't care about.
+            guard code == kVK_UpArrow || code == kVK_DownArrow
+                    || code == kVK_Return || code == kVK_ANSI_KeypadEnter else {
+                return event
+            }
+            guard let tableView = NSApp.keyWindow?.firstResponder as? NSTableView,
+                  tableView.isSidebarTableView else { return event }
+            if code == kVK_UpArrow || code == kVK_DownArrow {
+                sidebarArrowKeyInFlight = true
+                DispatchQueue.main.async { sidebarArrowKeyInFlight = false }
+                return event
+            }
+            // Return / Keypad Enter: commit sidebarSelection so closed worktrees open + focus.
+            if sidebarSelection != detailSelection {
+                detailSelection = sidebarSelection
+            } else {
+                focusPane(\.main)
+            }
+            return nil
+        }
+    }
+
+    private func removeSidebarKeyMonitor() {
+        guard let monitor = sidebarKeyMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        sidebarKeyMonitor = nil
     }
 
     // MARK: - Pane Focus & Visibility
@@ -779,75 +785,11 @@ struct ContentView: View {
                     }
 
                     if let path = selectedWorktree?.path {
-                        HStack(spacing: 0) {
-                            Text(showCopiedFeedback ? "Copied!" : path)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(showCopiedFeedback ? .primary : .secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .animation(.easeInOut(duration: 0.15), value: showCopiedFeedback)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(path, forType: .string)
-                                    showCopiedFeedback = true
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                        showCopiedFeedback = false
-                                    }
-                                }
-                            Spacer()
-                            if let wt = currentWorktree, !wt.isMain, wt.branch != nil {
-                                let wtId = wt.id
-                                switch worktreeManager.worktreePRStates[wtId] {
-                                case .loading:
-                                    Text("Checking…")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                case .result(let pr?):
-                                    HStack(spacing: 5) {
-                                        Text("#\(pr.number)")
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .foregroundStyle(.primary)
-                                        Text("·")
-                                            .foregroundStyle(.tertiary)
-                                        Text(pr.title)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                    }
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        if let url = URL(string: pr.url), url.scheme == "https" {
-                                            NSWorkspace.shared.open(url)
-                                        }
-                                    }
-                                case .result(nil):
-                                    Text("No PR")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            worktreeManager.checkPR(for: wtId)
-                                        }
-                                case nil:
-                                    Image(systemName: "arrow.triangle.pull")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            worktreeManager.checkPR(for: wtId)
-                                        }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-                        .padding(.bottom, 12)
-                        .background(.bar)
-                        .overlay(alignment: .top) {
-                            Divider()
-                        }
+                        WorktreeStatusBar(
+                            path: path,
+                            worktree: currentWorktree,
+                            showCopiedFeedback: $showCopiedFeedback
+                        )
                     }
                 }
             } else if detailSelection == .settings {
@@ -953,35 +895,5 @@ struct ContentView: View {
             }
             .padding(32)
         }
-    }
-}
-
-/// A terminal pane that observes its surface's focus state and draws a border when focused.
-private struct FocusableTerminal: View {
-    @ObservedObject var surfaceView: Ghostty.SurfaceView
-    let badge: String
-    let ctrlHeld: Bool
-    let showBorder: Bool
-
-    var body: some View {
-        TerminalSurface(surfaceView: surfaceView)
-            .overlay(alignment: .topLeading) {
-                Text(badge)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-                    .padding(8)
-                    .allowsHitTesting(false)
-                    .opacity(ctrlHeld ? 1 : 0)
-            }
-            .overlay {
-                if showBorder && surfaceView.focused {
-                    Rectangle()
-                        .strokeBorder(Color.accentColor, lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-            }
     }
 }
