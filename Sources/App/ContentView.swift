@@ -14,7 +14,8 @@ private func hookShellCommand(_ cmd: String) -> String {
     if !shell.hasPrefix("/") || shell.contains("'") || shell.contains(" ") {
         shell = "/bin/sh"
     }
-    return "/bin/sh -c \(shellEscape("(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
+    let exportPath = "export PATH=\(shellEscape(ShellEnvironment.path)); "
+    return "/bin/sh -c \(shellEscape(exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
 }
 
 /// What the detail pane is showing.
