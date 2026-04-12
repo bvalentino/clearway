@@ -10,6 +10,7 @@ struct WorkflowConfig: Equatable {
     var hooksBeforeRun: String?
     var agentCommand: String?
     var agentTimeoutMs: Int?
+    var stateCommandInProgress: String?
     var stateCommandReadyForReview: String?
     var stateCommandDone: String?
     var stateCommandCanceled: String?
@@ -18,14 +19,16 @@ struct WorkflowConfig: Equatable {
     /// Whether this config has any executable content that needs trust approval.
     var hasExecutableConfig: Bool {
         hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
-            || stateCommandReadyForReview != nil || stateCommandDone != nil || stateCommandCanceled != nil
+            || stateCommandInProgress != nil || stateCommandReadyForReview != nil
+            || stateCommandDone != nil || stateCommandCanceled != nil
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
     /// Changes when any hook command, agent command, or state command changes.
     var hooksFingerprint: String {
         let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
-                       stateCommandReadyForReview, stateCommandDone, stateCommandCanceled]
+                       stateCommandInProgress, stateCommandReadyForReview,
+                       stateCommandDone, stateCommandCanceled]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
@@ -98,6 +101,7 @@ struct WorkflowConfig: Equatable {
             hooksBeforeRun: frontmatter["hooks.before_run"],
             agentCommand: frontmatter["agent.command"],
             agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
+            stateCommandInProgress: frontmatter["state_commands.in_progress"],
             stateCommandReadyForReview: frontmatter["state_commands.ready_for_review"],
             stateCommandDone: frontmatter["state_commands.done"],
             stateCommandCanceled: frontmatter["state_commands.canceled"],
@@ -215,16 +219,32 @@ struct WorkflowConfig: Equatable {
 
     func stateCommand(for status: WorkTask.Status) -> String? {
         switch status {
+        case .inProgress: return stateCommandInProgress
         case .readyForReview: return stateCommandReadyForReview
         case .done: return stateCommandDone
         case .canceled: return stateCommandCanceled
-        case .new, .readyToStart, .inProgress: return nil
+        case .new, .readyToStart: return nil
         }
     }
 
+    /// Whether the play button should appear for this status. In-progress falls back
+    /// to the WORKFLOW.md body when no explicit frontmatter command is defined.
+    func hasStateCommand(for status: WorkTask.Status) -> Bool {
+        if stateCommand(for: status) != nil { return true }
+        if status == .inProgress, !promptTemplate.isEmpty { return true }
+        return false
+    }
+
     func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
-        guard let cmd = stateCommand(for: status) else { return nil }
-        return renderHookCommand(cmd, task: task, taskPath: taskPath)
+        if let cmd = stateCommand(for: status) {
+            return renderHookCommand(cmd, task: task, taskPath: taskPath)
+        }
+        // In-progress fallback: render the prompt template (no shell escaping — it's
+        // meant to be pasted into an agent session, not a shell).
+        if status == .inProgress, !promptTemplate.isEmpty {
+            return renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
+        }
+        return nil
     }
 
     // MARK: - Prompt Rendering

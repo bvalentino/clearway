@@ -68,7 +68,7 @@ struct TaskAsideView: View {
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
-                    if workTaskCoordinator.workflowConfig?.stateCommand(for: task.status) != nil {
+                    if workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true {
                         SendToTerminalButton(
                             action: { sendStateCommandToTerminal(task) },
                             disabled: terminalManager.activePane == nil
@@ -93,7 +93,7 @@ struct TaskAsideView: View {
 
     private func sendStateCommandToTerminal(_ task: WorkTask) {
         guard let config = workTaskCoordinator.workflowConfig,
-              config.stateCommand(for: task.status) != nil else { return }
+              config.hasStateCommand(for: task.status) else { return }
         if !config.isTrusted(forProject: projectPath) {
             // Bind the retry to the pane that was active when the user clicked.
             // If they switch worktrees before approving trust, drop the action
