@@ -201,9 +201,11 @@ targets:
             exit 0
           fi
           GIT_DIST="$PROJECT_DIR/Resources/git-dist"
-          if [ -x "$GIT_DIST/git" ] && [ -x "$GIT_DIST/git-core/git-remote-https" ]; then
-            echo "note: Bundled git runtime already present at $GIT_DIST — skipping build"
-            exit 0
+          # Always rebuild from the pinned source for Release to guarantee
+          # provenance — never reuse a stale or locally modified payload.
+          if [ -d "$GIT_DIST" ]; then
+            echo "==> Removing existing git-dist to rebuild from pinned source..."
+            rm -rf "$GIT_DIST"
           fi
           echo "==> Building bundled git runtime for Release..."
           "$PROJECT_DIR/scripts/bundle-git.sh"

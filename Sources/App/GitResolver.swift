@@ -6,6 +6,10 @@ import os
 /// Searches well-known installation locations in priority order so that
 /// git operations work even when the app is launched from Finder with a
 /// minimal PATH that doesn't include Homebrew or mise directories.
+///
+/// Each candidate is probed with `git --version` — a path that merely
+/// exists (e.g. the Xcode CLT shim when tools aren't installed) is
+/// skipped in favor of the next candidate or the bundled runtime.
 enum GitResolver {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
@@ -19,23 +23,41 @@ enum GitResolver {
         "/usr/bin/git",            // Xcode Command Line Tools
     ]
 
+    /// Returns true if the binary at `path` can successfully run `git --version`.
+    /// This catches shim binaries (e.g. `/usr/bin/git` without Xcode CLT) that are
+    /// executable but non-functional.
+    static func isUsableGit(at path: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
     /// The resolved git binary path, computed once at startup.
     static let resolvedPath: String = {
-        let fm = FileManager.default
-        for candidate in searchPaths where fm.isExecutableFile(atPath: candidate) {
+        for candidate in searchPaths where isUsableGit(at: candidate) {
             logger.info("Using git at \(candidate, privacy: .public)")
             return candidate
         }
 
         // Fallback: bundled git inside the app bundle
-        if let bundled = bundledGitPath, fm.isExecutableFile(atPath: bundled) {
-            logger.warning("No system git found; using bundled git at \(bundled, privacy: .public)")
+        if let bundled = bundledGitPath, isUsableGit(at: bundled) {
+            logger.warning("No usable system git found; using bundled git at \(bundled, privacy: .public)")
             return bundled
         }
 
         // Last resort: return the Xcode CLT path and let process.run() throw if it
         // doesn't exist — callers already handle errors from runCommand.
-        logger.error("No git binary found in well-known locations or app bundle")
+        logger.error("No usable git binary found in well-known locations or app bundle")
         return "/usr/bin/git"
     }()
 

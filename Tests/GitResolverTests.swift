@@ -39,6 +39,50 @@ final class GitResolverTests: XCTestCase {
         )
     }
 
+    // MARK: - Usability Probe
+
+    func testIsUsableGitAcceptsWorkingGit() {
+        // The resolved path must be usable (it passed the probe at startup)
+        let resolved = GitResolver.resolvedPath
+        XCTAssertTrue(
+            GitResolver.isUsableGit(at: resolved),
+            "Resolved git '\(resolved)' should pass the usability probe"
+        )
+    }
+
+    func testIsUsableGitRejectsNonexistentPath() {
+        XCTAssertFalse(
+            GitResolver.isUsableGit(at: "/nonexistent/path/git"),
+            "A nonexistent path should fail the usability probe"
+        )
+    }
+
+    func testIsUsableGitRejectsNonFunctionalExecutable() throws {
+        // Simulate an unusable git shim: an executable that exits non-zero.
+        // This is the exact failure mode of `/usr/bin/git` when Xcode CLT
+        // is not installed — the shim exists and is executable but fails.
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("git-resolver-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let fakeGit = tmpDir.appendingPathComponent("git")
+        try "#!/bin/sh\nexit 1\n".write(to: fakeGit, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: fakeGit.path
+        )
+
+        XCTAssertTrue(
+            FileManager.default.isExecutableFile(atPath: fakeGit.path),
+            "Fake git should be executable on disk"
+        )
+        XCTAssertFalse(
+            GitResolver.isUsableGit(at: fakeGit.path),
+            "A non-functional executable should fail the usability probe"
+        )
+    }
+
     // MARK: - runCommand Git Dispatch
 
     func testRunCommandGitUsesResolvedPath() async throws {
