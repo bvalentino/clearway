@@ -18,6 +18,7 @@ struct PromptWindow: View {
     @State private var deleted = false
     @State private var isLoaded = false
     @State private var editorMode: TaskEditorMode = .edit
+    @State private var showCopiedFeedback = false
     @FocusState private var isTitleFocused: Bool
 
     init(identifier: PromptIdentifier) {
@@ -144,6 +145,39 @@ struct PromptWindow: View {
                     MarkdownPreviewView(markdown: content)
                 }
             }
+
+            pathBar(for: prompt)
+        }
+    }
+
+    // MARK: - Path Bar
+
+    private func pathBar(for prompt: Prompt) -> some View {
+        let path = promptManager.filePath(for: prompt)
+        return HStack(spacing: 0) {
+            Text(showCopiedFeedback ? "Copied!" : path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(showCopiedFeedback ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .animation(.easeInOut(duration: 0.15), value: showCopiedFeedback)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(path, forType: .string)
+                    showCopiedFeedback = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        showCopiedFeedback = false
+                    }
+                }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
         }
     }
 
