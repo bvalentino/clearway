@@ -310,7 +310,7 @@ struct WorktreeRow: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
             } else {
-                Image(systemName: "arrow.triangle.branch")
+                Image(systemName: "square.on.square.intersection.dashed")
             }
         }
     }

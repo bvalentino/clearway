@@ -103,11 +103,17 @@ struct WorktreeStatusBar: View {
                 if let url = URL(string: pr.url), url.scheme == "https" { NSWorkspace.shared.open(url) }
             }
         case .result(nil):
-            Text("No PR").font(.system(size: 11)).foregroundStyle(.secondary)
-                .contentShape(Rectangle()).onTapGesture { worktreeManager.checkPR(for: wtId) }
+            HStack(spacing: 4) { Image(systemName: "arrow.triangle.pull"); Text("No PR") }
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .contentShape(Rectangle()).pointingHandCursor()
+                .onTapGesture { worktreeManager.checkPR(for: wtId) }
+                .help("Click to re-check")
         case nil:
-            Image(systemName: "arrow.triangle.pull").font(.system(size: 11)).foregroundStyle(.secondary)
-                .contentShape(Rectangle()).onTapGesture { worktreeManager.checkPR(for: wtId) }
+            HStack(spacing: 4) { Image(systemName: "arrow.triangle.pull"); Text("Check PR") }
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .contentShape(Rectangle()).pointingHandCursor()
+                .onTapGesture { worktreeManager.checkPR(for: wtId) }
+                .help("Check for pull request")
         }
     }
 }
@@ -139,5 +145,11 @@ struct FocusableTerminal: View {
                         .allowsHitTesting(false)
                 }
             }
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        onHover { if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
     }
 }
