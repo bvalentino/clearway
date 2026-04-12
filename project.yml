@@ -177,6 +177,20 @@ targets:
             echo "warning: SwiftLint not installed — brew install swiftlint"
           fi
     preBuildScripts:
+      - name: Bundle git runtime (Release)
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          if [ "$CONFIGURATION" != "Release" ]; then
+            exit 0
+          fi
+          GIT_DIST="$PROJECT_DIR/Resources/git-dist"
+          if [ -x "$GIT_DIST/git" ] && [ -x "$GIT_DIST/git-core/git-remote-https" ]; then
+            echo "note: Bundled git runtime already present at $GIT_DIST — skipping build"
+            exit 0
+          fi
+          echo "==> Building bundled git runtime for Release..."
+          "$PROJECT_DIR/scripts/bundle-git.sh"
       - name: Generate BuildInfo
         script: |
           COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
