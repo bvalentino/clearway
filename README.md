@@ -2,8 +2,6 @@
 
 A native macOS app for orchestrating AI sessions across git worktrees. Built on [Ghostty](https://ghostty.org).
 
-End users: download the app from [getclearway.app](https://getclearway.app). The rest of this README is for contributors building from source.
-
 ## Prerequisites
 
 - [Zig](https://ziglang.org/) — `brew install zig`
