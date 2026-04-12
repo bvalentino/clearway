@@ -10,17 +10,22 @@ struct WorkflowConfig: Equatable {
     var hooksBeforeRun: String?
     var agentCommand: String?
     var agentTimeoutMs: Int?
+    var stateCommandReadyForReview: String?
+    var stateCommandDone: String?
+    var stateCommandCanceled: String?
     var promptTemplate: String
 
     /// Whether this config has any executable content that needs trust approval.
     var hasExecutableConfig: Bool {
         hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
+            || stateCommandReadyForReview != nil || stateCommandDone != nil || stateCommandCanceled != nil
     }
 
     /// A deterministic fingerprint of the hooks content for trust verification.
-    /// Changes when any hook command or agent command changes.
+    /// Changes when any hook command, agent command, or state command changes.
     var hooksFingerprint: String {
-        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand]
+        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
+                       stateCommandReadyForReview, stateCommandDone, stateCommandCanceled]
             .compactMap { $0 }
             .joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(content.utf8))
@@ -93,6 +98,9 @@ struct WorkflowConfig: Equatable {
             hooksBeforeRun: frontmatter["hooks.before_run"],
             agentCommand: frontmatter["agent.command"],
             agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
+            stateCommandReadyForReview: frontmatter["state_commands.ready_for_review"],
+            stateCommandDone: frontmatter["state_commands.done"],
+            stateCommandCanceled: frontmatter["state_commands.canceled"],
             promptTemplate: body
         )
     }
@@ -182,6 +190,7 @@ struct WorkflowConfig: Equatable {
             "task.title": task.title,
             "task.body": task.body,
             "task.id": task.id.uuidString,
+            "task.worktree": task.worktree ?? "",
         ]
         if let taskPath {
             vars["task.path"] = taskPath
@@ -202,6 +211,20 @@ struct WorkflowConfig: Equatable {
         let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
         let escaped = variables.mapValues { shellEscape($0) }
         return renderTemplate(command, variables: escaped)
+    }
+
+    func stateCommand(for status: WorkTask.Status) -> String? {
+        switch status {
+        case .readyForReview: return stateCommandReadyForReview
+        case .done: return stateCommandDone
+        case .canceled: return stateCommandCanceled
+        case .new, .readyToStart, .inProgress: return nil
+        }
+    }
+
+    func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
+        guard let cmd = stateCommand(for: status) else { return nil }
+        return renderHookCommand(cmd, task: task, taskPath: taskPath)
     }
 
     // MARK: - Prompt Rendering

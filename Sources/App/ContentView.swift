@@ -766,7 +766,11 @@ struct ContentView: View {
                                     if let branch = selectedWorktree?.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            projectPath: worktreeManager.projectPath
+                                            projectPath: worktreeManager.projectPath,
+                                            onRequestTrust: { retry in
+                                                pendingTrustAction = retry
+                                                showTrustConfirmation = true
+                                            }
                                         )
                                     }
                                 case .todos:
