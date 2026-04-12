@@ -9,6 +9,9 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
+    OTHER_SWIFT_FLAGS:
+      - "-enable-experimental-feature"
+      - "IsolatedDeinit"
 
 packages:
   cmark-gfm:
