@@ -8,7 +8,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var status: Status
     var worktree: String?
     var createdAt: Date
-    var updatedAt: Date
     var body: String
 
     var attempt: Int?
@@ -66,7 +65,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         self.status = status
         self.worktree = worktree
         self.createdAt = Date()
-        self.updatedAt = Date()
         self.body = body
     }
 
@@ -75,12 +73,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// Returns the raw YAML lines for this task's frontmatter, without `---` delimiters or a trailing newline.
     func frontmatterLines() -> String {
         var lines: [String] = []
-        lines.append("id: \(id.uuidString)")
         lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status.rawValue)")
         lines.append("worktree: \(worktree.map { YAML.quote($0) } ?? "null")")
-        lines.append("created_at: \(Self.dateFormatter.string(from: createdAt))")
-        lines.append("updated_at: \(Self.dateFormatter.string(from: updatedAt))")
         if let attempt { lines.append("attempt: \(attempt)") }
         if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         if let inputTokens { lines.append("input_tokens: \(inputTokens)") }
@@ -146,15 +141,13 @@ struct WorkTask: Identifiable, Equatable, Hashable {
 
     // MARK: - Parsing
 
-    /// Parses a task from YAML frontmatter + markdown body.
-    /// Returns nil if the frontmatter is missing required fields.
-    static func parse(from content: String) -> WorkTask? {
+    /// Parses a task from YAML frontmatter + markdown body, using caller-supplied identity
+    /// and creation time (derived from the filename and file creation date, respectively).
+    /// Returns nil if the frontmatter is missing required fields (`title`, `status`).
+    static func parse(from content: String, id: UUID, createdAt: Date) -> WorkTask? {
         guard let (fields, body) = YAML.parseFrontmatter(from: content) else { return nil }
 
-        // Required fields
-        guard let idString = fields["id"],
-              let id = UUID(uuidString: idString),
-              let title = fields["title"],
+        guard let title = fields["title"],
               let statusString = fields["status"],
               let status = Status(migrating: statusString) else { return nil }
 
@@ -164,17 +157,18 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             return value
         }()
 
-        let createdAt = fields["created_at"].flatMap { dateFormatter.date(from: $0) } ?? Date()
-        let updatedAt = fields["updated_at"].flatMap { dateFormatter.date(from: $0) } ?? Date()
-
         var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
-        task.updatedAt = updatedAt
         task.attempt = fields["attempt"].flatMap { Int($0) }
         task.errorMessage = fields["error_message"]
         task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
         task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
         return task
+    }
+
+    /// Convenience overload for callers parsing editor buffer content without filesystem context.
+    static func parse(from content: String) -> WorkTask? {
+        parse(from: content, id: UUID(), createdAt: Date())
     }
 
     private static let branchNameCharacters = CharacterSet.lowercaseLetters
@@ -201,12 +195,4 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         }
         return "\(count)"
     }
-
-    // MARK: - Date Formatting
-
-    private static let dateFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
 }
