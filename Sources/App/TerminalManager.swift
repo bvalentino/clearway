@@ -423,10 +423,11 @@ class TerminalManager: ObservableObject {
         }
 
         for (key, pane) in panes {
-            if pane.main.contains(deadSurface) {
-                // Main-tab dead surface: no-op. Tab stays in the list until the user
-                // explicitly closes it via closeMainTab. Preserves exit banner for inspection.
-                continue
+            if let tab = pane.main.tabs.first(where: { $0.surface === deadSurface }) {
+                // Shell exited (Ctrl+D, `exit`, etc.): close the tab like native terminal apps.
+                // Agent surfaces bail out earlier via skipAutoRestart.
+                closeMainTab(id: tab.id, in: key)
+                return
             }
 
             guard pane.secondary === deadSurface else { continue }

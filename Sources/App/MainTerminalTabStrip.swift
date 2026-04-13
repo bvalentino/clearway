@@ -21,6 +21,7 @@ private struct TerminalTabChip: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if isHovering || isActive {
                 Button {
@@ -69,69 +70,95 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var terminalManager: TerminalManager
 
     var body: some View {
+        let tabs = terminalManager.mainTabs(for: worktreeId)
+        if tabs.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 8) {
+                tabsCapsule
+                plusButton
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+        }
+    }
+
+    @ViewBuilder
+    private var tabsCapsule: some View {
         if #available(macOS 26.0, *) {
-            stripContent
+            tabsContainer
                 .padding(4)
                 .glassEffect(in: Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
         } else {
-            stripContent
+            tabsContainer
                 .padding(4)
                 .background(.bar)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
         }
     }
 
-    private var stripContent: some View {
-        HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    let tabs = terminalManager.mainTabs(for: worktreeId)
-                    let activeId = terminalManager.mainActiveTabId(for: worktreeId)
-                    ForEach(tabs, id: \.id) { tab in
-                        TerminalTabChip(
-                            surface: tab.surface,
-                            tab: tab,
-                            isActive: tab.id == activeId,
-                            onActivate: {
-                                terminalManager.activateMainTab(id: tab.id, in: worktreeId)
-                            },
-                            onClose: {
-                                onCloseTab(tab.id, worktreeId)
-                            },
-                            onCloseOthers: {
-                                for other in terminalManager.mainTabs(for: worktreeId) where other.id != tab.id {
-                                    onCloseTab(other.id, worktreeId)
-                                }
-                            },
-                            onCloseAll: {
-                                for other in terminalManager.mainTabs(for: worktreeId) {
-                                    onCloseTab(other.id, worktreeId)
-                                }
-                            }
-                        )
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
+    private var tabsContainer: some View {
+        GeometryReader { geo in
+            scrollableTabs(availableWidth: geo.size.width)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .frame(height: 28)
+    }
 
-            Button {
-                guard let app = ghosttyApp.app else { return }
-                terminalManager.newShellTab(for: worktreeId, app: app)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+    private var plusButton: some View {
+        Button {
+            guard let app = ghosttyApp.app else { return }
+            terminalManager.newShellTab(for: worktreeId, app: app)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(ghosttyApp.app == nil)
+    }
+
+    private func scrollableTabs(availableWidth: CGFloat) -> some View {
+        let tabs = terminalManager.mainTabs(for: worktreeId)
+        let activeId = terminalManager.mainActiveTabId(for: worktreeId)
+        let minTabWidth: CGFloat = 140
+        let spacing: CGFloat = 4
+        let tabCount = max(tabs.count, 1)
+        let totalSpacing = spacing * CGFloat(max(tabCount - 1, 0))
+        let equalWidth = (availableWidth - totalSpacing) / CGFloat(tabCount)
+        let tabWidth = max(minTabWidth, equalWidth)
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: spacing) {
+                ForEach(tabs, id: \.id) { tab in
+                    TerminalTabChip(
+                        surface: tab.surface,
+                        tab: tab,
+                        isActive: tab.id == activeId,
+                        onActivate: {
+                            terminalManager.activateMainTab(id: tab.id, in: worktreeId)
+                        },
+                        onClose: {
+                            onCloseTab(tab.id, worktreeId)
+                        },
+                        onCloseOthers: {
+                            for other in terminalManager.mainTabs(for: worktreeId) where other.id != tab.id {
+                                onCloseTab(other.id, worktreeId)
+                            }
+                        },
+                        onCloseAll: {
+                            for other in terminalManager.mainTabs(for: worktreeId) {
+                                onCloseTab(other.id, worktreeId)
+                            }
+                        }
+                    )
+                    .frame(width: tabWidth)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(ghosttyApp.app == nil)
         }
     }
 }
