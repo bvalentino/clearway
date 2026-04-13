@@ -324,7 +324,7 @@ struct WorkTaskWindow: View {
 
     private func saveNow() {
         guard !deleted, let existing = task, editorText != existing.serialized() else { return }
-        let success = workTaskManager.updateFromRawContent(editorText, expectedId: taskId)
+        let success = workTaskManager.applyEditorBuffer(editorText, expectedId: taskId)
         if success {
             frontmatterError = false
             if let updated = task {
