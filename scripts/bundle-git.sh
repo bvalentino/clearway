@@ -51,7 +51,6 @@ MAKE_FLAGS=(
   NO_PERL=1
   NO_PYTHON=1
   NO_EXPAT=1
-  NO_INSTALL_HARDLINKS=1
 )
 
 build_arch() {
