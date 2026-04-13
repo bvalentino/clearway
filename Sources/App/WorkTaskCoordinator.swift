@@ -599,9 +599,16 @@ class WorkTaskCoordinator: ObservableObject {
         // $3 injects the resolved login-shell PATH so tools like `claude` are found.
         let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
 
-        let surface = terminalManager.appendMainTab(for: worktree, app: app, command: command, projectPath: workTaskManager.projectPath)
+        let surface: Ghostty.SurfaceView
         if markAsLive {
+            // Live agent launches target a fresh task worktree; close the auto-created
+            // initial tab (running `mainTerminalCommand`) and put the agent in its place.
+            surface = terminalManager.launchAgentTab(for: worktree, app: app, command: command)
             agentSurfaces[worktree.id] = surface
+        } else {
+            // Shift-click state-command runs append alongside existing tabs and must
+            // fall back to the project root when the main worktree has no path.
+            surface = terminalManager.appendMainTab(for: worktree, app: app, command: command, projectPath: workTaskManager.projectPath)
         }
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = promptFile
