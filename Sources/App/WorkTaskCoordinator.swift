@@ -391,6 +391,13 @@ class WorkTaskCoordinator: ObservableObject {
         case needsTrust(WorkflowConfig)
     }
 
+    enum LaunchResult {
+        case launched
+        case ignored
+        /// WORKFLOW.md hooks need user trust approval first. Call `approveTrust()` then retry.
+        case needsTrust(WorkflowConfig)
+    }
+
     func startTask(_ task: WorkTask, app: ghostty_app_t, isAutoStart: Bool = false) -> StartResult {
         guard task.status == .new || task.status == .readyToStart || task.status == .canceled else { return .ignored }
 
@@ -456,6 +463,26 @@ class WorkTaskCoordinator: ObservableObject {
 
         launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
         return .reuse(wt)
+    }
+
+    /// Launches a state-command agent session for the given task in a new main tab,
+    /// without mutating task status or running before_run hooks.
+    func launchAgentInNewTab(for task: WorkTask) -> LaunchResult {
+        guard let config = workflowConfig, config.hasStateCommand(for: task.status) else { return .ignored }
+
+        if !config.isTrusted(forProject: workTaskManager.projectPath) {
+            return .needsTrust(config)
+        }
+
+        guard let worktree = worktreeForTask(task), let app = appProvider?() else { return .ignored }
+
+        let taskPath = workTaskManager.filePath(for: task)
+        guard let rendered = config.renderStateCommand(for: task.status, task: task, taskPath: taskPath) else {
+            return .ignored
+        }
+
+        runAgent(prompt: rendered, for: task, in: worktree, app: app, markAsLive: false)
+        return .launched
     }
 
     /// Mark the current WORKFLOW.md config as trusted for this project.
@@ -551,6 +578,12 @@ class WorkTaskCoordinator: ObservableObject {
             prompt = workflowConfig?.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt) ?? task.body
         }
 
+        let surface = runAgent(prompt: prompt, for: task, in: worktree, app: app, markAsLive: true)
+        Ghostty.logger.info("Agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
+    }
+
+    @discardableResult
+    private func runAgent(prompt: String, for task: WorkTask, in worktree: Worktree, app: ghostty_app_t, markAsLive: Bool) -> Ghostty.SurfaceView {
         let agentCmd = workflowConfig?.agentCommand ?? "claude"
 
         // Unique per-launch prompt file — overlapping runs for the same task must not
@@ -566,31 +599,40 @@ class WorkTaskCoordinator: ObservableObject {
         // $3 injects the resolved login-shell PATH so tools like `claude` are found.
         let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
 
-        let surface = terminalManager.appendMainTab(for: worktree, app: app, command: command)
-        agentSurfaces[worktree.id] = surface
+        let surface = terminalManager.appendMainTab(for: worktree, app: app, command: command, projectPath: workTaskManager.projectPath)
+        if markAsLive {
+            agentSurfaces[worktree.id] = surface
+        }
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = promptFile
-        Ghostty.logger.info("Agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
 
         // Start session observation for token tracking (always) + stall detection (opt-in).
         // Stall detection is only enabled when agent.timeout_ms is explicitly set in WORKFLOW.md,
         // because Claude Code legitimately idles during permission prompts and user interaction.
         if let worktreePath = worktree.path {
             let observer = AgentSessionObserver()
-            // Always watch for activity — used to detect manually-started Claude sessions
-            observer.onActivity = { [weak self] in
-                self?.handleSessionActivity(worktreeId: worktree.id)
-            }
-            if let timeoutMs = workflowConfig?.agentTimeoutMs {
-                observer.onStall = { [weak self] in
-                    self?.handleAgentStalled(worktreeId: worktree.id)
+            // onActivity/onStall are live-agent-only: they drive task status transitions,
+            // which shift-click (markAsLive: false) launches must not trigger. The observer
+            // itself is still created so token counts continue to accumulate in handleChildExited.
+            if markAsLive {
+                observer.onActivity = { [weak self] in
+                    self?.handleSessionActivity(worktreeId: worktree.id)
                 }
-                observer.startObserving(worktreePath: worktreePath, timeoutMs: timeoutMs)
+                if let timeoutMs = workflowConfig?.agentTimeoutMs {
+                    observer.onStall = { [weak self] in
+                        self?.handleAgentStalled(worktreeId: worktree.id)
+                    }
+                    observer.startObserving(worktreePath: worktreePath, timeoutMs: timeoutMs)
+                } else {
+                    observer.startObserving(worktreePath: worktreePath)
+                }
             } else {
                 observer.startObserving(worktreePath: worktreePath)
             }
             sessionObservers[ObjectIdentifier(surface)] = observer
         }
+
+        return surface
     }
 
     // MARK: - Agent Lifecycle

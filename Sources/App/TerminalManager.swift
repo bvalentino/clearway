@@ -282,13 +282,14 @@ class TerminalManager: ObservableObject {
 
     /// Append a new command tab to the given worktree's main terminal and activate it.
     ///
-    /// Creates `Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)`
+    /// Creates `Ghostty.SurfaceView(app, workingDirectory: worktree.path ?? projectPath, command: command)`
     /// (pattern 2 — no login shell) and appends it as a new `TerminalTab`.
     /// If the pane doesn't exist yet it is created on-the-fly (mirrors `replaceMainSurface` fallback).
+    /// `projectPath` is used as a fallback working directory when `worktree.path` is nil.
     @discardableResult
-    func appendMainTab(for worktree: Worktree, app: ghostty_app_t, command: String) -> Ghostty.SurfaceView {
+    func appendMainTab(for worktree: Worktree, app: ghostty_app_t, command: String, projectPath: String? = nil) -> Ghostty.SurfaceView {
         let key = worktree.id
-        let newSurface = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
+        let newSurface = Ghostty.SurfaceView(app, workingDirectory: worktree.path ?? projectPath, command: command)
         let newTab = TerminalTab(id: UUID(), surface: newSurface)
 
         if panes[key] != nil {
@@ -297,7 +298,7 @@ class TerminalManager: ObservableObject {
         } else {
             // Pane doesn't exist yet — create on-the-fly (mirrors replaceMainSurface fallback).
             self.app = app
-            let dir = worktree.path
+            let dir = worktree.path ?? projectPath
             let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
