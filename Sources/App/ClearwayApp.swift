@@ -26,6 +26,12 @@ private let ghosttyInitResult: Bool = {
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Suppress AppKit's native window-tabbing menu items (Show Tab Bar,
+        // Show All Tabs, Merge All Windows). We have our own terminal tab model.
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
