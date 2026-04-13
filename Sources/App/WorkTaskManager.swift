@@ -43,24 +43,20 @@ class WorkTaskManager: ObservableObject {
     }
 
     func updateTask(_ task: WorkTask) {
-        var updated = task
-        // Truncate to whole seconds so in-memory Date matches the ISO8601
-        // round-trip through disk, preventing the watcher reload from seeing
-        // a spurious difference and firing a redundant @Published update.
-        updated.updatedAt = Date(timeIntervalSinceReferenceDate: floor(Date().timeIntervalSinceReferenceDate))
-        write(updated)
+        write(task)
         // Update in-memory so callers see immediate changes without
         // waiting for the watcher reload.
-        if let index = tasks.firstIndex(where: { $0.id == updated.id }) {
-            tasks[index] = updated
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
         }
     }
 
     /// Parses raw frontmatter+body content and saves the task if valid.
     /// Returns true on success. Returns false (and does not save) if
-    /// the YAML is unparseable or the parsed id doesn't match expectedId.
+    /// the YAML is unparseable or required fields are missing.
     func updateFromRawContent(_ content: String, expectedId: UUID) -> Bool {
-        guard let parsed = WorkTask.parse(from: content), parsed.id == expectedId else {
+        let createdAt = tasks.first { $0.id == expectedId }?.createdAt ?? Date()
+        guard let parsed = WorkTask.parse(from: content, id: expectedId, createdAt: createdAt) else {
             return false
         }
         updateTask(parsed)
@@ -123,11 +119,13 @@ class WorkTaskManager: ObservableObject {
         }
 
         var loaded: [WorkTask] = []
-        for file in files where file.hasSuffix(".md") && UUID(uuidString: (file as NSString).deletingPathExtension) != nil {
+        for file in files where file.hasSuffix(".md") {
+            guard let id = UUID(uuidString: (file as NSString).deletingPathExtension) else { continue }
             let path = (tasksDirectory as NSString).appendingPathComponent(file)
+            let createdAt = (try? fm.attributesOfItem(atPath: path))?[.creationDate] as? Date ?? Date()
             guard let data = fm.contents(atPath: path),
                   let content = String(data: data, encoding: .utf8),
-                  let task = WorkTask.parse(from: content) else { continue }
+                  let task = WorkTask.parse(from: content, id: id, createdAt: createdAt) else { continue }
             loaded.append(task)
         }
 
