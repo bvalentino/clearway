@@ -68,11 +68,21 @@ struct TaskAsideView: View {
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
-                    if workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true {
+                    let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
+                    let hasWorktree = workTaskCoordinator.worktreeForTask(task) != nil
+                    if hasStateCommand && hasWorktree {
                         SendToTerminalButton(
-                            action: { sendStateCommandToTerminal(task) },
+                            action: {
+                                let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+                                if shift {
+                                    runStateCommandInNewTab(task)
+                                } else {
+                                    sendStateCommandToTerminal(task)
+                                }
+                            },
                             disabled: terminalManager.activeMainSurface == nil
                         )
+                        .help("Send to Terminal — ⇧-click for new tab")
                     }
                 }
 
@@ -113,6 +123,19 @@ struct TaskAsideView: View {
         let surface = terminalManager.activeMainSurface else { return }
         surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
+    }
+
+    private func runStateCommandInNewTab(_ task: WorkTask) {
+        switch workTaskCoordinator.launchAgentInNewTab(for: task) {
+        case .launched:
+            break
+        case .ignored:
+            return
+        case .needsTrust:
+            onRequestTrust?({ [weak workTaskCoordinator] in
+                _ = workTaskCoordinator?.launchAgentInNewTab(for: task)
+            })
+        }
     }
 
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
