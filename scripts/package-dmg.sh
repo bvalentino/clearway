@@ -99,7 +99,6 @@ hdiutil create \
   -ov \
   -fs HFS+ \
   -format UDRW \
-  -size 50m \
   "$TEMP_DMG" >/dev/null
 
 # Step 2: mount and apply Finder view options via AppleScript
