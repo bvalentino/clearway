@@ -48,7 +48,14 @@ enum AfterCreateHookState {
     }
 }
 
-/// Tracks the content column width without triggering SwiftUI view updates.
+/// Tracks the content column's live width without triggering SwiftUI view updates.
+///
+/// This is intentionally a bare reference class, not `@Observable`, `ObservableObject`,
+/// or `@Published`. Mutating `width` must NOT invalidate any view body. Why: the column
+/// width is passed as `ideal:` to `.navigationSplitViewColumnWidth`, and SwiftUI re-seeds
+/// the column to `ideal` whenever that modifier is re-evaluated with a changed value.
+/// If this tracker triggered re-renders during a drag, the user's dragged width would
+/// snap back mid-drag. See `commitListsColumnWidth()` for where the value is persisted.
 class ColumnWidthTracker {
     var width: CGFloat = 340
 }

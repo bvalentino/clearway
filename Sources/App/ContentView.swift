@@ -2,6 +2,9 @@ import SwiftUI
 import GhosttyKit
 
 private let maxShortcuts = 9
+private let listsColumnMinWidth: Double = 280
+private let listsColumnDefaultWidth: Double = 340
+private let listsColumnStorageKey = "ListsColumnIdealWidth"
 
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
@@ -52,7 +55,7 @@ struct ContentView: View {
     @State private var pendingTrustAction: (() -> Void)?
     @State private var previousDetailSelection: DetailSelection?
     @State private var columnWidthTracker = ColumnWidthTracker()
-    @SceneStorage("listsColumnIdeal") private var listsColumnIdeal: Double = 340
+    @State private var listsColumnIdealWidth: Double
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
@@ -66,6 +69,18 @@ struct ContentView: View {
                 if detailSelection != new { detailSelection = new }
             }
         )
+    }
+
+    init() {
+        let defaults = UserDefaults.standard
+        let stored: Double
+        if defaults.object(forKey: listsColumnStorageKey) != nil {
+            let raw = defaults.double(forKey: listsColumnStorageKey)
+            stored = max(listsColumnMinWidth, raw)
+        } else {
+            stored = listsColumnDefaultWidth
+        }
+        _listsColumnIdealWidth = State(initialValue: stored)
     }
 
     var body: some View {
@@ -158,7 +173,7 @@ struct ContentView: View {
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
             if old == .planning || old == .prompts {
-                listsColumnIdeal = columnWidthTracker.width
+                commitListsColumnWidth()
             }
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
                 terminalManager.activeSurfaceId = nil
@@ -357,7 +372,7 @@ struct ContentView: View {
         }
         .onDisappear {
             if detailSelection == .planning || detailSelection == .prompts {
-                listsColumnIdeal = columnWidthTracker.width
+                commitListsColumnWidth()
             }
             pendingRefresh?.cancel()
             pendingRefresh = nil
@@ -500,6 +515,20 @@ struct ContentView: View {
         } else if sidePanelTab == .task {
             sidePanelTab = .todos
         }
+    }
+
+    /// Persists the current lists-column width to both `@State` and `UserDefaults`.
+    ///
+    /// This must be called **only at commit points** — navigating away from Planning/Prompts,
+    /// or `.onDisappear`. Do NOT call from `columnWidthReader` or any other live geometry
+    /// callback. The `ideal:` parameter of `.navigationSplitViewColumnWidth` re-seeds the
+    /// column to that value whenever the modifier is re-evaluated with a changed value, so
+    /// a live write from a drag-in-progress would snap the user's column back mid-drag.
+    /// See `ColumnWidthTracker` for the non-observing live capture that feeds this commit.
+    private func commitListsColumnWidth() {
+        let width = max(listsColumnMinWidth, Double(columnWidthTracker.width))
+        listsColumnIdealWidth = width
+        UserDefaults.standard.set(width, forKey: listsColumnStorageKey)
     }
 
     private func selectFallback() {
@@ -658,14 +687,14 @@ struct ContentView: View {
                 editorMode: $taskEditorMode
             )
             .background(columnWidthReader)
-            .navigationSplitViewColumnWidth(min: 200, ideal: listsColumnIdeal)
+            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth)
         } else if detailSelection == .prompts {
             PromptListView(
                 selection: $selectedPromptId,
                 editorMode: $promptEditorMode
             )
             .background(columnWidthReader)
-            .navigationSplitViewColumnWidth(min: 200, ideal: listsColumnIdeal)
+            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth)
         } else {
             Color.clear
                 .navigationSplitViewColumnWidth(0)
@@ -676,10 +705,14 @@ struct ContentView: View {
         GeometryReader { geo in
             Color.clear
                 .onAppear {
-                    if geo.size.width >= 200 { columnWidthTracker.width = geo.size.width }
+                    if geo.size.width >= listsColumnMinWidth { columnWidthTracker.width = geo.size.width }
                 }
                 .onChange(of: geo.size.width) { newValue in
-                    if newValue >= 200 { columnWidthTracker.width = newValue }
+                    guard newValue >= listsColumnMinWidth else { return }
+                    columnWidthTracker.width = newValue
+                    // Mirror to UserDefaults so new windows inherit mid-drag state. Plain
+                    // UserDefaults writes aren't observed, so this won't re-seed `ideal:`.
+                    UserDefaults.standard.set(Double(newValue), forKey: listsColumnStorageKey)
                 }
         }
     }
