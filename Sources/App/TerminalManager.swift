@@ -424,9 +424,13 @@ class TerminalManager: ObservableObject {
 
         for (key, pane) in panes {
             if let tab = pane.main.tabs.first(where: { $0.surface === deadSurface }) {
-                // Shell exited (Ctrl+D, `exit`, etc.): close the tab like native terminal apps.
+                // Match native terminal behavior: auto-close on clean exit
+                // (Ctrl+D, `exit`), but keep the dead tab around on abnormal
+                // exit so users can inspect crashes or error output.
                 // Agent surfaces bail out earlier via skipAutoRestart.
-                closeMainTab(id: tab.id, in: key)
+                if deadSurface.childExitCode == 0 {
+                    closeMainTab(id: tab.id, in: key)
+                }
                 return
             }
 
