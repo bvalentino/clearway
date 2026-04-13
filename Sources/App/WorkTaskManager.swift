@@ -51,15 +51,28 @@ class WorkTaskManager: ObservableObject {
         }
     }
 
-    /// Parses raw frontmatter+body content and saves the task if valid.
-    /// Returns true on success. Returns false (and does not save) if
-    /// the YAML is unparseable or required fields are missing.
-    func updateFromRawContent(_ content: String, expectedId: UUID) -> Bool {
-        let createdAt = tasks.first { $0.id == expectedId }?.createdAt ?? Date()
-        guard let parsed = WorkTask.parse(from: content, id: expectedId, createdAt: createdAt) else {
+    /// Applies an editor buffer's parsed form to the persisted task. System-managed fields
+    /// (`worktree`, `status`, `attempt`, token counts, timestamps) are owned by
+    /// `WorkTaskCoordinator` and state commands — editor buffers never overwrite them, which
+    /// is what prevents a stale buffer from clobbering a concurrent coordinator write.
+    /// Returns `false` if the buffer has unparseable frontmatter.
+    @discardableResult
+    func applyEditorBuffer(_ content: String, expectedId: UUID) -> Bool {
+        let existing = tasks.first { $0.id == expectedId }
+        guard let parsed = WorkTask.parse(
+            from: content,
+            id: expectedId,
+            createdAt: existing?.createdAt ?? Date()
+        ) else {
             return false
         }
-        updateTask(parsed)
+        if var merged = existing {
+            merged.title = parsed.title
+            merged.body = parsed.body
+            updateTask(merged)
+        } else {
+            updateTask(parsed)
+        }
         return true
     }
 

@@ -206,7 +206,7 @@ struct TaskDetailView: View {
 
     private func saveNow() {
         guard let existing = task, editorText != existing.serialized() else { return }
-        let success = workTaskManager.updateFromRawContent(editorText, expectedId: taskId)
+        let success = workTaskManager.applyEditorBuffer(editorText, expectedId: taskId)
         if success {
             frontmatterError = false
             // Resync editorText to pick up the new updated_at stamp. Only bump
