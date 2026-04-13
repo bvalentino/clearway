@@ -71,7 +71,7 @@ struct MainTerminalTabStrip: View {
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
-        if tabs.isEmpty {
+        if tabs.count <= 1 {
             EmptyView()
         } else {
             HStack(spacing: 8) {
