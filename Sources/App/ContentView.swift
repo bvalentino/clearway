@@ -19,6 +19,14 @@ enum DetailSelection: Hashable {
     }
 }
 
+struct TabCloseRequest: Identifiable {
+    let id = UUID()
+    let worktreeId: String
+    let tabId: UUID
+    let title: String
+}
+
+// swiftlint:disable:next type_body_length
 struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
@@ -35,6 +43,7 @@ struct ContentView: View {
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
     @State private var sidebarArrowKeyInFlight = false
     @State private var sidebarKeyMonitor: Any?
+    @State private var mainTerminalKeyMonitor: Any?
     @State private var becomeActiveObserver: Any?
     @State private var resignActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
@@ -53,6 +62,7 @@ struct ContentView: View {
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
     @State private var pendingTrustAction: (() -> Void)?
+    @State private var tabCloseQueue: [TabCloseRequest] = []
     @State private var previousDetailSelection: DetailSelection?
     @State private var columnWidthTracker = ColumnWidthTracker()
     @State private var listsColumnIdealWidth: Double
@@ -83,7 +93,7 @@ struct ContentView: View {
         _listsColumnIdealWidth = State(initialValue: stored)
     }
 
-    var body: some View {
+    @ViewBuilder private var navigator: some View {
         NavigationSplitView {
             SidebarView(
                 sidebarSelection: sidebarSelectionBinding,
@@ -110,7 +120,6 @@ struct ContentView: View {
                     .help("Remove worktree")
                     .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
-
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
                         Image(systemName: "rectangle.bottomhalf.inset.filled")
@@ -118,7 +127,6 @@ struct ContentView: View {
                     }
                     .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
                 }
-
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleAside) {
                         Image(systemName: "sidebar.trailing")
@@ -127,7 +135,6 @@ struct ContentView: View {
                     .help(asideVisible ? "Hide aside" : "Show aside")
                 }
             }
-
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
@@ -136,10 +143,7 @@ struct ContentView: View {
         ) {
             Button("Remove", role: .destructive) {
                 guard let wt = currentWorktree else { return }
-                // Delay so the confirmation dialog dismisses before the hook sheet presents
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    beginRemoveWorktree(wt)
-                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { beginRemoveWorktree(wt) }
             }
         } message: {
             Text("This will delete the worktree and its working directory, including any uncommitted changes and untracked files.")
@@ -151,17 +155,28 @@ struct ContentView: View {
         ) {
             Button("Trust & Continue") {
                 workTaskCoordinator.approveTrust()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    pendingTrustAction?()
-                    pendingTrustAction = nil
-                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pendingTrustAction?(); pendingTrustAction = nil }
             }
-            Button("Cancel", role: .cancel) {
-                pendingTrustAction = nil
-            }
+            Button("Cancel", role: .cancel) { pendingTrustAction = nil }
         } message: {
             Text("This project's WORKFLOW.md configures hooks that will run shell commands. Review the file before approving.")
         }
+        .confirmationDialog(
+            tabCloseDialogTitle,
+            isPresented: tabCloseIsPresented,
+            presenting: tabCloseQueue.first
+        ) { request in
+            Button("Close", role: .destructive) {
+                terminalManager.closeMainTab(id: request.tabId, in: request.worktreeId)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("A process is still running. Closing will terminate it.")
+        }
+    }
+
+    var body: some View {
+        navigator
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
             workTaskCoordinator.pendingAutoStart = nil
@@ -193,7 +208,7 @@ struct ContentView: View {
                     inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
                 }
             } else if !sidebarArrowKeyInFlight {
-                focusPane(\.main)
+                focusActiveMainTab()
             }
             terminalManager.clearNotification(for: wt.id)
             worktreeManager.watchTitle(forWorktreePath: wt.path)
@@ -206,11 +221,7 @@ struct ContentView: View {
         .onChange(of: selectedTaskId) { newId in
             guard let newId,
                   let task = workTaskManager.tasks.first(where: { $0.id == newId }) else { return }
-            if terminalManager.isTaskTerminalVisible(for: newId) {
-                taskEditorMode = .edit
-            } else {
-                taskEditorMode = task.body.isEmpty ? .edit : .preview
-            }
+            taskEditorMode = (terminalManager.isTaskTerminalVisible(for: newId) || task.body.isEmpty) ? .edit : .preview
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
@@ -251,18 +262,14 @@ struct ContentView: View {
                   let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32,
                   let inline = afterCreateHookState.inlineHook,
                   inline.hook.surface === surface else { return }
-            if exitCode == 0 {
-                inline.hook.onContinue()
-                finishAfterCreateHook()
-            } else {
-                afterCreateHookState = .failed(inline)
-            }
+            if exitCode == 0 { inline.hook.onContinue(); finishAfterCreateHook() } else { afterCreateHookState = .failed(inline) }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
             let currentIds = Set(newWorktrees.map(\.id))
             terminalManager.pruneStale(keeping: currentIds)
             worktreeManager.prunePRStatuses(keeping: currentIds)
+            tabCloseQueue.removeAll { req in !terminalManager.mainTabs(for: req.worktreeId).contains { $0.id == req.tabId } }
             if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
                 afterCreateHookState = .none
             }
@@ -270,20 +277,14 @@ struct ContentView: View {
             let refreshed = newWorktrees.first(where: { $0.id == selected.id })
             // Update selection to the refreshed instance so its hash matches
             // the List tag — otherwise the highlight is lost after refresh.
-            if let refreshed, refreshed != selected {
-                detailSelection = .worktree(refreshed)
-            } else if refreshed == nil {
-                selectFallback()
-            }
+            if let refreshed, refreshed != selected { detailSelection = .worktree(refreshed) } else if refreshed == nil { selectFallback() }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
         .onChange(of: currentWorktreeHasTask) { hasTask in
-            if !hasTask && sidePanelTab == .task {
-                sidePanelTab = .todos
-            }
+            if !hasTask && sidePanelTab == .task { sidePanelTab = .todos }
         }
         .background {
             // Cmd+N: switch worktrees (sorted order matches sidebar)
@@ -298,10 +299,10 @@ struct ContentView: View {
             }
 
             // Ctrl+N: focus terminal panes
-            Button("") { focusPane(\.main) }
+            Button("") { focusActiveMainTab() }
                 .keyboardShortcut("1", modifiers: .control)
                 .hidden()
-            Button("") { showAndFocusPane(\.secondary, isVisible: secondaryVisible, toggle: toggleSecondaryTerminal) }
+            Button("") { showAndFocusSecondary(isVisible: secondaryVisible, toggle: toggleSecondaryTerminal) }
                 .keyboardShortcut("2", modifiers: .control)
                 .hidden()
 
@@ -312,6 +313,17 @@ struct ContentView: View {
             Button("") { toggleAside() }
                 .keyboardShortcut("3", modifiers: [.command, .control])
                 .hidden()
+
+            // Cmd+T: new shell tab (only when a worktree is active)
+            if selectedWorktree != nil {
+                Button("") {
+                    if let app = ghosttyApp.app, let wtId = selectedWorktree?.id {
+                        terminalManager.newShellTab(for: wtId, app: app)
+                    }
+                }
+                .keyboardShortcut("t", modifiers: .command)
+                .hidden()
+            }
         }
         .onAppear {
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
@@ -369,6 +381,7 @@ struct ContentView: View {
                 }
             }
             installSidebarKeyMonitor()
+            installMainTerminalKeyMonitor()
         }
         .onDisappear {
             if detailSelection == .planning || detailSelection == .prompts {
@@ -377,19 +390,11 @@ struct ContentView: View {
             pendingRefresh?.cancel()
             pendingRefresh = nil
             worktreeManager.cancelBackgroundRefresh()
-            if let observer = becomeActiveObserver {
-                NotificationCenter.default.removeObserver(observer)
-                becomeActiveObserver = nil
-            }
-            if let observer = resignActiveObserver {
-                NotificationCenter.default.removeObserver(observer)
-                resignActiveObserver = nil
-            }
-            if let monitor = flagsMonitor {
-                NSEvent.removeMonitor(monitor)
-                flagsMonitor = nil
-            }
+            if let o = becomeActiveObserver { NotificationCenter.default.removeObserver(o); becomeActiveObserver = nil }
+            if let o = resignActiveObserver { NotificationCenter.default.removeObserver(o); resignActiveObserver = nil }
+            if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
             removeSidebarKeyMonitor()
+            removeMainTerminalKeyMonitor()
             ctrlHeld = false
             worktreeManager.watchTitle(forWorktreePath: nil)
             claudeTodoManager.stopWatching()
@@ -404,22 +409,16 @@ struct ContentView: View {
 
     // MARK: - Title
 
-    private var sortedWorktrees: [Worktree] {
-        Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
-    }
+    private var sortedWorktrees: [Worktree] { Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds) }
 
-    private var projectName: String {
-        URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
-    }
+    private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
 
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
         return worktreeManager.worktrees.first(where: { $0.id == id })
     }
 
-    private var asideVisible: Bool {
-        terminalManager.isAsideVisible(for: selectedWorktree?.id)
-    }
+    private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }
 
     /// Whether the current worktree has a linked task.
     private var currentWorktreeHasTask: Bool {
@@ -429,18 +428,18 @@ struct ContentView: View {
 
     /// Tabs available for the current worktree — hides Task when no task is linked.
     private var availableSidePanelTabs: [SidePanelTab] {
-        if currentWorktreeHasTask {
-            return SidePanelTab.allCases
-        }
-        return SidePanelTab.allCases.filter { $0 != .task }
+        currentWorktreeHasTask ? SidePanelTab.allCases : SidePanelTab.allCases.filter { $0 != .task }
     }
 
-    private var secondaryVisible: Bool {
-        terminalManager.isSecondaryVisible(for: selectedWorktree?.id)
-    }
+    private var secondaryVisible: Bool { terminalManager.isSecondaryVisible(for: selectedWorktree?.id) }
 
-    private var shouldShowFocusBorder: Bool {
-        settings.showFocusBorder && ghosttyApp.appIsActive && (asideVisible || secondaryVisible)
+    private var shouldShowFocusBorder: Bool { settings.showFocusBorder && ghosttyApp.appIsActive && (asideVisible || secondaryVisible) }
+
+    private var tabCloseDialogTitle: String { tabCloseQueue.first.map { "Close tab \"\($0.title)\"?" } ?? "" }
+
+    private var tabCloseIsPresented: Binding<Bool> {
+        Binding(get: { !tabCloseQueue.isEmpty },
+                set: { if !$0 && !tabCloseQueue.isEmpty { tabCloseQueue.removeFirst() } })
     }
 
     // MARK: - Sidebar Key Monitor
@@ -464,7 +463,7 @@ struct ContentView: View {
             if sidebarSelection != detailSelection {
                 detailSelection = sidebarSelection
             } else {
-                focusPane(\.main)
+                focusActiveMainTab()
             }
             return nil
         }
@@ -476,23 +475,60 @@ struct ContentView: View {
         sidebarKeyMonitor = nil
     }
 
-    // MARK: - Pane Focus & Visibility
+    // MARK: - Main Terminal Key Monitor
 
-    private func focusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, delay: Double = 0) {
-        guard let pane = terminalManager.activePane else { return }
-        let surface = pane[keyPath: keyPath]
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            surface.window?.makeFirstResponder(surface)
+    private func installMainTerminalKeyMonitor() {
+        // Guard prevents double-install: onAppear fires multiple times on macOS 13.
+        // Cmd+W with focus in the secondary terminal falls through to AppKit (closes window) —
+        // intentional: "close the focused thing." Monitor only matches activeMainSurface focus.
+        guard mainTerminalKeyMonitor == nil else { return }
+        mainTerminalKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let code = event.keyCode
+            guard flags == .command || flags == [.command, .shift] else { return event }
+            guard NSApp.keyWindow?.firstResponder === terminalManager.activeMainSurface,
+                  let worktreeId = terminalManager.activeSurfaceId else { return event }
+            let tabs = terminalManager.mainTabs(for: worktreeId)
+            guard !tabs.isEmpty else { return event }
+            if flags == .command && code == 0x0D {
+                // Cmd+W: close the active main tab
+                guard let id = terminalManager.mainActiveTabId(for: worktreeId) else { return event }
+                beginCloseTab(id: id, in: worktreeId); return nil
+            }
+            guard flags == [.command, .shift],
+                  let activeId = terminalManager.mainActiveTabId(for: worktreeId),
+                  let index = tabs.firstIndex(where: { $0.id == activeId }) else { return event }
+            if code == 0x21 {
+                // Cmd+Shift+[: cycle to previous tab (wrap-around)
+                terminalManager.activateMainTab(id: tabs[(index - 1 + tabs.count) % tabs.count].id, in: worktreeId); return nil
+            } else if code == 0x1E {
+                // Cmd+Shift+]: cycle to next tab (wrap-around)
+                terminalManager.activateMainTab(id: tabs[(index + 1) % tabs.count].id, in: worktreeId); return nil
+            }
+            return event
         }
     }
 
-    private func showAndFocusPane(_ keyPath: KeyPath<TerminalPane, Ghostty.SurfaceView>, isVisible: Bool, toggle: () -> Void) {
-        if isVisible {
-            focusPane(keyPath)
-        } else {
-            toggle()
-            focusPane(keyPath, delay: 0.25)
-        }
+    private func removeMainTerminalKeyMonitor() {
+        guard let monitor = mainTerminalKeyMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        mainTerminalKeyMonitor = nil
+    }
+
+    // MARK: - Pane Focus & Visibility
+
+    private func focusActiveMainTab(delay: Double = 0) {
+        guard let surface = terminalManager.activeMainSurface else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { surface.window?.makeFirstResponder(surface) }
+    }
+
+    private func focusSecondary(delay: Double = 0) {
+        guard let surface = terminalManager.activePane?.secondary else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { surface.window?.makeFirstResponder(surface) }
+    }
+
+    private func showAndFocusSecondary(isVisible: Bool, toggle: () -> Void) {
+        if isVisible { focusSecondary() } else { toggle(); focusSecondary(delay: 0.25) }
     }
 
     private func toggleSecondaryTerminal() {
@@ -540,29 +576,19 @@ struct ContentView: View {
             if case .worktree(let prevWt) = prev,
                let fresh = worktreeManager.worktrees.first(where: { $0.id == prevWt.id }),
                fresh.isMain || terminalManager.openWorktreeIds.contains(fresh.id) {
-                detailSelection = .worktree(fresh)
-                return
+                detailSelection = .worktree(fresh); return
             } else if case .worktree = prev {
                 // Previous worktree is closed or no longer exists — fall through to default.
-            } else {
-                detailSelection = prev
-                return
-            }
+            } else { detailSelection = prev; return }
         }
-        if let main = worktreeManager.worktrees.first(where: \.isMain) {
-            detailSelection = .worktree(main)
-        } else {
-            detailSelection = .planning
-        }
+        detailSelection = worktreeManager.worktrees.first(where: \.isMain).map { .worktree($0) } ?? .planning
     }
 
     // MARK: - Refresh
 
     private func debouncedRefresh() {
         pendingRefresh?.cancel()
-        let work = DispatchWorkItem { [weak worktreeManager] in
-            worktreeManager?.refresh(showLoading: false)
-        }
+        let work = DispatchWorkItem { [weak worktreeManager] in worktreeManager?.refresh(showLoading: false) }
         pendingRefresh = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
@@ -610,30 +636,22 @@ struct ContentView: View {
         guard let app = ghosttyApp.app else { return }
         switch result {
         case .reuse(let wt):
-            selectedTaskId = nil
-            if !isAutoStart { detailSelection = .worktree(wt) }
+            selectedTaskId = nil; if !isAutoStart { detailSelection = .worktree(wt) }
         case .createWorktree(let branch):
-            selectedTaskId = nil
-            Task { await worktreeManager.createWorktree(branch: branch) }
+            selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
         case .beforeRunHook(let hookCmd, let wt, let onSuccess):
             selectedTaskId = nil
             let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(hookCmd))
             hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
-                onSuccess()
-                if !isAutoStart { self.detailSelection = .worktree(wt) }
+                onSuccess(); if !isAutoStart { self.detailSelection = .worktree(wt) }
             })
         case .needsTrust:
             if isAutoStart {
                 workTaskCoordinator.isAutoProcessing = false
-                pendingTrustAction = { [weak workTaskCoordinator] in
-                    workTaskCoordinator?.isAutoProcessing = true
-                }
-            } else {
-                pendingTrustAction = retryAction
-            }
+                pendingTrustAction = { [weak workTaskCoordinator] in workTaskCoordinator?.isAutoProcessing = true }
+            } else { pendingTrustAction = retryAction }
             showTrustConfirmation = true
-        case .ignored:
-            break
+        case .ignored: break
         }
     }
 
@@ -649,20 +667,16 @@ struct ContentView: View {
     }
 
     private func sendPromptToTerminal(_ prompt: Prompt) {
-        guard let surface = terminalManager.activePane?.main else { return }
+        guard let surface = terminalManager.activeMainSurface else { return }
         surface.sendPaste(prompt.content)
         surface.window?.makeFirstResponder(surface)
     }
 
     private func openTaskWorktree(_ task: WorkTask) {
-        if let wt = workTaskCoordinator.worktreeForTask(task) {
-            detailSelection = .worktree(wt)
-        }
+        if let wt = workTaskCoordinator.worktreeForTask(task) { detailSelection = .worktree(wt) }
     }
 
-    private func finishAfterCreateHook() {
-        afterCreateHookState = .none
-    }
+    private func finishAfterCreateHook() { afterCreateHookState = .none }
 
     private func dismissAfterCreateOverlay() {
         guard case .blocking(let inline) = afterCreateHookState else { return }
@@ -735,16 +749,32 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .ready:
-            if let pane = terminalManager.activePane, detailSelection?.worktree != nil {
+            if let pane = terminalManager.activePane,
+               let worktreeId = terminalManager.activeSurfaceId,
+               detailSelection?.worktree != nil {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         VStack(spacing: 0) {
-                            FocusableTerminal(
-                                surfaceView: pane.main,
-                                badge: "⌃1",
-                                ctrlHeld: ctrlHeld,
-                                showBorder: shouldShowFocusBorder
-                            )
+                            MainTerminalTabStrip(worktreeId: worktreeId, onCloseTab: beginCloseTab)
+                            Group {
+                                if pane.main.tabs.isEmpty {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "terminal")
+                                            .font(.system(size: 28))
+                                            .foregroundStyle(.tertiary)
+                                        Text("⌘T for a new tab")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else if let activeSurface = pane.main.activeSurface {
+                                    FocusableTerminal(
+                                        surfaceView: activeSurface,
+                                        badge: "⌃1",
+                                        ctrlHeld: ctrlHeld,
+                                        showBorder: shouldShowFocusBorder
+                                    )
+                                }
+                            }
                             .overlay {
                                 if let inline = blockingHook {
                                     afterCreateBlockingOverlay(hook: inline.hook)
@@ -832,26 +862,32 @@ struct ContentView: View {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 if let promptId = selectedPromptId {
-                    PromptDetailView(promptId: promptId, editorMode: $promptEditorMode)
-                        .id(promptId)
+                    PromptDetailView(promptId: promptId, editorMode: $promptEditorMode).id(promptId)
                 } else {
-                    Text("Select a prompt")
-                        .font(.title3)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    detailPlaceholder("Select a prompt")
                 }
             } else if detailSelection == .planning {
                 if let taskId = selectedTaskId {
-                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode)
-                        .id(taskId)
+                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode).id(taskId)
                 } else {
-                    Text("Select a task")
-                        .font(.title3)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    detailPlaceholder("Select a task")
                 }
             }
         }
+    }
+
+    private func beginCloseTab(id: UUID, in worktreeId: String) {
+        guard let surface = terminalManager.mainTabs(for: worktreeId).first(where: { $0.id == id })?.surface else { return }
+        if surface.needsConfirmQuit {
+            let title = surface.title.isEmpty ? "Terminal" : surface.title
+            tabCloseQueue.append(TabCloseRequest(worktreeId: worktreeId, tabId: id, title: title))
+        } else {
+            terminalManager.closeMainTab(id: id, in: worktreeId)
+        }
+    }
+
+    @ViewBuilder private func detailPlaceholder(_ text: String) -> some View {
+        Text(text).font(.title3).foregroundStyle(.tertiary).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Side Panel Tab Strip
@@ -916,23 +952,15 @@ struct ContentView: View {
     @ViewBuilder
     private func afterCreateBlockingOverlay(hook: HookSheet) -> some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-
+            Rectangle().fill(.ultraThinMaterial)
             VStack(spacing: 16) {
-                Text("Running After Create Hook")
-                    .font(.title3.bold())
-
+                Text("Running After Create Hook").font(.title3.bold())
                 Text(hook.command)
                     .font(.callout.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-
-                Button("Run in Background") {
-                    dismissAfterCreateOverlay()
-                }
-                .buttonStyle(.bordered)
+                Button("Run in Background") { dismissAfterCreateOverlay() }.buttonStyle(.bordered)
             }
             .padding(32)
         }

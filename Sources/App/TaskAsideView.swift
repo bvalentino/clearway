@@ -71,7 +71,7 @@ struct TaskAsideView: View {
                     if workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true {
                         SendToTerminalButton(
                             action: { sendStateCommandToTerminal(task) },
-                            disabled: terminalManager.activePane == nil
+                            disabled: terminalManager.activeMainSurface == nil
                         )
                     }
                 }
@@ -110,7 +110,7 @@ struct TaskAsideView: View {
             task: task,
             taskPath: workTaskManager.filePath(for: task)
         ),
-        let surface = terminalManager.activePane?.main else { return }
+        let surface = terminalManager.activeMainSurface else { return }
         surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
     }

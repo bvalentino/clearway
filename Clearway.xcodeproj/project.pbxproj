@@ -48,6 +48,7 @@
 		7AFE7009A5CBDE5606F59B9D /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7844869D3D26BEAE9F97543F /* NotesView.swift */; };
 		7DA12F43C612C19B6EC1D01B /* ClaudeTodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFC31B3C3935529382C89CA /* ClaudeTodoManager.swift */; };
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
+		94E634B515C7B773A791EF1A /* MainTerminalTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */; };
 		980A81CFA86592849DCBC170 /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */; };
 		98B18A8F9508E08F7E852BF4 /* Prompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A28DBBCFBC067478FD8795 /* Prompt.swift */; };
 		9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */; };
@@ -151,6 +152,7 @@
 		E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTerminalSheet.swift; sourceTree = "<group>"; };
 		EB42EDB75EED976AD230B319 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		EC1F48D279D802C46C9A7164 /* WorkTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTask.swift; sourceTree = "<group>"; };
+		EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTerminalTabStrip.swift; sourceTree = "<group>"; };
 		EF5D6B020A6E238AE1AE099E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinator.swift; sourceTree = "<group>"; };
 		FEFC31B3C3935529382C89CA /* ClaudeTodoManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodoManager.swift; sourceTree = "<group>"; };
@@ -210,6 +212,7 @@
 				E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */,
 				AF04318569BD95EFE4C470CA /* GitResolver.swift */,
 				082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */,
+				EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */,
 				86F03706FEA2A1FDBB4B3BFC /* MarkdownEditorView.swift */,
 				1753DB7CA84C6EBA0B8922EE /* MarkdownPreviewView.swift */,
 				BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */,
@@ -516,6 +519,7 @@
 				269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */,
 				1D79BDC62A43580E0D889E6C /* GitResolver.swift in Sources */,
 				9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */,
+				94E634B515C7B773A791EF1A /* MainTerminalTabStrip.swift in Sources */,
 				44C8206EE4CA6D3A6A82875A /* MarkdownEditorView.swift in Sources */,
 				01C9CB11CF62FE4F23A61375 /* MarkdownPreviewView.swift in Sources */,
 				EB491D3A6BE4934B06A9B67B /* MarkdownRenderer.swift in Sources */,

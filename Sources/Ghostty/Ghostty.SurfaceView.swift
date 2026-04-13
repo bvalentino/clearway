@@ -237,6 +237,36 @@ extension Ghostty {
                 return false
             }
 
+            let flags = event.modifierFlags
+
+            // Let Cmd+T pass through to SwiftUI (new tab)
+            if flags.contains(.command) && !flags.contains(.shift) &&
+               !flags.contains(.control) && !flags.contains(.option),
+               let chars = event.charactersIgnoringModifiers, chars == "t" {
+                return false
+            }
+
+            // Let Cmd+W pass through to SwiftUI (close tab)
+            if flags.contains(.command) && !flags.contains(.shift) &&
+               !flags.contains(.control) && !flags.contains(.option),
+               let chars = event.charactersIgnoringModifiers, chars == "w" {
+                return false
+            }
+
+            // Let Cmd+Shift+[ pass through to SwiftUI (previous tab); use keyCode for layout safety
+            if flags.contains(.command) && flags.contains(.shift) &&
+               !flags.contains(.control) && !flags.contains(.option),
+               event.keyCode == 0x21 {
+                return false
+            }
+
+            // Let Cmd+Shift+] pass through to SwiftUI (next tab); use keyCode for layout safety
+            if flags.contains(.command) && flags.contains(.shift) &&
+               !flags.contains(.control) && !flags.contains(.option),
+               event.keyCode == 0x1E {
+                return false
+            }
+
             keyDown(with: event)
             return true
         }
