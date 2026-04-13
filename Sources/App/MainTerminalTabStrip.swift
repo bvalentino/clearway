@@ -38,8 +38,8 @@ private struct TerminalTabChip: View {
                     .frame(width: 14, height: 14)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
         .background {
             if isActive {
                 Capsule().fill(Color.accentColor)
@@ -71,18 +71,20 @@ struct MainTerminalTabStrip: View {
     var body: some View {
         if #available(macOS 26.0, *) {
             stripContent
+                .padding(4)
                 .glassEffect(in: Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 )
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
         } else {
             stripContent
+                .padding(4)
                 .background(.bar)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
         }
     }
 
