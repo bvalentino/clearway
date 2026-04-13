@@ -64,8 +64,20 @@ class WorkTaskCoordinator: ObservableObject {
     /// Published so the UI can display the running agent count.
     @Published private(set) var agentSurfaces: [String: Ghostty.SurfaceView] = [:]
 
-    /// Session observers for running agents, keyed by worktree ID.
-    private var sessionObservers: [String: AgentSessionObserver] = [:]
+    /// Identities of every agent surface ever launched for a worktree (live or superseded).
+    /// Keyed by worktree ID. Cleared when a tab is explicitly closed via `handleMainTabClosed`.
+    private var agentSurfaceIdentities: [String: Set<ObjectIdentifier>] = [:]
+
+    /// Session observers for running agents, keyed by agent surface identifier.
+    /// Per-surface keying ensures overlapping launches (a superseded agent + the live one)
+    /// have distinct observers — so `handleChildExited` can attribute tokens to the exact
+    /// surface that exited instead of reading whichever observer happened to land in the
+    /// worktree slot last.
+    private var sessionObservers: [ObjectIdentifier: AgentSessionObserver] = [:]
+
+    /// Per-launch prompt file paths, keyed by surface identifier. Unique per launch so
+    /// overlapping runs for the same task don't share or clobber each other's temp file.
+    private var launchPromptFiles: [ObjectIdentifier: String] = [:]
 
     // MARK: - Dependencies
 
@@ -476,7 +488,13 @@ class WorkTaskCoordinator: ObservableObject {
 
         if let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             agentSurfaces.removeValue(forKey: worktree.id)
-            sessionObservers.removeValue(forKey: worktree.id)?.stopObserving()
+            for surfaceId in agentSurfaceIdentities[worktree.id] ?? [] {
+                sessionObservers.removeValue(forKey: surfaceId)?.stopObserving()
+                if let promptFile = launchPromptFiles.removeValue(forKey: surfaceId) {
+                    try? FileManager.default.removeItem(atPath: promptFile)
+                }
+            }
+            agentSurfaceIdentities.removeValue(forKey: worktree.id)
         }
 
         var updated = task
@@ -486,8 +504,35 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     /// Whether the given surface is an agent surface (should not be auto-restarted).
+    /// Returns `true` for any ever-launched agent surface until the tab is explicitly closed.
     func isAgentSurface(_ surface: Ghostty.SurfaceView) -> Bool {
-        agentSurfaces.values.contains(where: { $0 === surface })
+        let id = ObjectIdentifier(surface)
+        return agentSurfaceIdentities.values.contains(where: { $0.contains(id) })
+    }
+
+    /// Called by TerminalManager when a main tab is closed.
+    ///
+    /// If the session observer is still registered, the agent's child hasn't exited yet
+    /// — closeMainTab's SIGHUP is async. Leave identity/observer/prompt-file in place so
+    /// handleChildExited can still attribute the upcoming exit.
+    func handleMainTabClosed(_ surface: Ghostty.SurfaceView) {
+        let id = ObjectIdentifier(surface)
+
+        for (key, live) in agentSurfaces where live === surface {
+            agentSurfaces.removeValue(forKey: key)
+        }
+
+        guard sessionObservers[id] == nil else { return }
+
+        for key in agentSurfaceIdentities.keys {
+            agentSurfaceIdentities[key]?.remove(id)
+            if agentSurfaceIdentities[key]?.isEmpty == true {
+                agentSurfaceIdentities.removeValue(forKey: key)
+            }
+        }
+        if let promptFile = launchPromptFiles.removeValue(forKey: id) {
+            try? FileManager.default.removeItem(atPath: promptFile)
+        }
     }
 
     /// Returns the WORKFLOW.md after_create hook command if configured.
@@ -508,9 +553,11 @@ class WorkTaskCoordinator: ObservableObject {
 
         let agentCmd = workflowConfig?.agentCommand ?? "claude"
 
-        // Write prompt to temp file to handle long prompts safely
+        // Unique per-launch prompt file — overlapping runs for the same task must not
+        // share a path or a later launch's write will clobber the earlier one's prompt.
         let tempDir = NSTemporaryDirectory()
-        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-prompt-\(task.id.uuidString).md")
+        let launchId = UUID().uuidString
+        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-prompt-\(task.id.uuidString)-\(launchId).md")
         FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
 
         // Pipe prompt file to agent command via stdin (same pattern as v1).
@@ -519,8 +566,10 @@ class WorkTaskCoordinator: ObservableObject {
         // $3 injects the resolved login-shell PATH so tools like `claude` are found.
         let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
 
-        let surface = terminalManager.replaceMainSurface(for: worktree, app: app, command: command)
+        let surface = terminalManager.appendMainTab(for: worktree, app: app, command: command)
         agentSurfaces[worktree.id] = surface
+        agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
+        launchPromptFiles[ObjectIdentifier(surface)] = promptFile
         Ghostty.logger.info("Agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
 
         // Start session observation for token tracking (always) + stall detection (opt-in).
@@ -540,7 +589,7 @@ class WorkTaskCoordinator: ObservableObject {
             } else {
                 observer.startObserving(worktreePath: worktreePath)
             }
-            sessionObservers[worktree.id] = observer
+            sessionObservers[ObjectIdentifier(surface)] = observer
         }
     }
 
@@ -551,25 +600,40 @@ class WorkTaskCoordinator: ObservableObject {
               let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32 else { return }
 
         let surfaceId = ObjectIdentifier(surface).debugDescription
-        let isAgentSurface = agentSurfaces.values.contains(where: { $0 === surface })
-        Ghostty.logger.info("ghosttyChildExited: surface=\(surfaceId, privacy: .public) exitCode=\(exitCode) isAgent=\(isAgentSurface)")
-
-        guard let (worktreeId, _) = agentSurfaces.first(where: { $0.value === surface }) else { return }
+        guard let worktreeId = agentSurfaceIdentities.first(where: { $0.value.contains(ObjectIdentifier(surface)) })?.key else {
+            Ghostty.logger.info("ghosttyChildExited: surface=\(surfaceId, privacy: .public) exitCode=\(exitCode) isAgent=false")
+            return
+        }
+        let isLiveAgent = agentSurfaces[worktreeId] === surface
+        Ghostty.logger.info("ghosttyChildExited: surface=\(surfaceId, privacy: .public) exitCode=\(exitCode) isLiveAgent=\(isLiveAgent)")
         Ghostty.logger.info("Agent exited for worktree \(worktreeId, privacy: .public) with code \(exitCode)")
 
-        // Remove the surface tracking but KEEP the session observer alive.
-        // If the user manually starts a new Claude session in this worktree,
-        // the observer's onActivity will flip the task back to .inProgress.
-        agentSurfaces.removeValue(forKey: worktreeId)
-        let observer = sessionObservers[worktreeId]
+        // Only clear the live-agent entry if the exiting surface IS the currently-tracked live agent.
+        // A superseded agent must not wipe the live agent entry.
+        if agentSurfaces[worktreeId] === surface {
+            agentSurfaces.removeValue(forKey: worktreeId)
+        }
+
+        // Retire the observer for this specific surface. Each launch has its own observer,
+        // so reading + stopping it here attributes tokens to the correct run and avoids
+        // double-counting when a superseded agent exits.
+        let observer = sessionObservers.removeValue(forKey: ObjectIdentifier(surface))
+        observer?.stopObserving()
+
+        // Clean up this launch's temp prompt file and retire its identity.
+        if let promptFile = launchPromptFiles.removeValue(forKey: ObjectIdentifier(surface)) {
+            try? FileManager.default.removeItem(atPath: promptFile)
+        }
+        for key in agentSurfaceIdentities.keys {
+            agentSurfaceIdentities[key]?.remove(ObjectIdentifier(surface))
+            if agentSurfaceIdentities[key]?.isEmpty == true {
+                agentSurfaceIdentities.removeValue(forKey: key)
+            }
+        }
 
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch) else { return }
-
-        // Clean up temp prompt file
-        let promptFile = NSTemporaryDirectory() + "clearway-prompt-\(task.id.uuidString).md"
-        try? FileManager.default.removeItem(atPath: promptFile)
 
         // Don't auto-change status — user may have exited to start a new session.
         // Just accumulate tokens and record error on failure.

@@ -6,9 +6,42 @@ func shellEscape(_ path: String) -> String {
     "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
+/// A single tab in the main terminal panel.
+struct TerminalTab {
+    let id: UUID
+    var surface: Ghostty.SurfaceView
+}
+
+/// The collection of tabs shown in the main terminal panel for a worktree.
+struct MainTerminal {
+    var tabs: [TerminalTab]
+    var activeId: UUID?
+
+    /// The currently active tab, or nil if none.
+    var activeTab: TerminalTab? {
+        guard let activeId else { return nil }
+        return tabs.first(where: { $0.id == activeId })
+    }
+
+    /// The surface of the currently active tab, or nil if none.
+    var activeSurface: Ghostty.SurfaceView? {
+        activeTab?.surface
+    }
+
+    /// Whether any tab in this terminal holds the given surface.
+    func contains(_ surface: Ghostty.SurfaceView) -> Bool {
+        tabs.contains(where: { $0.surface === surface })
+    }
+
+    /// The index of the tab with the given id, or nil if not found.
+    func index(of id: UUID) -> Int? {
+        tabs.firstIndex(where: { $0.id == id })
+    }
+}
+
 /// The terminal panes for a worktree.
 struct TerminalPane {
-    var main: Ghostty.SurfaceView
+    var main: MainTerminal
     var secondary: Ghostty.SurfaceView
 }
 
@@ -125,7 +158,7 @@ class TerminalManager: ObservableObject {
     /// Find the worktree ID that owns the given surface.
     private func worktreeId(for surface: Ghostty.SurfaceView) -> String? {
         panes.first(where: { _, pane in
-            pane.main === surface || pane.secondary === surface
+            pane.main.contains(surface) || pane.secondary === surface
         })?.key
     }
 
@@ -187,9 +220,11 @@ class TerminalManager: ObservableObject {
         }
 
         let dir = worktree.path ?? projectPath
-        let main = Ghostty.SurfaceView(app, workingDirectory: dir)
+        let mainSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
         let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
 
+        let initialTab = TerminalTab(id: UUID(), surface: mainSurface)
+        let main = MainTerminal(tabs: [initialTab], activeId: initialTab.id)
         let tp = TerminalPane(main: main, secondary: secondary)
         panes[key] = tp
         if !openWorktreeIds.contains(key) {
@@ -205,34 +240,67 @@ class TerminalManager: ObservableObject {
         let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         if !command.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                main.sendCommand(command)
+                mainSurface.sendCommand(command)
             }
         }
 
         return tp
     }
 
-    /// Replace the main surface for a worktree with one running the given command.
-    /// Used to launch Claude Code in a task's worktree.
-    /// Returns the new surface.
+    /// Surfaces that should not be auto-restarted when they exit.
+    /// Set by WorkTaskCoordinator for agent command surfaces.
+    var skipAutoRestart: ((Ghostty.SurfaceView) -> Bool)?
+
+    /// Called when a main tab is closed via `closeMainTab`.
+    /// `WorkTaskCoordinator` wires this on setup to clear per-surface bookkeeping.
+    /// Use a direct callback (not NotificationCenter) so each window's coordinator
+    /// can independently track its own surfaces.
+    var onMainTabClosed: ((Ghostty.SurfaceView) -> Void)?
+
+    // MARK: - Main Tab Management
+
+    /// The surface of the currently active worktree's active main tab.
+    ///
+    /// Sole accessor for "the currently active main surface" — do not add overloads.
+    var activeMainSurface: Ghostty.SurfaceView? {
+        guard let id = activeSurfaceId else { return nil }
+        return panes[id]?.main.activeSurface
+    }
+
+    /// The ordered list of main tabs for the given worktree (read-only view for UI).
+    func mainTabs(for worktreeId: String) -> [TerminalTab] {
+        panes[worktreeId]?.main.tabs ?? []
+    }
+
+    /// The active tab ID for the given worktree's main terminal.
+    ///
+    /// Needed because `MainTerminal` is a struct inside the private `panes` dict —
+    /// UI code cannot reach it directly.
+    func mainActiveTabId(for worktreeId: String) -> UUID? {
+        panes[worktreeId]?.main.activeId
+    }
+
+    /// Append a new command tab to the given worktree's main terminal and activate it.
+    ///
+    /// Creates `Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)`
+    /// (pattern 2 — no login shell) and appends it as a new `TerminalTab`.
+    /// If the pane doesn't exist yet it is created on-the-fly (mirrors `replaceMainSurface` fallback).
     @discardableResult
-    func replaceMainSurface(for worktree: Worktree, app: ghostty_app_t, command: String) -> Ghostty.SurfaceView {
+    func appendMainTab(for worktree: Worktree, app: ghostty_app_t, command: String) -> Ghostty.SurfaceView {
         let key = worktree.id
         let newSurface = Ghostty.SurfaceView(app, workingDirectory: worktree.path, command: command)
-        if var pane = panes.removeValue(forKey: key) {
-            let oldSurface = pane.main
-            pane.main = newSurface
-            panes[key] = pane
-            objectWillChange.send()
-            // Close after re-inserting so the closeSurface observer can't match the old surface
-            oldSurface.closeSurface()
+        let newTab = TerminalTab(id: UUID(), surface: newSurface)
+
+        if panes[key] != nil {
+            panes[key]!.main.tabs.append(newTab)
+            panes[key]!.main.activeId = newTab.id
         } else {
-            // Pane doesn't exist yet (e.g. activate() hasn't fired due to SwiftUI batching).
-            // Create the pane now so the surface isn't lost.
+            // Pane doesn't exist yet — create on-the-fly (mirrors replaceMainSurface fallback).
             self.app = app
             let dir = worktree.path
             let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
-            panes[key] = TerminalPane(main: newSurface, secondary: secondary)
+            let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
+            panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
             }
@@ -240,14 +308,103 @@ class TerminalManager: ObservableObject {
                 asideVisible[key] = true
                 secondaryVisible[key] = true
             }
-            objectWillChange.send()
         }
+
+        objectWillChange.send()
+        transferFirstResponder(to: newSurface)
         return newSurface
     }
 
-    /// Surfaces that should not be auto-restarted when they exit.
-    /// Set by WorkTaskCoordinator for agent command surfaces.
-    var skipAutoRestart: ((Ghostty.SurfaceView) -> Bool)?
+    /// Append a plain shell tab (no command) to the given worktree's main terminal and activate it.
+    ///
+    /// Uses `Ghostty.SurfaceView(app, workingDirectory:)` (pattern 1 — login shell).
+    /// Working directory resolves as: active tab's `pwd` → active tab's `initialWorkingDirectory` →
+    /// secondary surface's `initialWorkingDirectory` (worktree root). The secondary fallback
+    /// ensures `+` in the zero-tab state opens at the worktree root rather than `$HOME`.
+    /// Returns `nil` if the pane does not exist.
+    @discardableResult
+    func newShellTab(for worktreeId: String, app: ghostty_app_t) -> Ghostty.SurfaceView? {
+        guard let pane = panes[worktreeId] else { return nil }
+        let activeTab = pane.main.activeTab
+        let dir = activeTab?.surface.pwd
+            ?? activeTab?.surface.initialWorkingDirectory
+            ?? pane.secondary.initialWorkingDirectory
+        let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
+        let newTab = TerminalTab(id: UUID(), surface: newSurface)
+        panes[worktreeId]!.main.tabs.append(newTab)
+        panes[worktreeId]!.main.activeId = newTab.id
+        objectWillChange.send()
+        transferFirstResponder(to: newSurface)
+        return newSurface
+    }
+
+    /// Dispatch a first-responder handoff so keyboard focus follows the newly
+    /// active main-tab surface. Matches the pattern used by `activateMainTab` and
+    /// the active-tab-closed path so the Cmd+W / Cmd+Shift+[/] monitors (gated
+    /// on `firstResponder === activeMainSurface`) see the freshly active surface.
+    private func transferFirstResponder(to surface: Ghostty.SurfaceView) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+            NSApp.keyWindow?.makeFirstResponder(surface)
+        }
+    }
+
+    /// Close the main tab with the given id within the specified worktree.
+    ///
+    /// Strict ordering:
+    /// 1. Capture the tab by id.
+    /// 2. Remove it from `tabs`.
+    /// 3. If it was active, activate the nearest neighbor (prev, then next, then nil).
+    /// 4. Call `objectWillChange.send()`.
+    /// 5. Invoke `onMainTabClosed` with the removed surface.
+    /// 6. Call `surface.closeSurface()` — prevents the closeSurface observer from
+    ///    seeing a closed surface that is still in `tabs`.
+    /// 7. If the closed tab was active and another tab remains, transfer first responder
+    ///    to the newly active surface. The Cmd+W / Cmd+Shift+[/] monitors are gated on
+    ///    `firstResponder === activeMainSurface`, so without this handoff the shortcuts
+    ///    silently stop working until the user clicks back into the terminal.
+    func closeMainTab(id: UUID, in worktreeId: String) {
+        guard let tabIndex = panes[worktreeId]?.main.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let removedTab = panes[worktreeId]!.main.tabs[tabIndex]
+
+        panes[worktreeId]!.main.tabs.remove(at: tabIndex)
+
+        let wasActive = panes[worktreeId]?.main.activeId == id
+        var newActiveSurface: Ghostty.SurfaceView?
+        if wasActive {
+            let remaining = panes[worktreeId]!.main.tabs
+            if !remaining.isEmpty {
+                // Activate prev if any, else next (which is now at tabIndex after removal)
+                let neighborIndex = tabIndex > 0 ? tabIndex - 1 : 0
+                panes[worktreeId]!.main.activeId = remaining[neighborIndex].id
+                newActiveSurface = remaining[neighborIndex].surface
+            } else {
+                panes[worktreeId]!.main.activeId = nil
+            }
+        }
+
+        objectWillChange.send()
+        onMainTabClosed?(removedTab.surface)
+        removedTab.surface.closeSurface()
+
+        if let newActiveSurface {
+            transferFirstResponder(to: newActiveSurface)
+        }
+    }
+
+    /// Activate the main tab with the given id within the specified worktree.
+    ///
+    /// Updates `activeId` and dispatches a first-responder transfer after a short delay
+    /// so that keyboard focus (required for Cmd+W / Cmd+Shift+[/] monitors) follows
+    /// the newly active tab immediately after the SwiftUI update commits.
+    func activateMainTab(id: UUID, in worktreeId: String) {
+        guard panes[worktreeId]?.main.index(of: id) != nil else { return }
+        panes[worktreeId]!.main.activeId = id
+        objectWillChange.send()
+
+        if let newSurface = panes[worktreeId]?.main.activeSurface {
+            transferFirstResponder(to: newSurface)
+        }
+    }
 
     /// Replace a dead surface with a fresh terminal in the same working directory.
     private func replaceSurface(_ deadSurface: Ghostty.SurfaceView) {
@@ -266,15 +423,18 @@ class TerminalManager: ObservableObject {
         }
 
         for (key, pane) in panes {
-            let slot: WritableKeyPath<TerminalPane, Ghostty.SurfaceView>
-
-            if pane.main === deadSurface {
-                slot = \.main
-            } else if pane.secondary === deadSurface {
-                slot = \.secondary
-            } else {
-                continue
+            if let tab = pane.main.tabs.first(where: { $0.surface === deadSurface }) {
+                // Match native terminal behavior: auto-close on clean exit
+                // (Ctrl+D, `exit`), but keep the dead tab around on abnormal
+                // exit so users can inspect crashes or error output.
+                // Agent surfaces bail out earlier via skipAutoRestart.
+                if deadSurface.childExitCode == 0 {
+                    closeMainTab(id: tab.id, in: key)
+                }
+                return
             }
+
+            guard pane.secondary === deadSurface else { continue }
 
             // Rate-limit per pane: stop if 3+ restarts within the last 2 seconds.
             let now = Date()
@@ -289,14 +449,9 @@ class TerminalManager: ObservableObject {
             let dir = deadSurface.pwd ?? deadSurface.initialWorkingDirectory
             let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
             objectWillChange.send()
-            panes[key]![keyPath: slot] = newSurface
-
+            panes[key]!.secondary = newSurface
             // Secondary terminal: hide the panel instead of respawning visibly.
-            if slot == \.secondary {
-                secondaryVisible[key] = false
-            }
-
-            return
+            secondaryVisible[key] = false
         }
     }
 
@@ -322,7 +477,8 @@ class TerminalManager: ObservableObject {
     /// Whether a worktree has any surface with a running foreground process.
     func worktreeNeedsConfirmClose(_ worktreeId: String) -> Bool {
         guard let pane = panes[worktreeId] else { return false }
-        return pane.main.needsConfirmQuit || pane.secondary.needsConfirmQuit
+        return pane.main.tabs.contains(where: { $0.surface.needsConfirmQuit })
+            || pane.secondary.needsConfirmQuit
     }
 
     /// Close a worktree's terminals without deleting the worktree itself.
@@ -332,7 +488,10 @@ class TerminalManager: ObservableObject {
     func closeWorktree(_ worktreeId: String) {
         guard let pane = panes.removeValue(forKey: worktreeId) else { return }
         cleanupState(for: worktreeId)
-        pane.main.closeSurface()
+        for tab in pane.main.tabs {
+            onMainTabClosed?(tab.surface)
+            tab.surface.closeSurface()
+        }
         pane.secondary.closeSurface()
     }
 
@@ -448,7 +607,7 @@ class TerminalManager: ObservableObject {
 
     /// All surfaces across all worktrees and tasks.
     var allSurfaces: [Ghostty.SurfaceView] {
-        panes.values.flatMap { [$0.main, $0.secondary] } + taskSurfaces.values
+        panes.values.flatMap { $0.main.tabs.map(\.surface) + [$0.secondary] } + taskSurfaces.values
     }
 
 }
