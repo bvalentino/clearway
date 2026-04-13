@@ -149,6 +149,7 @@ struct ClearwayApp: App {
                     showProjectSelector()
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                NewTabMenuItem()
             }
             CommandGroup(after: .sidebar) {
                 Toggle(isOn: $showFrontmatter) {
@@ -194,6 +195,31 @@ struct ClearwayApp: App {
         ProjectSelectorWindowController.shared.show(projectList: projectList) { [openWindow] path in
             openWindow(value: path)
         }
+    }
+}
+
+/// Focused-value key for the active window's "new terminal tab" action.
+/// Set by the worktree detail view when a worktree is selected; `nil` otherwise.
+private struct NewTabActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var newTabAction: (() -> Void)? {
+        get { self[NewTabActionKey.self] }
+        set { self[NewTabActionKey.self] = newValue }
+    }
+}
+
+/// File menu item that creates a new terminal tab in the focused worktree,
+/// disabled when no worktree is active.
+private struct NewTabMenuItem: View {
+    @FocusedValue(\.newTabAction) private var action
+
+    var body: some View {
+        Button("New Tab") { action?() }
+            .keyboardShortcut("t", modifiers: .command)
+            .disabled(action == nil)
     }
 }
 

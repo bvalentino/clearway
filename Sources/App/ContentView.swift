@@ -69,6 +69,16 @@ struct ContentView: View {
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
 
+    /// Action exposed via `focusedSceneValue` so the File > New Tab menu item
+    /// is enabled only when this window has an active worktree.
+    private var newTabAction: (() -> Void)? {
+        guard let wtId = selectedWorktree?.id else { return nil }
+        return { [terminalManager, ghosttyApp] in
+            guard let app = ghosttyApp.app else { return }
+            terminalManager.newShellTab(for: wtId, app: app)
+        }
+    }
+
     private var sidebarSelectionBinding: Binding<DetailSelection?> {
         Binding(
             get: { sidebarSelection },
@@ -177,6 +187,7 @@ struct ContentView: View {
 
     var body: some View {
         navigator
+        .focusedSceneValue(\.newTabAction, newTabAction)
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
             workTaskCoordinator.pendingAutoStart = nil
@@ -313,17 +324,6 @@ struct ContentView: View {
             Button("") { toggleAside() }
                 .keyboardShortcut("3", modifiers: [.command, .control])
                 .hidden()
-
-            // Cmd+T: new shell tab (only when a worktree is active)
-            if selectedWorktree != nil {
-                Button("") {
-                    if let app = ghosttyApp.app, let wtId = selectedWorktree?.id {
-                        terminalManager.newShellTab(for: wtId, app: app)
-                    }
-                }
-                .keyboardShortcut("t", modifiers: .command)
-                .hidden()
-            }
         }
         .onAppear {
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
