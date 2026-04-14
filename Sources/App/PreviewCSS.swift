@@ -146,5 +146,19 @@ enum PreviewCSS {
         height: auto;
         border-radius: 4px;
     }
+
+    @media (prefers-color-scheme: light) {
+        body { color: #1F1F1F; }
+        h1, h2, h3, h4, h5, h6 { color: #111111; }
+        a { color: #1661B3; }
+        strong { color: #111111; }
+        code { background: #F3F3F3; color: #B5372F; }
+        pre { background: #F6F6F6; border-color: #D5D5D5; }
+        blockquote { border-left-color: #C9C9C9; color: #6B6B6B; }
+        th, td { border-color: #D5D5D5; }
+        th { background: #EDEDED; }
+        tr:nth-child(even) td { background: #F6F6F6; }
+        hr { border-top-color: #D5D5D5; }
+    }
     """
 }

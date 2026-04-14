@@ -21,7 +21,6 @@ final class ProjectSelectorWindowController: NSWindowController, NSWindowDelegat
         window.backgroundColor = .clear
         window.hasShadow = true
         window.center()
-        window.appearance = NSAppearance(named: .darkAqua)
         super.init(window: window)
         window.delegate = self
     }
@@ -104,7 +103,7 @@ struct ProjectSelectorView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Color.white.opacity(0.15), lineWidth: 1)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
         )
     }
 
@@ -215,11 +214,11 @@ struct ProjectSelectorView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.08))
+            .background(Color(nsColor: .quaternaryLabelColor))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

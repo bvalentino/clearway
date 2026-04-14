@@ -4,6 +4,7 @@ import SwiftUI
 /// A Markdown editor backed by NSTextView with syntax highlighting.
 struct MarkdownEditorView: NSViewRepresentable {
     @Binding var text: String
+    @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -46,6 +47,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         if !text.isEmpty {
             context.coordinator.highlightAll()
         }
+        context.coordinator.lastAppliedColorScheme = colorScheme
 
         return scrollView
     }
@@ -57,6 +59,13 @@ struct MarkdownEditorView: NSViewRepresentable {
         // that remap into a larger buffer) see the current getter/setter rather than
         // the one captured at makeCoordinator time.
         context.coordinator.updateBinding(_text)
+
+        // When the SwiftUI color scheme changes, re-apply typing attributes and
+        // re-run the highlighter so cached attribute runs pick up the new theme colors.
+        if context.coordinator.lastAppliedColorScheme != colorScheme {
+            context.coordinator.lastAppliedColorScheme = colorScheme
+            context.coordinator.applyAppearanceChange()
+        }
 
         // Sync text from binding → NSTextView, guarding against feedback loops
         guard !context.coordinator.isUpdating, textView.string != text else { return }
@@ -102,10 +111,18 @@ struct MarkdownEditorView: NSViewRepresentable {
         @Binding var text: String
         weak var textView: NSTextView?
         var isUpdating = false
+        var lastAppliedColorScheme: ColorScheme?
         private var pendingHighlight: DispatchWorkItem?
 
         init(text: Binding<String>) {
             _text = text
+        }
+
+        func applyAppearanceChange() {
+            guard let textView else { return }
+            let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+            textView.typingAttributes = MarkdownEditorView.typingAttributes(font: font)
+            highlightAll()
         }
 
         /// Refresh the backing binding when the parent rebuilds with a different

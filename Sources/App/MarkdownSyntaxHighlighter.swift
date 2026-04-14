@@ -1,16 +1,41 @@
 import AppKit
 
-/// Colors for Markdown syntax highlighting (dark mode only).
+/// Dynamic colors for Markdown syntax highlighting; resolves per effective appearance.
 enum MarkdownTheme {
-    static let text = NSColor(red: 0.878, green: 0.878, blue: 0.878, alpha: 1)
-    static let syntax = NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 1)
-    static let heading = NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
-    static let bold = NSColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1)
-    static let italic = NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1)
-    static let code = NSColor(red: 0.9, green: 0.45, blue: 0.45, alpha: 1)
-    static let link = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1)
-    static let blockquote = NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)
-    static let frontmatter = NSColor(red: 0.55, green: 0.55, blue: 0.65, alpha: 1)
+    static let text = NSColor.textColor
+    static let syntax = NSColor.secondaryLabelColor
+    static let blockquote = NSColor.tertiaryLabelColor
+
+    static let heading = dynamic(
+        dark: NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1),
+        light: NSColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1)
+    )
+    static let bold = dynamic(
+        dark: NSColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1),
+        light: NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)
+    )
+    static let italic = dynamic(
+        dark: NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1),
+        light: NSColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1)
+    )
+    static let code = dynamic(
+        dark: NSColor(red: 0.9, green: 0.45, blue: 0.45, alpha: 1),
+        light: NSColor(red: 0.71, green: 0.22, blue: 0.18, alpha: 1)
+    )
+    static let link = dynamic(
+        dark: NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1),
+        light: NSColor(red: 0.09, green: 0.38, blue: 0.70, alpha: 1)
+    )
+    static let frontmatter = dynamic(
+        dark: NSColor(red: 0.55, green: 0.55, blue: 0.65, alpha: 1),
+        light: NSColor(red: 0.40, green: 0.40, blue: 0.48, alpha: 1)
+    )
+
+    private static func dynamic(dark: NSColor, light: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.isDark ? dark : light
+        }
+    }
 }
 
 /// Applies regex-based Markdown syntax highlighting to an NSTextStorage.
