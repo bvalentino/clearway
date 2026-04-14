@@ -11,6 +11,12 @@ struct SettingsView: View {
             }
 
             Section("Appearance") {
+                Picker("Color Scheme", selection: $settings.colorScheme) {
+                    Text("System").tag(ColorSchemePreference.system)
+                    Text("Light").tag(ColorSchemePreference.light)
+                    Text("Dark").tag(ColorSchemePreference.dark)
+                }
+                .pickerStyle(.segmented)
                 Toggle("Show focus border on active pane", isOn: $settings.showFocusBorder)
             }
 
@@ -29,6 +35,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .frame(width: 450, height: 360)
+        .frame(width: 450, height: 420)
     }
 }

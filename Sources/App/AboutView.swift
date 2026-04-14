@@ -16,7 +16,6 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.identifier = NSUserInterfaceItemIdentifier("clearway.about")
         window.center()
-        window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = NSHostingView(rootView: AboutView())
         super.init(window: window)
         window.delegate = self

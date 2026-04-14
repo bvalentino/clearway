@@ -137,10 +137,10 @@ struct FocusableTerminal: View {
             .overlay(alignment: .topLeading) {
                 Text(badge)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(nsColor: .textBackgroundColor))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color(nsColor: .labelColor).opacity(0.75), in: RoundedRectangle(cornerRadius: 6))
                     .padding(8)
                     .allowsHitTesting(false)
                     .opacity(ctrlHeld ? 1 : 0)

@@ -103,12 +103,15 @@ struct ClearwayApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
-    @StateObject private var settings = SettingsManager()
+    @StateObject private var settings: SettingsManager
     @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     private let updaterController: SPUStandardUpdaterController
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
+        // SettingsManager.init applies the stored color scheme to NSApp, so Ghostty.App
+        // picks up the correct effective appearance when it reads it during its own init.
+        _settings = StateObject(wrappedValue: SettingsManager())
         _ghosttyApp = StateObject(wrappedValue: Ghostty.App())
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -125,8 +128,7 @@ struct ClearwayApp: App {
                 .background(CloseConfirmation())
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
-                .environmentObject(settings)
-                .preferredColorScheme(.dark)
+                .clearwayChrome(settings)
         }
         .defaultSize(width: 1100, height: 700)
         .commands {
@@ -161,7 +163,7 @@ struct ClearwayApp: App {
         WindowGroup(for: NoteIdentifier.self) { $identifier in
             if let identifier {
                 NoteWindow(identifier: identifier)
-                    .preferredColorScheme(.dark)
+                    .clearwayChrome(settings)
             }
         }
         .defaultSize(width: 500, height: 500)
@@ -170,7 +172,7 @@ struct ClearwayApp: App {
         WindowGroup(for: WorkTaskIdentifier.self) { $identifier in
             if let identifier {
                 WorkTaskWindow(identifier: identifier)
-                    .preferredColorScheme(.dark)
+                    .clearwayChrome(settings)
             }
         }
         .defaultSize(width: 600, height: 450)
@@ -179,7 +181,7 @@ struct ClearwayApp: App {
         WindowGroup(for: PromptIdentifier.self) { $identifier in
             if let identifier {
                 PromptWindow(identifier: identifier)
-                    .preferredColorScheme(.dark)
+                    .clearwayChrome(settings)
             }
         }
         .defaultSize(width: 600, height: 450)
@@ -187,7 +189,7 @@ struct ClearwayApp: App {
 
         Settings {
             SettingsView(settings: settings)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(settings.colorScheme.swiftUIColorScheme)
         }
     }
 
@@ -195,6 +197,15 @@ struct ClearwayApp: App {
         ProjectSelectorWindowController.shared.show(projectList: projectList) { [openWindow] path in
             openWindow(value: path)
         }
+    }
+}
+
+extension View {
+    /// Applies Clearway's shared window chrome: the user's color-scheme preference
+    /// and the settings environment dependency.
+    func clearwayChrome(_ settings: SettingsManager) -> some View {
+        environmentObject(settings)
+            .preferredColorScheme(settings.colorScheme.swiftUIColorScheme)
     }
 }
 

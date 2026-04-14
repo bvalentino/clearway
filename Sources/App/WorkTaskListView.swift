@@ -382,7 +382,11 @@ private struct WorkTaskRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                WorkTaskStatusBadge(status: task.status)
+                if task.status == .readyToStart {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .help("Ready to Start")
+                }
             }
             Text(task.createdAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
@@ -482,11 +486,9 @@ struct WorkTaskStatusBadge: View {
         .fontWeight(.medium)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .foregroundStyle(badgeColor)
-        .background(badgeColor.opacity(0.12), in: Capsule())
+        .foregroundStyle(status.badgeColor)
+        .background(status.badgeColor.opacity(0.12), in: Capsule())
     }
-
-    private var badgeColor: Color { status.badgeColor }
 }
 
 extension WorkTask.Status {

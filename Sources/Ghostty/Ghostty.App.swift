@@ -19,6 +19,9 @@ extension Ghostty {
             }
         }
 
+        private var appearanceObservation: NSKeyValueObservation?
+        private var lastIsDark: Bool = NSApp?.effectiveAppearance.isDark ?? true
+
         init() {
             self.config = Config()
             guard config.loaded else {
@@ -49,6 +52,17 @@ extension Ghostty {
             self.app = app
 
             ghostty_app_set_focus(app, NSApp.isActive)
+            setColorScheme(for: NSApp.effectiveAppearance)
+
+            appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    let isDark = NSApp.effectiveAppearance.isDark
+                    guard isDark != self.lastIsDark else { return }
+                    self.lastIsDark = isDark
+                    self.setColorScheme(isDark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+                }
+            }
 
             let center = NotificationCenter.default
             center.addObserver(
@@ -109,6 +123,20 @@ extension Ghostty {
 
             // Replace the Config wrapper; the old one's deinit frees the previous pointer.
             config = Config(existing: newConfig)
+        }
+
+        // MARK: - Color Scheme
+
+        func setColorScheme(_ scheme: ghostty_color_scheme_e) {
+            guard let app = app else {
+                Ghostty.logger.warning("setColorScheme called before app initialized")
+                return
+            }
+            ghostty_app_set_color_scheme(app, scheme)
+        }
+
+        func setColorScheme(for appearance: NSAppearance) {
+            setColorScheme(appearance.isDark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
         }
 
         // MARK: - Notifications
