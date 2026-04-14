@@ -193,6 +193,43 @@ targets:
               echo "warning: Bundled git runtime not found at $GIT_DIST (Debug build — optional)"
             fi
           fi
+      - name: "Bundle Ghostty resources"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          SRC_SHARE="$PROJECT_DIR/ghostty/zig-out/share"
+          DEST_ROOT="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Resources"
+          DEST_GHOSTTY="$DEST_ROOT/ghostty"
+          DEST_TERMINFO="$DEST_ROOT/terminfo"
+          # Sanity guard: refuse to run rsync --delete against an unexpected root.
+          case "$DEST_ROOT" in
+            */Contents/Resources) ;;
+            *) echo "error: unexpected DEST_ROOT=$DEST_ROOT" >&2; exit 1 ;;
+          esac
+          if [ -d "$SRC_SHARE/ghostty" ]; then
+            echo "==> Copying ghostty resources (themes, shell-integration)..."
+            mkdir -p "$DEST_GHOSTTY"
+            rsync -a --delete "$SRC_SHARE/ghostty/" "$DEST_GHOSTTY/"
+          fi
+          if [ -d "$SRC_SHARE/terminfo" ]; then
+            echo "==> Copying terminfo database..."
+            mkdir -p "$DEST_TERMINFO"
+            rsync -a --delete "$SRC_SHARE/terminfo/" "$DEST_TERMINFO/"
+          fi
+          if [ "$CONFIGURATION" = "Release" ]; then
+            if [ ! -d "$DEST_GHOSTTY/themes" ]; then
+              echo "error: themes directory missing at $DEST_GHOSTTY/themes" >&2
+              exit 1
+            fi
+            if [ ! -d "$DEST_GHOSTTY/shell-integration" ]; then
+              echo "error: shell-integration directory missing at $DEST_GHOSTTY/shell-integration" >&2
+              exit 1
+            fi
+            if [ ! -f "$DEST_TERMINFO/78/xterm-ghostty" ]; then
+              echo "error: xterm-ghostty terminfo missing at $DEST_TERMINFO/78/xterm-ghostty" >&2
+              exit 1
+            fi
+          fi
       - name: SwiftLint
         basedOnDependencyAnalysis: false
         script: |
@@ -202,6 +239,21 @@ targets:
             echo "warning: SwiftLint not installed — brew install swiftlint"
           fi
     preBuildScripts:
+      - name: Verify Ghostty resources
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          SHARE_DIR="$PROJECT_DIR/ghostty/zig-out/share"
+          if [ ! -d "$SHARE_DIR/ghostty/themes" ] \
+             || [ ! -d "$SHARE_DIR/ghostty/shell-integration" ] \
+             || [ ! -d "$SHARE_DIR/terminfo" ]; then
+            MSG="Ghostty resources missing at $SHARE_DIR. Run ./scripts/setup.sh or (cd ghostty && zig build -Doptimize=ReleaseFast) to generate them."
+            if [ "$CONFIGURATION" = "Release" ]; then
+              echo "error: $MSG" >&2
+              exit 1
+            fi
+            echo "warning: $MSG" >&2
+          fi
       - name: Bundle git runtime (Release)
         basedOnDependencyAnalysis: false
         script: |

@@ -2,22 +2,44 @@ import SwiftUI
 import GhosttyKit
 import Sparkle
 
-/// Configure environment and call ghostty_init once at process startup,
-/// before any config/app is created.
+/// Configure environment and call ghostty_init once at process startup.
+/// Prefers the bundled resources dir (populated by the ghostty post-build
+/// phase in project.yml); falls back to an installed Ghostty.app only when
+/// the candidate passes the same sanity checks libghostty's runtime relies on.
 private let ghosttyInitResult: Bool = {
-    // Set GHOSTTY_RESOURCES_DIR before ghostty_init so libghostty can find
-    // themes, shaders, etc. from the installed Ghostty.app bundle.
+    // Once resources_dir is set, libghostty derives TERMINFO from its parent
+    // and unconditionally sets TERM=xterm-ghostty (ghostty/src/termio/Exec.zig).
+    // Accepting a partially-populated candidate would leave ncurses apps
+    // (vim, less, tmux) pointing at a missing terminfo entry, so require the
+    // sentinels the runtime actually depends on before selecting one.
+    func isValidResourcesDir(_ path: String) -> Bool {
+        let parent = (path as NSString).deletingLastPathComponent
+        let themes = (path as NSString).appendingPathComponent("themes")
+        let shellIntegration = (path as NSString).appendingPathComponent("shell-integration")
+        let terminfo = (parent as NSString)
+            .appendingPathComponent("terminfo/78/xterm-ghostty")
+        return access(themes, R_OK) == 0
+            && access(shellIntegration, R_OK) == 0
+            && access(terminfo, R_OK) == 0
+    }
+
     if getenv("GHOSTTY_RESOURCES_DIR") == nil {
-        let candidates = [
-            "/Applications/Ghostty.app/Contents/Resources/ghostty",
+        var candidates: [String] = []
+        if let bundled = Bundle.main.resourceURL?
+            .appendingPathComponent("ghostty", isDirectory: true).path {
+            candidates.append(bundled)
+        }
+        candidates.append("/Applications/Ghostty.app/Contents/Resources/ghostty")
+        candidates.append(
             NSString(string: "~/Applications/Ghostty.app/Contents/Resources/ghostty")
-                .expandingTildeInPath,
-        ]
-        for path in candidates {
-            if access(path, R_OK) == 0 {
-                setenv("GHOSTTY_RESOURCES_DIR", path, 1)
-                break
-            }
+                .expandingTildeInPath
+        )
+        if let path = candidates.first(where: isValidResourcesDir) {
+            setenv("GHOSTTY_RESOURCES_DIR", path, 1)
+        } else {
+            Ghostty.logger.warning(
+                "No valid Ghostty resources dir found; themes and shell integration will be unavailable"
+            )
         }
     }
 

@@ -298,6 +298,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7685CA36E00CDD4D1B0F896A /* Build configuration list for PBXNativeTarget "Clearway" */;
 			buildPhases = (
+				70AC77F5AFE8C3BC5D30F010 /* Verify Ghostty resources */,
 				CD4668BB0827C45A502562F6 /* Bundle git runtime (Release) */,
 				30B7ACEA65FD754DE1C36435 /* Generate BuildInfo */,
 				3C90281E30846A7DB0538E47 /* Sources */,
@@ -306,6 +307,7 @@
 				E5A9A68B0F924E199B2EE9F1 /* Inject Sparkle Info.plist keys */,
 				42D905E6CF53FC22AE2DABFA /* Re-sign Sparkle helpers */,
 				F1B55DC5CAD8CE92CD995C2D /* Sign and verify bundled git runtime */,
+				09CFB26E936D18BB9AA51280 /* Bundle Ghostty resources */,
 				E4C30596A3613D00F7E6B517 /* SwiftLint */,
 			);
 			buildRules = (
@@ -386,6 +388,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		09CFB26E936D18BB9AA51280 /* Bundle Ghostty resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle Ghostty resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nSRC_SHARE=\"$PROJECT_DIR/ghostty/zig-out/share\"\nDEST_ROOT=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Resources\"\nDEST_GHOSTTY=\"$DEST_ROOT/ghostty\"\nDEST_TERMINFO=\"$DEST_ROOT/terminfo\"\n# Sanity guard: refuse to run rsync --delete against an unexpected root.\ncase \"$DEST_ROOT\" in\n  */Contents/Resources) ;;\n  *) echo \"error: unexpected DEST_ROOT=$DEST_ROOT\" >&2; exit 1 ;;\nesac\nif [ -d \"$SRC_SHARE/ghostty\" ]; then\n  echo \"==> Copying ghostty resources (themes, shell-integration)...\"\n  mkdir -p \"$DEST_GHOSTTY\"\n  rsync -a --delete \"$SRC_SHARE/ghostty/\" \"$DEST_GHOSTTY/\"\nfi\nif [ -d \"$SRC_SHARE/terminfo\" ]; then\n  echo \"==> Copying terminfo database...\"\n  mkdir -p \"$DEST_TERMINFO\"\n  rsync -a --delete \"$SRC_SHARE/terminfo/\" \"$DEST_TERMINFO/\"\nfi\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  if [ ! -d \"$DEST_GHOSTTY/themes\" ]; then\n    echo \"error: themes directory missing at $DEST_GHOSTTY/themes\" >&2\n    exit 1\n  fi\n  if [ ! -d \"$DEST_GHOSTTY/shell-integration\" ]; then\n    echo \"error: shell-integration directory missing at $DEST_GHOSTTY/shell-integration\" >&2\n    exit 1\n  fi\n  if [ ! -f \"$DEST_TERMINFO/78/xterm-ghostty\" ]; then\n    echo \"error: xterm-ghostty terminfo missing at $DEST_TERMINFO/78/xterm-ghostty\" >&2\n    exit 1\n  fi\nfi\n";
+		};
 		30B7ACEA65FD754DE1C36435 /* Generate BuildInfo */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -424,6 +445,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nIDENTITY=\"Developer ID Application: Bruno Valentino (76AEQBHY3K)\"\nAPP=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app\"\nFRAMEWORK=\"$APP/Contents/Frameworks/Sparkle.framework\"\n# On Release builds every step of Sparkle wiring is load-bearing, so\n# fail the build if anything is missing. Using Versions/Current keeps\n# this working if Sparkle bumps its internal framework version letter.\nif [ ! -d \"$FRAMEWORK\" ]; then\n  echo \"error: Sparkle.framework not found at $FRAMEWORK\" >&2\n  exit 1\nfi\nVERSIONS_CURRENT=\"$FRAMEWORK/Versions/Current\"\nif [ ! -e \"$VERSIONS_CURRENT\" ]; then\n  echo \"error: $VERSIONS_CURRENT missing — Sparkle framework layout unexpected\" >&2\n  exit 1\nfi\nsign_path() {\n  local target=\"$1\"\n  if [ ! -e \"$target\" ]; then\n    echo \"error: Sparkle re-sign target missing: $target\" >&2\n    exit 1\n  fi\n  echo \"==> re-signing $(basename \"$target\")\"\n  /usr/bin/codesign --force --options runtime --timestamp --sign \"$IDENTITY\" \"$target\"\n}\nsign_path \"$VERSIONS_CURRENT/XPCServices/Downloader.xpc\"\nsign_path \"$VERSIONS_CURRENT/XPCServices/Installer.xpc\"\nsign_path \"$VERSIONS_CURRENT/Updater.app\"\nsign_path \"$VERSIONS_CURRENT/Autoupdate\"\nsign_path \"$FRAMEWORK\"\n/usr/bin/codesign --verify --deep --strict --verbose=2 \"$FRAMEWORK\"\n# Post-verification: confirm the Sparkle plist keys made it into the\n# final app so a silent skip in the inject phase cannot slip through.\nAPP_PLIST=\"$APP/Contents/Info.plist\"\nif [ ! -f \"$APP_PLIST\" ]; then\n  echo \"error: Info.plist missing at $APP_PLIST after build\" >&2\n  exit 1\nfi\nfor key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUScheduledCheckInterval; do\n  if ! /usr/bin/plutil -extract \"$key\" raw -o - \"$APP_PLIST\" >/dev/null 2>&1; then\n    echo \"error: $key missing from $APP_PLIST — Sparkle inject phase did not run\" >&2\n    exit 1\n  fi\ndone\n";
+		};
+		70AC77F5AFE8C3BC5D30F010 /* Verify Ghostty resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify Ghostty resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nSHARE_DIR=\"$PROJECT_DIR/ghostty/zig-out/share\"\nif [ ! -d \"$SHARE_DIR/ghostty/themes\" ] \\\n   || [ ! -d \"$SHARE_DIR/ghostty/shell-integration\" ] \\\n   || [ ! -d \"$SHARE_DIR/terminfo\" ]; then\n  MSG=\"Ghostty resources missing at $SHARE_DIR. Run ./scripts/setup.sh or (cd ghostty && zig build -Doptimize=ReleaseFast) to generate them.\"\n  if [ \"$CONFIGURATION\" = \"Release\" ]; then\n    echo \"error: $MSG\" >&2\n    exit 1\n  fi\n  echo \"warning: $MSG\" >&2\nfi\n";
 		};
 		CD4668BB0827C45A502562F6 /* Bundle git runtime (Release) */ = {
 			isa = PBXShellScriptBuildPhase;
