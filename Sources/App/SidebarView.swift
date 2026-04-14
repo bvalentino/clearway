@@ -13,6 +13,7 @@ struct SidebarView: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @EnvironmentObject private var groupManager: WorktreeGroupManager
     @Binding var sidebarSelection: DetailSelection?
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
@@ -22,6 +23,12 @@ struct SidebarView: View {
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
     @State private var selectionBeforeSettings: DetailSelection?
+    @State private var createWorktreeTargetGroupId: UUID?
+    @State private var groupToRename: WorktreeGroup?
+    @State private var groupToDelete: WorktreeGroup?
+    @State private var showingNewGroupSheet: Bool = false
+    @State private var defaultSectionTargeted: Bool = false
+    @State private var targetedGroupId: UUID?
 
     private var isSearching: Bool { !searchText.isEmpty }
 
@@ -29,24 +36,45 @@ struct SidebarView: View {
         URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
     }
 
-    private var sortedWorktrees: [Worktree] {
-        Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds)
+    /// All worktrees in sidebar display order (default section then each group), filtered by search.
+    private var orderedWorktrees: [Worktree] {
+        let titles = workTaskManager.titlesByBranch
+        return groupManager.sidebarOrderedWorktrees(
+            worktreeManager.worktrees,
+            openIds: terminalManager.openWorktreeIds
+        ) { wt in
+            guard isSearching else { return true }
+            if wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
+            if let branch = wt.branch,
+               let title = titles[branch],
+               title.localizedCaseInsensitiveContains(searchText) { return true }
+            // Match the worktree when its containing group's name matches the query,
+            // so filtering by group surfaces all members under that header.
+            if let groupId = groupManager.groupId(for: wt.id),
+               let group = groupManager.groups.first(where: { $0.id == groupId }),
+               group.name.localizedCaseInsensitiveContains(searchText) { return true }
+            return false
+        }
     }
 
-    private var filteredWorktrees: [Worktree] {
-        guard isSearching else { return sortedWorktrees }
-        let titles = workTaskManager.titlesByBranch
-        return sortedWorktrees.filter { wt in
-            wt.displayName.localizedCaseInsensitiveContains(searchText)
-            || (wt.branch.flatMap { titles[$0] }?.localizedCaseInsensitiveContains(searchText) ?? false)
-        }
+    /// Worktrees in sidebar visible order (default section then groups), used to
+    /// assign the `⌘N` badge position. Matches the ordering `ContentView` uses for
+    /// the Cmd+1…9 key bindings so the badge and the shortcut target the same row.
+    private var sortedWorktrees: [Worktree] {
+        groupManager.sidebarOrderedWorktrees(
+            worktreeManager.worktrees,
+            openIds: terminalManager.openWorktreeIds
+        ) { _ in true }
     }
 
     var body: some View {
         List(selection: $sidebarSelection) {
             planningRow
             promptsRow
-            worktreeSection
+            defaultWorktreeSection
+            ForEach(groupManager.groups) { group in
+                groupSection(group)
+            }
         }
         .overlay(alignment: .bottomLeading) {
             Button {
@@ -83,10 +111,10 @@ struct SidebarView: View {
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
-        .sheet(item: $activeSheet) { sheet in
+        .sheet(item: $activeSheet, onDismiss: { createWorktreeTargetGroupId = nil }) { sheet in
             switch sheet {
             case .createWorktree:
-                CreateWorktreeSheet()
+                CreateWorktreeSheet(targetGroupId: createWorktreeTargetGroupId)
             case .debugTerminal:
                 DebugTerminalSheet(
                     error: worktreeManager.error ?? "",
@@ -131,6 +159,41 @@ struct SidebarView: View {
         } message: {
             Text("There are processes still running in this worktree's terminals.")
         }
+        .sheet(item: $groupToRename) { group in
+            RenameGroupSheet(group: group) { newName in
+                groupManager.renameGroup(id: group.id, to: newName)
+                groupToRename = nil
+            }
+        }
+        .sheet(isPresented: $showingNewGroupSheet) {
+            NewGroupSheet { name in
+                groupManager.createGroup(named: name)
+                showingNewGroupSheet = false
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clearwayNewGroup)) { note in
+            // Only the sidebar whose group manager matches the post's target should
+            // present the sheet — the notification is broadcast to every mounted view.
+            guard (note.object as? WorktreeGroupManager) === groupManager else { return }
+            showingNewGroupSheet = true
+        }
+        .confirmationDialog(
+            "Delete group \"\(groupToDelete?.name ?? "")\"?",
+            isPresented: Binding(
+                get: { groupToDelete != nil },
+                set: { if !$0 { groupToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Group", role: .destructive) {
+                if let group = groupToDelete {
+                    groupManager.deleteGroup(id: group.id)
+                }
+                groupToDelete = nil
+            }
+        } message: {
+            Text("Worktrees in this group will be ungrouped, not deleted.")
+        }
     }
 
     // MARK: - Sections
@@ -146,14 +209,15 @@ struct SidebarView: View {
             .tag(DetailSelection.prompts)
     }
 
-    private var worktreeSection: some View {
-        Section {
-            let titles = workTaskManager.titlesByBranch
+    private var defaultWorktreeSection: some View {
+        let rows = orderedWorktrees.filter { groupManager.groupId(for: $0.id) == nil }
+        let titles = workTaskManager.titlesByBranch
+        return Section {
             SearchField(text: $searchText, placeholder: "Filter")
                 .listRowInsets(EdgeInsets(top: 4, leading: -4, bottom: 4, trailing: -4))
                 .listRowSeparator(.hidden)
 
-            ForEach(filteredWorktrees) { wt in
+            ForEach(rows) { wt in
                 let isOpen = terminalManager.isOpen(wt)
                 let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
                 let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
@@ -170,6 +234,11 @@ struct SidebarView: View {
                     .contextMenu {
                         worktreeContextMenu(wt)
                     }
+                    .draggableIf(!wt.isMain, id: wt.id)
+                    .dropDestination(for: String.self) { ids, _ in
+                        dropIntoDefault(ids)
+                        return true
+                    } isTargeted: { defaultSectionTargeted = $0 }
             }
 
             if worktreeManager.isLoading {
@@ -211,9 +280,65 @@ struct SidebarView: View {
                 .padding(.trailing, -6)
 
                 SidebarHeaderButton(systemImage: "plus") {
+                    createWorktreeTargetGroupId = nil
                     activeSheet = .createWorktree
                 }
                 .padding(.trailing, 6)
+            }
+            .background(defaultSectionTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
+            .dropDestination(for: String.self) { ids, _ in
+                dropIntoDefault(ids)
+                return true
+            } isTargeted: { defaultSectionTargeted = $0 }
+        }
+    }
+
+    @ViewBuilder
+    private func groupSection(_ group: WorktreeGroup) -> some View {
+        let rows = orderedWorktrees.filter { groupManager.groupId(for: $0.id) == group.id }
+        let titles = workTaskManager.titlesByBranch
+        // Only an active filter with zero matches hides the section — empty (new) groups stay visible.
+        if !(isSearching && rows.isEmpty) {
+            let isGroupTargeted = Binding(get: { targetedGroupId == group.id }, set: { targetedGroupId = $0 ? group.id : nil })
+            Section {
+                ForEach(rows) { wt in
+                    let isOpen = terminalManager.isOpen(wt)
+                    let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
+                    let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
+                    let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
+                    WorktreeRow(
+                        worktree: wt,
+                        taskTitle: wt.branch.flatMap { titles[$0] },
+                        hasNotification: hasNotification,
+                        isWorking: isWorking,
+                        shortcutIndex: shortcut
+                    )
+                        .tag(DetailSelection.worktree(wt))
+                        .opacity(!isOpen ? 0.5 : 1.0)
+                        .contextMenu {
+                            worktreeContextMenu(wt)
+                        }
+                        .draggableIf(!wt.isMain, id: wt.id)
+                        .dropDestination(for: String.self) { ids, _ in
+                            dropIntoGroup(ids, groupId: group.id)
+                            return true
+                        } isTargeted: { isGroupTargeted.wrappedValue = $0 }
+                }
+            } header: {
+                GroupSectionHeader(
+                    group: group,
+                    onPlus: {
+                        createWorktreeTargetGroupId = group.id
+                        activeSheet = .createWorktree
+                    },
+                    onRename: { groupToRename = group },
+                    onDelete: { groupToDelete = group }
+                )
+                .background(isGroupTargeted.wrappedValue ? Color.accentColor.opacity(0.12) : Color.clear)
+                .dropDestination(for: String.self) { ids, _ in
+                    dropIntoGroup(ids, groupId: group.id)
+                    return true
+                } isTargeted: { isGroupTargeted.wrappedValue = $0 }
             }
         }
     }
@@ -259,6 +384,18 @@ struct SidebarView: View {
         return i + 1
     }
 
+    // Defer @Published mutation past the NSTableView drop delegate to avoid a reentrant-list warning.
+    private func dropIntoGroup(_ ids: [String], groupId: UUID) {
+        DispatchQueue.main.async {
+            let wts = worktreeManager.worktrees
+            ids.compactMap { id in wts.first { $0.id == id } }
+                .forEach { groupManager.addWorktree($0, toGroup: groupId) }
+        }
+    }
+
+    private func dropIntoDefault(_ ids: [String]) {
+        DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
+    }
 }
 
 // MARK: - Worktree Row
@@ -324,7 +461,9 @@ struct WorktreeRow: View {
 // MARK: - Create Worktree Sheet
 
 struct CreateWorktreeSheet: View {
+    let targetGroupId: UUID?
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var groupManager: WorktreeGroupManager
     @Environment(\.dismiss) private var dismiss
     @State private var branchName = ""
     @State private var baseBranch = ""
@@ -361,12 +500,17 @@ struct CreateWorktreeSheet: View {
                 Button {
                     isCreating = true
                     Task {
-                        await worktreeManager.createWorktree(
+                        let created = await worktreeManager.createWorktree(
                             branch: branchName,
                             base: baseBranch.isEmpty ? nil : baseBranch,
                             fetch: fetchBeforeCreate
                         )
                         if worktreeManager.error == nil {
+                            if let created, let targetGroupId {
+                                groupManager.addWorktree(created, toGroup: targetGroupId)
+                            } else if targetGroupId != nil {
+                                Ghostty.logger.warning("CreateWorktreeSheet: worktree creation succeeded but return lookup failed; new worktree will be ungrouped")
+                            }
                             dismiss()
                         } else {
                             isCreating = false
@@ -385,6 +529,115 @@ struct CreateWorktreeSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(branchName.isEmpty || isCreating)
+            }
+        }
+        .padding(20)
+        .frame(width: 320)
+    }
+}
+
+// MARK: - Group Section Header
+
+private struct GroupSectionHeader: View {
+    let group: WorktreeGroup
+    let onPlus: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(group.name)
+            Spacer()
+            Menu {
+                Button("Rename Group", action: onRename)
+                Button("Delete Group", role: .destructive, action: onDelete)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .padding(.trailing, -6)
+            SidebarHeaderButton(systemImage: "plus", action: onPlus)
+                .padding(.trailing, 6)
+        }
+        .contextMenu {
+            Button("Rename Group", action: onRename)
+            Button("Delete Group", role: .destructive, action: onDelete)
+        }
+    }
+}
+
+// MARK: - Rename Group Sheet
+
+private struct RenameGroupSheet: View {
+    let group: WorktreeGroup
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+
+    init(group: WorktreeGroup, onSave: @escaping (String) -> Void) {
+        self.group = group
+        self.onSave = onSave
+        _name = State(initialValue: group.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Rename Group")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            TextField("Group name", text: $name)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save") {
+                    onSave(name)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 320)
+    }
+}
+
+// MARK: - New Group Sheet
+
+private struct NewGroupSheet: View {
+    let onCreate: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New Group")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            TextField("Group name", text: $name)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Create") {
+                    onCreate(name)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(20)
@@ -445,5 +698,15 @@ private struct SidebarHeaderButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+// MARK: - View Helpers
+
+// Using `.draggable`/`.dropDestination` (macOS 13+); fall back to `.onDrag`/`.onDrop` if sidebar gesture conflicts surface in QA.
+extension View {
+    @ViewBuilder
+    fileprivate func draggableIf(_ condition: Bool, id: String) -> some View {
+        if condition { self.draggable(id) } else { self }
     }
 }

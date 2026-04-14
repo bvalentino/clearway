@@ -169,10 +169,13 @@ struct ClearwayApp: App {
                 .keyboardShortcut(",", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .newItem) {
-                Button("New Window") {
+                Button {
                     showProjectSelector()
+                } label: {
+                    Label("New Window", systemImage: "macwindow.stack")
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                NewGroupCommand()
                 NewTabMenuItem()
             }
             CommandGroup(after: .sidebar) {
@@ -253,6 +256,24 @@ private struct NewTabMenuItem: View {
         Button("New Tab") { action?() }
             .keyboardShortcut("t", modifiers: .command)
             .disabled(action == nil)
+    }
+}
+
+/// File menu item that opens the New Group sheet in the focused project window,
+/// disabled when no project window is key.
+private struct NewGroupCommand: View {
+    @FocusedObject private var groupManager: WorktreeGroupManager?
+
+    var body: some View {
+        Button {
+            // Scope the post to the focused window's manager so only that window's
+            // sidebar presents the sheet — otherwise every mounted sidebar reacts.
+            NotificationCenter.default.post(name: .clearwayNewGroup, object: groupManager)
+        } label: {
+            Label("New Group\u{2026}", systemImage: "folder.badge.plus")
+        }
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .disabled(groupManager == nil)
     }
 }
 
