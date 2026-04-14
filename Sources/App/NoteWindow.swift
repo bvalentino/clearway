@@ -16,6 +16,7 @@ struct NoteIdentifier: Codable, Hashable {
 struct NoteWindow: View {
     let identifier: NoteIdentifier
     @State private var content: String = ""
+    @State private var bodyText: String = ""
     @State private var loaded = false
     @State private var showDeleteConfirmation = false
     @State private var deleted = false
@@ -28,26 +29,18 @@ struct NoteWindow: View {
         case edit, preview
     }
 
-    /// Editor binding — full content when frontmatter is shown, body-only when hidden.
-    /// Writes merge back into `content`, preserving any frontmatter verbatim.
-    private var editorBinding: Binding<String> {
-        if showFrontmatter {
-            return $content
-        }
-        return Binding(
-            get: { YAML.bodyText(in: content) },
-            set: { newBody in content = YAML.replacingBody(in: content, with: newBody) }
-        )
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             Group {
                 switch editorMode {
                 case .edit:
-                    MarkdownEditorView(text: editorBinding)
+                    if showFrontmatter {
+                        MarkdownEditorView(text: $content)
+                    } else {
+                        MarkdownEditorView(text: $bodyText)
+                    }
                 case .preview:
-                    MarkdownPreviewView(markdown: Note.contentWithoutFrontmatter(content))
+                    MarkdownPreviewView(markdown: showFrontmatter ? Note.contentWithoutFrontmatter(content) : bodyText)
                 }
             }
             .id(identifier.filename)
@@ -105,6 +98,13 @@ struct NoteWindow: View {
             Text("This action cannot be undone.")
         }
         .onAppear { loadIfNeeded() }
+        .onChange(of: showFrontmatter) { newValue in
+            if newValue {
+                content = YAML.replacingBody(in: content, with: bodyText)
+            } else {
+                bodyText = Note.contentWithoutFrontmatter(content)
+            }
+        }
         .onDisappear { save() }
     }
 
@@ -145,13 +145,15 @@ struct NoteWindow: View {
         if let data = FileManager.default.contents(atPath: identifier.filePath),
            let text = String(data: data, encoding: .utf8) {
             content = text
+            bodyText = Note.contentWithoutFrontmatter(text)
         }
         editorMode = content.isEmpty ? .edit : .preview
     }
 
     private func save() {
         guard !deleted, FileManager.default.fileExists(atPath: identifier.filePath) else { return }
-        let data = content.data(using: .utf8) ?? Data()
+        let toWrite = showFrontmatter ? content : YAML.replacingBody(in: content, with: bodyText)
+        let data = toWrite.data(using: .utf8) ?? Data()
         FileManager.default.createFile(
             atPath: identifier.filePath,
             contents: data,
