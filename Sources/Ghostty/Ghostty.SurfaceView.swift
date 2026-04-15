@@ -6,6 +6,8 @@ import GhosttyKit
 extension Ghostty {
     /// NSView subclass that hosts a single Ghostty terminal surface.
     class SurfaceView: NSView, ObservableObject, NSTextInputClient {
+        private static let acceptedDropTypes: [NSPasteboard.PasteboardType] = [.string, .fileURL, .URL]
+
         @Published var title: String = ""
         @Published var healthy: Bool = true
         @Published var hoverUrl: String?
@@ -77,6 +79,7 @@ extension Ghostty {
             ghostty_surface_set_focus(surface, false)
 
             updateTrackingAreas()
+            registerForDraggedTypes(Self.acceptedDropTypes)
         }
 
         required init?(coder: NSCoder) {
@@ -506,6 +509,42 @@ extension Ghostty {
 
             key.action = GHOSTTY_ACTION_RELEASE
             ghostty_surface_key(surface, key)
+        }
+
+        // MARK: - Drag and Drop
+
+        override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            guard surfacePtr != nil else { return [] }
+            let types = Set(sender.draggingPasteboard.types ?? [])
+            return types.isDisjoint(with: Self.acceptedDropTypes) ? [] : .copy
+        }
+
+        override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            guard surfacePtr != nil else { return false }
+            let pb = sender.draggingPasteboard
+            let content: String?
+            if let url = pb.string(forType: .URL) {
+                // Web URL (browser drops). Escape so shell metacharacters
+                // in the URL can't be interpreted. Matches Ghostty.app.
+                content = Ghostty.Shell.escape(url)
+            } else if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+                // Only coerce to `path` for true file URLs. Remote URLs
+                // reach this branch when the drag source publishes only
+                // NSURL objects (no `.URL` string type); `path` would
+                // silently drop scheme/host/query, so use `absoluteString`.
+                content = urls.map { url in
+                    Ghostty.Shell.escape(url.isFileURL ? url.path : url.absoluteString)
+                }.joined(separator: " ")
+            } else if let str = pb.string(forType: .string) {
+                // Plain text from another app — may be a command the user
+                // is pasting. Do NOT escape.
+                content = str
+            } else {
+                content = nil
+            }
+            guard let content else { return false }
+            sendText(content)
+            return true
         }
 
         // MARK: - NSTextInputClient
