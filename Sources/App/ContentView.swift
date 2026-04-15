@@ -194,7 +194,6 @@ struct ContentView: View {
             handleStartResult(result, isAutoStart: true)
         }
         .navigationTitle(currentWorktree?.displayName ?? projectName)
-        .navigationSubtitle(currentWorktree.flatMap { worktreeManager.subtitle(for: $0) } ?? "")
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -222,7 +221,6 @@ struct ContentView: View {
                 focusActiveMainTab()
             }
             terminalManager.clearNotification(for: wt.id)
-            worktreeManager.watchTitle(forWorktreePath: wt.path)
             claudeTodoManager.setWorktreePath(wt.path)
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
@@ -396,7 +394,6 @@ struct ContentView: View {
             removeSidebarKeyMonitor()
             removeMainTerminalKeyMonitor()
             ctrlHeld = false
-            worktreeManager.watchTitle(forWorktreePath: nil)
             claudeTodoManager.stopWatching()
             todoManager.stopWatching()
             notesManager.stopWatching()

@@ -31,6 +31,13 @@ class WorkTaskManager: ObservableObject {
         tasks.first { $0.worktree == branch }
     }
 
+    var titlesByBranch: [String: String] {
+        Dictionary(
+            tasks.compactMap { t in t.worktree.flatMap { ($0, t.title) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     // MARK: - CRUD
 
     @discardableResult

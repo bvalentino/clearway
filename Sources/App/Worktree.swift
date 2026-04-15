@@ -1,6 +1,6 @@
+import Combine
 import Foundation
 import GhosttyKit
-import SwiftUI
 
 // MARK: - Model
 
@@ -54,19 +54,10 @@ class WorktreeManager: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastCreatedBranch: String?
-    /// Titles read from Claude Code session JSONL files, keyed by worktree path.
-    @Published var worktreeTitles: [String: String] = [:]
     /// PR fetch state for worktrees, keyed by worktree ID.
     @Published var worktreePRStates: [String: PRFetchState] = [:]
 
-    private nonisolated static let claudeDir: String = {
-        (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
-    }()
-
     private var backgroundRefreshTask: Task<Void, Never>?
-    private var titleWatcherSources: [DispatchSourceFileSystemObject] = []
-    private var pendingTitleReload: Task<Void, Never>?
-    private var currentTitleWatchPath: String?
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -75,8 +66,6 @@ class WorktreeManager: ObservableObject {
 
     nonisolated deinit {
         backgroundRefreshTask?.cancel()
-        pendingTitleReload?.cancel()
-        for source in titleWatcherSources { source.cancel() }
     }
 
     func refresh(showLoading: Bool = true) {
@@ -86,9 +75,9 @@ class WorktreeManager: ObservableObject {
 
         Task.detached { [weak self] in
             do {
-                let (wts, titles) = try await Self.fetchWorktreesAndTitles(in: projectPath)
+                let wts = try await Self.fetchWorktrees(in: projectPath)
                 await MainActor.run { [weak self] in
-                    self?.applyWorktreeRefresh(wts, titles: titles)
+                    self?.applyWorktreeRefresh(wts)
                     if self?.isLoading == true { self?.isLoading = false }
                 }
             } catch {
@@ -101,222 +90,8 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    private nonisolated static func fetchWorktreesAndTitles(in directory: String) async throws -> ([Worktree], [String: String]) {
-        let wts = try await fetchWorktrees(in: directory)
-        let titles = fetchTitles(for: wts)
-        return (wts, titles)
-    }
-
-    private func applyWorktreeRefresh(_ worktrees: [Worktree], titles: [String: String]) {
+    private func applyWorktreeRefresh(_ worktrees: [Worktree]) {
         if worktrees != self.worktrees { self.worktrees = worktrees }
-        if titles != self.worktreeTitles { self.worktreeTitles = titles }
-    }
-
-    // MARK: - Titles (from Claude Code sessions)
-
-    /// Returns the subtitle to display for a worktree.
-    /// Only non-main worktrees show session titles.
-    func subtitle(for worktree: Worktree) -> String? {
-        guard !worktree.isMain, let path = worktree.path, let title = worktreeTitles[path] else { return nil }
-        return title
-    }
-
-    /// Reads Claude Code session titles for all current worktrees and updates `worktreeTitles`.
-    func loadTitles() {
-        let worktrees = self.worktrees
-        Task.detached { [weak self] in
-            let titles = Self.fetchTitles(for: worktrees)
-            await MainActor.run { [weak self] in
-                if titles != self?.worktreeTitles {
-                    self?.worktreeTitles = titles
-                }
-            }
-        }
-    }
-
-    /// Reads Claude Code session titles for the given worktrees off the main thread.
-    nonisolated static func fetchTitles(for worktrees: [Worktree]) -> [String: String] {
-        var titles: [String: String] = [:]
-        for wt in worktrees where !wt.isMain {
-            guard let path = wt.path else { continue }
-            if let title = readClaudeSessionTitle(forWorktreePath: path) {
-                titles[path] = title
-            }
-        }
-        return titles
-    }
-
-    /// Watches Claude Code session files for title changes for the given worktree path.
-    /// Pass `nil` to stop watching.
-    func watchTitle(forWorktreePath worktreePath: String?) {
-        stopWatchingTitles()
-
-        guard let worktreePath else { return }
-
-        currentTitleWatchPath = worktreePath
-
-        // Read the current value in the background — JSONL files can be large (100MB+),
-        // so reading them on the main thread causes visible UI freezes.
-        Task.detached { [weak self] in
-            let title = Self.readClaudeSessionTitle(forWorktreePath: worktreePath)
-            await MainActor.run { [weak self] in
-                guard self?.currentTitleWatchPath == worktreePath else { return }
-                self?.applyTitle(title, for: worktreePath)
-            }
-        }
-
-        watchClaudeSessionDirectory(forWorktreePath: worktreePath)
-    }
-
-    /// Encodes a filesystem path to Claude Code's project directory name format.
-    /// `/Users/foo/bar` → `-Users-foo-bar`
-    nonisolated static func encodePathForClaude(_ path: String) -> String {
-        path.replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ".", with: "-")
-    }
-
-    /// Returns the Claude Code projects directory for a worktree path.
-    private nonisolated static func claudeProjectDir(forWorktreePath path: String) -> String {
-        (claudeDir as NSString)
-            .appendingPathComponent("projects")
-            .appending("/\(encodePathForClaude(path))")
-    }
-
-    /// Reads the most recent `custom-title` from Claude Code session JSONL files for a worktree.
-    nonisolated static func readClaudeSessionTitle(forWorktreePath worktreePath: String) -> String? {
-        let projectDir = claudeProjectDir(forWorktreePath: worktreePath)
-        let fm = FileManager.default
-
-        guard let contents = try? fm.contentsOfDirectory(atPath: projectDir) else { return nil }
-
-        // Sort by modification date (most recent first), return first title found
-        let sorted = contents
-            .filter { $0.hasSuffix(".jsonl") }
-            .compactMap { file -> (path: String, mod: Date)? in
-                let path = (projectDir as NSString).appendingPathComponent(file)
-                guard let attrs = try? fm.attributesOfItem(atPath: path),
-                      let mod = attrs[.modificationDate] as? Date else { return nil }
-                return (path, mod)
-            }
-            .sorted { $0.mod > $1.mod }
-
-        for (path, _) in sorted {
-            if let title = readCustomTitle(fromJSONL: path) {
-                return title
-            }
-        }
-        return nil
-    }
-
-    /// Parses a Claude Code session JSONL file for the last `custom-title` entry.
-    private nonisolated static func readCustomTitle(fromJSONL path: String) -> String? {
-        guard let data = FileManager.default.contents(atPath: path),
-              let content = String(data: data, encoding: .utf8) else { return nil }
-
-        // Last matching line wins (user may have renamed multiple times)
-        var title: String?
-        for line in content.split(separator: "\n") {
-            guard line.contains("\"custom-title\"") else { continue }
-            guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  let type = json["type"] as? String, type == "custom-title",
-                  let customTitle = json["customTitle"] as? String,
-                  !customTitle.isEmpty else { continue }
-            title = customTitle
-        }
-        return title
-    }
-
-    private func stopWatchingTitles() {
-        currentTitleWatchPath = nil
-        pendingTitleReload?.cancel()
-        pendingTitleReload = nil
-        for source in titleWatcherSources { source.cancel() }
-        titleWatcherSources = []
-    }
-
-    /// Watches the Claude Code projects directory for changes to session JSONL files.
-    private func watchClaudeSessionDirectory(forWorktreePath worktreePath: String) {
-        let projectDir = Self.claudeProjectDir(forWorktreePath: worktreePath)
-
-        // Watch the projects directory for new session files
-        if let source = Self.makeTitleWatcher(path: projectDir, handler: { [weak self] in
-            self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: true)
-        }) {
-            titleWatcherSources.append(source)
-        }
-
-        // Watch individual JSONL files for title changes — directory read + N open() calls
-        // moved to background to avoid blocking the main thread in large projects.
-        Task.detached { [weak self] in
-            let fm = FileManager.default
-            let contents = (try? fm.contentsOfDirectory(atPath: projectDir)) ?? []
-            var newSources: [DispatchSourceFileSystemObject] = []
-            for file in contents where file.hasSuffix(".jsonl") {
-                let filePath = (projectDir as NSString).appendingPathComponent(file)
-                if let source = Self.makeTitleWatcher(path: filePath, eventMask: [.write, .extend], handler: { [weak self] in
-                    self?.scheduleTitleReload(forWorktreePath: worktreePath, rebuildWatchers: false)
-                }) {
-                    newSources.append(source)
-                }
-            }
-            await MainActor.run { [weak self, newSources] in
-                guard let self, self.currentTitleWatchPath == worktreePath else {
-                    for source in newSources { source.cancel() }
-                    return
-                }
-                self.titleWatcherSources.append(contentsOf: newSources)
-            }
-        }
-    }
-
-    private nonisolated func scheduleTitleReload(forWorktreePath worktreePath: String, rebuildWatchers: Bool) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.pendingTitleReload?.cancel()
-            self.pendingTitleReload = Task.detached { [weak self] in
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                guard !Task.isCancelled else { return }
-                // Read off main — JSONL files can be large during active sessions.
-                let title = Self.readClaudeSessionTitle(forWorktreePath: worktreePath)
-                await MainActor.run { [weak self] in
-                    guard let self, self.currentTitleWatchPath == worktreePath else { return }
-                    self.applyTitle(title, for: worktreePath)
-                    if rebuildWatchers {
-                        self.stopWatchingTitles()
-                        self.currentTitleWatchPath = worktreePath
-                        self.watchClaudeSessionDirectory(forWorktreePath: worktreePath)
-                    }
-                }
-            }
-        }
-    }
-
-    private nonisolated static func makeTitleWatcher(
-        path: String,
-        eventMask: DispatchSource.FileSystemEvent = .write,
-        handler: @escaping () -> Void
-    ) -> DispatchSourceFileSystemObject? {
-        let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else { return nil }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: eventMask,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler(handler: handler)
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        return source
-    }
-
-    private func applyTitle(_ title: String?, for worktreePath: String) {
-        if let title {
-            worktreeTitles[worktreePath] = title
-        } else {
-            worktreeTitles.removeValue(forKey: worktreePath)
-        }
     }
 
     // MARK: - PR Status
@@ -348,11 +123,11 @@ class WorktreeManager: ObservableObject {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             guard !Task.isCancelled else { return }
 
-            // Phase 1: refresh worktree list + titles
-            guard let (wts, titles) = try? await Self.fetchWorktreesAndTitles(in: projectPath) else { return }
+            // Phase 1: refresh worktree list
+            guard let wts = try? await Self.fetchWorktrees(in: projectPath) else { return }
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                self?.applyWorktreeRefresh(wts, titles: titles)
+                self?.applyWorktreeRefresh(wts)
             }
 
             // Phase 2: fetch PR status for each open worktree with a branch
@@ -433,7 +208,6 @@ class WorktreeManager: ObservableObject {
 
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
             self.worktrees = wts
-            self.loadTitles()
             self.lastCreatedBranch = branch
         } catch {
             self.error = error.localizedDescription
