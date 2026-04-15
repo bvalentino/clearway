@@ -87,7 +87,7 @@ struct TaskAsideView: View {
                 }
 
                 // Agent metadata (show for tasks that have been worked on)
-                if !task.status.isBacklog {
+                if !task.status.isBacklog, WorkTaskAgentMetadata.hasContent(for: task) {
                     WorkTaskAgentMetadata(task: task)
                 }
             }
