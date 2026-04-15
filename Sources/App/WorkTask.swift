@@ -183,16 +183,4 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             && !name.contains("..")
             && !name.hasPrefix("/")
     }
-
-    // MARK: - Formatting
-
-    /// Format a token count as abbreviated string (e.g., "12.3k", "1.2M").
-    static func formatTokenCount(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            return String(format: "%.1fM", Double(count) / 1_000_000)
-        } else if count >= 1_000 {
-            return String(format: "%.1fk", Double(count) / 1_000)
-        }
-        return "\(count)"
-    }
 }
