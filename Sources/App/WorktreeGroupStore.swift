@@ -5,7 +5,7 @@ import os
 
 /// On-disk representation. Wraps groups with a `defaultOrder` for ungrouped worktrees.
 /// Decodes older files that stored a bare `[WorktreeGroup]` array by leaving `defaultOrder` empty.
-struct WorktreeGroupsPayload: Codable {
+struct WorktreeGroupsPayload: Codable, Equatable {
     var groups: [WorktreeGroup]
     var defaultOrder: [String]
 

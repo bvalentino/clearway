@@ -49,7 +49,7 @@ final class WorktreeGroupStoreTests: XCTestCase {
     func testLoadMissingFileReturnsEmpty() async {
         // tempRoot does not exist on disk — no .clearway directory created
         let result = await store.load()
-        XCTAssertEqual(result, [])
+        XCTAssertEqual(result, .empty)
     }
 
     // MARK: - load() on corrupt file returns [] (no crash)
@@ -67,7 +67,7 @@ final class WorktreeGroupStoreTests: XCTestCase {
         )
 
         let result = await store.load()
-        XCTAssertEqual(result, [], "Corrupt JSON should return [] without crashing")
+        XCTAssertEqual(result, .empty, "Corrupt JSON should return empty payload without crashing")
     }
 
     // MARK: - save(_:) creates .clearway directory and writes groups.json
@@ -87,7 +87,8 @@ final class WorktreeGroupStoreTests: XCTestCase {
             worktreeIds: [],
             createdAt: Date()
         )
-        try await store.save([group])
+        let payload = WorktreeGroupsPayload(groups: [group], defaultOrder: ["main"])
+        try await store.save(payload)
 
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: clearwayDir),
@@ -100,14 +101,14 @@ final class WorktreeGroupStoreTests: XCTestCase {
 
         // Verify the written content round-trips correctly.
         let loaded = await store.load()
-        XCTAssertEqual(loaded, [group])
+        XCTAssertEqual(loaded, payload)
     }
 
     func testSaveIsAtomic_noTmpFileAfterSave() async throws {
         let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
         let tmpFile = (clearwayDir as NSString).appendingPathComponent("groups.json.tmp")
 
-        try await store.save([])
+        try await store.save(.empty)
 
         // After a completed save the .tmp file must have been renamed away.
         XCTAssertFalse(
@@ -129,7 +130,7 @@ final class WorktreeGroupStoreTests: XCTestCase {
     func testWatcherFiresOnExternalWrite() async throws {
         // First save creates the .clearway dir and groups.json so the store can open
         // a file-level watcher (rather than a directory-level fallback).
-        try await store.save([])
+        try await store.save(.empty)
 
         let expectation = XCTestExpectation(description: "onExternalChange fired")
         expectation.expectedFulfillmentCount = 1
