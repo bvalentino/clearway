@@ -35,9 +35,10 @@ struct SidebarView: View {
 
     private var filteredWorktrees: [Worktree] {
         guard isSearching else { return sortedWorktrees }
+        let titles = workTaskManager.titlesByBranch
         return sortedWorktrees.filter { wt in
             wt.displayName.localizedCaseInsensitiveContains(searchText)
-            || (worktreeManager.subtitle(for: wt)?.localizedCaseInsensitiveContains(searchText) ?? false)
+            || (wt.branch.flatMap { titles[$0] }?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
 
@@ -147,6 +148,7 @@ struct SidebarView: View {
 
     private var worktreeSection: some View {
         Section {
+            let titles = workTaskManager.titlesByBranch
             SearchField(text: $searchText, placeholder: "Filter")
                 .listRowInsets(EdgeInsets(top: 4, leading: -4, bottom: 4, trailing: -4))
                 .listRowSeparator(.hidden)
@@ -158,7 +160,7 @@ struct SidebarView: View {
                 let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
                 WorktreeRow(
                     worktree: wt,
-                    subtitle: worktreeManager.subtitle(for: wt),
+                    taskTitle: wt.branch.flatMap { titles[$0] },
                     hasNotification: hasNotification,
                     isWorking: isWorking,
                     shortcutIndex: shortcut
@@ -263,7 +265,7 @@ struct SidebarView: View {
 
 struct WorktreeRow: View {
     let worktree: Worktree
-    var subtitle: String? = nil
+    var taskTitle: String? = nil
     var hasNotification: Bool = false
     var isWorking: Bool = false
     var shortcutIndex: Int? = nil
@@ -273,12 +275,15 @@ struct WorktreeRow: View {
         Label {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(worktree.displayName)
-                        .lineLimit(1)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption)
+                    if let taskTitle, !taskTitle.isEmpty {
+                        Text(taskTitle)
+                            .lineLimit(1)
+                        Text(worktree.displayName)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text(worktree.displayName)
                             .lineLimit(1)
                     }
                 }
