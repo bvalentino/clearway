@@ -234,11 +234,16 @@ struct SidebarView: View {
                     .contextMenu {
                         worktreeContextMenu(wt)
                     }
-                    .draggableIf(!wt.isMain, id: wt.id)
-                    .dropDestination(for: String.self) { ids, _ in
-                        dropIntoDefault(ids)
-                        return true
-                    } isTargeted: { defaultSectionTargeted = $0 }
+                    .draggableIf(!wt.isMain, id: wt.id) {
+                        WorktreeDragChip()
+                    }
+                    .moveDisabled(wt.isMain || isSearching)
+            }
+            .onMove { from, to in
+                guard !isSearching else { return }
+                var reordered = rows
+                reordered.move(fromOffsets: from, toOffset: to)
+                groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
             }
 
             if worktreeManager.isLoading {
@@ -318,11 +323,16 @@ struct SidebarView: View {
                         .contextMenu {
                             worktreeContextMenu(wt)
                         }
-                        .draggableIf(!wt.isMain, id: wt.id)
-                        .dropDestination(for: String.self) { ids, _ in
-                            dropIntoGroup(ids, groupId: group.id)
-                            return true
-                        } isTargeted: { isGroupTargeted.wrappedValue = $0 }
+                        .draggableIf(!wt.isMain, id: wt.id) {
+                            WorktreeDragChip()
+                        }
+                        .moveDisabled(isSearching)
+                }
+                .onMove { from, to in
+                    guard !isSearching else { return }
+                    var reordered = rows
+                    reordered.move(fromOffsets: from, toOffset: to)
+                    groupManager.setGroupOrder(id: group.id, ids: reordered.map(\.id))
                 }
             } header: {
                 GroupSectionHeader(
@@ -395,6 +405,21 @@ struct SidebarView: View {
 
     private func dropIntoDefault(_ ids: [String]) {
         DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
+    }
+}
+
+// MARK: - Drag Preview
+
+/// Chip shown under the cursor while dragging a worktree. Replaces SwiftUI's
+/// default live-snapshot drag preview, which lingers on screen after drop
+/// because of a macOS rendering quirk.
+private struct WorktreeDragChip: View {
+    var body: some View {
+        Image(systemName: "square.on.square.intersection.dashed")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 28, height: 28)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -706,7 +731,11 @@ private struct SidebarHeaderButton: View {
 // Using `.draggable`/`.dropDestination` (macOS 13+); fall back to `.onDrag`/`.onDrop` if sidebar gesture conflicts surface in QA.
 extension View {
     @ViewBuilder
-    fileprivate func draggableIf(_ condition: Bool, id: String) -> some View {
-        if condition { self.draggable(id) } else { self }
+    fileprivate func draggableIf<Preview: View>(
+        _ condition: Bool,
+        id: String,
+        @ViewBuilder preview: () -> Preview
+    ) -> some View {
+        if condition { self.draggable(id, preview: preview) } else { self }
     }
 }

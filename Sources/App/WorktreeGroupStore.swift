@@ -1,6 +1,17 @@
 import Foundation
 import os
 
+// MARK: - Payload
+
+/// On-disk representation. Wraps groups with a `defaultOrder` for ungrouped worktrees.
+/// Decodes older files that stored a bare `[WorktreeGroup]` array by leaving `defaultOrder` empty.
+struct WorktreeGroupsPayload: Codable {
+    var groups: [WorktreeGroup]
+    var defaultOrder: [String]
+
+    static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [])
+}
+
 // MARK: - Store
 
 final class WorktreeGroupStore {
@@ -36,25 +47,29 @@ final class WorktreeGroupStore {
 
     // MARK: - Load
 
-    func load() async -> [WorktreeGroup] {
+    func load() async -> WorktreeGroupsPayload {
         let path = groupsFile
         return await Task.detached(priority: .utility) {
             let fm = FileManager.default
-            guard fm.fileExists(atPath: path) else { return [] }
-            guard let data = fm.contents(atPath: path) else { return [] }
-            do {
-                return try JSONDecoder().decode([WorktreeGroup].self, from: data)
-            } catch {
-                Ghostty.logger.warning("groups.json is corrupt — resetting to empty. \(error)")
-                return []
+            guard fm.fileExists(atPath: path) else { return .empty }
+            guard let data = fm.contents(atPath: path) else { return .empty }
+            // Prefer the current payload format; fall back to the legacy bare-array format
+            // so existing projects keep their groups after upgrade.
+            if let payload = try? JSONDecoder().decode(WorktreeGroupsPayload.self, from: data) {
+                return payload
             }
+            if let legacy = try? JSONDecoder().decode([WorktreeGroup].self, from: data) {
+                return WorktreeGroupsPayload(groups: legacy, defaultOrder: [])
+            }
+            Ghostty.logger.warning("groups.json is corrupt — resetting to empty.")
+            return .empty
         }.value
     }
 
     // MARK: - Save
 
-    func save(_ groups: [WorktreeGroup]) async throws {
-        let data = try JSONEncoder().encode(groups)
+    func save(_ payload: WorktreeGroupsPayload) async throws {
+        let data = try JSONEncoder().encode(payload)
         let dir = clearwayDir
         let tmpPath = groupsTempFile
         let finalPath = groupsFile
