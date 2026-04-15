@@ -1,7 +1,8 @@
 import AppKit
 import GhosttyKit
 
-/// Escape a path for safe use in a shell command.
+/// Escape a path for safe use in a shell command (single-quote wrapping for programmatic
+/// command-building). For injecting text at the cursor in a live terminal, use `Ghostty.Shell.escape`.
 func shellEscape(_ path: String) -> String {
     "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
