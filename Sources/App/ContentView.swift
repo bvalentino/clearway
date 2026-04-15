@@ -38,6 +38,7 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @EnvironmentObject private var groupManager: WorktreeGroupManager
     @State private var detailSelection: DetailSelection? = .planning
     @State private var sidebarSelection: DetailSelection? = .planning
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
@@ -276,8 +277,14 @@ struct ContentView: View {
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
             let currentIds = Set(newWorktrees.map(\.id))
-            terminalManager.pruneStale(keeping: currentIds)
-            worktreeManager.prunePRStatuses(keeping: currentIds)
+            // Skip pruning on a failed or empty refresh — a transient `git worktree list`
+            // error zeroes the array, and pruning against an empty known-set would wipe
+            // persisted group membership / default order / PR statuses / open terminals.
+            if !newWorktrees.isEmpty && worktreeManager.error == nil {
+                groupManager.reconcile(knownWorktreeIds: currentIds)
+                terminalManager.pruneStale(keeping: currentIds)
+                worktreeManager.prunePRStatuses(keeping: currentIds)
+            }
             tabCloseQueue.removeAll { req in !terminalManager.mainTabs(for: req.worktreeId).contains { $0.id == req.tabId } }
             if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
                 afterCreateHookState = .none
@@ -406,7 +413,14 @@ struct ContentView: View {
 
     // MARK: - Title
 
-    private var sortedWorktrees: [Worktree] { Worktree.sorted(worktreeManager.worktrees, openIds: terminalManager.openWorktreeIds) }
+    /// Worktrees in sidebar visible order (default section then groups). Cmd+1…9
+    /// target the same rows shown in the sidebar, including those inside a group.
+    private var sortedWorktrees: [Worktree] {
+        groupManager.sidebarOrderedWorktrees(
+            worktreeManager.worktrees,
+            openIds: terminalManager.openWorktreeIds
+        ) { _ in true }
+    }
 
     private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
 

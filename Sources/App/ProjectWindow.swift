@@ -73,6 +73,7 @@ struct ProjectContentView: View {
     @EnvironmentObject private var settings: SettingsManager
     @StateObject private var worktreeManager: WorktreeManager
     @StateObject private var terminalManager: TerminalManager
+    @StateObject private var groupManager: WorktreeGroupManager
     @StateObject private var claudeTodoManager = ClaudeTodoManager()
     @StateObject private var todoManager = TodoManager()
     @StateObject private var notesManager = NotesManager()
@@ -86,9 +87,11 @@ struct ProjectContentView: View {
         let wm = WorktreeManager(projectPath: projectPath)
         let tm = TerminalManager()
         let taskMgr = WorkTaskManager(projectPath: projectPath)
+        let gm = WorktreeGroupManager(projectPath: projectPath)
         let promptsDir = UserDefaults.standard.string(forKey: SettingsKey.promptsDirectory) ?? SettingsManager.defaultPromptsDirectory
         _worktreeManager = StateObject(wrappedValue: wm)
         _terminalManager = StateObject(wrappedValue: tm)
+        _groupManager = StateObject(wrappedValue: gm)
         _workTaskManager = StateObject(wrappedValue: taskMgr)
         _workTaskCoordinator = StateObject(wrappedValue: WorkTaskCoordinator(
             workTaskManager: taskMgr,
@@ -109,6 +112,8 @@ struct ProjectContentView: View {
             .environmentObject(workTaskCoordinator)
             .environmentObject(claudeActivityMonitor)
             .environmentObject(promptManager)
+            .environmentObject(groupManager)
+            .focusedSceneObject(groupManager)
             .onAppear {
                 // Wire up agent surface check so TerminalManager skips auto-restart for agent surfaces
                 terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in

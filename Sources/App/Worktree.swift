@@ -176,14 +176,15 @@ class WorktreeManager: ObservableObject {
 
     /// Create a new worktree. Tries to check out an existing local/remote branch first;
     /// if none exists, creates a new branch with `-b`.
-    func createWorktree(branch: String, base: String? = nil, fetch: Bool = false) async {
+    @discardableResult
+    func createWorktree(branch: String, base: String? = nil, fetch: Bool = false) async -> Worktree? {
         guard !branch.contains("..") && !branch.hasPrefix("/") && !branch.hasPrefix("-") else {
             self.error = "Invalid branch name"
-            return
+            return nil
         }
         if let base, base.contains("..") || base.hasPrefix("/") || base.hasPrefix("-") {
             self.error = "Invalid base branch name"
-            return
+            return nil
         }
         let projectPath = self.projectPath
         do {
@@ -207,10 +208,13 @@ class WorktreeManager: ObservableObject {
             }
 
             let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
+            let created = wts.first { $0.branch == branch }
             self.worktrees = wts
             self.lastCreatedBranch = branch
+            return created
         } catch {
             self.error = error.localizedDescription
+            return nil
         }
     }
 
