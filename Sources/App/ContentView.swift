@@ -277,9 +277,14 @@ struct ContentView: View {
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
             let currentIds = Set(newWorktrees.map(\.id))
-            groupManager.reconcile(knownWorktreeIds: currentIds)
-            terminalManager.pruneStale(keeping: currentIds)
-            worktreeManager.prunePRStatuses(keeping: currentIds)
+            // Skip pruning on a failed or empty refresh — a transient `git worktree list`
+            // error zeroes the array, and pruning against an empty known-set would wipe
+            // persisted group membership / default order / PR statuses / open terminals.
+            if !newWorktrees.isEmpty && worktreeManager.error == nil {
+                groupManager.reconcile(knownWorktreeIds: currentIds)
+                terminalManager.pruneStale(keeping: currentIds)
+                worktreeManager.prunePRStatuses(keeping: currentIds)
+            }
             tabCloseQueue.removeAll { req in !terminalManager.mainTabs(for: req.worktreeId).contains { $0.id == req.tabId } }
             if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
                 afterCreateHookState = .none
