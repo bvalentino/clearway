@@ -239,12 +239,13 @@ class TerminalManager: ObservableObject {
             secondaryVisible[key] = true
         }
 
-        // Run startup command in main terminal
-        let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
-        if !command.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                mainSurface.sendCommand(command)
-            }
+        // Run startup command in main terminal (skipped for main worktree when user opted out).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
+            let runForMain = UserDefaults.standard.object(forKey: SettingsKey.runMainTerminalCommandForMain) as? Bool ?? true
+            guard !command.isEmpty else { return }
+            if worktree.isMain && !runForMain { return }
+            mainSurface.sendCommand(command)
         }
 
         return tp

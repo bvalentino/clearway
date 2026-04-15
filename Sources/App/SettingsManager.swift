@@ -3,6 +3,7 @@ import SwiftUI
 
 enum SettingsKey {
     static let mainTerminalCommand = "clearway.mainTerminalCommand"
+    static let runMainTerminalCommandForMain = "clearway.runMainTerminalCommandForMain"
     static let showFocusBorder = "clearway.showFocusBorder"
     static let promptsDirectory = "clearway.promptsDirectory"
     static let colorScheme = "clearway.colorScheme"
@@ -49,6 +50,12 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var runMainTerminalCommandForMain: Bool {
+        didSet {
+            defaults.set(runMainTerminalCommandForMain, forKey: SettingsKey.runMainTerminalCommandForMain)
+        }
+    }
+
     @Published var showFocusBorder: Bool {
         didSet {
             defaults.set(showFocusBorder, forKey: SettingsKey.showFocusBorder)
@@ -77,6 +84,7 @@ class SettingsManager: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.mainTerminalCommand = defaults.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
+        self.runMainTerminalCommandForMain = defaults.object(forKey: SettingsKey.runMainTerminalCommandForMain) as? Bool ?? true
         self.showFocusBorder = defaults.object(forKey: SettingsKey.showFocusBorder) as? Bool ?? true
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         let stored = defaults.string(forKey: SettingsKey.colorScheme)

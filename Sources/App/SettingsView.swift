@@ -8,6 +8,7 @@ struct SettingsView: View {
             Section("Main Terminal") {
                 TextField("Command", text: $settings.mainTerminalCommand, prompt: Text("claude"))
                     .textFieldStyle(.roundedBorder)
+                Toggle("Run in main worktree", isOn: $settings.runMainTerminalCommandForMain)
             }
 
             Section("Appearance") {
@@ -35,6 +36,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .frame(width: 450, height: 420)
+        .frame(width: 450, height: 460)
     }
 }
