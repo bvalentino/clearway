@@ -595,6 +595,7 @@ private struct GroupSectionHeader: View {
     var body: some View {
         HStack {
             Text(group.name)
+                .lineLimit(1)
             Spacer()
             Menu {
                 Button("Rename Group", action: onRename)

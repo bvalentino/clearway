@@ -2,9 +2,16 @@ import SwiftUI
 import GhosttyKit
 
 private let maxShortcuts = 9
+private let sidebarMinWidth: Double = 200
+private let sidebarMaxWidth: Double = 420
 private let listsColumnMinWidth: Double = 280
 private let listsColumnDefaultWidth: Double = 340
+private let listsColumnMaxWidth: Double = 600
 private let listsColumnStorageKey = "ListsColumnIdealWidth"
+
+private func clampedColumnWidth(_ width: Double) -> Double {
+    min(listsColumnMaxWidth, max(listsColumnMinWidth, width))
+}
 
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
@@ -97,7 +104,7 @@ struct ContentView: View {
         let stored: Double
         if defaults.object(forKey: listsColumnStorageKey) != nil {
             let raw = defaults.double(forKey: listsColumnStorageKey)
-            stored = max(listsColumnMinWidth, raw)
+            stored = clampedColumnWidth(raw)
         } else {
             stored = listsColumnDefaultWidth
         }
@@ -112,6 +119,7 @@ struct ContentView: View {
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
+            .navigationSplitViewColumnWidth(min: sidebarMinWidth, ideal: 240, max: sidebarMaxWidth)
         } content: {
             contentColumn
         } detail: {
@@ -573,7 +581,7 @@ struct ContentView: View {
     /// a live write from a drag-in-progress would snap the user's column back mid-drag.
     /// See `ColumnWidthTracker` for the non-observing live capture that feeds this commit.
     private func commitListsColumnWidth() {
-        let width = max(listsColumnMinWidth, Double(columnWidthTracker.width))
+        let width = clampedColumnWidth(Double(columnWidthTracker.width))
         listsColumnIdealWidth = width
         UserDefaults.standard.set(width, forKey: listsColumnStorageKey)
     }
@@ -716,14 +724,14 @@ struct ContentView: View {
                 editorMode: $taskEditorMode
             )
             .background(columnWidthReader)
-            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth)
+            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth, max: listsColumnMaxWidth)
         } else if detailSelection == .prompts {
             PromptListView(
                 selection: $selectedPromptId,
                 editorMode: $promptEditorMode
             )
             .background(columnWidthReader)
-            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth)
+            .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth, max: listsColumnMaxWidth)
         } else {
             Color.clear
                 .navigationSplitViewColumnWidth(0)
@@ -741,7 +749,7 @@ struct ContentView: View {
                     columnWidthTracker.width = newValue
                     // Mirror to UserDefaults so new windows inherit mid-drag state. Plain
                     // UserDefaults writes aren't observed, so this won't re-seed `ideal:`.
-                    UserDefaults.standard.set(Double(newValue), forKey: listsColumnStorageKey)
+                    UserDefaults.standard.set(clampedColumnWidth(Double(newValue)), forKey: listsColumnStorageKey)
                 }
         }
     }
