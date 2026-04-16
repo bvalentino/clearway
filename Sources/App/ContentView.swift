@@ -53,7 +53,6 @@ struct ContentView: View {
     @State private var sidebarKeyMonitor: Any?
     @State private var mainTerminalKeyMonitor: Any?
     @State private var becomeActiveObserver: Any?
-    @State private var resignActiveObserver: Any?
     @State private var pendingRefresh: DispatchWorkItem?
     @State private var showCopiedFeedback = false
     @State private var showRemoveConfirmation = false
@@ -137,7 +136,7 @@ struct ContentView: View {
                         Image(systemName: "archivebox")
                     }
                     .help("Remove worktree")
-                    .disabled(currentWorktree?.isMain == true || currentWorktree?.canRemove == false)
+                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
@@ -202,7 +201,7 @@ struct ContentView: View {
             workTaskCoordinator.pendingAutoStart = nil
             handleStartResult(result, isAutoStart: true)
         }
-        .navigationTitle(currentWorktree.map { worktreeManager.stableDisplayName(for: $0) } ?? projectName)
+        .navigationTitle(currentWorktree?.displayName ?? projectName)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -355,19 +354,7 @@ struct ContentView: View {
                     queue: .main
                 ) { [self] _ in
                     Task { @MainActor in
-                        worktreeManager.cancelBackgroundRefresh()
                         debouncedRefresh()
-                    }
-                }
-            }
-            if resignActiveObserver == nil {
-                resignActiveObserver = NotificationCenter.default.addObserver(
-                    forName: NSApplication.didResignActiveNotification,
-                    object: nil,
-                    queue: .main
-                ) { [self] _ in
-                    Task { @MainActor in
-                        worktreeManager.refreshInBackground(openWorktreeIds: terminalManager.openWorktreeIds)
                     }
                 }
             }
@@ -402,9 +389,7 @@ struct ContentView: View {
             }
             pendingRefresh?.cancel()
             pendingRefresh = nil
-            worktreeManager.cancelBackgroundRefresh()
             if let o = becomeActiveObserver { NotificationCenter.default.removeObserver(o); becomeActiveObserver = nil }
-            if let o = resignActiveObserver { NotificationCenter.default.removeObserver(o); resignActiveObserver = nil }
             if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
             removeSidebarKeyMonitor()
             removeMainTerminalKeyMonitor()
@@ -619,7 +604,7 @@ struct ContentView: View {
     // MARK: - Worktree Removal with Hook
 
     private func beginRemoveWorktree(_ worktree: Worktree) {
-        guard worktree.canRemove, let branch = worktree.branch, let worktreePath = worktree.path else { return }
+        guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
         let isSelected = selectedWorktree?.id == worktree.id
         let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in

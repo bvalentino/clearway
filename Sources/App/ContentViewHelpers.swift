@@ -83,7 +83,7 @@ struct WorktreeStatusBar: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showCopiedFeedback = false }
                 }
             Spacer()
-            if let wt = worktree, !wt.isMain, wt.canFetchPR {
+            if let wt = worktree, !wt.isMain {
                 prStatusView(for: wt.id)
             }
         }

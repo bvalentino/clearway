@@ -1,15 +1,7 @@
-import Combine
 import Foundation
 import GhosttyKit
 
 // MARK: - Model
-
-enum HeadStatus {
-    case attached
-    case rebasing
-    case bisecting
-    case detached
-}
 
 /// A worktree entry parsed from `git worktree list --porcelain`.
 struct Worktree: Identifiable, Hashable {
@@ -18,12 +10,8 @@ struct Worktree: Identifiable, Hashable {
     let branch: String?
     let path: String?
     let isMain: Bool
-    let headStatus: HeadStatus
 
     var displayName: String { branch ?? "(detached)" }
-
-    var canRemove: Bool { headStatus == .attached }
-    var canFetchPR: Bool { headStatus == .attached }
 
     /// Sort worktrees: main first, then open (by open order), then closed (alphabetical).
     static func sorted(_ worktrees: [Worktree], openIds: [String]) -> [Worktree] {
@@ -67,21 +55,10 @@ class WorktreeManager: ObservableObject {
     @Published var lastCreatedBranch: String?
     /// PR fetch state for worktrees, keyed by worktree ID.
     @Published var worktreePRStates: [String: PRFetchState] = [:]
-    /// Initialized to "main" so the UI never renders a blank label during detection.
-    @Published var defaultBranchName: String = "main"
-
-    private var backgroundRefreshTask: Task<Void, Never>?
-    private var defaultBranchTask: Task<Void, Never>?
 
     init(projectPath: String) {
         self.projectPath = projectPath
         refresh()
-        launchDefaultBranchDetection()
-    }
-
-    nonisolated deinit {
-        backgroundRefreshTask?.cancel()
-        defaultBranchTask?.cancel()
     }
 
     func refresh(showLoading: Bool = true) {
@@ -110,35 +87,11 @@ class WorktreeManager: ObservableObject {
         if worktrees != self.worktrees { self.worktrees = worktrees }
     }
 
-    /// Re-detects the default branch. Wire to explicit user-initiated refreshes only —
-    /// do NOT call from the debounced become-active refresh path.
-    func refreshDefaultBranch() {
-        launchDefaultBranchDetection()
-    }
-
-    func stableDisplayName(for worktree: Worktree) -> String {
-        worktree.isMain ? defaultBranchName : worktree.displayName
-    }
-
-    private func launchDefaultBranchDetection() {
-        defaultBranchTask?.cancel()
-        let path = projectPath
-        defaultBranchTask = Task.detached { [weak self] in
-            let detected = await Self.detectDefaultBranch(in: path)
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                guard let self, self.defaultBranchName != detected else { return }
-                self.defaultBranchName = detected
-            }
-        }
-    }
-
     // MARK: - PR Status
 
     /// Checks PR status for a single worktree (user-initiated).
     func checkPR(for worktreeId: String) {
         guard let wt = worktrees.first(where: { $0.id == worktreeId }),
-              wt.canFetchPR,
               let branch = wt.branch,
               worktreePRStates[worktreeId] != .loading else { return }
         worktreePRStates[worktreeId] = .loading
@@ -149,60 +102,6 @@ class WorktreeManager: ObservableObject {
                 self?.worktreePRStates[worktreeId] = .result(status)
             }
         }
-    }
-
-    /// Schedules a background refresh 5 seconds from now. Call `cancelBackgroundRefresh()`
-    /// when the app returns to foreground to abort — avoids stale results overwriting
-    /// a foreground refresh. Intentionally never sets `.loading` PR states so cancellation
-    /// doesn't leave the UI in a half-loaded state.
-    func refreshInBackground(openWorktreeIds: [String]) {
-        backgroundRefreshTask?.cancel()
-        let projectPath = self.projectPath
-        let openIds = Set(openWorktreeIds)
-        backgroundRefreshTask = Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled else { return }
-
-            // Phase 1: refresh worktree list
-            guard let wts = try? await Self.fetchWorktrees(in: projectPath) else { return }
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                self?.applyWorktreeRefresh(wts)
-            }
-
-            // Phase 2: fetch PR status for each open worktree with a branch
-            guard !Task.isCancelled else { return }
-            let branchesById = wts.compactMap { wt -> (id: String, branch: String)? in
-                guard wt.canFetchPR, let branch = wt.branch, openIds.contains(wt.id) else { return nil }
-                return (wt.id, branch)
-            }
-            let prResults = await withTaskGroup(of: (String, PRStatus?).self) { group -> [(String, PRStatus?)] in
-                for (id, branch) in branchesById {
-                    group.addTask {
-                        let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
-                        return (id, status)
-                    }
-                }
-                var results: [(String, PRStatus?)] = []
-                for await result in group {
-                    guard !Task.isCancelled else { return results }
-                    results.append(result)
-                }
-                return results
-            }
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                for (id, status) in prResults {
-                    self?.worktreePRStates[id] = .result(status)
-                }
-            }
-        }
-    }
-
-    /// Cancels any in-flight background refresh.
-    func cancelBackgroundRefresh() {
-        backgroundRefreshTask?.cancel()
-        backgroundRefreshTask = nil
     }
 
     /// Removes PR data for worktrees that no longer exist.
@@ -264,10 +163,6 @@ class WorktreeManager: ObservableObject {
         guard let wt = worktrees.first(where: { $0.branch == branch }),
               let worktreePath = wt.path else {
             self.error = "Could not find path for worktree '\(branch)'"
-            return
-        }
-        guard wt.canRemove else {
-            self.error = "Cannot remove worktree while HEAD is not attached (rebase/bisect in progress)"
             return
         }
         worktrees.removeAll { $0.branch == branch }
@@ -333,107 +228,17 @@ class WorktreeManager: ObservableObject {
 
             let isMain = index == 0
             if isDetached { branch = nil }
-            let headStatus: HeadStatus = isDetached ? .detached : .attached
 
-            worktrees.append(Worktree(branch: branch, path: path, isMain: isMain, headStatus: headStatus))
+            worktrees.append(Worktree(branch: branch, path: path, isMain: isMain))
         }
 
         return worktrees
     }
 
-    // git emits "origin/main" or similar; normalize to the short branch name.
-    nonisolated static func parseSymbolicRefOutput(_ output: String) -> String? {
-        var result = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !result.isEmpty else { return nil }
-        if result.hasPrefix("origin/") {
-            result = String(result.dropFirst("origin/".count))
-        }
-        return result.isEmpty ? nil : result
-    }
-
-    /// Always returns a non-empty string so callers never render a blank label.
-    nonisolated static func detectDefaultBranch(in directory: String) async -> String {
-        if let data = try? await runCommand(
-            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-            in: directory
-        ), let decoded = String(data: data, encoding: .utf8),
-           let branch = parseSymbolicRefOutput(decoded) {
-            return branch
-        }
-
-        if let data = try? await runCommand(
-            ["git", "for-each-ref", "--format=%(refname:short)",
-             "refs/heads/main", "refs/heads/master", "refs/heads/trunk"],
-            in: directory
-        ), let decoded = String(data: data, encoding: .utf8) {
-            let first = decoded
-                .components(separatedBy: "\n")
-                .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if let branch = first, !branch.isEmpty {
-                return branch
-            }
-        }
-
-        return "main"
-    }
-
-    nonisolated static func gitdir(forWorktreeAt worktreePath: String) -> String? {
-        let dotGit = (worktreePath as NSString).appendingPathComponent(".git")
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: dotGit, isDirectory: &isDir) else { return nil }
-        if isDir.boolValue { return dotGit }
-        guard let raw = try? String(contentsOfFile: dotGit, encoding: .utf8) else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("gitdir: ") else { return nil }
-        let pathPart = String(trimmed.dropFirst("gitdir: ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !pathPart.isEmpty else { return nil }
-        if pathPart.hasPrefix("/") {
-            return pathPart
-        }
-        let base = URL(fileURLWithPath: worktreePath, isDirectory: true)
-        return URL(fileURLWithPath: pathPart, relativeTo: base).standardizedFileURL.path
-    }
-
-    nonisolated static func branchFromInProgressOp(gitdir: String) -> (branch: String, status: HeadStatus)? {
-        let probes: [(String, HeadStatus)] = [
-            ("rebase-merge/head-name", .rebasing),
-            ("rebase-apply/head-name", .rebasing),
-            ("BISECT_START", .bisecting),
-        ]
-        for (relative, status) in probes {
-            let path = (gitdir as NSString).appendingPathComponent(relative)
-            guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
-            var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if name.hasPrefix("refs/heads/") {
-                name = String(name.dropFirst("refs/heads/".count))
-            }
-            if !name.isEmpty {
-                return (name, status)
-            }
-        }
-        return nil
-    }
-
-    nonisolated static func applyHeadResolution(to worktrees: [Worktree]) -> [Worktree] {
-        worktrees.map { wt in
-            guard wt.headStatus == .detached, let path = wt.path else { return wt }
-            guard let gitdir = gitdir(forWorktreeAt: path),
-                  let recovered = branchFromInProgressOp(gitdir: gitdir) else { return wt }
-            return Worktree(
-                branch: recovered.branch,
-                path: wt.path,
-                isMain: wt.isMain,
-                headStatus: recovered.status
-            )
-        }
-    }
-
     private static func fetchWorktrees(in directory: String) async throws -> [Worktree] {
         let data = try await runCommand(["git", "worktree", "list", "--porcelain"], in: directory)
         let output = String(data: data, encoding: .utf8) ?? ""
-        let parsed = parseWorktreeListOutput(output)
-        return applyHeadResolution(to: parsed)
+        return parseWorktreeListOutput(output)
     }
 
     @discardableResult
