@@ -467,26 +467,6 @@ class WorkTaskCoordinator: ObservableObject {
         return .reuse(wt)
     }
 
-    /// Launches a state-command agent session for the given task in a new main tab,
-    /// without mutating task status or running before_run hooks.
-    func launchAgentInNewTab(for task: WorkTask) -> LaunchResult {
-        guard let config = workflowConfig, config.hasStateCommand(for: task.status) else { return .ignored }
-
-        if !config.isTrusted(forProject: workTaskManager.projectPath) {
-            return .needsTrust(config)
-        }
-
-        guard let worktree = worktreeForTask(task), let app = appProvider?() else { return .ignored }
-
-        let taskPath = workTaskManager.filePath(for: task)
-        guard let rendered = config.renderStateCommand(for: task.status, task: task, taskPath: taskPath) else {
-            return .ignored
-        }
-
-        runAgent(prompt: rendered, for: task, in: worktree, app: app, markAsLive: false)
-        return .launched
-    }
-
     /// Mark the current WORKFLOW.md config as trusted for this project.
     func approveTrust() {
         workflowConfig?.markTrusted(forProject: workTaskManager.projectPath)

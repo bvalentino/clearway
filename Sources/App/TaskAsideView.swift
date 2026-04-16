@@ -72,19 +72,9 @@ struct TaskAsideView: View {
                     let hasWorktree = workTaskCoordinator.worktreeForTask(task) != nil
                     if hasStateCommand && hasWorktree {
                         SendToTerminalButton(
-                            action: {
-                                let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-                                if shift {
-                                    runStateCommandInNewTab(task)
-                                } else {
-                                    sendStateCommandToTerminal(task)
-                                }
-                            },
-                            disabled: terminalManager.activeMainSurface == nil,
-                            // Paired with the .shift check in action: — keep in sync if the trigger modifier changes.
-                            alternateSymbolOnShift: "play.square"
+                            action: { sendStateCommandToTerminal(task) },
+                            disabled: terminalManager.activeMainSurface == nil
                         )
-                        .help("Send to Terminal — ⇧-click for new tab")
                     }
                 }
 
@@ -125,19 +115,6 @@ struct TaskAsideView: View {
         let surface = terminalManager.activeMainSurface else { return }
         surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
-    }
-
-    private func runStateCommandInNewTab(_ task: WorkTask) {
-        switch workTaskCoordinator.launchAgentInNewTab(for: task) {
-        case .launched:
-            break
-        case .ignored:
-            return
-        case .needsTrust:
-            onRequestTrust?({ [weak workTaskCoordinator] in
-                _ = workTaskCoordinator?.launchAgentInNewTab(for: task)
-            })
-        }
     }
 
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
