@@ -33,7 +33,6 @@ struct TodosPanelView: View {
     @State private var todoPendingDeletion: Todo?
     @State private var sessionConfirmingClear: String?
     @State private var confirmResetTask: Task<Void, Never>?
-    @FocusState private var isListFocused: Bool
 
     enum TodoSelection: Hashable {
         case todo(Int)
@@ -117,12 +116,6 @@ struct TodosPanelView: View {
                     }
                     .padding()
                 }
-                .focusable()
-                .focused($isListFocused)
-                .onCopyCommand {
-                    guard let text = selectedTodoSubject else { return [] }
-                    return [NSItemProvider(object: text as NSString)]
-                }
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -149,20 +142,6 @@ struct TodosPanelView: View {
         }
     }
 
-    private var selectedTodoSubject: String? {
-        switch selectedTodo {
-        case .todo(let id):
-            return todoManager.todos.first { $0.id == id }?.subject
-        case .claude(let sessionId, let todoId):
-            return claudeTodoManager.sessions
-                .first { $0.id == sessionId }?
-                .todos.first { $0.id == todoId }?
-                .subject
-        case nil:
-            return nil
-        }
-    }
-
     private func selectedClaudeTodoId(for sessionId: String) -> String? {
         if case .claude(sessionId, let todoId) = selectedTodo { return todoId }
         return nil
@@ -172,7 +151,6 @@ struct TodosPanelView: View {
         selectedTodo = selection
         isCreatingNew = false
         editingTodoId = nil
-        DispatchQueue.main.async { isListFocused = true }
     }
 
     private func todoRow(_ todo: Todo) -> some View {
