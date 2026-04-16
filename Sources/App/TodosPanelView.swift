@@ -217,8 +217,8 @@ struct TodosPanelView: View {
 
     private func sendToTerminal(_ text: String) {
         guard let surface = terminalManager.activeMainSurface else { return }
-        surface.sendCommand(text)
         surface.window?.makeFirstResponder(surface)
+        surface.sendCommand(text)
     }
 
     private func sendTodoToTerminal(_ todo: Todo) {
