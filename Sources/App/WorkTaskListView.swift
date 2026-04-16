@@ -51,19 +51,6 @@ struct WorkTaskListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 8) {
-                Button {
-                    createAndEdit()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
-                        .background(.thinMaterial, in: Circle())
-                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-                .help("New task")
-
                 if workTaskCoordinator.isAutoProcessingEnabled {
                     AutoProcessButton(
                         isAutoProcessing: workTaskCoordinator.isAutoProcessing,
@@ -75,6 +62,19 @@ struct WorkTaskListView: View {
                         workTaskCoordinator.isAutoProcessing.toggle()
                     }
                 }
+
+                Button {
+                    createAndEdit()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: 36, height: 36)
+                        .background(.thinMaterial, in: Circle())
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+                .help("New task")
             }
             .padding(12)
         }

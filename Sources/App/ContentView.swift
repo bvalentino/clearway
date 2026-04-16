@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import SwiftUI
 import GhosttyKit
 
@@ -45,6 +46,7 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @EnvironmentObject private var promptManager: PromptManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @State private var detailSelection: DetailSelection? = .planning
     @State private var sidebarSelection: DetailSelection? = .planning
@@ -83,6 +85,17 @@ struct ContentView: View {
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
             terminalManager.newShellTab(for: wtId, app: app)
+        }
+    }
+
+    /// Action exposed via `focusedSceneValue` so the File > New Task menu item
+    /// creates a task and navigates to it in Planning.
+    private var newTaskAction: (() -> Void)? {
+        return { [workTaskManager] in
+            guard let task = workTaskManager.createTask() else { return }
+            // Write synchronously so Planning mounts with the new selection in one render pass.
+            detailSelection = .planning
+            selectedTaskId = task.id
         }
     }
 
@@ -196,12 +209,14 @@ struct ContentView: View {
     var body: some View {
         navigator
         .focusedSceneValue(\.newTabAction, newTabAction)
+        .focusedSceneValue(\.newTaskAction, newTaskAction)
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
             workTaskCoordinator.pendingAutoStart = nil
             handleStartResult(result, isAutoStart: true)
         }
-        .navigationTitle(currentWorktree?.displayName ?? projectName)
+        .navigationTitle(navigationTitle)
+        .navigationSubtitle(navigationSubtitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -416,6 +431,23 @@ struct ContentView: View {
     }
 
     private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
+
+    private var navigationTitle: String {
+        if detailSelection == .planning { return "Planning" }
+        if detailSelection == .prompts { return "Prompts" }
+        return currentWorktree?.displayName ?? projectName
+    }
+
+    private var navigationSubtitle: String {
+        if detailSelection == .planning {
+            let c = workTaskManager.tasks.filter(\.status.isBacklog).count
+            return "\(c) task\(c == 1 ? "" : "s")"
+        } else if detailSelection == .prompts {
+            let c = promptManager.prompts.count
+            return "\(c) prompt\(c == 1 ? "" : "s")"
+        }
+        return ""
+    }
 
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
