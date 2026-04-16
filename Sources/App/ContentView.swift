@@ -2,6 +2,8 @@ import SwiftUI
 import GhosttyKit
 
 private let maxShortcuts = 9
+private let sidebarMinWidth: Double = 200
+private let sidebarMaxWidth: Double = 420
 private let listsColumnMinWidth: Double = 280
 private let listsColumnDefaultWidth: Double = 340
 private let listsColumnMaxWidth: Double = 600
@@ -117,6 +119,7 @@ struct ContentView: View {
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
+            .navigationSplitViewColumnWidth(min: sidebarMinWidth, ideal: 240, max: sidebarMaxWidth)
         } content: {
             contentColumn
         } detail: {
