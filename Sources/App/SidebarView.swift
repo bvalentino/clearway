@@ -108,7 +108,7 @@ struct SidebarView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 16)
         }
-        .frame(minWidth: 200)
+        .frame(minWidth: 200, idealWidth: 240, maxWidth: 420)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
         .sheet(item: $activeSheet, onDismiss: { createWorktreeTargetGroupId = nil }) { sheet in
@@ -572,6 +572,7 @@ private struct GroupSectionHeader: View {
     var body: some View {
         HStack {
             Text(group.name)
+                .lineLimit(1)
             Spacer()
             Menu {
                 Button("Rename Group", action: onRename)
