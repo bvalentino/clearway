@@ -169,6 +169,7 @@ private struct PointerCursorOverlay: NSViewRepresentable {
 }
 
 private class PointerCursorNSView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }

@@ -195,11 +195,6 @@ struct TodosPanelView: View {
 
     private func sendToTerminal(_ text: String) {
         guard let surface = terminalManager.activeMainSurface else { return }
-        // Ghostty gates ghostty_surface_text/ghostty_surface_key on focus.
-        // Set focus directly before sending — makeFirstResponder alone isn't
-        // reliable because SwiftUI's button handling can steal focus back
-        // before the send completes.
-        surface.setFocus(true)
         surface.sendCommand(text)
         surface.window?.makeFirstResponder(surface)
     }

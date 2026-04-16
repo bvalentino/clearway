@@ -113,7 +113,6 @@ struct TaskAsideView: View {
             taskPath: workTaskManager.filePath(for: task)
         ),
         let surface = terminalManager.activeMainSurface else { return }
-        surface.setFocus(true)
         surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
     }
