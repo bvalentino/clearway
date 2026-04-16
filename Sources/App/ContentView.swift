@@ -708,8 +708,8 @@ struct ContentView: View {
 
     private func sendPromptToTerminal(_ prompt: Prompt) {
         guard let surface = terminalManager.activeMainSurface else { return }
-        surface.sendPaste(prompt.content)
         surface.window?.makeFirstResponder(surface)
+        surface.sendPaste(prompt.content)
     }
 
     private func openTaskWorktree(_ task: WorkTask) {

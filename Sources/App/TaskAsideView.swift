@@ -113,8 +113,8 @@ struct TaskAsideView: View {
             taskPath: workTaskManager.filePath(for: task)
         ),
         let surface = terminalManager.activeMainSurface else { return }
-        surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
+        surface.sendPaste(rendered)
     }
 
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
