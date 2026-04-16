@@ -49,9 +49,6 @@ struct HookTerminalView: View {
             }
             TerminalSurface(surfaceView: surface)
         }
-        .onChange(of: surface.title) { title in
-            if title == hookFailedMarker { failed = true }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited, object: surface)) { notification in
             guard let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32
             else { return }

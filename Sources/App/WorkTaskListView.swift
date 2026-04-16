@@ -1,5 +1,11 @@
 import GhosttyKit
 import SwiftUI
+import os
+
+private let planLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
+    category: "plan"
+)
 
 /// The project home — a backlog showing tasks that need shaping or haven't started.
 /// Started/stopped/done tasks live in their worktree's aside panel.
@@ -277,7 +283,11 @@ struct WorkTaskListView: View {
             let promptFile = (tempDir as NSString).appendingPathComponent("clearway-plan-\(task.id.uuidString).md")
             FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
 
-            let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
+            let resolvedPath = ShellEnvironment.path
+            let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(resolvedPath)
+            planLogger.info("plan agent=\(agentCmd, privacy: .public) promptFile=\(promptFile, privacy: .public)")
+            planLogger.info("plan path=\(resolvedPath, privacy: .public)")
+            planLogger.debug("plan command: \(command, privacy: .public)")
             terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
         } else {
             // No PLANNING.md — open terminal with Main Terminal command

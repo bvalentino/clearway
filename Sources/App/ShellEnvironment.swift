@@ -65,6 +65,7 @@ enum ShellEnvironment {
                let resolved = output.split(separator: "\n").last
                 .map({ String($0).trimmingCharacters(in: .whitespaces) }),
                !resolved.isEmpty {
+                logger.info("Shell PATH resolved (shell: \(shell, privacy: .public)): \(resolved, privacy: .public)")
                 return resolved
             }
 
@@ -74,7 +75,9 @@ enum ShellEnvironment {
         }
 
         // Fallback: current process PATH (minimal when launched from Finder)
-        return ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let fallback = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        logger.warning("Shell PATH using fallback: \(fallback, privacy: .public)")
+        return fallback
     }()
 
     /// A process environment dictionary with the resolved PATH, computed once.

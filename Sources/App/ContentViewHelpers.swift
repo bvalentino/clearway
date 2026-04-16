@@ -1,23 +1,31 @@
 import SwiftUI
 import GhosttyKit
+import os
 
 // Virtual key codes (Carbon.HIToolbox causes type-checker slowdown in ContentView).
 let kVK_Return: UInt16 = 0x24, kVK_ANSI_KeypadEnter: UInt16 = 0x4C
 let kVK_UpArrow: UInt16 = 0x7E, kVK_DownArrow: UInt16 = 0x7D
 
-/// Marker set as the terminal title when a hook command fails.
-let hookFailedMarker = "__clearway_hook_failed__"
+private let hookLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
+    category: "hook"
+)
 
 /// Wraps a hook command for use as a Ghostty surface `command:` parameter.
-/// Runs the hook through `/bin/sh`, then drops into the user's shell so
-/// the terminal stays interactive for debugging.
+///
+/// Runs the hook through `/bin/sh` with the resolved user PATH exported. On
+/// failure, prints a red banner with the exit status and then exits with the
+/// same status — so `ghosttyChildExited` fires reliably, letting the UI
+/// transition into a visible "failed" state (with output preserved on screen).
 func hookShellCommand(_ cmd: String) -> String {
-    var shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/sh"
-    if !shell.hasPrefix("/") || shell.contains("'") || shell.contains(" ") {
-        shell = "/bin/sh"
-    }
-    let exportPath = "export PATH=\(shellEscape(ShellEnvironment.path)); "
-    return "/bin/sh -c \(shellEscape(exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then printf '\\e]0;\(hookFailedMarker)\\a'; exec \(shell); fi; exit $s"))"
+    let resolvedPath = ShellEnvironment.path
+    let exportPath = "export PATH=\(shellEscape(resolvedPath)); "
+    let failBanner = "printf '\\n\\033[31m[hook failed: exit %d]\\033[0m\\n' \"$s\""
+    let script = exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then \(failBanner); fi; exit $s"
+    let wrapped = "/bin/sh -c \(shellEscape(script))"
+    hookLogger.info("hook command: \(cmd, privacy: .public)")
+    hookLogger.debug("wrapped: \(wrapped, privacy: .public)")
+    return wrapped
 }
 
 enum SidePanelTab: String, CaseIterable {
