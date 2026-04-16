@@ -44,7 +44,11 @@ struct SidebarView: View {
             openIds: terminalManager.openWorktreeIds
         ) { wt in
             guard isSearching else { return true }
-            if wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
+            let stableName = worktreeManager.stableDisplayName(for: wt)
+            if stableName.localizedCaseInsensitiveContains(searchText) { return true }
+            // For the main worktree, also match the actual current branch shown as subtitle.
+            if wt.isMain && wt.displayName != stableName
+                && wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
             if let branch = wt.branch,
                let title = titles[branch],
                title.localizedCaseInsensitiveContains(searchText) { return true }
@@ -123,7 +127,7 @@ struct SidebarView: View {
             }
         }
         .confirmationDialog(
-            "Remove worktree \"\(worktreeToRemove?.displayName ?? "")\"?",
+            "Remove worktree \"\(worktreeToRemove.map { worktreeManager.stableDisplayName(for: $0) } ?? "")\"?",
             isPresented: Binding(
                 get: { worktreeToRemove != nil },
                 set: { if !$0 { worktreeToRemove = nil } }
@@ -143,7 +147,7 @@ struct SidebarView: View {
             Text("This will delete the worktree and its working directory.")
         }
         .confirmationDialog(
-            "Close worktree \"\(worktreeToClose?.displayName ?? "")\"?",
+            "Close worktree \"\(worktreeToClose.map { worktreeManager.stableDisplayName(for: $0) } ?? "")\"?",
             isPresented: Binding(
                 get: { worktreeToClose != nil },
                 set: { if !$0 { worktreeToClose = nil } }
@@ -218,26 +222,7 @@ struct SidebarView: View {
                 .listRowSeparator(.hidden)
 
             ForEach(rows) { wt in
-                let isOpen = terminalManager.isOpen(wt)
-                let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
-                let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
-                let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
-                WorktreeRow(
-                    worktree: wt,
-                    taskTitle: wt.branch.flatMap { titles[$0] },
-                    hasNotification: hasNotification,
-                    isWorking: isWorking,
-                    shortcutIndex: shortcut
-                )
-                    .tag(DetailSelection.worktree(wt))
-                    .opacity(!isOpen ? 0.5 : 1.0)
-                    .contextMenu {
-                        worktreeContextMenu(wt)
-                    }
-                    .draggableIf(!wt.isMain, id: wt.id) {
-                        WorktreeDragChip()
-                    }
-                    .moveDisabled(wt.isMain || isSearching)
+                worktreeRowView(for: wt, titles: titles, moveDisabled: wt.isMain || isSearching)
             }
             .onMove { from, to in
                 guard !isSearching else { return }
@@ -281,6 +266,7 @@ struct SidebarView: View {
                 Spacer()
                 SidebarHeaderButton(systemImage: "arrow.clockwise") {
                     worktreeManager.refresh()
+                    worktreeManager.refreshDefaultBranch()
                 }
                 .padding(.trailing, -6)
 
@@ -307,26 +293,7 @@ struct SidebarView: View {
             let isGroupTargeted = Binding(get: { targetedGroupId == group.id }, set: { targetedGroupId = $0 ? group.id : nil })
             Section {
                 ForEach(rows) { wt in
-                    let isOpen = terminalManager.isOpen(wt)
-                    let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
-                    let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
-                    let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
-                    WorktreeRow(
-                        worktree: wt,
-                        taskTitle: wt.branch.flatMap { titles[$0] },
-                        hasNotification: hasNotification,
-                        isWorking: isWorking,
-                        shortcutIndex: shortcut
-                    )
-                        .tag(DetailSelection.worktree(wt))
-                        .opacity(!isOpen ? 0.5 : 1.0)
-                        .contextMenu {
-                            worktreeContextMenu(wt)
-                        }
-                        .draggableIf(!wt.isMain, id: wt.id) {
-                            WorktreeDragChip()
-                        }
-                        .moveDisabled(isSearching)
+                    worktreeRowView(for: wt, titles: titles, moveDisabled: isSearching)
                 }
                 .onMove { from, to in
                     guard !isSearching else { return }
@@ -364,7 +331,7 @@ struct SidebarView: View {
                 terminalManager.closeWorktree(wt.id)
             }
         }
-        .disabled(wt.isMain || !terminalManager.isOpen(wt))
+        .disabled(!terminalManager.isOpen(wt))
 
         Button("Remove Worktree") {
             worktreeToRemove = wt
@@ -392,6 +359,61 @@ struct SidebarView: View {
     private func shortcutIndex(for wt: Worktree) -> Int? {
         guard let i = sortedWorktrees.firstIndex(where: { $0.id == wt.id }), i < 9 else { return nil }
         return i + 1
+    }
+
+    /// Whether the row should render as visually primary (full opacity, shortcut shown).
+    /// Main stays visually primary even when no pane exists so it never looks unreachable.
+    private func showsAsPrimary(_ wt: Worktree) -> Bool {
+        wt.isMain || terminalManager.isOpen(wt)
+    }
+
+    /// Computes the (primaryText, subtitle) pair for a worktree row.
+    /// For the main worktree the stable branch name is the primary label.
+    /// For non-main worktrees a linked task title (if any) is primary, with the branch as subtitle.
+    private func rowTexts(
+        for wt: Worktree,
+        stableDisplayName: String,
+        titles: [String: String]
+    ) -> (primaryText: String?, subtitle: String?) {
+        if wt.isMain {
+            let subtitle: String? = wt.displayName != stableDisplayName ? wt.displayName : nil
+            return (stableDisplayName, subtitle)
+        } else {
+            let primaryText = wt.branch.flatMap { titles[$0] }
+            let subtitle: String? = primaryText == nil ? nil : wt.displayName
+            return (primaryText, subtitle)
+        }
+    }
+
+    @ViewBuilder
+    private func worktreeRowView(
+        for wt: Worktree,
+        titles: [String: String],
+        moveDisabled: Bool
+    ) -> some View {
+        let isPrimary = showsAsPrimary(wt)
+        let isOpen = terminalManager.isOpen(wt)
+        let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
+        let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
+        let shortcut = isSearching || !isPrimary ? nil : shortcutIndex(for: wt)
+        let (primaryText, subtitle) = rowTexts(
+            for: wt,
+            stableDisplayName: worktreeManager.stableDisplayName(for: wt),
+            titles: titles
+        )
+        WorktreeRow(
+            worktree: wt,
+            primaryText: primaryText,
+            subtitle: subtitle,
+            hasNotification: hasNotification,
+            isWorking: isWorking,
+            shortcutIndex: shortcut
+        )
+            .tag(DetailSelection.worktree(wt))
+            .opacity(isPrimary ? 1.0 : 0.5)
+            .contextMenu { worktreeContextMenu(wt) }
+            .draggableIf(!wt.isMain, id: wt.id) { WorktreeDragChip() }
+            .moveDisabled(moveDisabled)
     }
 
     // Defer @Published mutation past the NSTableView drop delegate to avoid a reentrant-list warning.
@@ -427,7 +449,8 @@ private struct WorktreeDragChip: View {
 
 struct WorktreeRow: View {
     let worktree: Worktree
-    var taskTitle: String? = nil
+    var primaryText: String? = nil
+    var subtitle: String? = nil
     var hasNotification: Bool = false
     var isWorking: Bool = false
     var shortcutIndex: Int? = nil
@@ -437,15 +460,15 @@ struct WorktreeRow: View {
         Label {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let taskTitle, !taskTitle.isEmpty {
-                        Text(taskTitle)
+                    if let primaryText, let subtitle, !subtitle.isEmpty {
+                        Text(primaryText)
                             .lineLimit(1)
-                        Text(worktree.displayName)
+                        Text(subtitle)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     } else {
-                        Text(worktree.displayName)
+                        Text(primaryText ?? worktree.displayName)
                             .lineLimit(1)
                     }
                 }
