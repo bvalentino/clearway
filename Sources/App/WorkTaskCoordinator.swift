@@ -412,6 +412,8 @@ class WorkTaskCoordinator: ObservableObject {
         }
         updated.errorMessage = nil
 
+        // Branch-keyed lookup is intentional: it resolves the correct worktree even when HEAD
+        // is temporarily detached (e.g. mid-rebase), because `branch` is stored separately.
         if let branch = task.worktree,
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             updated.status = .inProgress

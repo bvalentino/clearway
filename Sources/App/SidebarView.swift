@@ -336,7 +336,7 @@ struct SidebarView: View {
         Button("Remove Worktree") {
             worktreeToRemove = wt
         }
-        .disabled(wt.isMain)
+        .disabled(wt.isMain || !wt.canRemove)
 
         Divider()
 

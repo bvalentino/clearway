@@ -147,4 +147,182 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(sorted[0].branch, "open")
         XCTAssertEqual(sorted[1].branch, "closed")
     }
+
+    // MARK: - Gitdir Resolver
+
+    var tempDir: URL?
+
+    override func setUp() {
+        super.setUp()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        tempDir = dir
+    }
+
+    override func tearDown() {
+        if let dir = tempDir {
+            try? FileManager.default.removeItem(at: dir)
+        }
+        tempDir = nil
+        super.tearDown()
+    }
+
+    func testGitdirReturnsDirectoryPathForMainWorktree() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let dotGit = tmp.appendingPathComponent(".git")
+        try FileManager.default.createDirectory(at: dotGit, withIntermediateDirectories: true)
+        XCTAssertEqual(WorktreeManager.gitdir(forWorktreeAt: tmp.path), dotGit.path)
+    }
+
+    func testGitdirResolvesAbsoluteGitdirFile() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let dotGit = tmp.appendingPathComponent(".git")
+        let contents = "gitdir: /absolute/path/to/gitdir\n"
+        FileManager.default.createFile(atPath: dotGit.path, contents: contents.data(using: .utf8))
+        XCTAssertEqual(WorktreeManager.gitdir(forWorktreeAt: tmp.path), "/absolute/path/to/gitdir")
+    }
+
+    func testGitdirResolvesRelativeGitdirFile() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let linked = tmp.appendingPathComponent("linked")
+        try FileManager.default.createDirectory(at: linked, withIntermediateDirectories: true)
+        let contents = "gitdir: ../main/.git/worktrees/x\n"
+        FileManager.default.createFile(
+            atPath: linked.appendingPathComponent(".git").path,
+            contents: contents.data(using: .utf8)
+        )
+        let linkedDir = URL(fileURLWithPath: linked.path, isDirectory: true)
+        let expected = URL(fileURLWithPath: "../main/.git/worktrees/x", relativeTo: linkedDir)
+            .standardizedFileURL.path
+        XCTAssertEqual(WorktreeManager.gitdir(forWorktreeAt: linked.path), expected)
+    }
+
+    // MARK: - In-Progress Op Probe
+
+    private func makeGitdir() throws -> URL {
+        let dir = try XCTUnwrap(tempDir).appendingPathComponent("gitdir")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func writeGitdirFile(_ relativePath: String, contents: String, in gitdir: URL) throws {
+        let target = gitdir.appendingPathComponent(relativePath)
+        let parent = target.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: target.path, contents: contents.data(using: .utf8))
+    }
+
+    func testBranchFromInProgressOpRecognizesRebaseMerge() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/feature-x\n", in: gitdir)
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertEqual(result?.branch, "feature-x")
+        XCTAssertEqual(result?.status, .rebasing)
+    }
+
+    func testBranchFromInProgressOpRecognizesRebaseApply() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("rebase-apply/head-name", contents: "refs/heads/feature-y\n", in: gitdir)
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertEqual(result?.branch, "feature-y")
+        XCTAssertEqual(result?.status, .rebasing)
+    }
+
+    func testBranchFromInProgressOpRecognizesBisect() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("BISECT_START", contents: "feature-z\n", in: gitdir)
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertEqual(result?.branch, "feature-z")
+        XCTAssertEqual(result?.status, .bisecting)
+    }
+
+    func testBranchFromInProgressOpReturnsNilWhenNoState() throws {
+        let gitdir = try makeGitdir()
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertNil(result)
+    }
+
+    func testBranchFromInProgressOpPrefersRebaseMergeOverRebaseApply() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/merge-branch\n", in: gitdir)
+        try writeGitdirFile("rebase-apply/head-name", contents: "refs/heads/apply-branch\n", in: gitdir)
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertEqual(result?.branch, "merge-branch")
+        XCTAssertEqual(result?.status, .rebasing)
+    }
+
+    func testBranchFromInProgressOpTrimsTrailingWhitespace() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/foo\n\n  ", in: gitdir)
+        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
+        XCTAssertEqual(result?.branch, "foo")
+        XCTAssertEqual(result?.status, .rebasing)
+    }
+
+    // MARK: - Resolver Pipeline
+
+    func testParserAndResolverPipelineRecoversRebasingBranch() throws {
+        let tmp = try XCTUnwrap(tempDir)
+
+        // 1. Create <tmp>/main/ — the main worktree root
+        let mainRoot = tmp.appendingPathComponent("main")
+        try FileManager.default.createDirectory(at: mainRoot, withIntermediateDirectories: true)
+
+        // 2. Create <tmp>/main/.git/worktrees/feature/ — the linked gitdir
+        let mainGitdir = mainRoot
+            .appendingPathComponent(".git")
+            .appendingPathComponent("worktrees")
+            .appendingPathComponent("feature")
+        try FileManager.default.createDirectory(at: mainGitdir, withIntermediateDirectories: true)
+
+        // 3. Create <tmp>/main/.git/worktrees/feature/rebase-merge/ and head-name
+        let rebaseMergeDir = mainGitdir.appendingPathComponent("rebase-merge")
+        try FileManager.default.createDirectory(at: rebaseMergeDir, withIntermediateDirectories: true)
+        let headNameFile = rebaseMergeDir.appendingPathComponent("head-name")
+        let headNameContents = "refs/heads/feature\n"
+        FileManager.default.createFile(
+            atPath: headNameFile.path,
+            contents: headNameContents.data(using: .utf8)
+        )
+
+        // 4. Create <tmp>/feature-wt/ — the linked worktree root
+        let featureWt = tmp.appendingPathComponent("feature-wt")
+        try FileManager.default.createDirectory(at: featureWt, withIntermediateDirectories: true)
+
+        // 5. Write <tmp>/feature-wt/.git pointing to the linked gitdir (absolute path)
+        let dotGitFile = featureWt.appendingPathComponent(".git")
+        let dotGitContents = "gitdir: \(mainGitdir.path)\n"
+        FileManager.default.createFile(
+            atPath: dotGitFile.path,
+            contents: dotGitContents.data(using: .utf8)
+        )
+
+        // 6. Build porcelain output referencing the real temp paths
+        let output = """
+        worktree \(mainRoot.path)
+        HEAD abc123
+        branch refs/heads/main
+
+        worktree \(featureWt.path)
+        HEAD def456
+        detached
+
+        """
+
+        // 7. Run the parser + resolver pipeline
+        let parsed = WorktreeManager.parseWorktreeListOutput(output)
+        let resolved = WorktreeManager.applyHeadResolution(to: parsed)
+
+        // 8. Assertions
+        XCTAssertEqual(resolved.count, 2)
+
+        XCTAssertEqual(resolved[0].branch, "main")
+        XCTAssertEqual(resolved[0].headStatus, .attached)
+
+        XCTAssertEqual(resolved[1].branch, "feature")
+        XCTAssertEqual(resolved[1].headStatus, .rebasing)
+        XCTAssertEqual(resolved[1].path, featureWt.path)
+        XCTAssertFalse(resolved[1].isMain)
+    }
 }
