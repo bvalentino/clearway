@@ -107,40 +107,88 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertNil(manager.error)
     }
 
-    // MARK: - parseSymbolicRefOutput
+    // MARK: - Background Refresh Removal
 
-    func testParseSymbolicRefOutput_stripsOriginPrefix() {
-        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/main\n"), "main")
-        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/master\n"), "master")
-        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/release/v1\n"), "release/v1")
-    }
-
-    func testParseSymbolicRefOutput_returnsNilForEmpty() {
-        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput(""))
-        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput("   "))
-        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput("\n"))
-    }
-
-    func testParseSymbolicRefOutput_leavesUnprefixedInput() {
-        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("main\n"), "main")
-    }
-
-    // MARK: - stableDisplayName
-
-    func testStableDisplayName_mainUsesDefaultBranch() {
+    func testNoBackgroundRefreshProperties() {
+        // After removing background PR refresh, WorktreeManager must not have
+        // backgroundRefreshTask or any background-refresh-related stored properties.
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
-        manager.defaultBranchName = "master"
+        let mirror = Mirror(reflecting: manager)
+        let propertyNames = mirror.children.compactMap(\.label)
 
-        let mainWorktree = Worktree(branch: "feature-x", path: "/tmp/main", isMain: true, headStatus: .attached)
-        XCTAssertEqual(manager.stableDisplayName(for: mainWorktree), "master")
+        let removedNames = ["backgroundRefreshTask"]
+        for name in removedNames {
+            XCTAssertFalse(
+                propertyNames.contains(name),
+                "\(name) property should be removed from WorktreeManager"
+            )
+        }
     }
 
-    func testStableDisplayName_nonMainUsesDisplayName() {
-        let manager = WorktreeManager(projectPath: "/tmp/test-project")
-        manager.defaultBranchName = "master"
+    // MARK: - PR Status (preserved behavior)
 
-        let nonMainWorktree = Worktree(branch: "feature-x", path: "/tmp/feature-x", isMain: false, headStatus: .attached)
-        XCTAssertEqual(manager.stableDisplayName(for: nonMainWorktree), "feature-x")
+    func testPrunePRStatusesRemovesStaleEntries() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        manager.worktreePRStates["wt-a"] = .result(PRStatus(number: 1, title: "PR A", url: "https://example.com/1"))
+        manager.worktreePRStates["wt-b"] = .result(PRStatus(number: 2, title: "PR B", url: "https://example.com/2"))
+        manager.worktreePRStates["wt-c"] = .loading
+
+        manager.prunePRStatuses(keeping: ["wt-a"])
+
+        XCTAssertNotNil(manager.worktreePRStates["wt-a"])
+        XCTAssertNil(manager.worktreePRStates["wt-b"])
+        XCTAssertNil(manager.worktreePRStates["wt-c"])
+    }
+
+    func testPrunePRStatusesKeepsAllWhenAllValid() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        manager.worktreePRStates["wt-a"] = .loading
+        manager.worktreePRStates["wt-b"] = .result(nil)
+
+        manager.prunePRStatuses(keeping: ["wt-a", "wt-b"])
+
+        XCTAssertEqual(manager.worktreePRStates.count, 2)
+    }
+
+    func testCheckPRSkipsUnknownWorktree() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        // No worktrees loaded — checkPR should be a no-op.
+        manager.checkPR(for: "nonexistent")
+
+        XCTAssertTrue(manager.worktreePRStates.isEmpty)
+    }
+
+    func testCheckPRSkipsWhenAlreadyLoading() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.worktrees = [wt]
+        manager.worktreePRStates[wt.id] = .loading
+
+        // Should not reset or double-load.
+        manager.checkPR(for: wt.id)
+
+        XCTAssertEqual(manager.worktreePRStates[wt.id], .loading)
+    }
+
+    func testCheckPRSetsLoadingForKnownWorktree() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.worktrees = [wt]
+
+        manager.checkPR(for: wt.id)
+
+        XCTAssertEqual(manager.worktreePRStates[wt.id], .loading)
+    }
+
+    func testCheckPRSkipsDetachedWorktree() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        let wt = Worktree(branch: nil, path: "/tmp/detached", isMain: false)
+        manager.worktrees = [wt]
+
+        manager.checkPR(for: wt.id)
+
+        // Detached worktrees have no branch — checkPR guard should reject.
+        XCTAssertNil(manager.worktreePRStates[wt.id])
     }
 
 }
