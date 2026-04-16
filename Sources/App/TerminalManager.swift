@@ -515,7 +515,7 @@ class TerminalManager: ObservableObject {
 
     /// Whether a worktree currently has a live pane.
     func isOpen(_ worktree: Worktree) -> Bool {
-        openWorktreeIds.contains(worktree.id)
+        worktree.isMain || openWorktreeIds.contains(worktree.id)
     }
 
     /// Whether a worktree has any surface with a running foreground process.

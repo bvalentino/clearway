@@ -296,7 +296,7 @@ struct ContentView: View {
             if let refreshed, refreshed != selected { detailSelection = .worktree(refreshed) } else if refreshed == nil { selectFallback() }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
-            guard let selected = selectedWorktree, !openIds.contains(selected.id) else { return }
+            guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
         .onChange(of: currentWorktreeHasTask) { hasTask in
@@ -586,14 +586,13 @@ struct ContentView: View {
             previousDetailSelection = nil
             if case .worktree(let prevWt) = prev,
                let fresh = worktreeManager.worktrees.first(where: { $0.id == prevWt.id }),
-               terminalManager.openWorktreeIds.contains(fresh.id) {
+               fresh.isMain || terminalManager.openWorktreeIds.contains(fresh.id) {
                 detailSelection = .worktree(fresh); return
             } else if case .worktree = prev {
                 // Previous worktree is closed or no longer exists — fall through to default.
             } else { detailSelection = prev; return }
         }
-        if let mainWt = worktreeManager.worktrees.first(where: \.isMain),
-           terminalManager.openWorktreeIds.contains(mainWt.id) {
+        if let mainWt = worktreeManager.worktrees.first(where: \.isMain) {
             detailSelection = .worktree(mainWt)
         } else {
             detailSelection = .planning

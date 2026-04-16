@@ -331,7 +331,7 @@ struct SidebarView: View {
                 terminalManager.closeWorktree(wt.id)
             }
         }
-        .disabled(!terminalManager.isOpen(wt))
+        .disabled(wt.isMain || !terminalManager.isOpen(wt))
 
         Button("Remove Worktree") {
             worktreeToRemove = wt
