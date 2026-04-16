@@ -177,6 +177,7 @@ struct ClearwayApp: App {
                 .keyboardShortcut("n", modifiers: .command)
                 NewGroupCommand()
                 NewTabMenuItem()
+                NewTaskMenuItem()
             }
             CommandGroup(after: .sidebar) {
                 Toggle(isOn: $showFrontmatter) {
@@ -255,6 +256,30 @@ private struct NewTabMenuItem: View {
     var body: some View {
         Button("New Tab") { action?() }
             .keyboardShortcut("t", modifiers: .command)
+            .disabled(action == nil)
+    }
+}
+
+/// Focused-value key for the active window's "new task" action.
+/// Set by ContentView; `nil` when no project window is focused.
+private struct NewTaskActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var newTaskAction: (() -> Void)? {
+        get { self[NewTaskActionKey.self] }
+        set { self[NewTaskActionKey.self] = newValue }
+    }
+}
+
+/// File menu item that creates a new backlog task in the focused project window,
+/// disabled when no project window is active.
+private struct NewTaskMenuItem: View {
+    @FocusedValue(\.newTaskAction) private var action
+
+    var body: some View {
+        Button("New Task") { action?() }
             .disabled(action == nil)
     }
 }

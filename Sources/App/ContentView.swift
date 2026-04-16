@@ -86,6 +86,17 @@ struct ContentView: View {
         }
     }
 
+    /// Action exposed via `focusedSceneValue` so the File > New Task menu item
+    /// creates a task and navigates to it in Planning.
+    private var newTaskAction: (() -> Void)? {
+        return { [workTaskManager] in
+            guard let task = workTaskManager.createTask() else { return }
+            // Write synchronously so Planning mounts with the new selection in one render pass.
+            detailSelection = .planning
+            selectedTaskId = task.id
+        }
+    }
+
     private var sidebarSelectionBinding: Binding<DetailSelection?> {
         Binding(
             get: { sidebarSelection },
@@ -196,6 +207,7 @@ struct ContentView: View {
     var body: some View {
         navigator
         .focusedSceneValue(\.newTabAction, newTabAction)
+        .focusedSceneValue(\.newTaskAction, newTaskAction)
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
             workTaskCoordinator.pendingAutoStart = nil
