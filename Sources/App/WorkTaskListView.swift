@@ -51,6 +51,18 @@ struct WorkTaskListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 8) {
+                if workTaskCoordinator.isAutoProcessingEnabled {
+                    AutoProcessButton(
+                        isAutoProcessing: workTaskCoordinator.isAutoProcessing,
+                        tickGeneration: workTaskCoordinator.tickGeneration,
+                        pollingSeconds: workTaskCoordinator.pollingInterval.rawValue,
+                        inProgressCount: inProgressCount,
+                        maxConcurrent: workTaskCoordinator.maxConcurrent
+                    ) {
+                        workTaskCoordinator.isAutoProcessing.toggle()
+                    }
+                }
+
                 Button {
                     createAndEdit()
                 } label: {
@@ -63,18 +75,6 @@ struct WorkTaskListView: View {
                 }
                 .buttonStyle(.plain)
                 .help("New task")
-
-                if workTaskCoordinator.isAutoProcessingEnabled {
-                    AutoProcessButton(
-                        isAutoProcessing: workTaskCoordinator.isAutoProcessing,
-                        tickGeneration: workTaskCoordinator.tickGeneration,
-                        pollingSeconds: workTaskCoordinator.pollingInterval.rawValue,
-                        inProgressCount: inProgressCount,
-                        maxConcurrent: workTaskCoordinator.maxConcurrent
-                    ) {
-                        workTaskCoordinator.isAutoProcessing.toggle()
-                    }
-                }
             }
             .padding(12)
         }

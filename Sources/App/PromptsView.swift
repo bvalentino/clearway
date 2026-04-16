@@ -53,7 +53,7 @@ struct PromptsView: View {
                 openPrompt(prompt)
             }
         } label: {
-            Image(systemName: "plus")
+            Image(systemName: "square.and.pencil")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 36, height: 36)
