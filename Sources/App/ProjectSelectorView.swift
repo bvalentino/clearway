@@ -50,20 +50,6 @@ final class ProjectSelectorWindowController: NSWindowController, NSWindowDelegat
     }
 }
 
-// MARK: - Pointing Hand Cursor
-
-private extension View {
-    func pointingHandCursor() -> some View {
-        onHover { hovering in
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-    }
-}
-
 // MARK: - Project Selector View
 
 struct ProjectSelectorView: View {
@@ -116,7 +102,7 @@ struct ProjectSelectorView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .pointingHandCursor()
+        .pointerCursorOnHover()
     }
 
     // MARK: - Header

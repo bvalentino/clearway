@@ -112,13 +112,13 @@ struct WorktreeStatusBar: View {
         case .result(nil):
             HStack(spacing: 4) { Image(systemName: "arrow.triangle.pull"); Text("No PR") }
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-                .contentShape(Rectangle()).pointingHandCursor()
+                .contentShape(Rectangle()).pointerCursorOnHover()
                 .onTapGesture { worktreeManager.checkPR(for: wtId) }
                 .help("Click to re-check")
         case nil:
             HStack(spacing: 4) { Image(systemName: "arrow.triangle.pull"); Text("Check PR") }
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-                .contentShape(Rectangle()).pointingHandCursor()
+                .contentShape(Rectangle()).pointerCursorOnHover()
                 .onTapGesture { worktreeManager.checkPR(for: wtId) }
                 .help("Check for pull request")
         }
@@ -155,8 +155,27 @@ struct FocusableTerminal: View {
     }
 }
 
-private extension View {
-    func pointingHandCursor() -> some View {
-        onHover { if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+/// Uses AppKit cursor rects so the pointing-hand takes priority over
+/// I-beam rects set by surrounding text views.
+struct PointerCursorOnHover: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlay(PointerCursorOverlay())
+    }
+}
+
+private struct PointerCursorOverlay: NSViewRepresentable {
+    func makeNSView(context: Context) -> PointerCursorNSView { PointerCursorNSView() }
+    func updateNSView(_: PointerCursorNSView, context: Context) {}
+}
+
+private class PointerCursorNSView: NSView {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+extension View {
+    func pointerCursorOnHover() -> some View {
+        modifier(PointerCursorOnHover())
     }
 }

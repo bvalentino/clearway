@@ -4,10 +4,22 @@ import SwiftUI
 struct SendToTerminalButton: View {
     var action: () -> Void
     var disabled: Bool = false
+    var alternateSymbolOnShift: String?
+
+    @State private var hovered = false
+    @State private var shiftHeld = false
+    @State private var flagsMonitor: Any?
+
+    private var symbolToRender: String {
+        if let alt = alternateSymbolOnShift, hovered, shiftHeld, !disabled {
+            return alt
+        }
+        return "play.fill"
+    }
 
     var body: some View {
         Button { action() } label: {
-            Image(systemName: "play.fill")
+            Image(systemName: symbolToRender)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
@@ -17,6 +29,50 @@ struct SendToTerminalButton: View {
         .help("Send to Terminal")
         .disabled(disabled)
         .padding(.trailing, -10)
+        .pointerCursorOnHover()
+        .onHover { handleHover($0) }
+        .onDisappear { removeFlagsMonitor() }
+        .onChange(of: disabled) { newValue in
+            if newValue {
+                removeFlagsMonitor()
+                shiftHeld = false
+            } else if hovered, alternateSymbolOnShift != nil {
+                shiftHeld = NSEvent.modifierFlags.contains(.shift)
+                installFlagsMonitor()
+            }
+        }
+    }
+
+    private func handleHover(_ inside: Bool) {
+        if inside {
+            hovered = true
+            if !disabled && alternateSymbolOnShift != nil {
+                shiftHeld = NSEvent.modifierFlags.contains(.shift)
+                installFlagsMonitor()
+            }
+        } else {
+            removeFlagsMonitor()
+            shiftHeld = false
+            hovered = false
+        }
+    }
+
+    private func installFlagsMonitor() {
+        removeFlagsMonitor()
+        // Local monitors fire on the main thread, so mutating @State here is safe;
+        // converting to a global monitor would require a dispatch hop.
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            let newShift = event.modifierFlags.contains(.shift)
+            if newShift != shiftHeld { shiftHeld = newShift }
+            return event
+        }
+    }
+
+    private func removeFlagsMonitor() {
+        if let monitor = flagsMonitor {
+            NSEvent.removeMonitor(monitor)
+            flagsMonitor = nil
+        }
     }
 }
 

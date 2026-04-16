@@ -80,7 +80,9 @@ struct TaskAsideView: View {
                                     sendStateCommandToTerminal(task)
                                 }
                             },
-                            disabled: terminalManager.activeMainSurface == nil
+                            disabled: terminalManager.activeMainSurface == nil,
+                            // Paired with the .shift check in action: — keep in sync if the trigger modifier changes.
+                            alternateSymbolOnShift: "play.square"
                         )
                         .help("Send to Terminal — ⇧-click for new tab")
                     }
