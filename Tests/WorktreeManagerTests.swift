@@ -107,6 +107,42 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertNil(manager.error)
     }
 
+    // MARK: - parseSymbolicRefOutput
+
+    func testParseSymbolicRefOutput_stripsOriginPrefix() {
+        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/main\n"), "main")
+        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/master\n"), "master")
+        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("origin/release/v1\n"), "release/v1")
+    }
+
+    func testParseSymbolicRefOutput_returnsNilForEmpty() {
+        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput(""))
+        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput("   "))
+        XCTAssertNil(WorktreeManager.parseSymbolicRefOutput("\n"))
+    }
+
+    func testParseSymbolicRefOutput_leavesUnprefixedInput() {
+        XCTAssertEqual(WorktreeManager.parseSymbolicRefOutput("main\n"), "main")
+    }
+
+    // MARK: - stableDisplayName
+
+    func testStableDisplayName_mainUsesDefaultBranch() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        manager.defaultBranchName = "master"
+
+        let mainWorktree = Worktree(branch: "feature-x", path: "/tmp/main", isMain: true)
+        XCTAssertEqual(manager.stableDisplayName(for: mainWorktree), "master")
+    }
+
+    func testStableDisplayName_nonMainUsesDisplayName() {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        manager.defaultBranchName = "master"
+
+        let nonMainWorktree = Worktree(branch: "feature-x", path: "/tmp/feature-x", isMain: false)
+        XCTAssertEqual(manager.stableDisplayName(for: nonMainWorktree), "feature-x")
+    }
+
 }
 
 // MARK: - WorktreeError Tests

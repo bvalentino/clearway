@@ -56,16 +56,21 @@ class WorktreeManager: ObservableObject {
     @Published var lastCreatedBranch: String?
     /// PR fetch state for worktrees, keyed by worktree ID.
     @Published var worktreePRStates: [String: PRFetchState] = [:]
+    /// Initialized to "main" so the UI never renders a blank label during detection.
+    @Published var defaultBranchName: String = "main"
 
     private var backgroundRefreshTask: Task<Void, Never>?
+    private var defaultBranchTask: Task<Void, Never>?
 
     init(projectPath: String) {
         self.projectPath = projectPath
         refresh()
+        launchDefaultBranchDetection()
     }
 
     nonisolated deinit {
         backgroundRefreshTask?.cancel()
+        defaultBranchTask?.cancel()
     }
 
     func refresh(showLoading: Bool = true) {
@@ -92,6 +97,29 @@ class WorktreeManager: ObservableObject {
 
     private func applyWorktreeRefresh(_ worktrees: [Worktree]) {
         if worktrees != self.worktrees { self.worktrees = worktrees }
+    }
+
+    /// Re-detects the default branch. Wire to explicit user-initiated refreshes only —
+    /// do NOT call from the debounced become-active refresh path.
+    func refreshDefaultBranch() {
+        launchDefaultBranchDetection()
+    }
+
+    func stableDisplayName(for worktree: Worktree) -> String {
+        worktree.isMain ? defaultBranchName : worktree.displayName
+    }
+
+    private func launchDefaultBranchDetection() {
+        defaultBranchTask?.cancel()
+        let path = projectPath
+        defaultBranchTask = Task.detached { [weak self] in
+            let detected = await Self.detectDefaultBranch(in: path)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self, self.defaultBranchName != detected else { return }
+                self.defaultBranchName = detected
+            }
+        }
     }
 
     // MARK: - PR Status
@@ -294,6 +322,43 @@ class WorktreeManager: ObservableObject {
         }
 
         return worktrees
+    }
+
+    // git emits "origin/main" or similar; normalize to the short branch name.
+    nonisolated static func parseSymbolicRefOutput(_ output: String) -> String? {
+        var result = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.isEmpty else { return nil }
+        if result.hasPrefix("origin/") {
+            result = String(result.dropFirst("origin/".count))
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    /// Always returns a non-empty string so callers never render a blank label.
+    nonisolated static func detectDefaultBranch(in directory: String) async -> String {
+        if let data = try? await runCommand(
+            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+            in: directory
+        ), let decoded = String(data: data, encoding: .utf8),
+           let branch = parseSymbolicRefOutput(decoded) {
+            return branch
+        }
+
+        if let data = try? await runCommand(
+            ["git", "for-each-ref", "--format=%(refname:short)",
+             "refs/heads/main", "refs/heads/master", "refs/heads/trunk"],
+            in: directory
+        ), let decoded = String(data: data, encoding: .utf8) {
+            let first = decoded
+                .components(separatedBy: "\n")
+                .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if let branch = first, !branch.isEmpty {
+                return branch
+            }
+        }
+
+        return "main"
     }
 
     private static func fetchWorktrees(in directory: String) async throws -> [Worktree] {

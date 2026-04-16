@@ -194,7 +194,7 @@ struct ContentView: View {
             workTaskCoordinator.pendingAutoStart = nil
             handleStartResult(result, isAutoStart: true)
         }
-        .navigationTitle(currentWorktree?.displayName ?? projectName)
+        .navigationTitle(currentWorktree.map { worktreeManager.stableDisplayName(for: $0) } ?? projectName)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -592,7 +592,11 @@ struct ContentView: View {
                 // Previous worktree is closed or no longer exists — fall through to default.
             } else { detailSelection = prev; return }
         }
-        detailSelection = worktreeManager.worktrees.first(where: \.isMain).map { .worktree($0) } ?? .planning
+        if let mainWt = worktreeManager.worktrees.first(where: \.isMain) {
+            detailSelection = .worktree(mainWt)
+        } else {
+            detailSelection = .planning
+        }
     }
 
     // MARK: - Refresh
