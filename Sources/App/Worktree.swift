@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import GhosttyKit
 
@@ -70,18 +69,10 @@ class WorktreeManager: ObservableObject {
     /// Initialized to "main" so the UI never renders a blank label during detection.
     @Published var defaultBranchName: String = "main"
 
-    private var backgroundRefreshTask: Task<Void, Never>?
-    private var defaultBranchTask: Task<Void, Never>?
-
     init(projectPath: String) {
         self.projectPath = projectPath
         refresh()
         launchDefaultBranchDetection()
-    }
-
-    nonisolated deinit {
-        backgroundRefreshTask?.cancel()
-        defaultBranchTask?.cancel()
     }
 
     func refresh(showLoading: Bool = true) {
@@ -149,60 +140,6 @@ class WorktreeManager: ObservableObject {
                 self?.worktreePRStates[worktreeId] = .result(status)
             }
         }
-    }
-
-    /// Schedules a background refresh 5 seconds from now. Call `cancelBackgroundRefresh()`
-    /// when the app returns to foreground to abort — avoids stale results overwriting
-    /// a foreground refresh. Intentionally never sets `.loading` PR states so cancellation
-    /// doesn't leave the UI in a half-loaded state.
-    func refreshInBackground(openWorktreeIds: [String]) {
-        backgroundRefreshTask?.cancel()
-        let projectPath = self.projectPath
-        let openIds = Set(openWorktreeIds)
-        backgroundRefreshTask = Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled else { return }
-
-            // Phase 1: refresh worktree list
-            guard let wts = try? await Self.fetchWorktrees(in: projectPath) else { return }
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                self?.applyWorktreeRefresh(wts)
-            }
-
-            // Phase 2: fetch PR status for each open worktree with a branch
-            guard !Task.isCancelled else { return }
-            let branchesById = wts.compactMap { wt -> (id: String, branch: String)? in
-                guard wt.canFetchPR, let branch = wt.branch, openIds.contains(wt.id) else { return nil }
-                return (wt.id, branch)
-            }
-            let prResults = await withTaskGroup(of: (String, PRStatus?).self) { group -> [(String, PRStatus?)] in
-                for (id, branch) in branchesById {
-                    group.addTask {
-                        let status = await Self.fetchPRStatus(branch: branch, in: projectPath)
-                        return (id, status)
-                    }
-                }
-                var results: [(String, PRStatus?)] = []
-                for await result in group {
-                    guard !Task.isCancelled else { return results }
-                    results.append(result)
-                }
-                return results
-            }
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                for (id, status) in prResults {
-                    self?.worktreePRStates[id] = .result(status)
-                }
-            }
-        }
-    }
-
-    /// Cancels any in-flight background refresh.
-    func cancelBackgroundRefresh() {
-        backgroundRefreshTask?.cancel()
-        backgroundRefreshTask = nil
     }
 
     /// Removes PR data for worktrees that no longer exist.
