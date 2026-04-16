@@ -44,11 +44,7 @@ struct SidebarView: View {
             openIds: terminalManager.openWorktreeIds
         ) { wt in
             guard isSearching else { return true }
-            let stableName = worktreeManager.stableDisplayName(for: wt)
-            if stableName.localizedCaseInsensitiveContains(searchText) { return true }
-            // For the main worktree, also match the actual current branch shown as subtitle.
-            if wt.isMain && wt.displayName != stableName
-                && wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
+            if wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
             if let branch = wt.branch,
                let title = titles[branch],
                title.localizedCaseInsensitiveContains(searchText) { return true }
@@ -127,7 +123,7 @@ struct SidebarView: View {
             }
         }
         .confirmationDialog(
-            "Remove worktree \"\(worktreeToRemove.map { worktreeManager.stableDisplayName(for: $0) } ?? "")\"?",
+            "Remove worktree \"\(worktreeToRemove.map { $0.displayName } ?? "")\"?",
             isPresented: Binding(
                 get: { worktreeToRemove != nil },
                 set: { if !$0 { worktreeToRemove = nil } }
@@ -147,7 +143,7 @@ struct SidebarView: View {
             Text("This will delete the worktree and its working directory.")
         }
         .confirmationDialog(
-            "Close worktree \"\(worktreeToClose.map { worktreeManager.stableDisplayName(for: $0) } ?? "")\"?",
+            "Close worktree \"\(worktreeToClose.map { $0.displayName } ?? "")\"?",
             isPresented: Binding(
                 get: { worktreeToClose != nil },
                 set: { if !$0 { worktreeToClose = nil } }
@@ -266,7 +262,6 @@ struct SidebarView: View {
                 Spacer()
                 SidebarHeaderButton(systemImage: "arrow.clockwise") {
                     worktreeManager.refresh()
-                    worktreeManager.refreshDefaultBranch()
                 }
                 .padding(.trailing, -6)
 
@@ -336,7 +331,7 @@ struct SidebarView: View {
         Button("Remove Worktree") {
             worktreeToRemove = wt
         }
-        .disabled(wt.isMain || !wt.canRemove)
+        .disabled(wt.isMain || wt.branch == nil)
 
         Divider()
 
@@ -372,17 +367,11 @@ struct SidebarView: View {
     /// For non-main worktrees a linked task title (if any) is primary, with the branch as subtitle.
     private func rowTexts(
         for wt: Worktree,
-        stableDisplayName: String,
         titles: [String: String]
     ) -> (primaryText: String?, subtitle: String?) {
-        if wt.isMain {
-            let subtitle: String? = wt.displayName != stableDisplayName ? wt.displayName : nil
-            return (stableDisplayName, subtitle)
-        } else {
-            let primaryText = wt.branch.flatMap { titles[$0] }
-            let subtitle: String? = primaryText == nil ? nil : wt.displayName
-            return (primaryText, subtitle)
-        }
+        let primaryText = wt.branch.flatMap { titles[$0] }
+        let subtitle: String? = primaryText == nil ? nil : wt.displayName
+        return (primaryText, subtitle)
     }
 
     @ViewBuilder
@@ -398,7 +387,6 @@ struct SidebarView: View {
         let shortcut = isSearching || !isPrimary ? nil : shortcutIndex(for: wt)
         let (primaryText, subtitle) = rowTexts(
             for: wt,
-            stableDisplayName: worktreeManager.stableDisplayName(for: wt),
             titles: titles
         )
         WorktreeRow(

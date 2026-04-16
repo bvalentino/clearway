@@ -136,7 +136,7 @@ struct ContentView: View {
                         Image(systemName: "archivebox")
                     }
                     .help("Remove worktree")
-                    .disabled(currentWorktree?.isMain == true || currentWorktree?.canRemove == false)
+                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
@@ -201,7 +201,7 @@ struct ContentView: View {
             workTaskCoordinator.pendingAutoStart = nil
             handleStartResult(result, isAutoStart: true)
         }
-        .navigationTitle(currentWorktree.map { worktreeManager.stableDisplayName(for: $0) } ?? projectName)
+        .navigationTitle(currentWorktree?.displayName ?? projectName)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -604,7 +604,7 @@ struct ContentView: View {
     // MARK: - Worktree Removal with Hook
 
     private func beginRemoveWorktree(_ worktree: Worktree) {
-        guard worktree.canRemove, let branch = worktree.branch, let worktreePath = worktree.path else { return }
+        guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
         let isSelected = selectedWorktree?.id == worktree.id
         let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in
