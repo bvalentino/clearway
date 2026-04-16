@@ -131,7 +131,7 @@ final class WorktreeManagerTests: XCTestCase {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
         manager.defaultBranchName = "master"
 
-        let mainWorktree = Worktree(branch: "feature-x", path: "/tmp/main", isMain: true)
+        let mainWorktree = Worktree(branch: "feature-x", path: "/tmp/main", isMain: true, headStatus: .attached)
         XCTAssertEqual(manager.stableDisplayName(for: mainWorktree), "master")
     }
 
@@ -139,7 +139,7 @@ final class WorktreeManagerTests: XCTestCase {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
         manager.defaultBranchName = "master"
 
-        let nonMainWorktree = Worktree(branch: "feature-x", path: "/tmp/feature-x", isMain: false)
+        let nonMainWorktree = Worktree(branch: "feature-x", path: "/tmp/feature-x", isMain: false, headStatus: .attached)
         XCTAssertEqual(manager.stableDisplayName(for: nonMainWorktree), "feature-x")
     }
 
