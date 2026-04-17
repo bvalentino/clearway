@@ -4,22 +4,10 @@ import SwiftUI
 struct SendToTerminalButton: View {
     var action: () -> Void
     var disabled: Bool = false
-    var alternateSymbolOnShift: String?
-
-    @State private var hovered = false
-    @State private var shiftHeld = false
-    @State private var flagsMonitor: Any?
-
-    private var symbolToRender: String {
-        if let alt = alternateSymbolOnShift, hovered, shiftHeld, !disabled {
-            return alt
-        }
-        return "play.fill"
-    }
 
     var body: some View {
         Button { action() } label: {
-            Image(systemName: symbolToRender)
+            Image(systemName: "play.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
@@ -30,49 +18,6 @@ struct SendToTerminalButton: View {
         .disabled(disabled)
         .padding(.trailing, -10)
         .pointerCursorOnHover()
-        .onHover { handleHover($0) }
-        .onDisappear { removeFlagsMonitor() }
-        .onChange(of: disabled) { newValue in
-            if newValue {
-                removeFlagsMonitor()
-                shiftHeld = false
-            } else if hovered, alternateSymbolOnShift != nil {
-                shiftHeld = NSEvent.modifierFlags.contains(.shift)
-                installFlagsMonitor()
-            }
-        }
-    }
-
-    private func handleHover(_ inside: Bool) {
-        if inside {
-            hovered = true
-            if !disabled && alternateSymbolOnShift != nil {
-                shiftHeld = NSEvent.modifierFlags.contains(.shift)
-                installFlagsMonitor()
-            }
-        } else {
-            removeFlagsMonitor()
-            shiftHeld = false
-            hovered = false
-        }
-    }
-
-    private func installFlagsMonitor() {
-        removeFlagsMonitor()
-        // Local monitors fire on the main thread, so mutating @State here is safe;
-        // converting to a global monitor would require a dispatch hop.
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            let newShift = event.modifierFlags.contains(.shift)
-            if newShift != shiftHeld { shiftHeld = newShift }
-            return event
-        }
-    }
-
-    private func removeFlagsMonitor() {
-        if let monitor = flagsMonitor {
-            NSEvent.removeMonitor(monitor)
-            flagsMonitor = nil
-        }
     }
 }
 
@@ -88,7 +33,6 @@ struct TodosPanelView: View {
     @State private var todoPendingDeletion: Todo?
     @State private var sessionConfirmingClear: String?
     @State private var confirmResetTask: Task<Void, Never>?
-    @FocusState private var isListFocused: Bool
 
     enum TodoSelection: Hashable {
         case todo(Int)
@@ -172,12 +116,6 @@ struct TodosPanelView: View {
                     }
                     .padding()
                 }
-                .focusable()
-                .focused($isListFocused)
-                .onCopyCommand {
-                    guard let text = selectedTodoSubject else { return [] }
-                    return [NSItemProvider(object: text as NSString)]
-                }
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -204,20 +142,6 @@ struct TodosPanelView: View {
         }
     }
 
-    private var selectedTodoSubject: String? {
-        switch selectedTodo {
-        case .todo(let id):
-            return todoManager.todos.first { $0.id == id }?.subject
-        case .claude(let sessionId, let todoId):
-            return claudeTodoManager.sessions
-                .first { $0.id == sessionId }?
-                .todos.first { $0.id == todoId }?
-                .subject
-        case nil:
-            return nil
-        }
-    }
-
     private func selectedClaudeTodoId(for sessionId: String) -> String? {
         if case .claude(sessionId, let todoId) = selectedTodo { return todoId }
         return nil
@@ -227,7 +151,6 @@ struct TodosPanelView: View {
         selectedTodo = selection
         isCreatingNew = false
         editingTodoId = nil
-        DispatchQueue.main.async { isListFocused = true }
     }
 
     private func todoRow(_ todo: Todo) -> some View {
