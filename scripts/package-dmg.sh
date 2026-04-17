@@ -127,11 +127,16 @@ tell application "Finder"
     update without registering applications
     delay 1
     close
+    -- Re-open and close to force Finder to commit .DS_Store to disk
+    open
+    delay 2
+    close
   end tell
 end tell
 APPLESCRIPT
 
-# Flush layout to disk, then unmount
+# Give Finder time to flush .DS_Store before unmounting
+sleep 3
 sync
 hdiutil detach "$MOUNT_DEVICE" -quiet
 MOUNT_DEVICE=""
