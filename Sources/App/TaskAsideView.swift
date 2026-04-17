@@ -113,6 +113,9 @@ struct TaskAsideView: View {
             taskPath: workTaskManager.filePath(for: task)
         ),
         let surface = terminalManager.activeMainSurface else { return }
+        // sendPaste uses ghostty_surface_binding_action and doesn't gate on
+        // focus, so order doesn't matter here. makeFirstResponder is just so
+        // the next keystroke lands in the terminal.
         surface.sendPaste(rendered)
         surface.window?.makeFirstResponder(surface)
     }

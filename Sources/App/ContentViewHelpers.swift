@@ -23,8 +23,8 @@ func hookShellCommand(_ cmd: String) -> String {
     let failBanner = "printf '\\n\\033[31m[hook failed: exit %d]\\033[0m\\n' \"$s\""
     let script = exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then \(failBanner); fi; exit $s"
     let wrapped = "/bin/sh -c \(shellEscape(script))"
-    hookLogger.info("hook command: \(cmd, privacy: .public)")
-    hookLogger.debug("wrapped: \(wrapped, privacy: .public)")
+    hookLogger.info("hook command: \(cmd, privacy: .private)")
+    hookLogger.debug("wrapped: \(wrapped, privacy: .private)")
     return wrapped
 }
 
@@ -177,6 +177,9 @@ private struct PointerCursorOverlay: NSViewRepresentable {
 }
 
 private class PointerCursorNSView: NSView {
+    // Return nil so clicks pass through to the SwiftUI button underneath.
+    // NSWindow tracks cursor rects independently of hit testing, so the
+    // pointing-hand cursor still appears.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
