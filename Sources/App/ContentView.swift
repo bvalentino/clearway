@@ -241,7 +241,11 @@ struct ContentView: View {
                     inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
                 }
             } else if !sidebarArrowKeyInFlight {
-                focusActiveMainTab()
+                // Brief delay so the sidebar row shows its active (blue) highlight
+                // before the terminal steals first responder. Without this, a mouse
+                // click flashes straight to the inactive (gray) state and the click
+                // reads as "didn't take."
+                focusActiveMainTab(delay: 0.12)
             }
             terminalManager.clearNotification(for: wt.id)
             claudeTodoManager.setWorktreePath(wt.path)
