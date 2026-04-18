@@ -160,7 +160,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testCheckPRSkipsWhenAlreadyLoading() {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
-        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false, headStatus: .attached)
         manager.worktrees = [wt]
         manager.worktreePRStates[wt.id] = .loading
 
@@ -172,7 +172,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testCheckPRSetsLoadingForKnownWorktree() {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
-        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let wt = Worktree(branch: "feature", path: "/tmp/feature", isMain: false, headStatus: .attached)
         manager.worktrees = [wt]
 
         manager.checkPR(for: wt.id)
@@ -182,7 +182,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testCheckPRSkipsDetachedWorktree() {
         let manager = WorktreeManager(projectPath: "/tmp/test-project")
-        let wt = Worktree(branch: nil, path: "/tmp/detached", isMain: false)
+        let wt = Worktree(branch: nil, path: "/tmp/detached", isMain: false, headStatus: .detached)
         manager.worktrees = [wt]
 
         manager.checkPR(for: wt.id)
