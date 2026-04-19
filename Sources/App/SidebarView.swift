@@ -361,6 +361,7 @@ struct SidebarView: View {
             help: caffeine.isActive
                 ? "Caffeine on — your Mac won't sleep or start the screensaver. Click to turn off."
                 : "Keep your Mac awake: prevents display sleep and the screensaver while long tasks run. Click to turn on.",
+            iconSize: 13,
             action: caffeine.toggle
         )
     }
@@ -742,12 +743,13 @@ private struct FloatingSidebarButton: View {
     let systemImage: String
     let isActive: Bool
     let help: String
+    var iconSize: CGFloat = 16
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: iconSize, weight: .medium))
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .frame(width: 36, height: 36)
                 .background(.thinMaterial, in: Circle())
