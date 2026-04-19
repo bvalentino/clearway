@@ -227,6 +227,13 @@ class TerminalManager: ObservableObject {
         return panes[id]?.main.activeSurface
     }
 
+    /// Whether `sendToActiveMainTab` has somewhere to dispatch (launcher or surface tab).
+    /// Use this for UI gates instead of `activeMainSurface != nil`, which excludes launchers.
+    var canSendToActiveMainTab: Bool {
+        guard let id = activeSurfaceId else { return false }
+        return panes[id]?.main.hasActiveTab ?? false
+    }
+
     /// Per-launcher-tab draft text. Not `@Published`: keystroke writes from the
     /// NSTextView flow through the Binding's setter and the text view itself is
     /// the visible source of truth, so no SwiftUI invalidation is needed on
@@ -234,17 +241,19 @@ class TerminalManager: ObservableObject {
     /// explicitly so the launcher view re-renders and pushes the new text in.
     var launcherDrafts: [UUID: String] = [:]
 
-    /// Send text to the active main tab. Launcher tabs receive it as draft
-    /// prefill; surface tabs forward to `sendCommand` (asCommand=true, appends
+    /// Send text to the active main tab. Launcher tabs append it to the draft
+    /// (newline-separated), so repeated prompt/task/todo clicks stack instead of
+    /// clobbering. Surface tabs forward to `sendCommand` (asCommand=true, appends
     /// newline) or `sendPaste`.
     func sendToActiveMainTab(_ text: String, asCommand: Bool) {
         guard let worktreeId = activeSurfaceId,
               let tab = panes[worktreeId]?.main.activeTab else { return }
         switch tab.kind {
         case .launcher:
-            guard launcherDrafts[tab.id] != text else { return }
+            let merged = appendingToDraft(existing: launcherDrafts[tab.id] ?? "", text)
+            guard launcherDrafts[tab.id] != merged else { return }
             objectWillChange.send()
-            launcherDrafts[tab.id] = text
+            launcherDrafts[tab.id] = merged
         case .surface(let surface):
             if asCommand {
                 surface.sendCommand(text)

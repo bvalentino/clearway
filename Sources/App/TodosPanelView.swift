@@ -44,7 +44,7 @@ struct TodosPanelView: View {
     }
 
     private var canSend: Bool {
-        terminalManager.activeMainSurface != nil
+        terminalManager.canSendToActiveMainTab
     }
 
     var body: some View {
