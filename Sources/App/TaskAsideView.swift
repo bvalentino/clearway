@@ -73,7 +73,7 @@ struct TaskAsideView: View {
                     if hasStateCommand && hasWorktree {
                         SendToTerminalButton(
                             action: { sendStateCommandToTerminal(task) },
-                            disabled: terminalManager.activeMainSurface == nil
+                            disabled: terminalManager.activeSurfaceId == nil
                         )
                     }
                 }
@@ -111,13 +111,8 @@ struct TaskAsideView: View {
             for: task.status,
             task: task,
             taskPath: workTaskManager.filePath(for: task)
-        ),
-        let surface = terminalManager.activeMainSurface else { return }
-        // sendPaste uses ghostty_surface_binding_action and doesn't gate on
-        // focus, so order doesn't matter here. makeFirstResponder is just so
-        // the next keystroke lands in the terminal.
-        surface.sendPaste(rendered)
-        surface.window?.makeFirstResponder(surface)
+        ) else { return }
+        terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {

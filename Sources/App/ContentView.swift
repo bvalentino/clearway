@@ -721,9 +721,7 @@ struct ContentView: View {
     }
 
     private func sendPromptToTerminal(_ prompt: Prompt) {
-        guard let surface = terminalManager.activeMainSurface else { return }
-        surface.sendPaste(prompt.content)
-        surface.window?.makeFirstResponder(surface)
+        terminalManager.sendToActiveMainTab(prompt.content, asCommand: false)
     }
 
     private func openTaskWorktree(_ task: WorkTask) {
@@ -823,6 +821,10 @@ struct ContentView: View {
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
                                     PromptLauncherView(
                                         command: settings.resolvedMainTerminalCommand,
+                                        draft: Binding(
+                                            get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
+                                            set: { terminalManager.launcherDrafts[activeTab.id] = $0 }
+                                        ),
                                         onSubmit: { prompt in
                                             guard let app = ghosttyApp.app else { return }
                                             terminalManager.promoteLauncher(

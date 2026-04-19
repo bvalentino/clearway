@@ -12,10 +12,10 @@ import SwiftUI
 struct PromptLauncherView: View {
     /// Resolved command label used as the text area placeholder (caller passes `SettingsManager.resolvedMainTerminalCommand`).
     let command: String
+    @Binding var draft: String
     let onSubmit: (String) -> Void
     let onOpenTerminal: () -> Void
 
-    @State private var draft: String = ""
     @State private var contentHeight: CGFloat = 36
     @FocusState private var editorFocused: Bool
 
@@ -234,6 +234,7 @@ private final class SubmitTextView: NSTextView {
 #Preview {
     PromptLauncherView(
         command: "claude",
+        draft: .constant(""),
         onSubmit: { print("submit: \($0)") },
         onOpenTerminal: { print("open terminal") }
     )

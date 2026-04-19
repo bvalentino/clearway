@@ -166,6 +166,7 @@ class TerminalManager: ObservableObject {
         openTaskIds.removeAll()
         taskTerminalVisible.removeAll()
         taskTerminalHeights.removeAll()
+        launcherDrafts.removeAll()
     }
 
     private func handleDesktopNotification(from surface: Ghostty.SurfaceView) {
@@ -279,6 +280,34 @@ class TerminalManager: ObservableObject {
     var activeMainSurface: Ghostty.SurfaceView? {
         guard let id = activeSurfaceId else { return nil }
         return panes[id]?.main.activeSurface
+    }
+
+    /// Per-launcher-tab draft text. Not `@Published`: keystroke writes from the
+    /// NSTextView flow through the Binding's setter and the text view itself is
+    /// the visible source of truth, so no SwiftUI invalidation is needed on
+    /// type. External writes (`sendToActiveMainTab`) call `objectWillChange.send()`
+    /// explicitly so the launcher view re-renders and pushes the new text in.
+    var launcherDrafts: [UUID: String] = [:]
+
+    /// Send text to the active main tab. Launcher tabs receive it as draft
+    /// prefill; surface tabs forward to `sendCommand` (asCommand=true, appends
+    /// newline) or `sendPaste`.
+    func sendToActiveMainTab(_ text: String, asCommand: Bool) {
+        guard let worktreeId = activeSurfaceId,
+              let tab = panes[worktreeId]?.main.activeTab else { return }
+        switch tab.kind {
+        case .launcher:
+            guard launcherDrafts[tab.id] != text else { return }
+            objectWillChange.send()
+            launcherDrafts[tab.id] = text
+        case .surface(let surface):
+            if asCommand {
+                surface.sendCommand(text)
+            } else {
+                surface.sendPaste(text)
+            }
+            transferFirstResponder(to: surface)
+        }
     }
 
     /// The ordered list of main tabs for the given worktree (read-only view for UI).
@@ -473,6 +502,7 @@ class TerminalManager: ObservableObject {
 
         panes[worktreeId]!.main.tabs[tabIndex].kind = .surface(newSurface)
         panes[worktreeId]!.main.activeId = tabId
+        launcherDrafts.removeValue(forKey: tabId)
         objectWillChange.send()
         transferFirstResponder(to: newSurface)
         return newSurface
@@ -521,6 +551,7 @@ class TerminalManager: ObservableObject {
         let removedTab = panes[worktreeId]!.main.tabs[tabIndex]
 
         panes[worktreeId]!.main.tabs.remove(at: tabIndex)
+        launcherDrafts.removeValue(forKey: id)
 
         let wasActive = panes[worktreeId]?.main.activeId == id
         var newActiveSurface: Ghostty.SurfaceView?
@@ -621,6 +652,9 @@ class TerminalManager: ObservableObject {
 
     /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
+        if let pane = panes[worktreeId] {
+            for tab in pane.main.tabs { launcherDrafts.removeValue(forKey: tab.id) }
+        }
         panes.removeValue(forKey: worktreeId)
         cleanupState(for: worktreeId)
     }
@@ -645,6 +679,7 @@ class TerminalManager: ObservableObject {
         guard let pane = panes.removeValue(forKey: worktreeId) else { return }
         cleanupState(for: worktreeId)
         for tab in pane.main.tabs {
+            launcherDrafts.removeValue(forKey: tab.id)
             guard let surface = tab.surface else { continue }
             onMainTabClosed?(surface)
             surface.closeSurface()
