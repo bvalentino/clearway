@@ -16,11 +16,11 @@ struct PromptLauncherView: View {
     let onSubmit: (String) -> Void
     let onOpenTerminal: () -> Void
 
-    @State private var contentHeight: CGFloat = 36
+    @State private var contentHeight: CGFloat = 40
     @FocusState private var editorFocused: Bool
 
-    private let minHeight: CGFloat = 36
-    private let maxHeight: CGFloat = 200
+    private let minHeight: CGFloat = 40
+    private let maxHeight: CGFloat = 220
 
     var body: some View {
         VStack(spacing: 0) {
@@ -96,7 +96,11 @@ private struct PromptTextEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
-        textView.font = NSFont.systemFont(ofSize: 13)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineHeightMultiple = 1.25
+        textView.defaultParagraphStyle = paragraph
+        textView.typingAttributes[.paragraphStyle] = paragraph
         textView.delegate = context.coordinator
         textView.onSubmitRequested = { context.coordinator.submit() }
         textView.placeholder = placeholder
@@ -221,7 +225,7 @@ private final class SubmitTextView: NSTextView {
         super.draw(dirtyRect)
         guard string.isEmpty, !placeholder.isEmpty else { return }
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: font ?? NSFont.systemFont(ofSize: 13),
+            .font: font ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
             .foregroundColor: NSColor.placeholderTextColor
         ]
         let inset = textContainerInset
