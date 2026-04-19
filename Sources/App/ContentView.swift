@@ -367,6 +367,10 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
+            // Route the launcher decision through the live SettingsManager so clearing
+            // the command at runtime immediately skips the prompt screen on new tabs.
+            terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
+
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             claudeTodoManager.setWorktreePath(selectedWorktree?.path)
             todoManager.setWorktreePath(selectedWorktree?.path)

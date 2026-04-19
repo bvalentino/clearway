@@ -55,4 +55,29 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ColorSchemePreference.light.nsAppearance?.name, .aqua)
         XCTAssertEqual(ColorSchemePreference.dark.nsAppearance?.name, .darkAqua)
     }
+
+    // MARK: - Main terminal command
+
+    func test_configuredMainTerminalCommand_isNilWhenUnset() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertNil(manager.configuredMainTerminalCommand)
+    }
+
+    func test_configuredMainTerminalCommand_isNilWhenWhitespaceOnly() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.mainTerminalCommand = "   "
+        XCTAssertNil(manager.configuredMainTerminalCommand)
+    }
+
+    func test_configuredMainTerminalCommand_returnsTrimmedValue() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.mainTerminalCommand = "  codex  "
+        XCTAssertEqual(manager.configuredMainTerminalCommand, "codex")
+    }
+
+    func test_resolvedMainTerminalCommand_fallsBackToDefault_whenBlank() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.mainTerminalCommand = ""
+        XCTAssertEqual(manager.resolvedMainTerminalCommand, SettingsManager.defaultMainTerminalCommand)
+    }
 }

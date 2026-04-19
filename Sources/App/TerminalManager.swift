@@ -204,12 +204,22 @@ class TerminalManager: ObservableObject {
             secondaryVisible[key] = true
         }
 
-        return tp
+        // No main command configured → skip the launcher screen entirely.
+        if mainCommandProvider() == nil {
+            promoteLauncher(tabId: initialTab.id, in: key, app: app, mode: .loginShell)
+        }
+
+        return panes[key] ?? tp
     }
 
     /// Surfaces that should not be auto-restarted when they exit.
     /// Set by WorkTaskCoordinator for agent command surfaces.
     var skipAutoRestart: ((Ghostty.SurfaceView) -> Bool)?
+
+    /// Provides the user's configured main terminal command (nil when unset).
+    /// When it returns nil, new main tabs open a login shell directly instead of
+    /// showing the prompt launcher. Wired from `ContentView` to `SettingsManager`.
+    var mainCommandProvider: () -> String? = { nil }
 
     /// Called when a main tab is closed via `closeMainTab`.
     /// `WorkTaskCoordinator` wires this on setup to clear per-surface bookkeeping.
@@ -405,6 +415,12 @@ class TerminalManager: ObservableObject {
         }
 
         objectWillChange.send()
+
+        // No main command configured → promote immediately to a login shell.
+        if mainCommandProvider() == nil {
+            promoteLauncher(tabId: newTab.id, in: key, app: app, mode: .loginShell)
+        }
+
         return newTab.id
     }
 

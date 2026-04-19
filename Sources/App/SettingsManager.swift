@@ -38,10 +38,19 @@ class SettingsManager: ObservableObject {
 
     private let defaults: UserDefaults
 
-    /// `mainTerminalCommand` trimmed, or the default when empty.
-    var resolvedMainTerminalCommand: String {
+    /// `mainTerminalCommand` trimmed, or nil when the user has left it blank.
+    /// Used by the launcher to decide whether to show the prompt form (non-nil) or
+    /// skip straight to a login shell (nil).
+    var configuredMainTerminalCommand: String? {
         let trimmed = mainTerminalCommand.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? Self.defaultMainTerminalCommand : trimmed
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// `configuredMainTerminalCommand`, or `defaultMainTerminalCommand` when nil.
+    /// Prefer `configuredMainTerminalCommand` at call sites that need to detect
+    /// the unset case (e.g. the launcher); use this only where a fallback is required.
+    var resolvedMainTerminalCommand: String {
+        configuredMainTerminalCommand ?? Self.defaultMainTerminalCommand
     }
 
     @Published var mainTerminalCommand: String {
