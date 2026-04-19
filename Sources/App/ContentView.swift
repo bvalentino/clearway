@@ -318,6 +318,7 @@ struct ContentView: View {
             // persisted group membership / default order / PR statuses / open terminals.
             if !newWorktrees.isEmpty && worktreeManager.error == nil {
                 groupManager.reconcile(knownWorktreeIds: currentIds)
+                groupManager.seedDefaultOrder(with: newWorktrees, openIds: terminalManager.openWorktreeIds)
                 terminalManager.pruneStale(keeping: currentIds)
                 worktreeManager.prunePRStatuses(keeping: currentIds)
             }
@@ -343,6 +344,9 @@ struct ContentView: View {
             if !worktreeShortcutsDisabled {
                 ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
+                        // Only fire for rows that render a ⌘N badge — `terminalManager.isOpen`
+                        // is the same predicate that gates the badge in SidebarView.
+                        guard terminalManager.isOpen(wt) else { return }
                         detailSelection = .worktree(wt)
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)

@@ -373,12 +373,6 @@ struct SidebarView: View {
         return i + 1
     }
 
-    /// Whether the row should render as visually primary (full opacity, shortcut shown).
-    /// Main stays visually primary even when no pane exists so it never looks unreachable.
-    private func showsAsPrimary(_ wt: Worktree) -> Bool {
-        wt.isMain || terminalManager.isOpen(wt)
-    }
-
     /// Computes the (primaryText, subtitle) pair for a worktree row.
     /// For the main worktree the stable branch name is the primary label.
     /// For non-main worktrees a linked task title (if any) is primary, with the branch as subtitle.
@@ -397,8 +391,10 @@ struct SidebarView: View {
         titles: [String: String],
         moveDisabled: Bool
     ) -> some View {
-        let isPrimary = showsAsPrimary(wt)
-        let isOpen = terminalManager.isOpen(wt)
+        // `isOpen` already treats main as open — same predicate `ContentView` uses
+        // to gate ⌘N, so the badge and the shortcut target the same rows.
+        let isPrimary = terminalManager.isOpen(wt)
+        let isOpen = isPrimary
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
         let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
         let shortcut = isSearching || !isPrimary ? nil : shortcutIndex(for: wt)
