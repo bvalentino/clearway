@@ -377,4 +377,74 @@ final class WorktreeGroupManagerTests: XCTestCase {
         XCTAssertEqual(result[0].id, main.id, "main must appear in the default section (first)")
         XCTAssertEqual(result[1].id, nonMain.id, "non-main grouped worktree follows the default section")
     }
+
+    // MARK: - seedDefaultOrder
+
+    /// Seeding records non-main, non-grouped worktrees into `defaultOrder`.
+    /// Already-recorded IDs, grouped IDs, and main are untouched.
+    func testSeedDefaultOrderAppendsOnlyMissingIds() async throws {
+        manager.createGroup(named: "SomeGroup")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        guard let group = manager.groups.first else {
+            XCTFail("Expected one group")
+            return
+        }
+
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let already = makeWorktree(branch: "already", path: "/tmp/already")
+        let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
+        let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
+
+        // Pre-populate defaultOrder with `already` and move `grouped` into a group.
+        manager.setDefaultOrder([already.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.addWorktree(grouped, toGroup: group.id)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        manager.seedDefaultOrder(with: [main, already, grouped, fresh], openIds: [])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(
+            manager.defaultOrder,
+            [already.id, fresh.id],
+            "main and grouped IDs must be skipped; fresh is appended after existing entries"
+        )
+    }
+
+    /// seedDefaultOrder is a no-op when every candidate is already recorded.
+    /// No disk write, no defaultOrder reassignment.
+    func testSeedDefaultOrderIsIdempotent() async throws {
+        let wt = makeWorktree(branch: "only", path: "/tmp/only")
+        manager.setDefaultOrder([wt.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let before = manager.defaultOrder
+        manager.seedDefaultOrder(with: [wt], openIds: [])
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(manager.defaultOrder, before, "defaultOrder must not change when nothing is missing")
+    }
+
+    /// Once every non-main worktree is recorded in `defaultOrder`, mutating
+    /// `openIds` (click-to-open simulation) must not change the rendered order.
+    func testSidebarOrderStableAcrossOpenStateChanges() async throws {
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let wt1 = makeWorktree(branch: "one", path: "/tmp/one")
+        let wt2 = makeWorktree(branch: "two", path: "/tmp/two")
+        let wt3 = makeWorktree(branch: "three", path: "/tmp/three")
+        let worktrees = [main, wt1, wt2, wt3]
+
+        manager.seedDefaultOrder(with: worktrees, openIds: [])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, openIds: [], matches: { _ in true })
+        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt3.id], matches: { _ in true })
+        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt1.id], matches: { _ in true })
+
+        XCTAssertEqual(closedOrder.map(\.id), afterOpenLast.map(\.id),
+                       "opening the last worktree must not reorder the sidebar")
+        XCTAssertEqual(closedOrder.map(\.id), afterOpenFirst.map(\.id),
+                       "opening the first worktree must not reorder the sidebar")
+    }
 }
