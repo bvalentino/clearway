@@ -1,69 +1,6 @@
 import AppKit
 import GhosttyKit
 
-/// Escape a path for safe use in a shell command (single-quote wrapping for programmatic
-/// command-building). For injecting text at the cursor in a live terminal, use `Ghostty.Shell.escape`.
-func shellEscape(_ path: String) -> String {
-    "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
-}
-
-/// A single tab in the main terminal panel.
-struct TerminalTab {
-    /// Launcher tabs hold no running process — they render the Prompt Launcher form.
-    /// Surface tabs host a live `Ghostty.SurfaceView`.
-    enum Kind {
-        case launcher
-        case surface(Ghostty.SurfaceView)
-    }
-
-    let id: UUID
-    var kind: Kind
-
-    /// The live surface for this tab, or nil if the tab is a launcher.
-    var surface: Ghostty.SurfaceView? {
-        if case .surface(let s) = kind { return s }
-        return nil
-    }
-
-    var isLauncher: Bool {
-        if case .launcher = kind { return true }
-        return false
-    }
-}
-
-/// The collection of tabs shown in the main terminal panel for a worktree.
-struct MainTerminal {
-    var tabs: [TerminalTab]
-    var activeId: UUID?
-
-    /// The currently active tab, or nil if none.
-    var activeTab: TerminalTab? {
-        guard let activeId else { return nil }
-        return tabs.first(where: { $0.id == activeId })
-    }
-
-    /// The surface of the currently active tab, or nil if none (or if it's a launcher).
-    var activeSurface: Ghostty.SurfaceView? {
-        activeTab?.surface
-    }
-
-    /// Whether any tab in this terminal holds the given surface.
-    func contains(_ surface: Ghostty.SurfaceView) -> Bool {
-        tabs.contains(where: { $0.surface === surface })
-    }
-
-    /// The index of the tab with the given id, or nil if not found.
-    func index(of id: UUID) -> Int? {
-        tabs.firstIndex(where: { $0.id == id })
-    }
-}
-
-/// The terminal panes for a worktree.
-struct TerminalPane {
-    var main: MainTerminal
-    var secondary: Ghostty.SurfaceView
-}
-
 /// Manages per-worktree terminal surfaces.
 ///
 /// Each worktree gets two `Ghostty.SurfaceView` instances (main, secondary)
@@ -76,7 +13,10 @@ class TerminalManager: ObservableObject {
 
     private var panes: [String: TerminalPane] = [:]
     private var initialTabIds: [String: UUID] = [:]
-    private var app: ghostty_app_t?
+    /// The active `ghostty_app_t` handle captured on first surface creation.
+    /// Non-private so the task-terminal extension (a separate file) can cache the handle
+    /// when it creates surfaces outside the main-pane flow.
+    var ghosttyApp: ghostty_app_t?
     private var closeSurfaceObserver: Any?
     private var recentRestarts: [String: [Date]] = [:]
     @Published var activeSurfaceId: String?
@@ -92,16 +32,21 @@ class TerminalManager: ObservableObject {
     /// Per-worktree secondary terminal panel height.
     @Published private var secondaryHeights: [String: CGFloat] = [:]
 
-    // MARK: - Task Terminals
+    // MARK: - Task Terminal Storage
+    //
+    // Task-specific storage is `internal` (no modifier) rather than `private`
+    // because the task-terminal methods live in `TerminalManager+TaskTerminals.swift`
+    // — a same-module extension cannot reach `private` members across files.
+    // Only the methods in that extension should mutate these.
 
     /// Per-task terminal surfaces (one per task, keyed by task UUID).
-    private var taskSurfaces: [UUID: Ghostty.SurfaceView] = [:]
+    var taskSurfaces: [UUID: Ghostty.SurfaceView] = [:]
     /// Task IDs that have an active terminal surface.
-    @Published private(set) var openTaskIds: Set<UUID> = []
+    @Published var openTaskIds: Set<UUID> = []
     /// Per-task terminal panel visibility.
-    @Published private var taskTerminalVisible: [UUID: Bool] = [:]
+    @Published var taskTerminalVisible: [UUID: Bool] = [:]
     /// Per-task terminal panel height.
-    @Published private var taskTerminalHeights: [UUID: CGFloat] = [:]
+    @Published var taskTerminalHeights: [UUID: CGFloat] = [:]
 
     /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
     private var sidePanelTabs: [String: String] = [:]
@@ -233,7 +178,7 @@ class TerminalManager: ObservableObject {
 
     /// Get or create terminal panes for the given worktree.
     func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
-        self.app = app
+        ghosttyApp = app
 
         let key = worktree.id
         if let existing = panes[key] {
@@ -351,7 +296,7 @@ class TerminalManager: ObservableObject {
             panes[key]!.main.activeId = newTab.id
         } else {
             // Pane doesn't exist yet — create on-the-fly (mirrors replaceMainSurface fallback).
-            self.app = app
+            ghosttyApp = app
             let dir = worktree.path ?? projectPath
             let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
@@ -436,7 +381,7 @@ class TerminalManager: ObservableObject {
             panes[key]!.main.tabs.append(newTab)
             panes[key]!.main.activeId = newTab.id
         } else {
-            self.app = app
+            ghosttyApp = app
             let dir = worktree.path ?? projectPath
             let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
@@ -595,7 +540,7 @@ class TerminalManager: ObservableObject {
 
     /// Replace a dead surface with a fresh terminal in the same working directory.
     private func replaceSurface(_ deadSurface: Ghostty.SurfaceView) {
-        guard let app else { return }
+        guard let app = ghosttyApp else { return }
 
         // Don't auto-restart agent surfaces
         if let skip = skipAutoRestart, skip(deadSurface) { return }
@@ -717,84 +662,6 @@ class TerminalManager: ObservableObject {
         for manager in allInstances.allObjects {
             manager.closeAllSurfaces()
         }
-    }
-
-    // MARK: - Task Terminal Methods
-
-    /// Look up an existing task terminal surface (read-only).
-    func existingTaskSurface(for taskId: UUID) -> Ghostty.SurfaceView? {
-        taskSurfaces[taskId]
-    }
-
-    /// Whether a task's terminal has a running foreground process.
-    func taskHasActiveProcess(_ taskId: UUID) -> Bool {
-        taskSurfaces[taskId]?.needsConfirmQuit ?? false
-    }
-
-    /// Get or create a terminal surface for a task.
-    @discardableResult
-    func taskSurface(for taskId: UUID, app: ghostty_app_t, projectPath: String?) -> Ghostty.SurfaceView {
-        self.app = app
-        if let existing = taskSurfaces[taskId] {
-            return existing
-        }
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath)
-        taskSurfaces[taskId] = surface
-        if !openTaskIds.contains(taskId) {
-            openTaskIds.insert(taskId)
-        }
-        return surface
-    }
-
-    /// Whether a task's terminal panel is visible.
-    func isTaskTerminalVisible(for taskId: UUID) -> Bool {
-        taskTerminalVisible[taskId] ?? false
-    }
-
-    /// The stored terminal panel height for a task, or the default.
-    func taskTerminalHeight(for taskId: UUID) -> CGFloat {
-        taskTerminalHeights[taskId] ?? 200
-    }
-
-    /// Store a task's terminal panel height.
-    func setTaskTerminalHeight(_ height: CGFloat, for taskId: UUID) {
-        guard taskTerminalHeights[taskId] != height else { return }
-        taskTerminalHeights[taskId] = height
-    }
-
-    /// Toggle a task's terminal panel visibility. Creates the surface on first show.
-    func toggleTaskTerminal(for taskId: UUID, app: ghostty_app_t, projectPath: String?) {
-        let isVisible = taskTerminalVisible[taskId] ?? false
-        if !isVisible { taskSurface(for: taskId, app: app, projectPath: projectPath) }
-        taskTerminalVisible[taskId] = !isVisible
-    }
-
-    /// Close a task's terminal surface. Removes entry first to prevent auto-restart.
-    func closeTaskTerminal(_ taskId: UUID) {
-        guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
-        openTaskIds.remove(taskId)
-        taskTerminalVisible.removeValue(forKey: taskId)
-        taskTerminalHeights.removeValue(forKey: taskId)
-        surface.closeSurface()
-    }
-
-    /// Open a task terminal that runs the given command directly (no login shell).
-    /// Replaces any existing task surface for the same task.
-    func openTaskTerminalWithCommand(for taskId: UUID, app: ghostty_app_t, projectPath: String?, command: String) {
-        self.app = app
-        // Close existing surface if any
-        if let old = taskSurfaces.removeValue(forKey: taskId) {
-            old.closeSurface()
-        }
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, command: command)
-        taskSurfaces[taskId] = surface
-        openTaskIds.insert(taskId)
-        taskTerminalVisible[taskId] = true
-    }
-
-    /// Find the task ID that owns the given surface.
-    private func taskId(for surface: Ghostty.SurfaceView) -> UUID? {
-        taskSurfaces.first(where: { $0.value === surface })?.key
     }
 
     /// All surfaces across all worktrees and tasks.
