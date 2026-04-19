@@ -356,13 +356,21 @@ struct SidebarView: View {
 
     private var caffeineButton: some View {
         FloatingSidebarButton(
-            systemImage: caffeine.isActive ? "cup.and.heat.waves.fill" : "cup.and.saucer",
+            systemImage: caffeine.isActive ? activeCaffeineSymbol : "cup.and.saucer",
             isActive: caffeine.isActive,
             help: caffeine.isActive
                 ? "Caffeine on — your Mac won't sleep or start the screensaver. Click to turn off."
                 : "Keep your Mac awake: prevents display sleep and the screensaver while long tasks run. Click to turn on.",
             action: caffeine.toggle
         )
+    }
+
+    // `cup.and.heat.waves` is SF Symbols 6 (macOS 15+). Fall back on older OS.
+    private var activeCaffeineSymbol: String {
+        if #available(macOS 15.0, *) {
+            return "cup.and.heat.waves.fill"
+        }
+        return "cup.and.saucer.fill"
     }
 
     // MARK: - Helpers
