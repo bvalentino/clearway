@@ -126,6 +126,7 @@ struct ClearwayApp: App {
     @StateObject private var ghosttyApp: Ghostty.App
     @StateObject private var projectList = ProjectListManager()
     @StateObject private var settings: SettingsManager
+    @StateObject private var caffeine = CaffeineManager()
     @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     private let updaterController: SPUStandardUpdaterController
 
@@ -150,6 +151,7 @@ struct ClearwayApp: App {
                 .background(CloseConfirmation())
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
+                .environmentObject(caffeine)
                 .clearwayChrome(settings)
         }
         .defaultSize(width: 1100, height: 700)

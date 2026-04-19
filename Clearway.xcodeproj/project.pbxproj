@@ -34,6 +34,7 @@
 		42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */; };
 		449E2BD69F4AAAFC69ADBDE3 /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565AC0451DC45348A309739E /* TerminalSurface.swift */; };
 		44C8206EE4CA6D3A6A82875A /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86F03706FEA2A1FDBB4B3BFC /* MarkdownEditorView.swift */; };
+		463BA801BBC392709E59B997 /* CaffeineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */; };
 		49FE009377B405FAA2EAA9C4 /* ShellEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8742B714B02945F53726FF28 /* ShellEnvironment.swift */; };
 		4C1B01303EA21622302D3B3B /* WorktreeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42D5DF54D44C54CC6AD38D22 /* WorktreeGroup.swift */; };
 		4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D53B2248C692859A82CD26 /* GitResolverTests.swift */; };
@@ -139,6 +140,7 @@
 		8AC79F9A899F03CE1BDFF0D4 /* ProjectSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettings.swift; sourceTree = "<group>"; };
 		904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskListView.swift; sourceTree = "<group>"; };
 		90F058F6484B056DE5C42A4C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaffeineManager.swift; sourceTree = "<group>"; };
 		9329F0AF3D9A7FF50F684992 /* ProjectSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSettingsView.swift; sourceTree = "<group>"; };
 		945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskManagerTests.swift; sourceTree = "<group>"; };
 		946872F556F95BBB45E91EBD /* AppNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotifications.swift; sourceTree = "<group>"; };
@@ -229,6 +231,7 @@
 				32483ACE7E2BCCF4724CC79E /* AgentSessionObserver.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
 				C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */,
+				9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */,
 				6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */,
 				1B14527F0BC588875644727E /* ClaudeTodo.swift */,
 				FEFC31B3C3935529382C89CA /* ClaudeTodoManager.swift */,
@@ -577,6 +580,7 @@
 				0811368556095DA0E4F251F3 /* AgentSessionObserver.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,
+				463BA801BBC392709E59B997 /* CaffeineManager.swift in Sources */,
 				583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */,
 				A11605073176EFDF1A6EE5DF /* ClaudeTodo.swift in Sources */,
 				7DA12F43C612C19B6EC1D01B /* ClaudeTodoManager.swift in Sources */,
