@@ -5,9 +5,15 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Main Terminal") {
-                TextField("Command", text: $settings.mainTerminalCommand, prompt: Text("claude"))
-                    .textFieldStyle(.roundedBorder)
+            Section {
+                Picker("Command", selection: $settings.mainTerminalCommand) {
+                    Text("None").tag("")
+                    Text("claude").tag("claude")
+                }
+            } header: {
+                Text("Main Terminal")
+            } footer: {
+                Text("Choose \"None\" to open new tabs directly in a login shell.")
             }
 
             Section("Appearance") {
