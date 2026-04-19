@@ -33,7 +33,25 @@ enum ColorSchemePreference: String, CaseIterable, Identifiable {
 /// Manages user preferences, persisted via UserDefaults.
 @MainActor
 class SettingsManager: ObservableObject {
+    /// Fallback command when `mainTerminalCommand` is unset or whitespace-only.
+    static let defaultMainTerminalCommand = "claude"
+
     private let defaults: UserDefaults
+
+    /// `mainTerminalCommand` trimmed, or nil when the user has left it blank.
+    /// Used by the launcher to decide whether to show the prompt form (non-nil) or
+    /// skip straight to a login shell (nil).
+    var configuredMainTerminalCommand: String? {
+        let trimmed = mainTerminalCommand.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// `configuredMainTerminalCommand`, or `defaultMainTerminalCommand` when nil.
+    /// Prefer `configuredMainTerminalCommand` at call sites that need to detect
+    /// the unset case (e.g. the launcher); use this only where a fallback is required.
+    var resolvedMainTerminalCommand: String {
+        configuredMainTerminalCommand ?? Self.defaultMainTerminalCommand
+    }
 
     @Published var mainTerminalCommand: String {
         didSet {

@@ -44,7 +44,7 @@ struct TodosPanelView: View {
     }
 
     private var canSend: Bool {
-        terminalManager.activeMainSurface != nil
+        terminalManager.canSendToActiveMainTab
     }
 
     var body: some View {
@@ -194,9 +194,7 @@ struct TodosPanelView: View {
     }
 
     private func sendToTerminal(_ text: String) {
-        guard let surface = terminalManager.activeMainSurface else { return }
-        surface.sendCommand(text)
-        surface.window?.makeFirstResponder(surface)
+        terminalManager.sendToActiveMainTab(text, asCommand: true)
     }
 
     private func sendTodoToTerminal(_ todo: Todo) {
