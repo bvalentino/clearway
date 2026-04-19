@@ -14,6 +14,7 @@ struct SidebarView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
+    @EnvironmentObject private var caffeine: CaffeineManager
     @Binding var sidebarSelection: DetailSelection?
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
@@ -77,25 +78,12 @@ struct SidebarView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            Button {
-                if detailSelection == .settings {
-                    detailSelection = selectionBeforeSettings ?? .planning
-                    selectionBeforeSettings = nil
-                } else {
-                    selectionBeforeSettings = detailSelection
-                    detailSelection = .settings
-                }
-            } label: {
-                Image(systemName: "gear")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(detailSelection == .settings ? .primary : .secondary)
-                    .frame(width: 36, height: 36)
-                    .background(.thinMaterial, in: Circle())
-                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-            }
-            .buttonStyle(.plain)
-            .help("Project Settings")
-            .padding(12)
+            settingsButton
+                .padding(12)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            caffeineButton
+                .padding(12)
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -347,6 +335,35 @@ struct SidebarView: View {
                 NSPasteboard.general.setString(path, forType: .string)
             }
         }
+    }
+
+    // MARK: - Floating Buttons
+
+    private var settingsButton: some View {
+        FloatingSidebarButton(
+            systemImage: "gear",
+            isActive: detailSelection == .settings,
+            help: "Project Settings"
+        ) {
+            if detailSelection == .settings {
+                detailSelection = selectionBeforeSettings ?? .planning
+                selectionBeforeSettings = nil
+            } else {
+                selectionBeforeSettings = detailSelection
+                detailSelection = .settings
+            }
+        }
+    }
+
+    private var caffeineButton: some View {
+        FloatingSidebarButton(
+            systemImage: caffeine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer",
+            isActive: caffeine.isActive,
+            help: caffeine.isActive
+                ? "Caffeine on — your Mac won't sleep or start the screensaver. Click to turn off."
+                : "Keep your Mac awake: prevents display sleep and the screensaver while long tasks run. Click to turn on.",
+            action: caffeine.toggle
+        )
     }
 
     // MARK: - Helpers
@@ -717,6 +734,28 @@ private struct SearchField: NSViewRepresentable {
             guard let field = notification.object as? NSSearchField else { return }
             text = field.stringValue
         }
+    }
+}
+
+/// Circular floating button used in the sidebar's bottom-leading overlay
+/// (settings, caffeine). Matches the shared 36pt thinMaterial + shadow pattern.
+private struct FloatingSidebarButton: View {
+    let systemImage: String
+    let isActive: Bool
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isActive ? .primary : .secondary)
+                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 
