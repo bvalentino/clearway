@@ -356,7 +356,7 @@ struct SidebarView: View {
 
     private var caffeineButton: some View {
         FloatingSidebarButton(
-            systemImage: caffeine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer",
+            systemImage: caffeine.isActive ? "cup.and.heat.waves.fill" : "cup.and.saucer",
             isActive: caffeine.isActive,
             help: caffeine.isActive ? "Keep Mac Awake (on)" : "Keep Mac Awake",
             action: caffeine.toggle
