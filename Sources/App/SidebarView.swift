@@ -358,7 +358,9 @@ struct SidebarView: View {
         FloatingSidebarButton(
             systemImage: caffeine.isActive ? "cup.and.heat.waves.fill" : "cup.and.saucer",
             isActive: caffeine.isActive,
-            help: caffeine.isActive ? "Keep Mac Awake (on)" : "Keep Mac Awake",
+            help: caffeine.isActive
+                ? "Caffeine on — your Mac won't sleep or start the screensaver. Click to turn off."
+                : "Keep your Mac awake: prevents display sleep and the screensaver while long tasks run. Click to turn on.",
             action: caffeine.toggle
         )
     }
