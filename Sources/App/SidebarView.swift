@@ -391,13 +391,10 @@ struct SidebarView: View {
         titles: [String: String],
         moveDisabled: Bool
     ) -> some View {
-        // `isOpen` already treats main as open — same predicate `ContentView` uses
-        // to gate ⌘N, so the badge and the shortcut target the same rows.
-        let isPrimary = terminalManager.isOpen(wt)
-        let isOpen = isPrimary
+        let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
         let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
-        let shortcut = isSearching || !isPrimary ? nil : shortcutIndex(for: wt)
+        let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
         let (primaryText, subtitle) = rowTexts(
             for: wt,
             titles: titles
@@ -411,7 +408,7 @@ struct SidebarView: View {
             shortcutIndex: shortcut
         )
             .tag(DetailSelection.worktree(wt))
-            .opacity(isPrimary ? 1.0 : 0.5)
+            .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }
             .draggableIf(!wt.isMain, id: wt.id) { WorktreeDragChip() }
             .moveDisabled(moveDisabled)

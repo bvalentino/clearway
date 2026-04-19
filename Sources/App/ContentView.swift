@@ -344,8 +344,7 @@ struct ContentView: View {
             if !worktreeShortcutsDisabled {
                 ForEach(Array(sortedWorktrees.prefix(maxShortcuts).enumerated()), id: \.element.id) { index, wt in
                     Button("") {
-                        // Only fire for rows that render a ⌘N badge — `terminalManager.isOpen`
-                        // is the same predicate that gates the badge in SidebarView.
+                        // Closed rows hide their ⌘N badge; the shortcut must match.
                         guard terminalManager.isOpen(wt) else { return }
                         detailSelection = .worktree(wt)
                     }
