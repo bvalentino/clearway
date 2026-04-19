@@ -78,11 +78,12 @@ struct SidebarView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            HStack(spacing: 8) {
-                settingsButton
-                caffeineButton
-            }
-            .padding(12)
+            settingsButton
+                .padding(12)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            caffeineButton
+                .padding(12)
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .top, spacing: 0) {
