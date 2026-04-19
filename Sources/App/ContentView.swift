@@ -81,10 +81,19 @@ struct ContentView: View {
     /// Action exposed via `focusedSceneValue` so the File > New Tab menu item
     /// is enabled only when this window has an active worktree.
     private var newTabAction: (() -> Void)? {
-        guard let wtId = selectedWorktree?.id else { return nil }
+        guard let worktree = selectedWorktree else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.newShellTab(for: wtId, app: app)
+            terminalManager.appendLauncherTab(for: worktree, app: app)
+        }
+    }
+
+    /// Cmd+Shift+T: append a tab that skips the launcher and drops directly into a shell.
+    private var newShellTabAction: (() -> Void)? {
+        guard let worktree = selectedWorktree else { return nil }
+        return { [terminalManager, ghosttyApp] in
+            guard let app = ghosttyApp.app else { return }
+            terminalManager.appendShellTab(for: worktree, app: app)
         }
     }
 
@@ -209,6 +218,7 @@ struct ContentView: View {
     var body: some View {
         navigator
         .focusedSceneValue(\.newTabAction, newTabAction)
+        .focusedSceneValue(\.newShellTabAction, newShellTabAction)
         .focusedSceneValue(\.newTaskAction, newTaskAction)
         .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
             guard let result = workTaskCoordinator.pendingAutoStart else { return }
@@ -810,6 +820,29 @@ struct ContentView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
+                                    PromptLauncherView(
+                                        command: settings.resolvedMainTerminalCommand,
+                                        onSubmit: { prompt in
+                                            guard let app = ghosttyApp.app else { return }
+                                            terminalManager.promoteLauncher(
+                                                tabId: activeTab.id,
+                                                in: worktreeId,
+                                                app: app,
+                                                mode: .prompt(command: settings.resolvedMainTerminalCommand, stdin: prompt)
+                                            )
+                                        },
+                                        onOpenTerminal: {
+                                            guard let app = ghosttyApp.app else { return }
+                                            terminalManager.promoteLauncher(
+                                                tabId: activeTab.id,
+                                                in: worktreeId,
+                                                app: app,
+                                                mode: .loginShell
+                                            )
+                                        }
+                                    )
+                                    .id(activeTab.id)
                                 } else if let activeSurface = pane.main.activeSurface {
                                     FocusableTerminal(
                                         surfaceView: activeSurface,
@@ -921,8 +954,8 @@ struct ContentView: View {
     }
 
     private func beginCloseTab(id: UUID, in worktreeId: String) {
-        guard let surface = terminalManager.mainTabs(for: worktreeId).first(where: { $0.id == id })?.surface else { return }
-        if surface.needsConfirmQuit {
+        guard let tab = terminalManager.mainTabs(for: worktreeId).first(where: { $0.id == id }) else { return }
+        if let surface = tab.surface, surface.needsConfirmQuit {
             let title = surface.title.isEmpty ? "Terminal" : surface.title
             tabCloseQueue.append(TabCloseRequest(worktreeId: worktreeId, tabId: id, title: title))
         } else {

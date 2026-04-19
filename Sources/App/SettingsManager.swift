@@ -33,7 +33,16 @@ enum ColorSchemePreference: String, CaseIterable, Identifiable {
 /// Manages user preferences, persisted via UserDefaults.
 @MainActor
 class SettingsManager: ObservableObject {
+    /// Fallback command when `mainTerminalCommand` is unset or whitespace-only.
+    static let defaultMainTerminalCommand = "claude"
+
     private let defaults: UserDefaults
+
+    /// `mainTerminalCommand` trimmed, or the default when empty.
+    var resolvedMainTerminalCommand: String {
+        let trimmed = mainTerminalCommand.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? Self.defaultMainTerminalCommand : trimmed
+    }
 
     @Published var mainTerminalCommand: String {
         didSet {
