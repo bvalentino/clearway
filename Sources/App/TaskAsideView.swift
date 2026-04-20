@@ -17,25 +17,16 @@ struct TaskAsideView: View {
     }
 
     var body: some View {
-        if let task {
-            taskContent(task)
-        } else {
-            emptyState
+        Group {
+            if let task {
+                taskContent(task)
+            } else {
+                unlinkedCreateTaskCTA
+            }
         }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-            Text("No task linked")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Ensure every worktree has a persistent (possibly hidden) task so status changes
+        // have somewhere to land. The coordinator no-ops when a task already links the branch.
+        .onAppear { workTaskCoordinator.ensureShadowTask(forBranch: worktreeBranch) }
     }
 
     // MARK: - Task Content
@@ -43,12 +34,16 @@ struct TaskAsideView: View {
     private func taskContent(_ task: WorkTask) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                WorkTaskCard(
-                    task: task,
-                    showStatusBadge: false,
-                    showContextMenu: false,
-                    onEdit: { openTaskWindow(task) }
-                )
+                if task.hidden {
+                    createTaskPlaceholder(for: task)
+                } else {
+                    WorkTaskCard(
+                        task: task,
+                        showStatusBadge: false,
+                        showContextMenu: false,
+                        onEdit: { openTaskWindow(task) }
+                    )
+                }
 
                 Divider()
 
@@ -78,13 +73,51 @@ struct TaskAsideView: View {
                     }
                 }
 
-                // Agent metadata (show for tasks that have been worked on)
-                if !task.status.isBacklog, WorkTaskAgentMetadata.hasContent(for: task) {
+                // Agent metadata (show for tasks that have been worked on; never for placeholders)
+                if !task.hidden, !task.status.isBacklog, WorkTaskAgentMetadata.hasContent(for: task) {
                     WorkTaskAgentMetadata(task: task)
                 }
             }
             .padding(16)
         }
+    }
+
+    // MARK: - Create Task CTA
+
+    /// Replaces the task card when the linked task is still a hidden placeholder. The status
+    /// picker below stays live — users can track state without surfacing the task in Planning.
+    private func createTaskPlaceholder(for task: WorkTask) -> some View {
+        VStack(spacing: 10) {
+            Text("No task for this worktree")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button {
+                let exposed = workTaskManager.expose(task)
+                openTaskWindow(exposed)
+            } label: {
+                Label("Create Task", systemImage: "plus")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    /// Fallback when no task MD exists at all (e.g. pre-change worktree whose shadow
+    /// hasn't been created yet). `onAppear` will usually create one before this is seen.
+    private var unlinkedCreateTaskCTA: some View {
+        VStack(spacing: 10) {
+            Text("No task for this worktree")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button {
+                if let created = workTaskManager.createExposedTask(forBranch: worktreeBranch) {
+                    openTaskWindow(created)
+                }
+            } label: {
+                Label("Create Task", systemImage: "plus")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Actions
@@ -115,6 +148,8 @@ struct TaskAsideView: View {
         terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
+    /// `.new` and `.readyToStart` are reserved for Planning (pre-worktree). Once a worktree
+    /// exists, its task starts at `.inProgress` and can only move forward through these states.
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
         [.inProgress, .qa, .readyForReview, .done, .canceled]
     }

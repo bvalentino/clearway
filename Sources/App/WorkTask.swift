@@ -15,6 +15,10 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var inputTokens: Int?
     var outputTokens: Int?
 
+    /// When true, the task is a shadow task for a worktree — it tracks state but
+    /// stays out of the Planning backlog until the user exposes it.
+    var hidden: Bool = false
+
     enum Status: String, CaseIterable {
         case new
         case readyToStart = "ready_to_start"
@@ -80,6 +84,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         if let inputTokens { lines.append("input_tokens: \(inputTokens)") }
         if let outputTokens { lines.append("output_tokens: \(outputTokens)") }
+        // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
+        if hidden { lines.append("hidden: true") }
         return lines.joined(separator: "\n")
     }
 
@@ -163,6 +169,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         task.errorMessage = fields["error_message"]
         task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
         task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
+        task.hidden = fields["hidden"] == "true"
         return task
     }
 

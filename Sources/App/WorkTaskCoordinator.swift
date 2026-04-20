@@ -490,8 +490,8 @@ class WorkTaskCoordinator: ObservableObject {
         return worktreeManager.worktrees.first(where: { $0.branch == branch })
     }
 
-    /// Called when a worktree is removed — marks the task as done and clears the worktree link.
-    /// This is the only place that fully tears down both surface and observer.
+    /// Called when a worktree is removed — marks the task as done and clears the worktree link,
+    /// or deletes the task if it was only a hidden shadow. Fully tears down surface and observer.
     func handleWorktreeRemoved(branch: String) {
         guard let task = workTaskManager.task(forWorktree: branch) else { return }
 
@@ -505,6 +505,8 @@ class WorkTaskCoordinator: ObservableObject {
             }
             agentSurfaceIdentities.removeValue(forKey: worktree.id)
         }
+
+        if task.hidden { workTaskManager.deleteTask(task); return }
 
         var updated = task
         updated.worktree = nil
@@ -710,5 +712,14 @@ class WorkTaskCoordinator: ObservableObject {
         guard let observer else { return }
         if observer.inputTokens > 0 { task.inputTokens = (task.inputTokens ?? 0) + observer.inputTokens }
         if observer.outputTokens > 0 { task.outputTokens = (task.outputTokens ?? 0) + observer.outputTokens }
+    }
+}
+
+extension WorkTaskCoordinator {
+    /// Creates a hidden shadow task for `branch` if none exists — no-op for task-initiated
+    /// worktrees, whose exposed task already links the branch.
+    func ensureShadowTask(forBranch branch: String) {
+        guard workTaskManager.task(forWorktree: branch) == nil else { return }
+        workTaskManager.createShadowTask(forBranch: branch)
     }
 }

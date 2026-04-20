@@ -28,7 +28,7 @@ struct WorkTaskListView: View {
     }
 
     private var backlogTasks: [WorkTask] {
-        workTaskManager.tasks.filter { $0.status.isBacklog }
+        workTaskManager.tasks.filter { $0.status.isBacklog && !$0.hidden }
     }
 
     private var activeTaskCount: Int {

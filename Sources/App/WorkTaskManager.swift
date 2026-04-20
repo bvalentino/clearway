@@ -31,9 +31,15 @@ class WorkTaskManager: ObservableObject {
         tasks.first { $0.worktree == branch }
     }
 
+    /// Maps worktree branch → linked task title. Hidden (placeholder) tasks and tasks with
+    /// empty titles are excluded — the sidebar falls back to the branch name in either case,
+    /// instead of rendering a blank primary label with the branch pushed to a subtitle.
     var titlesByBranch: [String: String] {
         Dictionary(
-            tasks.compactMap { t in t.worktree.flatMap { ($0, t.title) } },
+            tasks.compactMap { t in
+                guard !t.hidden, !t.title.isEmpty, let branch = t.worktree else { return nil }
+                return (branch, t.title)
+            },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -44,6 +50,47 @@ class WorkTaskManager: ObservableObject {
     func createTask(title: String = "") -> WorkTask? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let task = WorkTask(title: trimmed)
+        write(task)
+        reload()
+        return tasks.first { $0.id == task.id }
+    }
+
+    /// Creates a hidden shadow task linked to `branch` so the worktree has state tracking
+    /// without cluttering Planning. Idempotent: returns the existing task if one already
+    /// links that branch (so task-initiated worktrees, which create their task first, aren't
+    /// shadowed a second time). Default status is `.inProgress` — `.new` / `.readyToStart`
+    /// are reserved for Planning (pre-worktree) and excluded from the aside picker.
+    @discardableResult
+    func createShadowTask(forBranch branch: String) -> WorkTask? {
+        if let existing = task(forWorktree: branch) { return existing }
+        // Title is intentionally empty — the user fills it in when they expose the task
+        // via the aside's Create Task button (which opens the editor window).
+        var shadow = WorkTask(title: "", status: .inProgress, worktree: branch)
+        shadow.hidden = true
+        write(shadow)
+        reload()
+        return tasks.first { $0.id == shadow.id }
+    }
+
+    /// Flips a hidden task to visible and persists. No-op when already exposed.
+    @discardableResult
+    func expose(_ task: WorkTask) -> WorkTask {
+        guard task.hidden else { return task }
+        var updated = task
+        updated.hidden = false
+        updateTask(updated)
+        return updated
+    }
+
+    /// Creates an exposed task linked to `branch` — used by the aside CTA when a worktree
+    /// has no linked task at all (e.g. pre-change worktrees).
+    @discardableResult
+    func createExposedTask(forBranch branch: String) -> WorkTask? {
+        if let existing = task(forWorktree: branch) {
+            return existing.hidden ? expose(existing) : existing
+        }
+        // Same defaults as shadow tasks: in-progress, empty title (the editor fills it in).
+        let task = WorkTask(title: "", status: .inProgress, worktree: branch)
         write(task)
         reload()
         return tasks.first { $0.id == task.id }
