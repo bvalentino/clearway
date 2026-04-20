@@ -99,7 +99,7 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertTrue(shadow.hidden)
         XCTAssertEqual(shadow.status, .inProgress, ".new / .readyToStart are planning-only; worktree tasks start in-progress")
         XCTAssertEqual(shadow.worktree, "feature/alpha")
-        XCTAssertEqual(shadow.title, "feature/alpha")
+        XCTAssertEqual(shadow.title, "", "placeholder tasks have no title until the user fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == shadow.id }))
     }
 
@@ -199,7 +199,7 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertFalse(created.hidden)
         XCTAssertEqual(created.status, .inProgress, "worktree-linked tasks start in-progress, not in backlog")
         XCTAssertEqual(created.worktree, "feature/delta")
-        XCTAssertEqual(created.title, "feature/delta")
+        XCTAssertEqual(created.title, "", "CTA-created tasks have no title until the editor fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == created.id }))
     }
 

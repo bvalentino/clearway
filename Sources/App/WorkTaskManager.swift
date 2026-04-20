@@ -59,7 +59,9 @@ class WorkTaskManager: ObservableObject {
     @discardableResult
     func createShadowTask(forBranch branch: String) -> WorkTask? {
         if let existing = task(forWorktree: branch) { return existing }
-        var shadow = WorkTask(title: branch, status: .inProgress, worktree: branch)
+        // Title is intentionally empty — the user fills it in when they expose the task
+        // via the aside's Create Task button (which opens the editor window).
+        var shadow = WorkTask(title: "", status: .inProgress, worktree: branch)
         shadow.hidden = true
         write(shadow)
         reload()
@@ -83,8 +85,8 @@ class WorkTaskManager: ObservableObject {
         if let existing = task(forWorktree: branch) {
             return existing.hidden ? expose(existing) : existing
         }
-        // Same default as shadow tasks: a worktree-linked task starts in-progress.
-        let task = WorkTask(title: branch, status: .inProgress, worktree: branch)
+        // Same defaults as shadow tasks: in-progress, empty title (the editor fills it in).
+        let task = WorkTask(title: "", status: .inProgress, worktree: branch)
         write(task)
         reload()
         return tasks.first { $0.id == task.id }
