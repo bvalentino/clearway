@@ -243,6 +243,44 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertEqual(manager.tasks.filter { $0.worktree == "feature/zeta" }.count, 1)
     }
 
+    /// `titlesByBranch` drives the sidebar's worktree label. Hidden placeholder tasks must be
+    /// excluded so a shadow-only worktree shows its branch name instead of the placeholder title.
+    func testTitlesByBranchExcludesHiddenTasks() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+
+        _ = manager.createShadowTask(forBranch: "feature/shadow")
+        guard let exposed = manager.createTask(title: "Real work") else {
+            XCTFail("createTask returned nil")
+            return
+        }
+        var updated = exposed
+        updated.worktree = "feature/real"
+        manager.updateTask(updated)
+
+        let titles = manager.titlesByBranch
+        XCTAssertNil(titles["feature/shadow"], "hidden tasks must not leak titles into the sidebar")
+        XCTAssertEqual(titles["feature/real"], "Real work")
+    }
+
+    /// Changing status on a placeholder task must persist without flipping `hidden` — the user
+    /// can track worktree state without surfacing it in Planning.
+    func testSetStatusOnHiddenTaskPreservesHiddenFlag() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+
+        guard let shadow = manager.createShadowTask(forBranch: "feature/state") else {
+            XCTFail("createShadowTask returned nil")
+            return
+        }
+        manager.setStatus(shadow, to: .inProgress)
+
+        guard let reloaded = manager.tasks.first(where: { $0.id == shadow.id }) else {
+            XCTFail("Task missing after setStatus")
+            return
+        }
+        XCTAssertEqual(reloaded.status, .inProgress)
+        XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
+    }
+
     /// Fallback path: when no task with expectedId exists in memory, the parsed task is
     /// written wholesale to disk. We verify the disk file (the authoritative store) because
     /// `updateTask` only updates the in-memory array for ids already present.
