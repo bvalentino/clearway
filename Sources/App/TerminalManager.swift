@@ -199,10 +199,7 @@ class TerminalManager: ObservableObject {
             openWorktreeIds.append(key)
         }
 
-        if !worktree.isMain {
-            asideVisible[key] = true
-            secondaryVisible[key] = true
-        }
+        setInitialPanelVisibility(for: key, worktree: worktree)
 
         // No main command configured → skip the launcher screen entirely.
         if mainCommandProvider() == nil {
@@ -220,6 +217,18 @@ class TerminalManager: ObservableObject {
     /// When it returns nil, new main tabs open a login shell directly instead of
     /// showing the prompt launcher. Wired from `ContentView` to `SettingsManager`.
     var mainCommandProvider: () -> String? = { nil }
+
+    /// "Always open secondary terminal" preference. Consulted only at pane
+    /// creation so manual toggles afterwards are preserved.
+    var alwaysOpenSecondaryProvider: () -> Bool = { false }
+
+    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary also honors the user setting.
+    private func setInitialPanelVisibility(for key: String, worktree: Worktree) {
+        if !worktree.isMain {
+            asideVisible[key] = true
+        }
+        secondaryVisible[key] = !worktree.isMain || alwaysOpenSecondaryProvider()
+    }
 
     /// Called when a main tab is closed via `closeMainTab`.
     /// `WorkTaskCoordinator` wires this on setup to clear per-surface bookkeeping.
@@ -323,10 +332,7 @@ class TerminalManager: ObservableObject {
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
             }
-            if !worktree.isMain {
-                asideVisible[key] = true
-                secondaryVisible[key] = true
-            }
+            setInitialPanelVisibility(for: key, worktree: worktree)
         }
 
         objectWillChange.send()
@@ -408,10 +414,7 @@ class TerminalManager: ObservableObject {
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
             }
-            if !worktree.isMain {
-                asideVisible[key] = true
-                secondaryVisible[key] = true
-            }
+            setInitialPanelVisibility(for: key, worktree: worktree)
         }
 
         objectWillChange.send()

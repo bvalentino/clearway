@@ -24,6 +24,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("Show focus border on active pane", isOn: $settings.showFocusBorder)
+                Toggle("Always open secondary terminal", isOn: $settings.alwaysOpenSecondary)
             }
 
             Section {
