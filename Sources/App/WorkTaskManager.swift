@@ -31,11 +31,15 @@ class WorkTaskManager: ObservableObject {
         tasks.first { $0.worktree == branch }
     }
 
-    /// Maps worktree branch → linked task title. Hidden (placeholder) tasks are excluded so
-    /// the sidebar doesn't decorate a worktree with its own branch name as a "task title".
+    /// Maps worktree branch → linked task title. Hidden (placeholder) tasks and tasks with
+    /// empty titles are excluded — the sidebar falls back to the branch name in either case,
+    /// instead of rendering a blank primary label with the branch pushed to a subtitle.
     var titlesByBranch: [String: String] {
         Dictionary(
-            tasks.compactMap { t in t.hidden ? nil : t.worktree.flatMap { ($0, t.title) } },
+            tasks.compactMap { t in
+                guard !t.hidden, !t.title.isEmpty, let branch = t.worktree else { return nil }
+                return (branch, t.title)
+            },
             uniquingKeysWith: { first, _ in first }
         )
     }

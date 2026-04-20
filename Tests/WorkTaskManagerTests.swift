@@ -243,12 +243,13 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertEqual(manager.tasks.filter { $0.worktree == "feature/zeta" }.count, 1)
     }
 
-    /// `titlesByBranch` drives the sidebar's worktree label. Hidden placeholder tasks must be
-    /// excluded so a shadow-only worktree shows its branch name instead of the placeholder title.
-    func testTitlesByBranchExcludesHiddenTasks() throws {
+    /// `titlesByBranch` drives the sidebar's worktree label. Hidden placeholder tasks and
+    /// empty-title tasks must be excluded so the sidebar falls back to the branch name.
+    func testTitlesByBranchExcludesHiddenAndEmptyTitleTasks() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
 
         _ = manager.createShadowTask(forBranch: "feature/shadow")
+        _ = manager.createExposedTask(forBranch: "feature/blank") // exposed, title == ""
         guard let exposed = manager.createTask(title: "Real work") else {
             XCTFail("createTask returned nil")
             return
@@ -259,6 +260,7 @@ final class WorkTaskManagerTests: XCTestCase {
 
         let titles = manager.titlesByBranch
         XCTAssertNil(titles["feature/shadow"], "hidden tasks must not leak titles into the sidebar")
+        XCTAssertNil(titles["feature/blank"], "empty titles must not replace the branch label with blank")
         XCTAssertEqual(titles["feature/real"], "Real work")
     }
 
