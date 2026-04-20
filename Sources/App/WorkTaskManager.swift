@@ -54,11 +54,12 @@ class WorkTaskManager: ObservableObject {
     /// Creates a hidden shadow task linked to `branch` so the worktree has state tracking
     /// without cluttering Planning. Idempotent: returns the existing task if one already
     /// links that branch (so task-initiated worktrees, which create their task first, aren't
-    /// shadowed a second time).
+    /// shadowed a second time). Default status is `.inProgress` — `.new` / `.readyToStart`
+    /// are reserved for Planning (pre-worktree) and excluded from the aside picker.
     @discardableResult
     func createShadowTask(forBranch branch: String) -> WorkTask? {
         if let existing = task(forWorktree: branch) { return existing }
-        var shadow = WorkTask(title: branch, status: .new, worktree: branch)
+        var shadow = WorkTask(title: branch, status: .inProgress, worktree: branch)
         shadow.hidden = true
         write(shadow)
         reload()
@@ -82,7 +83,8 @@ class WorkTaskManager: ObservableObject {
         if let existing = task(forWorktree: branch) {
             return existing.hidden ? expose(existing) : existing
         }
-        let task = WorkTask(title: branch, status: .new, worktree: branch)
+        // Same default as shadow tasks: a worktree-linked task starts in-progress.
+        let task = WorkTask(title: branch, status: .inProgress, worktree: branch)
         write(task)
         reload()
         return tasks.first { $0.id == task.id }

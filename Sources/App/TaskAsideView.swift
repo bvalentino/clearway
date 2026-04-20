@@ -143,10 +143,9 @@ struct TaskAsideView: View {
         terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
+    /// `.new` and `.readyToStart` are reserved for Planning (pre-worktree). Once a worktree
+    /// exists, its task starts at `.inProgress` and can only move forward through these states.
     private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        let base: [WorkTask.Status] = [.inProgress, .qa, .readyForReview, .done, .canceled]
-        // Placeholder (hidden) tasks start in `.new`, which isn't in the forward list. Prepend
-        // the current status so the picker renders a valid selection instead of going blank.
-        return base.contains(task.status) ? base : [task.status] + base
+        [.inProgress, .qa, .readyForReview, .done, .canceled]
     }
 }

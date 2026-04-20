@@ -97,7 +97,7 @@ final class WorkTaskManagerTests: XCTestCase {
         }
 
         XCTAssertTrue(shadow.hidden)
-        XCTAssertEqual(shadow.status, .new)
+        XCTAssertEqual(shadow.status, .inProgress, ".new / .readyToStart are planning-only; worktree tasks start in-progress")
         XCTAssertEqual(shadow.worktree, "feature/alpha")
         XCTAssertEqual(shadow.title, "feature/alpha")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == shadow.id }))
@@ -197,7 +197,7 @@ final class WorkTaskManagerTests: XCTestCase {
         }
 
         XCTAssertFalse(created.hidden)
-        XCTAssertEqual(created.status, .new)
+        XCTAssertEqual(created.status, .inProgress, "worktree-linked tasks start in-progress, not in backlog")
         XCTAssertEqual(created.worktree, "feature/delta")
         XCTAssertEqual(created.title, "feature/delta")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == created.id }))
@@ -271,13 +271,13 @@ final class WorkTaskManagerTests: XCTestCase {
             XCTFail("createShadowTask returned nil")
             return
         }
-        manager.setStatus(shadow, to: .inProgress)
+        manager.setStatus(shadow, to: .qa)
 
         guard let reloaded = manager.tasks.first(where: { $0.id == shadow.id }) else {
             XCTFail("Task missing after setStatus")
             return
         }
-        XCTAssertEqual(reloaded.status, .inProgress)
+        XCTAssertEqual(reloaded.status, .qa)
         XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
     }
 
