@@ -220,14 +220,14 @@ class TerminalManager: ObservableObject {
 
     /// "Always open secondary terminal" preference. Consulted only at pane
     /// creation so manual toggles afterwards are preserved.
-    var alwaysOpenSecondaryProvider: () -> Bool = { false }
+    var alwaysOpenSecondaryProvider: () -> Bool = { true }
 
-    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary also honors the user setting.
+    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary is fully user-gated.
     private func setInitialPanelVisibility(for key: String, worktree: Worktree) {
         if !worktree.isMain {
             asideVisible[key] = true
         }
-        secondaryVisible[key] = !worktree.isMain || alwaysOpenSecondaryProvider()
+        secondaryVisible[key] = alwaysOpenSecondaryProvider()
     }
 
     /// Called when a main tab is closed via `closeMainTab`.

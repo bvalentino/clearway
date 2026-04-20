@@ -103,7 +103,7 @@ class SettingsManager: ObservableObject {
         self.defaults = defaults
         self.mainTerminalCommand = defaults.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         self.showFocusBorder = defaults.object(forKey: SettingsKey.showFocusBorder) as? Bool ?? true
-        self.alwaysOpenSecondary = defaults.object(forKey: SettingsKey.alwaysOpenSecondary) as? Bool ?? false
+        self.alwaysOpenSecondary = defaults.object(forKey: SettingsKey.alwaysOpenSecondary) as? Bool ?? true
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
