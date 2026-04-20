@@ -117,6 +117,23 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
+    /// Appends newly-discovered non-main, ungrouped worktrees to `defaultOrder` so
+    /// click-to-open never re-sorts the sidebar. Idempotent: IDs already recorded
+    /// in `defaultOrder` or in any group are left in place. New IDs are appended in
+    /// `Worktree.sorted` order — the same rule `sidebarOrderedWorktrees` used to
+    /// render them before they were persisted.
+    func seedDefaultOrder(with worktrees: [Worktree], openIds: [String]) {
+        let missing = worktrees.filter { wt in
+            !wt.isMain
+                && groupId(for: wt.id) == nil
+                && !defaultOrder.contains(wt.id)
+        }
+        guard !missing.isEmpty else { return }
+        let ordered = Worktree.sorted(missing, openIds: openIds).map(\.id)
+        defaultOrder += ordered
+        save()
+    }
+
     /// Replaces the order of worktrees inside a group.
     func setGroupOrder(id groupId: UUID, ids: [String]) {
         guard let index = groups.firstIndex(where: { $0.id == groupId }) else { return }
