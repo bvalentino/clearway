@@ -81,27 +81,27 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(manager.resolvedMainTerminalCommand, SettingsManager.defaultMainTerminalCommand)
     }
 
-    // MARK: - Always open secondary
+    // MARK: - Open secondary on start
 
-    func test_alwaysOpenSecondary_defaultsToTrue() {
+    func test_openSecondaryOnStart_defaultsToFalse() {
         let manager = SettingsManager(defaults: defaults)
-        XCTAssertTrue(manager.alwaysOpenSecondary)
+        XCTAssertFalse(manager.openSecondaryOnStart)
     }
 
-    func test_alwaysOpenSecondary_persistsAcrossInstances() {
+    func test_openSecondaryOnStart_persistsAcrossInstances() {
         let first = SettingsManager(defaults: defaults)
-        first.alwaysOpenSecondary = false
+        first.openSecondaryOnStart = true
 
         let second = SettingsManager(defaults: defaults)
-        XCTAssertFalse(second.alwaysOpenSecondary)
+        XCTAssertTrue(second.openSecondaryOnStart)
     }
 
-    func test_alwaysOpenSecondary_canBeTurnedBackOn() {
+    func test_openSecondaryOnStart_canBeTurnedBackOff() {
         let first = SettingsManager(defaults: defaults)
-        first.alwaysOpenSecondary = false
-        first.alwaysOpenSecondary = true
+        first.openSecondaryOnStart = true
+        first.openSecondaryOnStart = false
 
         let second = SettingsManager(defaults: defaults)
-        XCTAssertTrue(second.alwaysOpenSecondary)
+        XCTAssertFalse(second.openSecondaryOnStart)
     }
 }

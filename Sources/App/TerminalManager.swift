@@ -218,16 +218,19 @@ class TerminalManager: ObservableObject {
     /// showing the prompt launcher. Wired from `ContentView` to `SettingsManager`.
     var mainCommandProvider: () -> String? = { nil }
 
-    /// "Always open secondary terminal" preference. Consulted only at pane
-    /// creation so manual toggles afterwards are preserved.
-    var alwaysOpenSecondaryProvider: () -> Bool = { true }
+    /// "Open secondary terminal on start" preference. Consulted only at pane
+    /// creation so manual `Cmd+\` toggles afterwards are preserved.
+    var openSecondaryOnStartProvider: () -> Bool = { false }
 
-    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary is fully user-gated.
-    private func setInitialPanelVisibility(for key: String, worktree: Worktree) {
+    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary
+    /// follows `openSecondaryOnStartProvider()` for every worktree.
+    /// Internal (not private) so unit tests can drive it without spinning up a
+    /// real `ghostty_app_t` to reach it via `pane(for:app:projectPath:)`.
+    func setInitialPanelVisibility(for key: String, worktree: Worktree) {
         if !worktree.isMain {
             asideVisible[key] = true
         }
-        secondaryVisible[key] = alwaysOpenSecondaryProvider()
+        secondaryVisible[key] = openSecondaryOnStartProvider()
     }
 
     /// Called when a main tab is closed via `closeMainTab`.
