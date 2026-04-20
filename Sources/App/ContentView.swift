@@ -279,6 +279,10 @@ struct ContentView: View {
             }
             let isAutoStart = pending?.isAutoStart ?? false
 
+            // Give manual worktrees a hidden shadow task so state tracking works everywhere.
+            // Task-initiated creates already have their task linked, so this is a no-op.
+            workTaskCoordinator.ensureShadowTask(forBranch: branch)
+
             // Only navigate for manual starts
             if !isAutoStart {
                 detailSelection = .worktree(wt)
@@ -335,9 +339,6 @@ struct ContentView: View {
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
-        }
-        .onChange(of: currentWorktreeHasTask) { hasTask in
-            if !hasTask && sidePanelTab == .task { sidePanelTab = .todos }
         }
         .background {
             // Cmd+N: switch worktrees (sorted order matches sidebar)
@@ -461,7 +462,7 @@ struct ContentView: View {
 
     private var navigationSubtitle: String {
         if detailSelection == .planning {
-            let c = workTaskManager.tasks.filter(\.status.isBacklog).count
+            let c = workTaskManager.tasks.filter { $0.status.isBacklog && !$0.hidden }.count
             return "\(c) task\(c == 1 ? "" : "s")"
         } else if detailSelection == .prompts {
             let c = promptManager.prompts.count
@@ -477,15 +478,12 @@ struct ContentView: View {
 
     private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }
 
-    /// Whether the current worktree has a linked task.
-    private var currentWorktreeHasTask: Bool {
-        guard let branch = selectedWorktree?.branch else { return false }
-        return workTaskManager.task(forWorktree: branch) != nil
-    }
-
-    /// Tabs available for the current worktree — hides Task when no task is linked.
+    /// Tabs available for the current worktree. The Task tab is always present; when no
+    /// (visible) task is linked, `TaskAsideView` renders a Create-Task CTA instead of the
+    /// task card, so every worktree — main, task-initiated, or manual — gets first-class
+    /// Task-tab capabilities.
     private var availableSidePanelTabs: [SidePanelTab] {
-        currentWorktreeHasTask ? SidePanelTab.allCases : SidePanelTab.allCases.filter { $0 != .task }
+        SidePanelTab.allCases
     }
 
     private var secondaryVisible: Bool { terminalManager.isSecondaryVisible(for: selectedWorktree?.id) }

@@ -17,23 +17,32 @@ struct TaskAsideView: View {
     }
 
     var body: some View {
-        if let task {
+        if let task, !task.hidden {
             taskContent(task)
         } else {
-            emptyState
+            createTaskCTA
         }
     }
 
-    // MARK: - Empty State
+    // MARK: - Create Task CTA
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
+    /// Shown when no task is linked to the worktree, or when the linked task is still hidden
+    /// (an auto-created shadow). `createExposedTask(forBranch:)` handles both cases — it
+    /// exposes an existing hidden task or creates a fresh one.
+    private var createTaskCTA: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "square.and.pencil")
                 .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
-            Text("No task linked")
+            Text("No task for this worktree")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            Button {
+                workTaskManager.createExposedTask(forBranch: worktreeBranch)
+            } label: {
+                Label("Create Task", systemImage: "plus")
+            }
+            .controlSize(.large)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

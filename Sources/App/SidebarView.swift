@@ -187,7 +187,7 @@ struct SidebarView: View {
     // MARK: - Sections
 
     private var planningRow: some View {
-        let icon = workTaskManager.tasks.contains(where: { $0.status.isBacklog }) ? "tray.full" : "tray"
+        let icon = workTaskManager.tasks.contains(where: { $0.status.isBacklog && !$0.hidden }) ? "tray.full" : "tray"
         return Label("Planning", systemImage: icon)
             .tag(DetailSelection.planning)
     }

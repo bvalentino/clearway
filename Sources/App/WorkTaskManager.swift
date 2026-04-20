@@ -49,6 +49,43 @@ class WorkTaskManager: ObservableObject {
         return tasks.first { $0.id == task.id }
     }
 
+    /// Creates a hidden shadow task linked to `branch` so the worktree has state tracking
+    /// without cluttering Planning. Idempotent: returns the existing task if one already
+    /// links that branch (so task-initiated worktrees, which create their task first, aren't
+    /// shadowed a second time).
+    @discardableResult
+    func createShadowTask(forBranch branch: String) -> WorkTask? {
+        if let existing = task(forWorktree: branch) { return existing }
+        var shadow = WorkTask(title: branch, status: .new, worktree: branch)
+        shadow.hidden = true
+        write(shadow)
+        reload()
+        return tasks.first { $0.id == shadow.id }
+    }
+
+    /// Flips a hidden task to visible and persists. No-op when already exposed.
+    @discardableResult
+    func expose(_ task: WorkTask) -> WorkTask {
+        guard task.hidden else { return task }
+        var updated = task
+        updated.hidden = false
+        updateTask(updated)
+        return updated
+    }
+
+    /// Creates an exposed task linked to `branch` — used by the aside CTA when a worktree
+    /// has no linked task at all (e.g. pre-change worktrees).
+    @discardableResult
+    func createExposedTask(forBranch branch: String) -> WorkTask? {
+        if let existing = task(forWorktree: branch) {
+            return existing.hidden ? expose(existing) : existing
+        }
+        let task = WorkTask(title: branch, status: .new, worktree: branch)
+        write(task)
+        reload()
+        return tasks.first { $0.id == task.id }
+    }
+
     func updateTask(_ task: WorkTask) {
         write(task)
         // Update in-memory so callers see immediate changes without
