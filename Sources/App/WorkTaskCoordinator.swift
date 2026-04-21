@@ -80,8 +80,14 @@ class WorkTaskCoordinator: ObservableObject {
     private var launchPromptFiles: [ObjectIdentifier: String] = [:]
 
     // MARK: - Dependencies
+    //
+    // Watcher state (isWatching, watcherSource, pendingReload, workflowConfig, etc.) and
+    // workTaskManager are internal, not private, because the WORKFLOW.md/PLANNING.md
+    // file-watching methods live in `WorkTaskCoordinator+ConfigWatching.swift` — a
+    // cross-file extension cannot reach private members. Only that extension should
+    // mutate them.
 
-    private let workTaskManager: WorkTaskManager
+    let workTaskManager: WorkTaskManager
     private let terminalManager: TerminalManager
     private let worktreeManager: WorktreeManager
 
@@ -89,18 +95,23 @@ class WorkTaskCoordinator: ObservableObject {
     private var appProvider: (() -> ghostty_app_t?)?
 
     /// Live-reloaded workflow config — watched for changes on disk.
+    /// Mutate via `setWorkflowConfig` so the `private(set)` read-only contract
+    /// reaches the cross-file extension without being widened to internal.
     @Published private(set) var workflowConfig: WorkflowConfig?
 
     /// Live-reloaded planning config — watched for changes on disk.
     @Published private(set) var planningConfig: WorkflowConfig?
 
-    private var isWatching = false
-    private var watcherSource: DispatchSourceFileSystemObject?
-    private var directoryWatcherSource: DispatchSourceFileSystemObject?
-    private var planningWatcherSource: DispatchSourceFileSystemObject?
-    private var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
-    private var pendingReload: DispatchWorkItem?
-    private var pendingPlanningReload: DispatchWorkItem?
+    func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
+    func setPlanningConfig(_ config: WorkflowConfig?) { planningConfig = config }
+
+    var isWatching = false
+    var watcherSource: DispatchSourceFileSystemObject?
+    var directoryWatcherSource: DispatchSourceFileSystemObject?
+    var planningWatcherSource: DispatchSourceFileSystemObject?
+    var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
+    var pendingReload: DispatchWorkItem?
+    var pendingPlanningReload: DispatchWorkItem?
     private var exitObserver: Any?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
@@ -135,190 +146,6 @@ class WorkTaskCoordinator: ObservableObject {
     /// Provide a closure that resolves the current ghostty app reference for auto-processing.
     func setAppProvider(_ provider: @escaping () -> ghostty_app_t?) {
         self.appProvider = provider
-    }
-
-    // MARK: - WORKFLOW.md Watching
-
-    /// Start watching WORKFLOW.md and PLANNING.md for the current project.
-    func startWatching() {
-        guard !isWatching else { return }
-        isWatching = true
-        reloadWorkflowConfig()
-        watchWorkflowFile()
-        reloadPlanningConfig()
-        watchPlanningFile()
-    }
-
-    private var workflowFilePath: String {
-        (workTaskManager.projectPath as NSString).appendingPathComponent("WORKFLOW.md")
-    }
-
-    private func watchWorkflowFile() {
-        watcherSource?.cancel()
-        watcherSource = nil
-
-        let filePath = workflowFilePath
-        let fd = open(filePath, O_EVTONLY)
-        guard fd >= 0 else {
-            // File doesn't exist — watch the parent directory for its creation.
-            watchDirectoryForFileCreation()
-            return
-        }
-
-        // File exists — cancel any directory watcher and watch the file directly.
-        directoryWatcherSource?.cancel()
-        directoryWatcherSource = nil
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .delete, .rename],
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            let data = source.data
-            let needsRewatch = data.contains(.delete) || data.contains(.rename)
-            self?.scheduleReload(rewatch: needsRewatch)
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        watcherSource = source
-    }
-
-    /// Watches the project directory for entry changes (file creation/deletion).
-    /// When WORKFLOW.md appears, switches to per-file watching.
-    private func watchDirectoryForFileCreation() {
-        directoryWatcherSource?.cancel()
-        directoryWatcherSource = nil
-
-        let dirPath = workTaskManager.projectPath
-        let fd = open(dirPath, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            // Only schedule a reload if WORKFLOW.md actually appeared.
-            // The fileExists check also filters the spurious initial .write
-            // event that fires on resume — the file won't exist yet.
-            guard let self, FileManager.default.fileExists(atPath: self.workflowFilePath) else { return }
-            self.scheduleReload(rewatch: true)
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        directoryWatcherSource = source
-    }
-
-    private nonisolated func scheduleReload(rewatch: Bool = false) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.pendingReload?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.reloadWorkflowConfig()
-                if rewatch {
-                    self.watchWorkflowFile()
-                }
-            }
-            self.pendingReload = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
-        }
-    }
-
-    private func reloadWorkflowConfig() {
-        guard FileManager.default.fileExists(atPath: workflowFilePath) else {
-            workflowConfig = nil
-            return
-        }
-        if let config = WorkflowConfig.load(projectPath: workTaskManager.projectPath) {
-            workflowConfig = config
-        }
-        // File exists but parse failed — keep last-known-good config
-    }
-
-    // MARK: - PLANNING.md Watching
-
-    private var planningFilePath: String {
-        (workTaskManager.projectPath as NSString).appendingPathComponent("PLANNING.md")
-    }
-
-    private func watchPlanningFile() {
-        planningWatcherSource?.cancel()
-        planningWatcherSource = nil
-
-        let filePath = planningFilePath
-        let fd = open(filePath, O_EVTONLY)
-        guard fd >= 0 else {
-            watchDirectoryForPlanningFileCreation()
-            return
-        }
-
-        planningDirectoryWatcherSource?.cancel()
-        planningDirectoryWatcherSource = nil
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .delete, .rename],
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            let data = source.data
-            let needsRewatch = data.contains(.delete) || data.contains(.rename)
-            self?.schedulePlanningReload(rewatch: needsRewatch)
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        planningWatcherSource = source
-    }
-
-    private func watchDirectoryForPlanningFileCreation() {
-        planningDirectoryWatcherSource?.cancel()
-        planningDirectoryWatcherSource = nil
-
-        let dirPath = workTaskManager.projectPath
-        let fd = open(dirPath, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            guard let self, FileManager.default.fileExists(atPath: self.planningFilePath) else { return }
-            self.schedulePlanningReload(rewatch: true)
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        planningDirectoryWatcherSource = source
-    }
-
-    private nonisolated func schedulePlanningReload(rewatch: Bool = false) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.pendingPlanningReload?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.reloadPlanningConfig()
-                if rewatch {
-                    self.watchPlanningFile()
-                }
-            }
-            self.pendingPlanningReload = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
-        }
-    }
-
-    private func reloadPlanningConfig() {
-        guard FileManager.default.fileExists(atPath: planningFilePath) else {
-            planningConfig = nil
-            return
-        }
-        if let config = WorkflowConfig.load(projectPath: workTaskManager.projectPath, fileName: "PLANNING.md") {
-            planningConfig = config
-        }
     }
 
     // MARK: - Auto-Processing Timer
@@ -581,7 +408,9 @@ class WorkTaskCoordinator: ObservableObject {
         // Both the agent command and file path are positional args to avoid shell injection.
         // $1 is intentionally unquoted so multi-word commands (e.g. "claude --flag") are word-split.
         // $3 injects the resolved login-shell PATH so tools like `claude` are found.
-        let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
+        let script = shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1")
+        let args = [agentCmd, promptFile, ShellEnvironment.path].map(shellEscape).joined(separator: " ")
+        let command = "/bin/sh -c \(script) -- \(args)"
 
         let surface: Ghostty.SurfaceView
         if markAsLive {

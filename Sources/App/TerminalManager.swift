@@ -27,10 +27,12 @@ class TerminalManager: ObservableObject {
     private var notificationObserver: Any?
 
     /// Per-worktree panel visibility (defaults to false when absent).
-    @Published private var asideVisible: [String: Bool] = [:]
-    @Published private var secondaryVisible: [String: Bool] = [:]
+    /// Internal (not private) so the panel accessors in
+    /// `TerminalManager+Panels.swift` — a cross-file extension — can reach them.
+    @Published var asideVisible: [String: Bool] = [:]
+    @Published var secondaryVisible: [String: Bool] = [:]
     /// Per-worktree secondary terminal panel height.
-    @Published private var secondaryHeights: [String: CGFloat] = [:]
+    @Published var secondaryHeights: [String: CGFloat] = [:]
 
     // MARK: - Task Terminal Storage
     //
@@ -49,7 +51,8 @@ class TerminalManager: ObservableObject {
     @Published var taskTerminalHeights: [UUID: CGFloat] = [:]
 
     /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
-    private var sidePanelTabs: [String: String] = [:]
+    /// Internal so the panel accessors in `TerminalManager+Panels.swift` can reach it.
+    var sidePanelTabs: [String: String] = [:]
 
     var activePane: TerminalPane? {
         guard let id = activeSurfaceId else { return nil }
@@ -130,50 +133,6 @@ class TerminalManager: ObservableObject {
 
     func clearNotification(for worktreeId: String) {
         notifiedWorktrees.remove(worktreeId)
-    }
-
-    // MARK: - Panel Visibility
-
-    func isAsideVisible(for worktreeId: String?) -> Bool {
-        guard let worktreeId else { return false }
-        return asideVisible[worktreeId] ?? false
-    }
-
-    func isSecondaryVisible(for worktreeId: String?) -> Bool {
-        guard let worktreeId else { return false }
-        return secondaryVisible[worktreeId] ?? false
-    }
-
-    func toggleAside(for worktreeId: String?) {
-        guard let worktreeId else { return }
-        asideVisible[worktreeId] = !(asideVisible[worktreeId] ?? false)
-    }
-
-    func toggleSecondary(for worktreeId: String?) {
-        guard let worktreeId else { return }
-        secondaryVisible[worktreeId] = !(secondaryVisible[worktreeId] ?? false)
-    }
-
-    func secondaryHeight(for worktreeId: String?) -> CGFloat {
-        guard let worktreeId else { return 120 }
-        return secondaryHeights[worktreeId] ?? 120
-    }
-
-    func setSecondaryHeight(_ height: CGFloat, for worktreeId: String?) {
-        guard let worktreeId else { return }
-        guard secondaryHeights[worktreeId] != height else { return }
-        secondaryHeights[worktreeId] = height
-    }
-
-    // MARK: - Side Panel Tab
-
-    func sidePanelTab(for worktreeId: String) -> String? {
-        sidePanelTabs[worktreeId]
-    }
-
-    func setSidePanelTab(_ tab: String, for worktreeId: String) {
-        guard sidePanelTabs[worktreeId] != tab else { return }
-        sidePanelTabs[worktreeId] = tab
     }
 
     /// Get or create terminal panes for the given worktree.
