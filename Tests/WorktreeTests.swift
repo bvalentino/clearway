@@ -290,7 +290,7 @@ final class WorktreeTests: XCTestCase {
         try FileManager.default.createDirectory(at: featureWt, withIntermediateDirectories: true)
         FileManager.default.createFile(
             atPath: featureWt.appendingPathComponent(".git").path,
-            contents: "gitdir: \(featureGitdir.path)\n".data(using: .utf8)
+            contents: Data("gitdir: \(featureGitdir.path)\n".utf8)
         )
 
         XCTAssertEqual(WorktreeManager.worktreeId(isMain: false, path: featureWt.path), "foo")
@@ -312,7 +312,7 @@ final class WorktreeTests: XCTestCase {
         let after = tmp.appendingPathComponent("after")
         try FileManager.default.createDirectory(at: before, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: after, withIntermediateDirectories: true)
-        let dotGitContents = "gitdir: \(featureGitdir.path)\n".data(using: .utf8)
+        let dotGitContents = Data("gitdir: \(featureGitdir.path)\n".utf8)
         FileManager.default.createFile(atPath: before.appendingPathComponent(".git").path, contents: dotGitContents)
         FileManager.default.createFile(atPath: after.appendingPathComponent(".git").path, contents: dotGitContents)
 

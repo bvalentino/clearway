@@ -297,11 +297,6 @@ class WorktreeManager: ObservableObject {
         return worktrees
     }
 
-    /// Stable per-worktree identifier. For non-main worktrees, the last component of the
-    /// resolved gitdir — git keeps this name fixed across `branch -m`, `worktree move`,
-    /// and `worktree repair`. For the main worktree, a fixed sentinel so it's unambiguous
-    /// and never collides with a real gitdir name. When the gitdir can't be resolved the
-    /// path is used as a best-effort fallback, with a warning logged.
     /// Validates a branch name against the subset of git's rules we care about: rejects
     /// empty strings, any `..` sequence, and leading `/` or `-`. Shared between
     /// `createWorktree` and `renameBranch` so both code paths apply the same checks.
@@ -313,6 +308,11 @@ class WorktreeManager: ObservableObject {
         return true
     }
 
+    /// Stable per-worktree identifier. For non-main worktrees, the last component of the
+    /// resolved gitdir — git keeps this name fixed across `branch -m`, `worktree move`,
+    /// and `worktree repair`. For the main worktree, a fixed sentinel so it's unambiguous
+    /// and never collides with a real gitdir name. When the gitdir can't be resolved the
+    /// path is used as a best-effort fallback, with a warning logged.
     nonisolated static func worktreeId(isMain: Bool, path: String) -> String {
         if isMain { return "<main>" }
         guard let gitdir = gitdir(forWorktreeAt: path) else {
