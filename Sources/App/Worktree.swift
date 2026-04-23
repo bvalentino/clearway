@@ -146,11 +146,11 @@ class WorktreeManager: ObservableObject {
     /// if none exists, creates a new branch with `-b`.
     @discardableResult
     func createWorktree(branch: String, base: String? = nil, fetch: Bool = false) async -> Worktree? {
-        guard !branch.contains("..") && !branch.hasPrefix("/") && !branch.hasPrefix("-") else {
+        guard Self.isValidBranchName(branch) else {
             self.error = "Invalid branch name"
             return nil
         }
-        if let base, base.contains("..") || base.hasPrefix("/") || base.hasPrefix("-") {
+        if let base, !Self.isValidBranchName(base) {
             self.error = "Invalid base branch name"
             return nil
         }
@@ -274,6 +274,17 @@ class WorktreeManager: ObservableObject {
     /// and `worktree repair`. For the main worktree, a fixed sentinel so it's unambiguous
     /// and never collides with a real gitdir name. When the gitdir can't be resolved the
     /// path is used as a best-effort fallback, with a warning logged.
+    /// Validates a branch name against the subset of git's rules we care about: rejects
+    /// empty strings, any `..` sequence, and leading `/` or `-`. Shared between
+    /// `createWorktree` and `renameBranch` so both code paths apply the same checks.
+    nonisolated static func isValidBranchName(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        if name.contains("..") { return false }
+        if name.hasPrefix("/") { return false }
+        if name.hasPrefix("-") { return false }
+        return true
+    }
+
     nonisolated static func worktreeId(isMain: Bool, path: String) -> String {
         if isMain { return "<main>" }
         guard let gitdir = gitdir(forWorktreeAt: path) else {
