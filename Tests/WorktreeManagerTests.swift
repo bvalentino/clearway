@@ -137,6 +137,37 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertFalse(WorktreeManager.isValidBranchName("-"))
     }
 
+    // MARK: - renameBranch Validation
+
+    func testRenameBranchRejectsInvalidNewName() async {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+        let before = manager.worktrees
+
+        let result = await manager.renameBranch(from: "feature", to: "-bad")
+
+        XCTAssertNil(result, "Invalid new branch name should yield nil")
+        XCTAssertNotNil(manager.error, "Invalid new branch name should surface error")
+        XCTAssertEqual(manager.worktrees, before, "Worktrees must not be mutated on validation failure")
+    }
+
+    func testRenameBranchRejectsEmptyNewName() async {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+
+        let result = await manager.renameBranch(from: "feature", to: "")
+
+        XCTAssertNil(result)
+        XCTAssertNotNil(manager.error)
+    }
+
+    func testRenameBranchRejectsInvalidOldName() async {
+        let manager = WorktreeManager(projectPath: "/tmp/test-project")
+
+        let result = await manager.renameBranch(from: "", to: "feature")
+
+        XCTAssertNil(result)
+        XCTAssertNotNil(manager.error)
+    }
+
     // MARK: - Background Refresh Removal
 
     func testNoBackgroundRefreshProperties() {
