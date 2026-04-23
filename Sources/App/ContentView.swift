@@ -160,6 +160,16 @@ struct ContentView: View {
                     .help("Remove worktree")
                     .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
+                if autoToggleVisible, let task = linkedTask {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: { toggleAuto(for: task) }) {
+                            Image(systemName: task.auto ? "pause.fill" : "play.fill")
+                        }
+                        .help(task.auto
+                              ? "Disable auto — new status transitions won't spawn an agent"
+                              : "Enable auto — status transitions spawn an agent automatically")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
                         Image(systemName: "rectangle.bottomhalf.inset.filled")
@@ -477,6 +487,21 @@ struct ContentView: View {
         return worktreeManager.worktrees.first(where: { $0.id == id })
     }
 
+    /// The exposed (non-hidden) task linked to the selected worktree, or nil when
+    /// there's no worktree selected / no task links that branch / the task is hidden.
+    private var linkedTask: WorkTask? {
+        guard let branch = currentWorktree?.branch,
+              let task = workTaskManager.task(forWorktree: branch),
+              !task.hidden else { return nil }
+        return task
+    }
+
+    /// True when the toolbar should surface the auto-mode toggle: a visible, linked task
+    /// exists and WORKFLOW.md defines at least one explicit `state_commands.<status>`.
+    private var autoToggleVisible: Bool {
+        linkedTask != nil && workTaskCoordinator.workflowConfig?.hasAnyExplicitStateCommand == true
+    }
+
     private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }
 
     /// Tabs available for the current worktree. The Task tab is always present; when no
@@ -593,6 +618,21 @@ struct ContentView: View {
 
     private func toggleAside() {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
+    }
+
+    /// Flip `task.auto`. Enabling on an untrusted WORKFLOW.md routes through the trust
+    /// dialog — on approval the retry re-runs the toggle, now with trust granted.
+    private func toggleAuto(for task: WorkTask) {
+        let target = !task.auto
+        switch workTaskCoordinator.setAutoEnabled(target, for: task) {
+        case .set:
+            break
+        case .needsTrust:
+            pendingTrustAction = { [weak workTaskCoordinator] in
+                _ = workTaskCoordinator?.setAutoEnabled(target, for: task)
+            }
+            showTrustConfirmation = true
+        }
     }
 
     /// Restore the stored side panel tab for a worktree, or auto-select on first visit.
