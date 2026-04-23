@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import GhosttyKit
 
@@ -56,6 +57,28 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     private var autoProcessingTimer: DispatchSourceTimer?
+
+    // MARK: - Auto Mode (per-task)
+    //
+    // When a task has `auto == true`, a status transition whose new status has an
+    // explicit `state_commands.<status>` entry in WORKFLOW.md spawns a fresh agent
+    // tab automatically. The snapshot below is seeded on the initial `$tasks` publish
+    // so the first diff sees a stable baseline, and diffed on every subsequent publish.
+
+    /// Previous status per task id, used to detect transitions on `$tasks` publishes.
+    private var prevStatusByTaskId: [UUID: WorkTask.Status] = [:]
+
+    /// Task ids whose next observed status transition must NOT trigger auto dispatch.
+    /// Populated by `startTask` / `continueTask` so the normal agent launch isn't
+    /// double-fired by the corresponding `.inProgress` transition.
+    private var suppressNextAutoDispatch: Set<UUID> = []
+
+    /// Combine subscription on `workTaskManager.$tasks` used for status-transition diffing.
+    private var tasksSubscription: AnyCancellable?
+
+    /// Test seam: when non-nil, invoked instead of `TerminalManager.appendAgentTab`.
+    /// Production callers leave this nil; tests capture dispatch calls through this hook.
+    var autoDispatchHook: ((Worktree, String, String) -> Void)?
 
     // MARK: - Agent Lifecycle
 
@@ -116,6 +139,12 @@ class WorkTaskCoordinator: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.handleChildExited(notification)
             }
+        }
+
+        // Seed the status snapshot with the initial tasks publish so the first diff
+        // sees a stable baseline, then route subsequent publishes through auto dispatch.
+        tasksSubscription = workTaskManager.$tasks.sink { [weak self] newTasks in
+            self?.handleTasksPublish(newTasks)
         }
     }
 
@@ -379,7 +408,79 @@ class WorkTaskCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Auto Mode Dispatch
+
+    /// Diff the new tasks against the previous snapshot and dispatch auto transitions.
+    /// Runs for every `$tasks` publish, including the initial one — which seeds the
+    /// snapshot but does not dispatch (no previous status to diff against).
+    private func handleTasksPublish(_ newTasks: [WorkTask]) {
+        for task in newTasks {
+            let previous = prevStatusByTaskId[task.id]
+            prevStatusByTaskId[task.id] = task.status
+            guard let old = previous, old != task.status else { continue }
+            tryAutoDispatch(task: task, from: old, to: task.status)
+        }
+        // Garbage-collect state for tasks that no longer exist.
+        let liveIds = Set(newTasks.map(\.id))
+        for id in prevStatusByTaskId.keys where !liveIds.contains(id) {
+            prevStatusByTaskId.removeValue(forKey: id)
+            suppressNextAutoDispatch.remove(id)
+        }
+    }
+
+    /// Fires the explicit `state_commands.<to>` command as a fresh agent tab iff:
+    /// - the task id isn't in `suppressNextAutoDispatch` (consumed one-shot),
+    /// - the task has `auto == true`,
+    /// - the task's worktree exists,
+    /// - WORKFLOW.md is trusted for this project,
+    /// - `workflowConfig.explicitStateCommand(for: to)` is non-nil.
+    private func tryAutoDispatch(task: WorkTask, from: WorkTask.Status, to: WorkTask.Status) {
+        if suppressNextAutoDispatch.remove(task.id) != nil { return }
+        guard task.auto else { return }
+        guard let worktree = worktreeForTask(task) else { return }
+        guard let config = workflowConfig,
+              config.isTrusted(forProject: workTaskManager.projectPath) else { return }
+        guard config.explicitStateCommand(for: to) != nil else { return }
+
+        let taskPath = workTaskManager.filePath(for: task)
+        guard let rendered = config.renderStateCommand(for: to, task: task, taskPath: taskPath) else { return }
+        let agentCmd = config.agentCommand ?? "claude"
+
+        if let hook = autoDispatchHook {
+            hook(worktree, agentCmd, rendered)
+            return
+        }
+        guard let app = appProvider?() else { return }
+        terminalManager.appendAgentTab(
+            for: worktree,
+            app: app,
+            agentCommand: agentCmd,
+            prompt: rendered,
+            projectPath: workTaskManager.projectPath
+        )
+    }
+
     // MARK: - Actions
+
+    enum AutoResult {
+        case set
+        /// WORKFLOW.md hooks need user trust approval first. Call `approveTrust()` then retry.
+        case needsTrust(WorkflowConfig)
+    }
+
+    /// Persist the auto flag on the given task, routing through the trust dialog when
+    /// enabling on an untrusted config. Disabling never requires trust.
+    func setAutoEnabled(_ enabled: Bool, for task: WorkTask) -> AutoResult {
+        if enabled,
+           let config = workflowConfig,
+           !config.isTrusted(forProject: workTaskManager.projectPath) {
+            return .needsTrust(config)
+        }
+        var updated = task
+        updated.auto = enabled
+        workTaskManager.updateTask(updated)
+        return .set
+    }
 
     enum StartResult {
         case ignored
@@ -405,6 +506,11 @@ class WorkTaskCoordinator: ObservableObject {
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
             return .needsTrust(config)
         }
+
+        // The .inProgress publish below is driven by this normal launch, not an
+        // external transition — suppress the corresponding auto dispatch so auto
+        // mode doesn't spawn a second tab on top of launchClaudeCode's surface.
+        suppressNextAutoDispatch.insert(task.id)
 
         var updated = task
         if task.status == .canceled {
@@ -449,6 +555,10 @@ class WorkTaskCoordinator: ObservableObject {
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
             return .needsTrust(config)
         }
+
+        // Same suppression as `startTask` — the continuation launch fires
+        // launchClaudeCode itself; auto mode must not pile on a second tab.
+        suppressNextAutoDispatch.insert(task.id)
 
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
