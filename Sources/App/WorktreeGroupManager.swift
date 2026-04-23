@@ -21,7 +21,12 @@ final class WorktreeGroupManager: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            let loaded = await self.store.load()
+            // Build a one-shot legacy-id resolver from live worktrees. Entries with
+            // absolute-path ids (pre-gitdir-id era) are rewritten; unknown paths are
+            // dropped by the store. Any git failure here → skip migration this run
+            // (re-attempted on next launch).
+            let resolver = await Self.makeLegacyIdResolver(projectPath: projectPath)
+            let loaded = await self.store.load(legacyIdResolver: resolver)
             self.groups = WorktreeGroup.sortedByCreation(loaded.groups)
             self.defaultOrder = loaded.defaultOrder
 
@@ -36,6 +41,27 @@ final class WorktreeGroupManager: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// Runs `git worktree list` once and returns a closure that maps legacy absolute-path
+    /// ids to their new gitdir-derived ids. Returns nil on failure; the store then skips
+    /// migration for this load.
+    nonisolated private static func makeLegacyIdResolver(
+        projectPath: String
+    ) async -> (([String]) -> [String: String])? {
+        guard let worktrees = try? await WorktreeManager.fetchWorktrees(in: projectPath) else {
+            return nil
+        }
+        let pathToId = Dictionary(uniqueKeysWithValues: worktrees.compactMap { wt in
+            wt.path.map { ($0, wt.id) }
+        })
+        return { legacyIds in
+            var result: [String: String] = [:]
+            for legacy in legacyIds {
+                if let id = pathToId[legacy] { result[legacy] = id }
+            }
+            return result
         }
     }
 

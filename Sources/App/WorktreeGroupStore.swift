@@ -47,12 +47,18 @@ final class WorktreeGroupStore {
 
     // MARK: - Load
 
-    func load() async -> WorktreeGroupsPayload {
+    /// Loads the on-disk payload. When `legacyIdResolver` is supplied, any worktree id
+    /// beginning with `/` (a path from the pre-gitdir-id era) is rewritten through the
+    /// resolver; unresolved legacy ids are dropped. If migration changed anything, the
+    /// payload is saved back so the file becomes canonical.
+    func load(
+        legacyIdResolver: (([String]) -> [String: String])? = nil
+    ) async -> WorktreeGroupsPayload {
         let path = groupsFile
-        return await Task.detached(priority: .utility) {
+        let raw = await Task.detached(priority: .utility) {
             let fm = FileManager.default
-            guard fm.fileExists(atPath: path) else { return .empty }
-            guard let data = fm.contents(atPath: path) else { return .empty }
+            guard fm.fileExists(atPath: path) else { return WorktreeGroupsPayload.empty }
+            guard let data = fm.contents(atPath: path) else { return WorktreeGroupsPayload.empty }
             // Prefer the current payload format; fall back to the legacy bare-array format
             // so existing projects keep their groups after upgrade.
             if let payload = try? JSONDecoder().decode(WorktreeGroupsPayload.self, from: data) {
@@ -62,8 +68,47 @@ final class WorktreeGroupStore {
                 return WorktreeGroupsPayload(groups: legacy, defaultOrder: [])
             }
             Ghostty.logger.warning("groups.json is corrupt — resetting to empty.")
-            return .empty
+            return WorktreeGroupsPayload.empty
         }.value
+
+        guard let resolver = legacyIdResolver else { return raw }
+        let (migrated, changed) = Self.migrateLegacyIds(in: raw, resolver: resolver)
+        if changed { try? await save(migrated) }
+        return migrated
+    }
+
+    /// Rewrites any `/`-prefixed id through `resolver`; drops unresolved entries.
+    /// Returns `(migrated, changed)` — `changed == false` means no `/`-prefixed ids found.
+    static func migrateLegacyIds(
+        in payload: WorktreeGroupsPayload,
+        resolver: ([String]) -> [String: String]
+    ) -> (WorktreeGroupsPayload, Bool) {
+        let legacyIds = Set(payload.groups.flatMap(\.worktreeIds) + payload.defaultOrder)
+            .filter { $0.hasPrefix("/") }
+        guard !legacyIds.isEmpty else { return (payload, false) }
+
+        let mapping = resolver(Array(legacyIds))
+        var result = payload
+        var changed = false
+
+        for index in result.groups.indices {
+            let original = result.groups[index].worktreeIds
+            let rewritten = original.compactMap { id -> String? in
+                id.hasPrefix("/") ? mapping[id] : id
+            }
+            if rewritten != original {
+                result.groups[index].worktreeIds = rewritten
+                changed = true
+            }
+        }
+        let newOrder = result.defaultOrder.compactMap { id -> String? in
+            id.hasPrefix("/") ? mapping[id] : id
+        }
+        if newOrder != result.defaultOrder {
+            result.defaultOrder = newOrder
+            changed = true
+        }
+        return (result, changed)
     }
 
     // MARK: - Save

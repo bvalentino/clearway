@@ -373,7 +373,7 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    private static func fetchWorktrees(in directory: String) async throws -> [Worktree] {
+    static func fetchWorktrees(in directory: String) async throws -> [Worktree] {
         let data = try await runCommand(["git", "worktree", "list", "--porcelain"], in: directory)
         let output = String(data: data, encoding: .utf8) ?? ""
         let parsed = parseWorktreeListOutput(output)
