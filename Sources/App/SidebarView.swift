@@ -18,10 +18,12 @@ struct SidebarView: View {
     @Binding var sidebarSelection: DetailSelection?
     @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
+    var onRenameWorktree: ((Worktree, String) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
     @State private var activeSheet: SidebarSheet?
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
+    @State private var worktreeToRename: Worktree?
     @State private var worktreeToClose: Worktree?
     @State private var selectionBeforeSettings: DetailSelection?
     @State private var createWorktreeTargetGroupId: UUID?
@@ -151,6 +153,12 @@ struct SidebarView: View {
             RenameGroupSheet(group: group) { newName in
                 groupManager.renameGroup(id: group.id, to: newName)
                 groupToRename = nil
+            }
+        }
+        .sheet(item: $worktreeToRename) { wt in
+            RenameWorktreeSheet(worktree: wt) { newName in
+                onRenameWorktree?(wt, newName)
+                worktreeToRename = nil
             }
         }
         .sheet(isPresented: $showingNewGroupSheet) {
@@ -315,6 +323,11 @@ struct SidebarView: View {
             }
         }
         .disabled(wt.isMain || !terminalManager.isOpen(wt))
+
+        Button("Rename Worktree…") {
+            worktreeToRename = wt
+        }
+        .disabled(wt.isMain || wt.branch == nil || wt.headStatus != .attached)
 
         Button("Remove Worktree") {
             worktreeToRemove = wt
