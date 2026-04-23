@@ -19,6 +19,11 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// stays out of the Planning backlog until the user exposes it.
     var hidden: Bool = false
 
+    /// When true, status transitions whose new status has an explicit
+    /// `state_commands.<status>` entry in WORKFLOW.md spawn a fresh agent tab
+    /// automatically. Persisted in the task MD so it's git-visible.
+    var auto: Bool = false
+
     enum Status: String, CaseIterable {
         case new
         case readyToStart = "ready_to_start"
@@ -86,6 +91,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         if let outputTokens { lines.append("output_tokens: \(outputTokens)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
+        if auto { lines.append("auto: true") }
         return lines.joined(separator: "\n")
     }
 
@@ -170,6 +176,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
         task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
         task.hidden = fields["hidden"] == "true"
+        task.auto = fields["auto"] == "true"
         return task
     }
 

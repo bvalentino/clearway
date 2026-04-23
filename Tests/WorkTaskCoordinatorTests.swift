@@ -74,21 +74,11 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         return wt
     }
 
-    /// Creates a task with auto flag set, linked to a worktree branch. Seeds the in-memory
-    /// `tasks` array directly so the `@Published` publish fires and `updateTask` can diff.
-    /// `updateTask` alone won't append a brand-new task — it only mutates existing entries.
-    private func createAutoTask(branch: String, status: WorkTask.Status = .inProgress) -> WorkTask {
-        var task = WorkTask(title: "T", status: status, worktree: branch)
-        task.auto = true
-        task.hidden = false
-        workTaskManager.tasks.append(task)
-        return task
-    }
-
-    /// Like `createAutoTask` but with `auto == false`.
+    /// Seeds `tasks` directly so the `@Published` publish fires and subsequent
+    /// `updateTask` calls can diff — `updateTask` alone won't append a brand-new task.
     @discardableResult
     private func createTask(branch: String,
-                            auto: Bool,
+                            auto: Bool = true,
                             status: WorkTask.Status = .inProgress) -> WorkTask {
         var task = WorkTask(title: "T", status: status, worktree: branch)
         task.auto = auto
@@ -104,7 +94,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
     func test_autoDispatch_firesOnceOnQualifyingTransition() {
         _ = installTrustedWorkflow()
         _ = registerWorktree(branch: "feature/a")
-        let task = createAutoTask(branch: "feature/a")
+        let task = createTask(branch: "feature/a")
 
         var calls: [(Worktree, String, String)] = []
         coordinator.autoDispatchHook = { wt, cmd, prompt in calls.append((wt, cmd, prompt)) }
@@ -141,7 +131,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
     func test_autoDispatch_skipsWhenNoExplicitCommandForStatus() {
         _ = installTrustedWorkflow()
         _ = registerWorktree(branch: "feature/c")
-        let task = createAutoTask(branch: "feature/c")
+        let task = createTask(branch: "feature/c")
 
         var calls = 0
         coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
@@ -167,7 +157,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         // Deliberately do NOT call markTrusted.
 
         _ = registerWorktree(branch: "feature/d")
-        let task = createAutoTask(branch: "feature/d")
+        let task = createTask(branch: "feature/d")
 
         var calls = 0
         coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
@@ -183,7 +173,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
     func test_autoDispatch_skipsWhenWorktreeMissing() {
         _ = installTrustedWorkflow()
         // No registerWorktree call.
-        let task = createAutoTask(branch: "feature/missing")
+        let task = createTask(branch: "feature/missing")
 
         var calls = 0
         coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
@@ -225,68 +215,16 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         XCTAssertEqual(calls, 0, "body-only fallback must not trigger auto dispatch")
     }
 
-    // MARK: - Suppress first startTask-induced transition
+    // MARK: - Transition cadence
 
-    /// Starting a task with `auto == true` and an explicit `state_commands.in_progress`
-    /// must not spawn a second agent tab via auto dispatch: startTask already launches
-    /// claude directly, auto dispatch would pile on a duplicate.
-    func test_autoDispatch_suppressesStartTaskTransition() {
-        _ = installTrustedWorkflow()
-        let wt = registerWorktree(branch: "feature/f")
-
-        let task = createTask(branch: "feature/f", auto: true, status: .readyToStart)
-
-        var calls = 0
-        coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
-
-        // Can't construct a real ghostty_app_t in unit tests, so drive the status
-        // transition via the same path startTask commits through: set status +
-        // insert into suppress set. We verify the result by forcing the transition
-        // through updateTask and expecting zero hook calls because startTask runs
-        // the normal launch path (not observable here) but the suppress set blocks
-        // auto dispatch.
-        //
-        // The indirect assertion: a manual transition to .inProgress after startTask
-        // must NOT call the hook.
-        var started = task
-        started.status = .inProgress
-        // Simulate the suppress insertion that startTask performs. Use the real API
-        // path: setAutoEnabled isn't the right hook, so we instead publish a transition
-        // that represents startTask's update and verify no dispatch runs.
-        //
-        // Because suppressNextAutoDispatch is private, we rely on the integration fact
-        // that startTask inserts + updates. Here we simulate by updating via the same
-        // pathway startTask uses internally for the branch-exists case:
-        //   1. insert id into suppress set (mirrors startTask's insert)
-        //   2. updateTask(started)
-        // We can't call the private setter, so exercise through the normal
-        // `continueTask` path for an already-inProgress task: it returns .ignored
-        // and doesn't insert. That's not useful — instead, assert that when auto is
-        // true and a SECOND qualifying transition happens, dispatch works (proving
-        // suppress is one-shot). We test the suppress path end-to-end via the
-        // subsequent test.
-        _ = wt
-        workTaskManager.updateTask(started)
-        XCTAssertGreaterThanOrEqual(calls, 0,
-                                    "smoke — second transition test exercises suppress end-to-end")
-    }
-
-    /// Two transitions in sequence: suppress the first (simulating startTask), allow the
-    /// second. This exercises the one-shot behaviour of `suppressNextAutoDispatch`.
-    func test_autoDispatch_suppressIsOneShot() {
+    /// With no external suppression, each qualifying transition dispatches. The
+    /// `suppressNextAutoDispatch` set is only populated by `startTask`/`continueTask`
+    /// (which need `ghostty_app_t` and aren't reachable here); the unit assertion is
+    /// that absent that seed, sequential transitions each fire.
+    func test_autoDispatch_firesOnEverySubsequentTransition() {
         _ = installTrustedWorkflow()
         _ = registerWorktree(branch: "feature/g")
-
-        // Trigger suppress via the public startTask entry — we need an app reference,
-        // but for .new → .inProgress with no worktree yet, startTask returns
-        // .createWorktree (no ghostty calls). We provide a dummy app ref only because
-        // the signature demands it; nothing dereferences it in this branch.
-        //
-        // Simpler: directly verify via setAutoEnabled + external transitions. We can't
-        // call startTask without ghostty, so we test the end-to-end "auto dispatch only
-        // fires for non-startTask transitions" by never calling startTask — covered
-        // above — and trust the single suppress.insert() line in startTask/continueTask.
-        let task = createAutoTask(branch: "feature/g")
+        let task = createTask(branch: "feature/g")
 
         var calls = 0
         coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
@@ -299,7 +237,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         var back = qa
         back.status = .inProgress
         workTaskManager.updateTask(back)
-        XCTAssertEqual(calls, 2, "second qualifying transition also dispatches (explicit in_progress command exists)")
+        XCTAssertEqual(calls, 2, "second qualifying transition dispatches")
     }
 
     // MARK: - setAutoEnabled
@@ -318,7 +256,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         coordinator.startWatching()
         // Deliberately do NOT markTrusted — the config is present but un-trusted.
 
-        let task = createAutoTask(branch: "feature/h")
+        let task = createTask(branch: "feature/h")
 
         let result = coordinator.setAutoEnabled(false, for: task)
         switch result {

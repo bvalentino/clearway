@@ -245,6 +245,15 @@ struct WorkflowConfig: Equatable {
         return false
     }
 
+    /// Toolbar gate: true iff any of the five explicit state-command slots is set.
+    /// The play/pause auto-mode button is only rendered when this is true, since
+    /// auto mode relies exclusively on explicit commands.
+    var hasAnyExplicitStateCommand: Bool {
+        stateCommandInProgress != nil || stateCommandQa != nil
+            || stateCommandReadyForReview != nil || stateCommandDone != nil
+            || stateCommandCanceled != nil
+    }
+
     func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
         // State commands are pasted into whatever the active terminal is running
         // — usually an agent like Claude, not a shell — so values are interpolated

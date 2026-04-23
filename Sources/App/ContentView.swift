@@ -160,7 +160,8 @@ struct ContentView: View {
                     .help("Remove worktree")
                     .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                 }
-                if autoToggleVisible, let task = linkedTask {
+                if let task = linkedTask,
+                   workTaskCoordinator.workflowConfig?.hasAnyExplicitStateCommand == true {
                     ToolbarItem(placement: .primaryAction) {
                         Button(action: { toggleAuto(for: task) }) {
                             Image(systemName: task.auto ? "pause.fill" : "play.fill")
@@ -494,12 +495,6 @@ struct ContentView: View {
               let task = workTaskManager.task(forWorktree: branch),
               !task.hidden else { return nil }
         return task
-    }
-
-    /// True when the toolbar should surface the auto-mode toggle: a visible, linked task
-    /// exists and WORKFLOW.md defines at least one explicit `state_commands.<status>`.
-    private var autoToggleVisible: Bool {
-        linkedTask != nil && workTaskCoordinator.workflowConfig?.hasAnyExplicitStateCommand == true
     }
 
     private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }

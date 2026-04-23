@@ -169,6 +169,47 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertEqual(result.body, "User edit")
     }
 
+    /// `auto: true` must round-trip through serialize → parse so the toolbar state survives reload.
+    func testAutoRoundTripsWhenTrue() throws {
+        var task = WorkTask(id: UUID(), title: "Auto task", status: .new, worktree: "feature/auto", body: "")
+        task.auto = true
+
+        let serialized = task.serialized()
+        XCTAssertTrue(serialized.contains("auto: true"), "frontmatter must emit auto: true when auto")
+
+        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: task.createdAt)
+        XCTAssertEqual(reparsed?.auto, true)
+        XCTAssertEqual(reparsed?.title, "Auto task")
+        XCTAssertEqual(reparsed?.worktree, "feature/auto")
+    }
+
+    /// Default tasks must not emit `auto:` at all — keeps old files diff-clean.
+    func testAutoOmittedFromFrontmatterWhenFalse() throws {
+        let task = WorkTask(id: UUID(), title: "Regular", status: .new, worktree: nil, body: "")
+        XCTAssertFalse(task.auto)
+
+        let serialized = task.serialized()
+        XCTAssertFalse(serialized.contains("auto:"), "frontmatter must omit auto key when false")
+
+        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: task.createdAt)
+        XCTAssertEqual(reparsed?.auto, false)
+    }
+
+    /// Legacy task files on disk (no `auto` key) must parse as `auto == false`.
+    func testLegacyFileWithoutAutoKeyParsesAsFalse() throws {
+        let legacy = """
+        ---
+        title: "Legacy"
+        status: new
+        worktree: null
+        ---
+
+        body
+        """
+        let reparsed = WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())
+        XCTAssertEqual(reparsed?.auto, false)
+    }
+
     /// Legacy task files on disk (no `hidden` key) must parse as `hidden == false`.
     func testLegacyFileWithoutHiddenKeyParsesAsFalse() throws {
         let legacy = """

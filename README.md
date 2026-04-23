@@ -59,6 +59,10 @@ A project can define task-lifecycle behavior in a `WORKFLOW.md` at its root. The
 
 State commands surface a play button next to the status picker in the task aside panel. Clicking it pastes the rendered command into the active terminal. Recognized keys under `state_commands`: `in_progress`, `qa`, `ready_for_review`, `done`, `canceled`.
 
+### Auto mode
+
+A task with `auto: true` in its frontmatter runs its matching state command automatically whenever the task transitions into a status that has an explicit `state_commands.<status>` entry. Toggle auto from the play/pause button in the window toolbar (appears only when the selected worktree has a linked task and the project's WORKFLOW.md defines at least one state command). Enabling auto on an untrusted WORKFLOW.md goes through the same trust confirmation dialog as starting a task.
+
 ```markdown
 ---
 agent:

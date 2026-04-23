@@ -433,14 +433,18 @@ class WorkTaskCoordinator: ObservableObject {
     /// - the task has `auto == true`,
     /// - the task's worktree exists,
     /// - WORKFLOW.md is trusted for this project,
-    /// - `workflowConfig.explicitStateCommand(for: to)` is non-nil.
+    /// - `workflowConfig.stateCommand(for: to)` is non-nil.
+    ///
+    /// Auto mode deliberately uses `stateCommand` (not `renderStateCommand` for the gate),
+    /// so the `.inProgress → promptTemplate` body fallback doesn't double-fire on top of
+    /// the normal `startTask`-driven agent launch.
     private func tryAutoDispatch(task: WorkTask, from: WorkTask.Status, to: WorkTask.Status) {
         if suppressNextAutoDispatch.remove(task.id) != nil { return }
         guard task.auto else { return }
         guard let worktree = worktreeForTask(task) else { return }
         guard let config = workflowConfig,
               config.isTrusted(forProject: workTaskManager.projectPath) else { return }
-        guard config.explicitStateCommand(for: to) != nil else { return }
+        guard config.stateCommand(for: to) != nil else { return }
 
         let taskPath = workTaskManager.filePath(for: task)
         guard let rendered = config.renderStateCommand(for: to, task: task, taskPath: taskPath) else { return }
@@ -469,8 +473,10 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     /// Persist the auto flag on the given task, routing through the trust dialog when
-    /// enabling on an untrusted config. Disabling never requires trust.
+    /// enabling on an untrusted config. Disabling never requires trust. Redundant toggles
+    /// (setting the current value) short-circuit so we don't thrash disk + `$tasks`.
     func setAutoEnabled(_ enabled: Bool, for task: WorkTask) -> AutoResult {
+        if task.auto == enabled { return .set }
         if enabled,
            let config = workflowConfig,
            !config.isTrusted(forProject: workTaskManager.projectPath) {

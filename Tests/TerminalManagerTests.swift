@@ -66,4 +66,34 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertFalse(manager.isSecondaryVisible(for: wt.id),
                        "unwired provider must default to the opt-in-safe `false` path")
     }
+
+    // MARK: - buildPromptPipeCommand
+
+    /// The pipe recipe must positionally inject `agentCommand`, the prompt file, and the
+    /// resolved PATH so shell metacharacters in any of them can't escape the `/bin/sh -c`
+    /// sandbox. Each positional arg is single-quoted via `shellEscape`.
+    func test_buildPromptPipeCommand_positionalArgsAreShellQuoted() throws {
+        let cmd = TerminalManager.buildPromptPipeCommand(
+            agentCommand: "claude --flag",
+            prompt: "Hello"
+        )
+
+        XCTAssertTrue(cmd.hasPrefix("/bin/sh -c "), "must launch via /bin/sh -c")
+        XCTAssertTrue(cmd.contains("'claude --flag'"),
+                      "agent command must be a single quoted positional arg, not expanded")
+        XCTAssertTrue(cmd.contains("cat \"$2\" | $1"),
+                      "recipe must read the prompt file on stdin of the agent command")
+        XCTAssertTrue(cmd.contains("rm -f \"$2\""),
+                      "recipe must remove the prompt file after the agent consumes it")
+
+        // The prompt file should be written to the temp dir with the expected prefix,
+        // and its contents should match what the caller passed.
+        let lines = cmd.components(separatedBy: " ")
+        let quoted = lines.first(where: { $0.contains("clearway-launcher-") })
+        let path = quoted?.trimmingCharacters(in: CharacterSet(charactersIn: "'"))
+        XCTAssertNotNil(path)
+        let data = FileManager.default.contents(atPath: path ?? "")
+        XCTAssertEqual(data.flatMap { String(data: $0, encoding: .utf8) }, "Hello")
+        try? FileManager.default.removeItem(atPath: path ?? "")
+    }
 }

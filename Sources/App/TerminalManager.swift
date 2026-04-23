@@ -472,7 +472,7 @@ class TerminalManager: ObservableObject {
         case .loginShell:
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
         case let .prompt(command, stdin):
-            let cmd = buildPromptPipeCommand(agentCommand: command, prompt: stdin)
+            let cmd = Self.buildPromptPipeCommand(agentCommand: command, prompt: stdin)
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
         }
 
@@ -484,11 +484,28 @@ class TerminalManager: ObservableObject {
         return newSurface
     }
 
-    /// Build the `/bin/sh -c` pipe command used by the prompt launcher. Mirrors
-    /// `WorkTaskCoordinator.runAgent`: export resolved login-shell PATH, then
+    /// Append a new main tab running `agentCommand` with `prompt` piped on stdin.
+    ///
+    /// Shared by the prompt launcher (via `promoteLauncher(.prompt)`) and auto-mode
+    /// state-command dispatches. Builds the same `/bin/sh -c` pipe recipe used by
+    /// `WorkTaskCoordinator.runAgent` so all agent-launch flows behave identically.
+    @discardableResult
+    func appendAgentTab(
+        for worktree: Worktree,
+        app: ghostty_app_t,
+        agentCommand: String,
+        prompt: String,
+        projectPath: String? = nil
+    ) -> Ghostty.SurfaceView {
+        let command = Self.buildPromptPipeCommand(agentCommand: agentCommand, prompt: prompt)
+        return appendMainTab(for: worktree, app: app, command: command, projectPath: projectPath)
+    }
+
+    /// Build the `/bin/sh -c` pipe command used by the prompt launcher and auto mode.
+    /// Mirrors `WorkTaskCoordinator.runAgent`: export resolved login-shell PATH, then
     /// `cat $promptFile | $agentCmd` with positional args to avoid shell injection.
     /// The prompt file is removed after the agent consumes it so temp dir doesn't accumulate.
-    private func buildPromptPipeCommand(agentCommand: String, prompt: String) -> String {
+    static func buildPromptPipeCommand(agentCommand: String, prompt: String) -> String {
         let tempDir = NSTemporaryDirectory()
         let launchId = UUID().uuidString
         let promptFile = (tempDir as NSString).appendingPathComponent("clearway-launcher-\(launchId).md")
