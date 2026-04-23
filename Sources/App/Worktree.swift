@@ -12,12 +12,29 @@ enum HeadStatus {
 
 /// A worktree entry parsed from `git worktree list --porcelain`.
 struct Worktree: Identifiable, Hashable {
-    var id: String { path ?? branch ?? "" }
+    /// Stable per-worktree id. For non-main worktrees this is the last component of the
+    /// resolved gitdir (e.g. `.git/worktrees/foo` → `"foo"`), which git keeps fixed across
+    /// `branch -m`, `worktree move`, and `worktree repair`. For main, a fixed sentinel
+    /// (`"<main>"`) that never collides with a real gitdir name. When no path is available,
+    /// the branch name is used as a last-resort fallback (primarily a test-helper path).
+    let id: String
 
     let branch: String?
     let path: String?
     let isMain: Bool
     let headStatus: HeadStatus
+
+    init(branch: String?, path: String?, isMain: Bool, headStatus: HeadStatus) {
+        self.branch = branch
+        self.path = path
+        self.isMain = isMain
+        self.headStatus = headStatus
+        if let path {
+            self.id = WorktreeManager.worktreeId(isMain: isMain, path: path)
+        } else {
+            self.id = isMain ? "<main>" : (branch ?? "")
+        }
+    }
 
     var displayName: String { branch ?? "(detached)" }
 
@@ -250,6 +267,20 @@ class WorktreeManager: ObservableObject {
         }
 
         return worktrees
+    }
+
+    /// Stable per-worktree identifier. For non-main worktrees, the last component of the
+    /// resolved gitdir — git keeps this name fixed across `branch -m`, `worktree move`,
+    /// and `worktree repair`. For the main worktree, a fixed sentinel so it's unambiguous
+    /// and never collides with a real gitdir name. When the gitdir can't be resolved the
+    /// path is used as a best-effort fallback, with a warning logged.
+    nonisolated static func worktreeId(isMain: Bool, path: String) -> String {
+        if isMain { return "<main>" }
+        guard let gitdir = gitdir(forWorktreeAt: path) else {
+            Ghostty.logger.warning("Worktree.id: unable to resolve gitdir for \(path); falling back to path")
+            return path
+        }
+        return (gitdir as NSString).lastPathComponent
     }
 
     nonisolated static func gitdir(forWorktreeAt worktreePath: String) -> String? {
