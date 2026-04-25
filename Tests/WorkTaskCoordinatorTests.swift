@@ -1,4 +1,5 @@
 import XCTest
+import GhosttyKit
 @testable import Clearway
 
 /// Tests for auto-mode dispatch. These exercise `handleTasksPublish` / `tryAutoDispatch`
@@ -238,6 +239,52 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         back.status = .inProgress
         workTaskManager.updateTask(back)
         XCTAssertEqual(calls, 2, "second qualifying transition dispatches")
+    }
+
+    // MARK: - startTask suppression
+
+    /// `startTask` inserts the task into `suppressNextAutoDispatch` before calling
+    /// `updateTask` so the resulting `.readyToStart → .inProgress` publish is
+    /// swallowed by auto mode — otherwise auto would pile a second agent tab on
+    /// top of the one `launchClaudeCode` already opened. We exercise this via the
+    /// `.beforeRunHook` return path (hook present in WORKFLOW.md) which captures
+    /// the `ghostty_app_t` in a closure but never dereferences it, so a fake
+    /// pointer is safe.
+    func test_autoDispatch_startTaskSuppressesInitialInProgressTransition() {
+        let content = """
+        ---
+        hooks:
+          before_run: "echo before"
+        state_commands:
+          in_progress: "run for {{ task.worktree }}"
+        ---
+        """
+        let path = (tempRoot as NSString).appendingPathComponent("WORKFLOW.md")
+        try? content.write(toFile: path, atomically: true, encoding: .utf8)
+        guard let cfg = WorkflowConfig.load(projectPath: tempRoot) else {
+            XCTFail("workflow load failed")
+            return
+        }
+        cfg.markTrusted(forProject: tempRoot)
+        coordinator.startWatching()
+        _ = registerWorktree(branch: "feature/start")
+
+        let task = createTask(branch: "feature/start", auto: true, status: .readyToStart)
+
+        var calls = 0
+        coordinator.autoDispatchHook = { _, _, _ in calls += 1 }
+
+        // Fake, never-dereferenced app pointer — the `.beforeRunHook` path only
+        // stores it in an un-invoked closure.
+        let fakeApp: ghostty_app_t = UnsafeMutableRawPointer(bitPattern: 0x1)!
+        let result = coordinator.startTask(task, app: fakeApp)
+
+        guard case .beforeRunHook = result else {
+            XCTFail("expected .beforeRunHook return path, got \(result)")
+            return
+        }
+        XCTAssertEqual(calls, 0,
+            "startTask-induced .readyToStart → .inProgress transition must be suppressed")
     }
 
     // MARK: - setAutoEnabled
