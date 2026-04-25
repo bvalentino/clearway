@@ -154,12 +154,36 @@ struct MainTerminalTabStrip: View {
         }
     }
 
+    private static let chipMinWidth: CGFloat = 140
+
     private var tabsContainer: some View {
-        GeometryReader { geo in
-            scrollableTabs(availableWidth: geo.size.width)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        let tabs = terminalManager.mainTabs(for: worktreeId)
+        let activeId = terminalManager.mainActiveTabId(for: worktreeId)
+        return ViewThatFits(in: .horizontal) {
+            equalWidthLayout(tabs: tabs, activeId: activeId)
+            scrollableLayout(tabs: tabs, activeId: activeId)
         }
         .frame(height: 28)
+    }
+
+    private func equalWidthLayout(tabs: [TerminalTab], activeId: UUID?) -> some View {
+        HStack(spacing: 4) {
+            ForEach(tabs, id: \.id) { tab in
+                chip(for: tab, isActive: tab.id == activeId)
+                    .frame(minWidth: Self.chipMinWidth, maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func scrollableLayout(tabs: [TerminalTab], activeId: UUID?) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(tabs, id: \.id) { tab in
+                    chip(for: tab, isActive: tab.id == activeId)
+                        .frame(width: Self.chipMinWidth)
+                }
+            }
+        }
     }
 
     private var plusButton: some View {
@@ -177,27 +201,8 @@ struct MainTerminalTabStrip: View {
         .disabled(ghosttyApp.app == nil)
     }
 
-    private func scrollableTabs(availableWidth: CGFloat) -> some View {
-        let tabs = terminalManager.mainTabs(for: worktreeId)
-        let activeId = terminalManager.mainActiveTabId(for: worktreeId)
-        let minTabWidth: CGFloat = 140
-        let spacing: CGFloat = 4
-        let tabCount = max(tabs.count, 1)
-        let totalSpacing = spacing * CGFloat(max(tabCount - 1, 0))
-        let equalWidth = (availableWidth - totalSpacing) / CGFloat(tabCount)
-        let tabWidth = max(minTabWidth, equalWidth)
-
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: spacing) {
-                ForEach(tabs, id: \.id) { tab in
-                    chip(for: tab, isActive: tab.id == activeId, width: tabWidth)
-                }
-            }
-        }
-    }
-
     @ViewBuilder
-    private func chip(for tab: TerminalTab, isActive: Bool, width: CGFloat) -> some View {
+    private func chip(for tab: TerminalTab, isActive: Bool) -> some View {
         let onActivate = { terminalManager.activateMainTab(id: tab.id, in: worktreeId) }
         let onClose = { onCloseTab(tab.id, worktreeId) }
         let onCloseOthers = {
@@ -220,7 +225,6 @@ struct MainTerminalTabStrip: View {
                 onCloseOthers: onCloseOthers,
                 onCloseAll: onCloseAll
             )
-            .frame(width: width)
         case .surface(let surface):
             TerminalTabChip(
                 surface: surface,
@@ -231,7 +235,6 @@ struct MainTerminalTabStrip: View {
                 onCloseOthers: onCloseOthers,
                 onCloseAll: onCloseAll
             )
-            .frame(width: width)
         }
     }
 }
