@@ -176,11 +176,25 @@ struct MainTerminalTabStrip: View {
     }
 
     private func scrollableLayout(tabs: [TerminalTab], activeId: UUID?) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(tabs, id: \.id) { tab in
-                    chip(for: tab, isActive: tab.id == activeId)
-                        .frame(width: Self.chipMinWidth)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(tabs, id: \.id) { tab in
+                        chip(for: tab, isActive: tab.id == activeId)
+                            .frame(width: Self.chipMinWidth)
+                            .id(tab.id)
+                    }
+                }
+            }
+            .onChange(of: tabs.last?.id) { newLastId in
+                guard let newLastId else { return }
+                // Defer to the next runloop tick so SwiftUI finishes laying out
+                // the appended chip (and any synchronous follow-up mutations like
+                // `promoteLauncher`) before we ask for the new trailing offset.
+                DispatchQueue.main.async {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(newLastId, anchor: .trailing)
+                    }
                 }
             }
         }
