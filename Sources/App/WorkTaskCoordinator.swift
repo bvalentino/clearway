@@ -122,12 +122,9 @@ class WorkTaskCoordinator: ObservableObject {
     @Published private(set) var planningConfig: PlanningConfig?
 
     /// Live-reloaded workflow automation rules from `.clearway/workflow.json`.
-    /// Always non-nil — `WorkflowAutomation.load` yields an empty automation
-    /// when the file is absent or invalid, so consumers never need to
-    /// differentiate "absent" from "empty". Mutate via
-    /// `setWorkflowAutomation` so the `private(set)` contract reaches the
-    /// cross-file extension without being widened to internal.
-    @Published private(set) var workflowAutomation: WorkflowAutomation = WorkflowAutomation()
+    /// Mutate via `setWorkflowAutomation` so the `private(set)` contract
+    /// reaches the cross-file extension without being widened to internal.
+    @Published private(set) var workflowAutomation = WorkflowAutomation()
 
     func setPlanningConfig(_ config: PlanningConfig?) { planningConfig = config }
     func setWorkflowAutomation(_ automation: WorkflowAutomation) { workflowAutomation = automation }

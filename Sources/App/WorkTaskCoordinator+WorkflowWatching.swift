@@ -146,10 +146,6 @@ extension WorkTaskCoordinator {
     }
 
     func reloadWorkflowAutomation() {
-        // `WorkflowAutomation.load` never returns nil — it yields an empty
-        // automation when the file is missing or fails to parse, so callers
-        // never need to differentiate "absent" from "empty".
-        let automation = WorkflowAutomation.load(projectPath: workTaskManager.projectPath)
-        setWorkflowAutomation(automation)
+        setWorkflowAutomation(WorkflowAutomation.load(projectPath: workTaskManager.projectPath))
     }
 }
