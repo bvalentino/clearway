@@ -29,6 +29,7 @@
 		2BF186BD2AAC70BBA557891C /* ProjectHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */; };
 		2E94F35E227CD1A673BF7C0E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A834CA46BCB2AE8057A4A151 /* Sparkle */; };
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
+		2FB243F96D91E1E974674EA4 /* WorkTaskCoordinator+AutoFire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A2B8D64BACC62D95F8AFAA /* WorkTaskCoordinator+AutoFire.swift */; };
 		341BA0217D7DFD0145AEA798 /* WorktreeGroupStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */; };
 		3561916FAD889C8956F04F7F /* WorkTaskCoordinator+WorkflowWatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = B95F7DA4ACA45BD15D5CE43A /* WorkTaskCoordinator+WorkflowWatching.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
@@ -119,6 +120,7 @@
 		1753DB7CA84C6EBA0B8922EE /* MarkdownPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreviewView.swift; sourceTree = "<group>"; };
 		179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewHelpers.swift; sourceTree = "<group>"; };
+		19A2B8D64BACC62D95F8AFAA /* WorkTaskCoordinator+AutoFire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkTaskCoordinator+AutoFire.swift"; sourceTree = "<group>"; };
 		1B14527F0BC588875644727E /* ClaudeTodo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTodo.swift; sourceTree = "<group>"; };
 		1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupManagerTests.swift; sourceTree = "<group>"; };
@@ -306,6 +308,7 @@
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
+				19A2B8D64BACC62D95F8AFAA /* WorkTaskCoordinator+AutoFire.swift */,
 				8AF073149E1F5E5CDC6DC22E /* WorkTaskCoordinator+ConfigWatching.swift */,
 				B95F7DA4ACA45BD15D5CE43A /* WorkTaskCoordinator+WorkflowWatching.swift */,
 				904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */,
@@ -666,6 +669,7 @@
 				3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */,
 				2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */,
 				0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */,
+				2FB243F96D91E1E974674EA4 /* WorkTaskCoordinator+AutoFire.swift in Sources */,
 				220AFB60F0B0AE7311F180F9 /* WorkTaskCoordinator+ConfigWatching.swift in Sources */,
 				3561916FAD889C8956F04F7F /* WorkTaskCoordinator+WorkflowWatching.swift in Sources */,
 				228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */,

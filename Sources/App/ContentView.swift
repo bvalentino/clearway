@@ -236,6 +236,14 @@ struct ContentView: View {
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
                 terminalManager.activeSurfaceId = nil
             }
+            // Track branch visibility for workflow.json auto-fire dispatch.
+            // Off-screen transitions must not steal focus by spawning agents.
+            if let oldBranch = old?.worktree?.branch, oldBranch != new?.worktree?.branch {
+                workTaskCoordinator.setBranchVisible(oldBranch, false)
+            }
+            if let newBranch = new?.worktree?.branch {
+                workTaskCoordinator.setBranchVisible(newBranch, true)
+            }
             // Save the active tab for the worktree we're leaving
             if let oldId = old?.worktree?.id {
                 terminalManager.setSidePanelTab(sidePanelTab.rawValue, for: oldId)
@@ -381,6 +389,13 @@ struct ContentView: View {
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
 
+            // Seed the auto-fire visible-branches registry with the initial
+            // selection — `onChange(of: detailSelection)` doesn't fire for
+            // the initial value on macOS 13.
+            if let initialBranch = selectedWorktree?.branch {
+                workTaskCoordinator.setBranchVisible(initialBranch, true)
+            }
+
             // onChange(of: detailSelection) doesn't fire for initial value on macOS 13
             if let wt = selectedWorktree {
                 restoreSidePanelTab(for: wt)
@@ -435,6 +450,11 @@ struct ContentView: View {
             claudeTodoManager.stopWatching()
             todoManager.stopWatching()
             notesManager.stopWatching()
+            // Clear the auto-fire visible-branches registry so a transition
+            // arriving after the window closes doesn't dispatch into a ghost.
+            if let branch = selectedWorktree?.branch {
+                workTaskCoordinator.setBranchVisible(branch, false)
+            }
             for observer in taskWindowObservers {
                 NotificationCenter.default.removeObserver(observer)
             }

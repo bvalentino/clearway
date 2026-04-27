@@ -87,10 +87,33 @@ class WorkTaskCoordinator: ObservableObject {
     // file-watching methods live in `WorkTaskCoordinator+ConfigWatching.swift` — a
     // cross-file extension cannot reach private members. Only that extension should
     // mutate them.
+    //
+    // `terminalManager` is internal (not private) because the auto-fire dispatch
+    // logic lives in `WorkTaskCoordinator+AutoFire.swift` — that extension needs
+    // to spawn tabs and route paste calls.
 
     let workTaskManager: WorkTaskManager
-    private let terminalManager: TerminalManager
+    let terminalManager: TerminalManager
     private let worktreeManager: WorktreeManager
+
+    /// Branches whose worktree column is currently mounted in any window. The
+    /// auto-fire hook only dispatches actions for tasks whose branch is visible
+    /// — a transition that happens off-screen (e.g. user disk-edits a task file
+    /// while looking at a different worktree) must not steal focus by spawning
+    /// agent tabs. Wired from `ContentView.onAppear`/`onDisappear`. This is an
+    /// instance property (not static) because `WorkTaskCoordinator` is one per
+    /// project window, and a task only auto-fires for its own project — there's
+    /// no need to cross window boundaries.
+    var visibleBranches: Set<String> = []
+
+    /// Mark `branch` as visible (or not) in the project's UI.
+    func setBranchVisible(_ branch: String, _ visible: Bool) {
+        if visible {
+            visibleBranches.insert(branch)
+        } else {
+            visibleBranches.remove(branch)
+        }
+    }
 
     /// Resolves the current ghostty app reference. Set at init or via `setAppProvider`.
     private var appProvider: (() -> ghostty_app_t?)?
@@ -167,6 +190,13 @@ class WorkTaskCoordinator: ObservableObject {
             .sink { [weak self] tasks in
                 self?.handleTasksChanged(tasks)
             }
+
+        // Wire workflow.json auto-fire dispatch to status transitions. The
+        // hook is set after the subscription is installed so it can never
+        // observe the seeding emission.
+        self.onStatusTransition = { [weak self] task, _, newStatus in
+            self?.handleAutoFire(task: task, newStatus: newStatus)
+        }
     }
 
     nonisolated deinit {
@@ -257,6 +287,12 @@ class WorkTaskCoordinator: ObservableObject {
     private func autoProcessTick() {
         guard isAutoProcessing, let app = appProvider?() else { return }
 
+        // Polling auto-start exists to feed the workflow.json automation
+        // pipeline. With no rules defined, dropping a backlog task into the
+        // in-progress column produces no visible action — skip the tick
+        // entirely so we don't surprise the user with an unwanted launch.
+        guard workflowAutomation.hasAnyRule else { return }
+
         // Don't dispatch if a worktree creation or UI action is already in flight
         guard pendingLaunch == nil, pendingAutoStart == nil else { return }
 
@@ -317,6 +353,9 @@ class WorkTaskCoordinator: ObservableObject {
         if let branch = task.worktree,
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             updated.status = .inProgress
+            // Opt the task into auto-fire when this project has any workflow rules.
+            // No rules → leave `auto` as-is so manual tasks stay clean.
+            updated.auto = workflowAutomation.hasAnyRule
             workTaskManager.updateTask(updated)
 
             if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -334,6 +373,9 @@ class WorkTaskCoordinator: ObservableObject {
             let branch = task.worktree ?? workTaskManager.deriveBranchName(from: task.title, existingBranches: existingBranches)
             updated.worktree = branch
             updated.status = .inProgress
+            // Opt the task into auto-fire when this project has any workflow rules.
+            // No rules → leave `auto` as-is so manual tasks stay clean.
+            updated.auto = workflowAutomation.hasAnyRule
             workTaskManager.updateTask(updated)
             pendingLaunch = (id: updated.id, branch: branch, isAutoStart: isAutoStart)
             return .createWorktree(branch)
@@ -353,6 +395,9 @@ class WorkTaskCoordinator: ObservableObject {
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
         updated.status = .inProgress
+        // Continuing a task is functionally another "start" — opt it in when
+        // this project has any workflow rules. No rules → leave `auto` as-is.
+        updated.auto = workflowAutomation.hasAnyRule
         workTaskManager.updateTask(updated)
 
         if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -614,6 +659,22 @@ class WorkTaskCoordinator: ObservableObject {
         guard let observer else { return }
         if observer.inputTokens > 0 { task.inputTokens = (task.inputTokens ?? 0) + observer.inputTokens }
         if observer.outputTokens > 0 { task.outputTokens = (task.outputTokens ?? 0) + observer.outputTokens }
+    }
+
+    // MARK: - Auto-Fire (Phase 2)
+
+    /// Routes a task status transition into `dispatchActions` when every
+    /// gating precondition holds. Bails on the cheapest checks first so the
+    /// hot path (no rules / task didn't opt in) is essentially free.
+    private func handleAutoFire(task: WorkTask, newStatus: WorkTask.Status) {
+        guard task.auto else { return }
+        guard let branch = task.worktree else { return }
+        guard visibleBranches.contains(branch) else { return }
+        let actions = workflowAutomation.actions(for: newStatus)
+        guard !actions.isEmpty else { return }
+        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+        guard let app = appProvider?() else { return }
+        dispatchActions(actions, for: task, in: worktree, app: app)
     }
 }
 
