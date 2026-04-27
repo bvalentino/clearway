@@ -111,7 +111,8 @@ final class WorktreeTests: XCTestCase {
 
     // MARK: - Computed Properties
 
-    func testId() {
+    func testIdFallsBackToPathWhenGitdirMissing() {
+        // Non-main worktree at a path that has no .git file: id falls back to the path itself.
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
         XCTAssertEqual(wt.id, "/tmp/feature")
     }
@@ -119,6 +120,14 @@ final class WorktreeTests: XCTestCase {
     func testIdFallsToBranchWhenNoPath() {
         let wt = makeWorktree(branch: "orphan", path: nil)
         XCTAssertEqual(wt.id, "orphan")
+    }
+
+    func testIdForMainWorktreeIsStableSentinel() {
+        // Main worktree id is a fixed sentinel, independent of its on-disk path.
+        let a = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let b = makeWorktree(branch: "main", path: "/elsewhere/main", isMain: true)
+        XCTAssertEqual(a.id, "<main>")
+        XCTAssertEqual(a.id, b.id)
     }
 
     func testDisplayName() {
@@ -261,6 +270,69 @@ final class WorktreeTests: XCTestCase {
     }
 
     // MARK: - Resolver Pipeline
+
+    // MARK: - Stable Worktree Id
+
+    /// The headline invariant: a non-main worktree's id is the last component of its
+    /// resolved gitdir (the name git itself uses for the worktree under `.git/worktrees/`).
+    /// This is what git keeps stable across `git branch -m`, `git worktree move`, and
+    /// `git worktree repair` — so the app-side id survives all three.
+    func testWorktreeIdIsLastComponentOfGitdirForNonMain() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let mainRoot = tmp.appendingPathComponent("main")
+        let featureGitdir = mainRoot
+            .appendingPathComponent(".git")
+            .appendingPathComponent("worktrees")
+            .appendingPathComponent("foo")
+        try FileManager.default.createDirectory(at: featureGitdir, withIntermediateDirectories: true)
+
+        let featureWt = tmp.appendingPathComponent("feature-wt")
+        try FileManager.default.createDirectory(at: featureWt, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: featureWt.appendingPathComponent(".git").path,
+            contents: Data("gitdir: \(featureGitdir.path)\n".utf8)
+        )
+
+        XCTAssertEqual(WorktreeManager.worktreeId(isMain: false, path: featureWt.path), "foo")
+    }
+
+    /// Renaming the worktree directory is exactly what breaks path-based ids. The stable
+    /// id must survive — as long as the gitdir it points at is unchanged, the id is the
+    /// gitdir's last component.
+    func testWorktreeIdSurvivesDirectoryRenameWhenGitdirUnchanged() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let mainRoot = tmp.appendingPathComponent("main")
+        let featureGitdir = mainRoot
+            .appendingPathComponent(".git")
+            .appendingPathComponent("worktrees")
+            .appendingPathComponent("foo")
+        try FileManager.default.createDirectory(at: featureGitdir, withIntermediateDirectories: true)
+
+        let before = tmp.appendingPathComponent("before")
+        let after = tmp.appendingPathComponent("after")
+        try FileManager.default.createDirectory(at: before, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: after, withIntermediateDirectories: true)
+        let dotGitContents = Data("gitdir: \(featureGitdir.path)\n".utf8)
+        FileManager.default.createFile(atPath: before.appendingPathComponent(".git").path, contents: dotGitContents)
+        FileManager.default.createFile(atPath: after.appendingPathComponent(".git").path, contents: dotGitContents)
+
+        let idBefore = WorktreeManager.worktreeId(isMain: false, path: before.path)
+        let idAfter = WorktreeManager.worktreeId(isMain: false, path: after.path)
+        XCTAssertEqual(idBefore, "foo")
+        XCTAssertEqual(idAfter, idBefore)
+    }
+
+    func testWorktreeIdFallsBackToPathWhenGitdirUnresolvable() throws {
+        let tmp = try XCTUnwrap(tempDir)
+        let orphan = tmp.appendingPathComponent("orphan")
+        try FileManager.default.createDirectory(at: orphan, withIntermediateDirectories: true)
+        // No .git file present — resolver returns nil and id falls back to the path.
+        XCTAssertEqual(WorktreeManager.worktreeId(isMain: false, path: orphan.path), orphan.path)
+    }
+
+    func testWorktreeIdForMainHelperReturnsSentinel() {
+        XCTAssertEqual(WorktreeManager.worktreeId(isMain: true, path: "/anywhere"), "<main>")
+    }
 
     func testParserAndResolverPipelineRecoversRebasingBranch() throws {
         let tmp = try XCTUnwrap(tempDir)

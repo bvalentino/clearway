@@ -107,6 +107,36 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertNil(manager.error)
     }
 
+    // MARK: - Branch Name Validation
+
+    func testIsValidBranchNameAcceptsReasonableNames() {
+        XCTAssertTrue(WorktreeManager.isValidBranchName("feature"))
+        XCTAssertTrue(WorktreeManager.isValidBranchName("feature/nested"))
+        XCTAssertTrue(WorktreeManager.isValidBranchName("feature/deeply/nested"))
+        XCTAssertTrue(WorktreeManager.isValidBranchName("user.name"))
+        XCTAssertTrue(WorktreeManager.isValidBranchName("release-1.2.3"))
+    }
+
+    func testIsValidBranchNameRejectsEmpty() {
+        XCTAssertFalse(WorktreeManager.isValidBranchName(""))
+    }
+
+    func testIsValidBranchNameRejectsDoubleDot() {
+        XCTAssertFalse(WorktreeManager.isValidBranchName(".."))
+        XCTAssertFalse(WorktreeManager.isValidBranchName("foo..bar"))
+        XCTAssertFalse(WorktreeManager.isValidBranchName("..foo"))
+    }
+
+    func testIsValidBranchNameRejectsLeadingSlash() {
+        XCTAssertFalse(WorktreeManager.isValidBranchName("/feature"))
+        XCTAssertFalse(WorktreeManager.isValidBranchName("/"))
+    }
+
+    func testIsValidBranchNameRejectsLeadingDash() {
+        XCTAssertFalse(WorktreeManager.isValidBranchName("-feature"))
+        XCTAssertFalse(WorktreeManager.isValidBranchName("-"))
+    }
+
     // MARK: - Background Refresh Removal
 
     func testNoBackgroundRefreshProperties() {

@@ -117,6 +117,75 @@ final class WorktreeGroupStoreTests: XCTestCase {
         )
     }
 
+    // MARK: - Legacy path-id migration
+
+    func testLoadRewritesLegacyPathIdsViaResolver() async throws {
+        // Seed groups.json with legacy absolute-path ids, mixed with already-migrated ids.
+        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(
+            atPath: clearwayDir,
+            withIntermediateDirectories: true
+        )
+        let groupsFile = (clearwayDir as NSString).appendingPathComponent("groups.json")
+
+        let legacy = WorktreeGroupsPayload(
+            groups: [WorktreeGroup(
+                id: UUID(),
+                name: "Feature",
+                worktreeIds: ["/abs/a", "/abs/b", "stable-c"],
+                createdAt: Date(timeIntervalSince1970: 1_000_000)
+            )],
+            defaultOrder: ["/abs/a", "/abs/gone", "already-migrated"]
+        )
+        try JSONEncoder().encode(legacy).write(to: URL(fileURLWithPath: groupsFile))
+
+        let resolver: ([String]) -> [String: String] = { legacyIds in
+            var map: [String: String] = [:]
+            if legacyIds.contains("/abs/a") { map["/abs/a"] = "new-a" }
+            if legacyIds.contains("/abs/b") { map["/abs/b"] = "new-b" }
+            return map  // "/abs/gone" unmapped → must be dropped
+        }
+
+        let migrated = await store.load(legacyIdResolver: resolver)
+        XCTAssertEqual(migrated.groups.first?.worktreeIds, ["new-a", "new-b", "stable-c"])
+        XCTAssertEqual(migrated.defaultOrder, ["new-a", "already-migrated"])
+
+        // Store should have rewritten the on-disk file, so a second load with no
+        // resolver now sees the migrated state (idempotent — no further rewrite).
+        let second = await store.load()
+        XCTAssertEqual(second, migrated)
+    }
+
+    func testLoadWithoutLegacyIdsIsNoOp() async throws {
+        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(
+            atPath: clearwayDir,
+            withIntermediateDirectories: true
+        )
+        let groupsFile = (clearwayDir as NSString).appendingPathComponent("groups.json")
+
+        let payload = WorktreeGroupsPayload(
+            groups: [WorktreeGroup(
+                id: UUID(),
+                name: "Feature",
+                worktreeIds: ["gitdir-a"],
+                createdAt: Date()
+            )],
+            defaultOrder: ["gitdir-a"]
+        )
+        try JSONEncoder().encode(payload).write(to: URL(fileURLWithPath: groupsFile))
+
+        var resolverCalled = false
+        let resolver: ([String]) -> [String: String] = { _ in
+            resolverCalled = true
+            return [:]
+        }
+
+        let loaded = await store.load(legacyIdResolver: resolver)
+        XCTAssertEqual(loaded, payload)
+        XCTAssertFalse(resolverCalled, "Resolver must not be invoked when no legacy ids are present")
+    }
+
     // MARK: - startWatching fires on external write
     //
     // NOTE: This test is potentially flaky in CI because DispatchSourceFileSystemObject
