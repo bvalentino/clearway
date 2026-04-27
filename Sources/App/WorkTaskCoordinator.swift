@@ -82,11 +82,11 @@ class WorkTaskCoordinator: ObservableObject {
 
     // MARK: - Dependencies
     //
-    // Watcher state (isWatching, watcherSource, pendingReload, workflowConfig, etc.) and
-    // workTaskManager are internal, not private, because the WORKFLOW.md/PLANNING.md
-    // file-watching methods live in `WorkTaskCoordinator+ConfigWatching.swift` — a
-    // cross-file extension cannot reach private members. Only that extension should
-    // mutate them.
+    // Watcher state (isWatching, watcherSource, pendingReload, planningConfig, etc.) and
+    // workTaskManager are internal, not private, because the PLANNING.md and
+    // workflow.json file-watching methods live in `WorkTaskCoordinator+ConfigWatching.swift`
+    // and `WorkTaskCoordinator+WorkflowWatching.swift` — cross-file extensions cannot
+    // reach private members. Only those extensions should mutate them.
     //
     // `terminalManager` is internal (not private) because the auto-fire dispatch
     // logic lives in `WorkTaskCoordinator+AutoFire.swift` — that extension needs
@@ -118,11 +118,6 @@ class WorkTaskCoordinator: ObservableObject {
     /// Resolves the current ghostty app reference. Set at init or via `setAppProvider`.
     private var appProvider: (() -> ghostty_app_t?)?
 
-    /// Live-reloaded workflow config — watched for changes on disk.
-    /// Mutate via `setWorkflowConfig` so the `private(set)` read-only contract
-    /// reaches the cross-file extension without being widened to internal.
-    @Published private(set) var workflowConfig: WorkflowConfig?
-
     /// Live-reloaded planning config — watched for changes on disk.
     @Published private(set) var planningConfig: PlanningConfig?
 
@@ -134,19 +129,15 @@ class WorkTaskCoordinator: ObservableObject {
     /// cross-file extension without being widened to internal.
     @Published private(set) var workflowAutomation: WorkflowAutomation = WorkflowAutomation()
 
-    func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
     func setPlanningConfig(_ config: PlanningConfig?) { planningConfig = config }
     func setWorkflowAutomation(_ automation: WorkflowAutomation) { workflowAutomation = automation }
 
     var isWatching = false
-    var watcherSource: DispatchSourceFileSystemObject?
-    var directoryWatcherSource: DispatchSourceFileSystemObject?
     var planningWatcherSource: DispatchSourceFileSystemObject?
     var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
     var workflowJSONWatcherSource: DispatchSourceFileSystemObject?
     var workflowJSONDirectoryWatcherSource: DispatchSourceFileSystemObject?
     var workflowJSONProjectDirectoryWatcherSource: DispatchSourceFileSystemObject?
-    var pendingReload: DispatchWorkItem?
     var pendingPlanningReload: DispatchWorkItem?
     var pendingWorkflowJSONReload: DispatchWorkItem?
     private var exitObserver: Any?
@@ -201,11 +192,8 @@ class WorkTaskCoordinator: ObservableObject {
 
     nonisolated deinit {
         autoProcessingTimer?.cancel()
-        pendingReload?.cancel()
         pendingPlanningReload?.cancel()
         pendingWorkflowJSONReload?.cancel()
-        watcherSource?.cancel()
-        directoryWatcherSource?.cancel()
         planningWatcherSource?.cancel()
         planningDirectoryWatcherSource?.cancel()
         workflowJSONWatcherSource?.cancel()
@@ -337,11 +325,6 @@ class WorkTaskCoordinator: ObservableObject {
     func startTask(_ task: WorkTask, app: ghostty_app_t, isAutoStart: Bool = false) -> StartResult {
         guard task.status == .new || task.status == .readyToStart || task.status == .canceled else { return .ignored }
 
-        // Check trust before executing any hooks
-        if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
-            return .needsTrust(config)
-        }
-
         var updated = task
         if task.status == .canceled {
             updated.attempt = (task.attempt ?? 0) + 1
@@ -357,14 +340,6 @@ class WorkTaskCoordinator: ObservableObject {
             // No rules → leave `auto` as-is so manual tasks stay clean.
             updated.auto = workflowAutomation.hasAnyRule
             workTaskManager.updateTask(updated)
-
-            if let hookCmd = workflowConfig?.hooksBeforeRun {
-                let taskPath = workTaskManager.filePath(for: updated)
-                let rendered = workflowConfig?.renderHookCommand(hookCmd, task: updated, taskPath: taskPath) ?? hookCmd
-                return .beforeRunHook(hookCommand: rendered, worktree: wt) { [weak self] in
-                    self?.launchClaudeCode(for: updated, in: wt, app: app)
-                }
-            }
 
             launchClaudeCode(for: updated, in: wt, app: app)
             return .reuse(wt)
@@ -388,10 +363,6 @@ class WorkTaskCoordinator: ObservableObject {
               let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
 
-        if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
-            return .needsTrust(config)
-        }
-
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
         updated.status = .inProgress
@@ -400,22 +371,13 @@ class WorkTaskCoordinator: ObservableObject {
         updated.auto = workflowAutomation.hasAnyRule
         workTaskManager.updateTask(updated)
 
-        if let hookCmd = workflowConfig?.hooksBeforeRun {
-            let taskPath = workTaskManager.filePath(for: updated)
-            let rendered = workflowConfig?.renderHookCommand(hookCmd, task: updated, taskPath: taskPath) ?? hookCmd
-            return .beforeRunHook(hookCommand: rendered, worktree: wt) { [weak self] in
-                self?.launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
-            }
-        }
-
         launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
         return .reuse(wt)
     }
 
-    /// Mark the current WORKFLOW.md config as trusted for this project.
-    func approveTrust() {
-        workflowConfig?.markTrusted(forProject: workTaskManager.projectPath)
-    }
+    /// No-op retained for the trust UI; `approveTrust` will be removed alongside the
+    /// trust dialog in slice T4.3.
+    func approveTrust() {}
 
     /// If a task launch was pending for this branch, returns a closure that launches Claude Code
     /// and whether this was an auto-start (to skip navigation).
@@ -491,11 +453,6 @@ class WorkTaskCoordinator: ObservableObject {
         }
     }
 
-    /// Returns the WORKFLOW.md after_create hook command if configured.
-    func workflowAfterCreateHook() -> String? {
-        workflowConfig?.hooksAfterCreate
-    }
-
     // MARK: - Agent Launch
 
     private func launchClaudeCode(for task: WorkTask, in worktree: Worktree, app: ghostty_app_t, isContinuation: Bool = false) {
@@ -503,8 +460,7 @@ class WorkTaskCoordinator: ObservableObject {
         if isContinuation {
             prompt = "Continue working on this task. Review what was done and pick up where you left off."
         } else {
-            let taskPath = workTaskManager.filePath(for: task)
-            prompt = workflowConfig?.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt) ?? task.body
+            prompt = task.body
         }
 
         let surface = runAgent(prompt: prompt, for: task, in: worktree, app: app, markAsLive: true)
@@ -513,7 +469,7 @@ class WorkTaskCoordinator: ObservableObject {
 
     @discardableResult
     private func runAgent(prompt: String, for task: WorkTask, in worktree: Worktree, app: ghostty_app_t, markAsLive: Bool) -> Ghostty.SurfaceView {
-        let agentCmd = workflowConfig?.agentCommand ?? "claude"
+        let agentCmd = "claude"
 
         // Unique per-launch prompt file — overlapping runs for the same task must not
         // share a path or a later launch's write will clobber the earlier one's prompt.
@@ -544,29 +500,20 @@ class WorkTaskCoordinator: ObservableObject {
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = promptFile
 
-        // Start session observation for token tracking (always) + stall detection (opt-in).
-        // Stall detection is only enabled when agent.timeout_ms is explicitly set in WORKFLOW.md,
-        // because Claude Code legitimately idles during permission prompts and user interaction.
+        // Start session observation for token tracking. Stall detection is currently
+        // disabled — it was only ever enabled when the legacy WORKFLOW.md set
+        // `agent.timeout_ms`, and that file is being retired.
         if let worktreePath = worktree.path {
             let observer = AgentSessionObserver()
-            // onActivity/onStall are live-agent-only: they drive task status transitions,
+            // onActivity is live-agent-only: it drives task status transitions,
             // which shift-click (markAsLive: false) launches must not trigger. The observer
             // itself is still created so token counts continue to accumulate in handleChildExited.
             if markAsLive {
                 observer.onActivity = { [weak self] in
                     self?.handleSessionActivity(worktreeId: worktree.id)
                 }
-                if let timeoutMs = workflowConfig?.agentTimeoutMs {
-                    observer.onStall = { [weak self] in
-                        self?.handleAgentStalled(worktreeId: worktree.id)
-                    }
-                    observer.startObserving(worktreePath: worktreePath, timeoutMs: timeoutMs)
-                } else {
-                    observer.startObserving(worktreePath: worktreePath)
-                }
-            } else {
-                observer.startObserving(worktreePath: worktreePath)
             }
+            observer.startObserving(worktreePath: worktreePath)
             sessionObservers[ObjectIdentifier(surface)] = observer
         }
 

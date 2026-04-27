@@ -6,12 +6,6 @@ struct ProjectSettingsView: View {
     @State private var hooks: ProjectHooks
     @State private var maxConcurrentAgents: Int
     @State private var pollingInterval: ProjectSettings.PollingInterval
-    @State private var workflowText = ""
-    @State private var workflowStatus: WorkflowStatus = .empty
-    /// Suppresses external reload while a local save is pending.
-    @State private var pendingSave: DispatchWorkItem?
-    /// Suppresses scheduleSave when text is set programmatically by loadWorkflowFile.
-    @State private var isLoading = false
 
     @State private var planningText = ""
     @State private var planningStatus: WorkflowStatus = .empty
@@ -32,44 +26,9 @@ struct ProjectSettingsView: View {
         self._pollingInterval = State(initialValue: ProjectSettings.pollingInterval(for: projectPath))
     }
 
-    private var workflowFilePath: String {
-        (projectPath as NSString).appendingPathComponent("WORKFLOW.md")
-    }
-
     private var planningFilePath: String {
         (projectPath as NSString).appendingPathComponent("PLANNING.md")
     }
-
-    private static let workflowFooter = """
-        Defines how agents handle tasks. YAML frontmatter configures hooks \
-        (after_create, before_run), agent command, timeout, and state commands \
-        (in_progress, qa, ready_for_review, done, canceled) that surface a play \
-        button in the task aside panel. The markdown body is the prompt template \
-        sent to the agent, and also the in_progress play-button fallback. \
-        Variables: {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}, \
-        {{ attempt }}, {{ status.ready_for_review }}, {{ status.done }}, etc.
-        """
-
-    private static let workflowTemplate = """
-        ---
-        hooks:
-          after_create: echo "worktree ready"
-          before_run: echo "starting agent"
-        agent:
-          command: claude
-        state_commands:
-          qa: REPLACE ME
-          ready_for_review: REPLACE ME
-          done: REPLACE ME
-          canceled: REPLACE ME
-        ---
-
-        Read the task at {{ task.path }} and complete it.
-
-        When done, update the task status to `{{ status.ready_for_review }}` \
-        by editing the `status:` field in the task file's YAML frontmatter. \
-        Once you set the status, do not change it again.
-        """
 
     private static let planningFooter = """
         Defines how agents plan tasks. YAML frontmatter configures the agent command. \
@@ -151,27 +110,12 @@ struct ProjectSettingsView: View {
                 ) {
                     WorkflowEditorView(projectPath: projectPath)
                 }
-
-                // MARK: - WORKFLOW.md
-
-                SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {
-                    MarkdownEditorView(text: $workflowText)
-                        .background(Color(.textBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color(.separatorColor), lineWidth: 1)
-                        )
-                        .frame(minHeight: 350)
-                        .padding(4)
-                }
             }
             .padding(32)
             .frame(maxWidth: 680)
             .frame(maxWidth: .infinity)
         }
         .onAppear {
-            loadWorkflowFile()
             loadPlanningFile()
         }
         .onChange(of: hooks.afterCreate) { _ in hooks.save(for: projectPath) }
@@ -188,16 +132,6 @@ struct ProjectSettingsView: View {
                 workTaskCoordinator.restartAutoProcessingTimer()
             }
         }
-        .onChange(of: workflowText) { _ in
-            guard !isLoading else { return }
-            scheduleSave()
-        }
-        .onChange(of: workTaskCoordinator.workflowConfig) { _ in
-            // Reload from disk when the file watcher detects external changes,
-            // but skip if we have a pending local save (our own write triggered the watcher).
-            guard pendingSave == nil else { return }
-            loadWorkflowFile()
-        }
         .onChange(of: planningText) { _ in
             guard !isLoadingPlanning else { return }
             schedulePlanningSave()
@@ -209,18 +143,6 @@ struct ProjectSettingsView: View {
     }
 
     // MARK: - Trailing Content
-
-    @ViewBuilder
-    private var workflowTrailing: some View {
-        HStack(spacing: 8) {
-            if workflowStatus == .empty {
-                Button("Use Template") { applyTemplate() }
-                    .buttonStyle(.link)
-                    .font(.caption)
-            }
-            statusBadge(for: workflowStatus)
-        }
-    }
 
     @ViewBuilder
     private var planningTrailing: some View {
@@ -258,68 +180,8 @@ struct ProjectSettingsView: View {
 
     // MARK: - Template
 
-    private func applyTemplate() {
-        workflowText = Self.workflowTemplate
-    }
-
     private func applyPlanningTemplate() {
         planningText = Self.planningTemplate
-    }
-
-    // MARK: - File I/O
-
-    private func loadWorkflowFile() {
-        let fm = FileManager.default
-        guard let data = fm.contents(atPath: workflowFilePath),
-              let content = String(data: data, encoding: .utf8) else {
-            if workflowText.isEmpty {
-                workflowStatus = .empty
-            }
-            return
-        }
-        // Suppress scheduleSave while updating text programmatically
-        isLoading = true
-        defer { isLoading = false }
-        if content != workflowText {
-            workflowText = content
-        }
-        workflowStatus = .loaded
-    }
-
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        let work = DispatchWorkItem {
-            performSave()
-        }
-        pendingSave = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func performSave() {
-        defer { pendingSave = nil }
-
-        let fm = FileManager.default
-        if workflowText.isEmpty {
-            try? fm.removeItem(atPath: workflowFilePath)
-            workflowStatus = fm.fileExists(atPath: workflowFilePath) ? .loaded : .empty
-            return
-        }
-
-        // Skip write if file content is already identical
-        if let existing = fm.contents(atPath: workflowFilePath),
-           existing == workflowText.data(using: .utf8) {
-            return
-        }
-
-        let isValid = WorkflowConfig.parse(from: workflowText) != nil
-
-        guard let data = workflowText.data(using: .utf8) else { return }
-        guard fm.createFile(atPath: workflowFilePath, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            // Write failed — leave status unchanged
-            return
-        }
-
-        workflowStatus = isValid ? .saved : .invalid
     }
 
     // MARK: - PLANNING.md File I/O

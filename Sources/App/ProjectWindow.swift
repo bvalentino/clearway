@@ -122,7 +122,7 @@ struct ProjectContentView: View {
                 terminalManager.onMainTabClosed = { [weak workTaskCoordinator] surface in
                     workTaskCoordinator?.handleMainTabClosed(surface)
                 }
-                // Start watching WORKFLOW.md for live config reload
+                // Start watching PLANNING.md and `.clearway/workflow.json` for live reload
                 workTaskCoordinator.startWatching()
                 promptManager.startWatching()
                 // Provide app reference for auto-processing

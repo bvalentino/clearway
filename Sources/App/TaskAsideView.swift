@@ -63,14 +63,6 @@ struct TaskAsideView: View {
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
-                    let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
-                    let hasWorktree = workTaskCoordinator.worktreeForTask(task) != nil
-                    if hasStateCommand && hasWorktree {
-                        SendToTerminalButton(
-                            action: { sendStateCommandToTerminal(task) },
-                            disabled: terminalManager.activeSurfaceId == nil
-                        )
-                    }
                 }
 
                 // Agent metadata (show for tasks that have been worked on; never for placeholders)
@@ -124,28 +116,6 @@ struct TaskAsideView: View {
 
     private func openTaskWindow(_ task: WorkTask) {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
-    }
-
-    private func sendStateCommandToTerminal(_ task: WorkTask) {
-        guard let config = workTaskCoordinator.workflowConfig,
-              config.hasStateCommand(for: task.status) else { return }
-        if !config.isTrusted(forProject: projectPath) {
-            // Bind the retry to the pane that was active when the user clicked.
-            // If they switch worktrees before approving trust, drop the action
-            // rather than paste into the wrong terminal.
-            let expectedPaneId = terminalManager.activeSurfaceId
-            onRequestTrust?({
-                guard terminalManager.activeSurfaceId == expectedPaneId else { return }
-                sendStateCommandToTerminal(task)
-            })
-            return
-        }
-        guard let rendered = config.renderStateCommand(
-            for: task.status,
-            task: task,
-            taskPath: workTaskManager.filePath(for: task)
-        ) else { return }
-        terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
     /// `.new` and `.readyToStart` are reserved for Planning (pre-worktree). Once a worktree

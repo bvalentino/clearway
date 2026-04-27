@@ -305,9 +305,7 @@ struct ContentView: View {
                 detailSelection = .worktree(wt)
             }
 
-            let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
-            let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
-            let afterCreateCmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd)
+            let afterCreateCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
 
             if !isAutoStart, let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
