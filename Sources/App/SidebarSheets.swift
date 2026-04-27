@@ -118,56 +118,6 @@ struct RenameGroupSheet: View {
     }
 }
 
-// MARK: - Rename Worktree Sheet
-
-struct RenameWorktreeSheet: View {
-    let worktree: Worktree
-    let onSave: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-
-    init(worktree: Worktree, onSave: @escaping (String) -> Void) {
-        self.worktree = worktree
-        self.onSave = onSave
-        _name = State(initialValue: worktree.branch ?? "")
-    }
-
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespaces)
-    }
-
-    private var canSave: Bool {
-        guard !trimmedName.isEmpty else { return false }
-        guard trimmedName != worktree.branch else { return false }
-        return WorktreeManager.isValidBranchName(trimmedName)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Rename Worktree")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            TextField("Branch name", text: $name)
-                .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save") {
-                    onSave(trimmedName)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
-            }
-        }
-        .padding(20)
-        .frame(width: 320)
-    }
-}
-
 // MARK: - New Group Sheet
 
 struct NewGroupSheet: View {

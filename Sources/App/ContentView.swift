@@ -138,7 +138,6 @@ struct ContentView: View {
                 sidebarSelection: sidebarSelectionBinding,
                 detailSelection: $detailSelection,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
-                onRenameWorktree: { beginRenameWorktree($0, to: $1) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
             .navigationSplitViewColumnWidth(min: sidebarMinWidth, ideal: 240, max: sidebarMaxWidth)
@@ -678,31 +677,6 @@ struct ContentView: View {
             hookSheet = HookSheet(title: "Before remove", command: cmd, surface: surface, onContinue: doRemove, onForce: doRemove)
         } else {
             doRemove()
-        }
-    }
-
-    // MARK: - Worktree Rename
-
-    /// Runs `git branch -m`, then migrates branch-keyed state (task link, PR cache) so
-    /// the rename is transparent to the rest of the UI. `Worktree.id` is gitdir-derived
-    /// and therefore stable across the rename, so panes, groups, and default order
-    /// survive without any extra work here.
-    private func beginRenameWorktree(_ worktree: Worktree, to newBranch: String) {
-        guard let oldBranch = worktree.branch else { return }
-        let trimmed = newBranch.trimmingCharacters(in: .whitespaces)
-        guard trimmed != oldBranch else { return }
-
-        let wasSelected = selectedWorktree?.id == worktree.id
-
-        Task { @MainActor in
-            guard let refreshed = await worktreeManager.renameBranch(from: oldBranch, to: trimmed) else {
-                return
-            }
-            workTaskManager.rewriteWorktreeReference(from: oldBranch, to: trimmed)
-            worktreeManager.worktreePRStates.removeValue(forKey: refreshed.id)
-            if wasSelected {
-                detailSelection = .worktree(refreshed)
-            }
         }
     }
 

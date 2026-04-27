@@ -141,23 +141,6 @@ class WorkTaskManager: ObservableObject {
         try? FileManager.default.removeItem(atPath: filePath(for: task))
     }
 
-    /// Retargets every task whose `worktree == from` to `to`, persisting the rewrite to
-    /// the task markdown file. Covers both hidden shadow tasks and exposed tasks — this
-    /// is the counterpart to `WorktreeManager.renameBranch` so the task ↔ branch link
-    /// survives a rename. Returns the number of tasks rewritten.
-    @discardableResult
-    func rewriteWorktreeReference(from oldBranch: String, to newBranch: String) -> Int {
-        guard oldBranch != newBranch else { return 0 }
-        var rewrites = 0
-        for task in tasks where task.worktree == oldBranch {
-            var updated = task
-            updated.worktree = newBranch
-            updateTask(updated)
-            rewrites += 1
-        }
-        return rewrites
-    }
-
     // MARK: - Branch Name Derivation
 
     /// Derives a git branch name from a task title.

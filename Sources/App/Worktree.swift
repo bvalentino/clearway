@@ -186,34 +186,6 @@ class WorktreeManager: ObservableObject {
         }
     }
 
-    /// Rename a branch via `git branch -m <old> <new> --`. On success, refetches
-    /// worktrees and returns the refreshed entry; the gitdir-derived `id` is unchanged
-    /// so panes, groups, and PR cache survive transparently. On failure, sets
-    /// `self.error` and returns nil.
-    @discardableResult
-    func renameBranch(from oldName: String, to newName: String) async -> Worktree? {
-        guard Self.isValidBranchName(oldName) else {
-            self.error = "Invalid branch name"
-            return nil
-        }
-        guard Self.isValidBranchName(newName) else {
-            self.error = "Invalid branch name"
-            return nil
-        }
-        let projectPath = self.projectPath
-        do {
-            _ = try await Task.detached {
-                try await Self.runCommand(["git", "branch", "-m", oldName, newName, "--"], in: projectPath)
-            }.value
-            let wts = try await Task.detached { try await Self.fetchWorktrees(in: projectPath) }.value
-            self.worktrees = wts
-            return wts.first { $0.branch == newName }
-        } catch {
-            self.error = error.localizedDescription
-            return nil
-        }
-    }
-
     /// Remove a worktree: `git worktree remove --force --force <path>`
     func removeWorktree(branch: String) {
         let projectPath = self.projectPath
@@ -298,8 +270,7 @@ class WorktreeManager: ObservableObject {
     }
 
     /// Validates a branch name against the subset of git's rules we care about: rejects
-    /// empty strings, any `..` sequence, and leading `/` or `-`. Shared between
-    /// `createWorktree` and `renameBranch` so both code paths apply the same checks.
+    /// empty strings, any `..` sequence, and leading `/` or `-`.
     nonisolated static func isValidBranchName(_ name: String) -> Bool {
         guard !name.isEmpty else { return false }
         if name.contains("..") { return false }
