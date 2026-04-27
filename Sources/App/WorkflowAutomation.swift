@@ -71,15 +71,11 @@ struct WorkflowAutomation: Equatable {
     /// automation (no rules) when the file is missing or fails to parse, so
     /// callers never need to differentiate "absent" from "empty".
     static func load(projectPath: String) -> WorkflowAutomation {
-        let path = filePath(forProject: projectPath)
-        guard let data = FileManager.default.contents(atPath: path) else {
-            return WorkflowAutomation(rules: [:])
+        guard let data = FileManager.default.contents(atPath: filePath(forProject: projectPath)),
+              let decoded = try? JSONDecoder().decode(WorkflowAutomation.self, from: data) else {
+            return WorkflowAutomation()
         }
-        do {
-            return try JSONDecoder().decode(WorkflowAutomation.self, from: data)
-        } catch {
-            return WorkflowAutomation(rules: [:])
-        }
+        return decoded
     }
 
     /// Writes the automation to `.clearway/workflow.json`, creating the
