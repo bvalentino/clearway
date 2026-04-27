@@ -499,13 +499,12 @@ struct ContentView: View {
     }
 
     /// True only when every gating condition for the Play/Pause toolbar
-    /// island holds: a worktree is selected, that worktree has a linked task
-    /// pointing back at it, and at least one workflow rule exists. Falls back
-    /// to "hidden" rather than "disabled" — there's nothing actionable about a
-    /// disabled play button when automation isn't even set up.
+    /// island holds: a worktree is selected, that worktree has a linked task,
+    /// and at least one workflow rule exists. Falls back to "hidden" rather
+    /// than "disabled" — there's nothing actionable about a disabled play
+    /// button when automation isn't even set up.
     private var isPlayPauseVisible: Bool {
-        guard let task = currentLinkedTask else { return false }
-        guard task.worktree != nil else { return false }
+        guard currentLinkedTask != nil else { return false }
         return workTaskCoordinator.workflowAutomation.hasAnyRule
     }
 

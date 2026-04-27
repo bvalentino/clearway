@@ -144,12 +144,6 @@ class WorkTaskCoordinator: ObservableObject {
 
     // MARK: - Status Transitions
 
-    /// Hook invoked whenever an existing task's status changes. Parameters
-    /// are the up-to-date task (so `task.auto` reflects the new value), the
-    /// previous status, and the new status. Phase 2 will set this from
-    /// `ContentView` to drive workflow.json auto-fire dispatch.
-    var onStatusTransition: ((WorkTask, WorkTask.Status, WorkTask.Status) -> Void)?
-
     /// Snapshot of every known task's last-observed status, keyed by id.
     /// Used by the `$tasks` subscription to diff transitions. Seeded on the
     /// first emission (so existing tasks don't fire spurious callbacks at
@@ -173,21 +167,15 @@ class WorkTaskCoordinator: ObservableObject {
             }
         }
 
-        // Observe task status transitions so Phase 2 can hook auto-fire dispatch
-        // here. The first emission seeds the baseline snapshot — existing tasks
-        // present at launch must not retroactively trigger callbacks.
+        // Observe task status transitions so workflow.json auto-fire can
+        // dispatch on each transition. The first emission seeds the baseline
+        // snapshot — existing tasks present at launch must not retroactively
+        // trigger dispatch.
         statusObserverCancellable = workTaskManager.$tasks
             .receive(on: DispatchQueue.main)
             .sink { [weak self] tasks in
                 self?.handleTasksChanged(tasks)
             }
-
-        // Wire workflow.json auto-fire dispatch to status transitions. The
-        // hook is set after the subscription is installed so it can never
-        // observe the seeding emission.
-        self.onStatusTransition = { [weak self] task, _, newStatus in
-            self?.handleAutoFire(task: task, newStatus: newStatus)
-        }
     }
 
     nonisolated deinit {
@@ -206,9 +194,9 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     /// Diff every `$tasks` emission against the last-observed snapshot and
-    /// invoke `onStatusTransition` for any task whose status changed. New
-    /// tasks (no prior snapshot entry) and removed tasks do NOT fire the
-    /// callback — only true status transitions on previously-known tasks do.
+    /// fire auto-fire dispatch for any task whose status changed. New tasks
+    /// (no prior snapshot entry) and removed tasks do NOT dispatch — only
+    /// true status transitions on previously-known tasks do.
     private func handleTasksChanged(_ tasks: [WorkTask]) {
         guard didSeedStatusSnapshot else {
             // Seed the baseline from the first emission so existing tasks
@@ -225,7 +213,7 @@ class WorkTaskCoordinator: ObservableObject {
         for task in tasks {
             nextSnapshot[task.id] = task.status
             if let previous = lastTaskStatusSnapshot[task.id], previous != task.status {
-                onStatusTransition?(task, previous, task.status)
+                handleAutoFire(task: task, newStatus: task.status)
             }
             // New tasks (no prior entry) intentionally do not fire — there's
             // no "old" status to transition from. They're just snapshotted so
@@ -558,19 +546,6 @@ class WorkTaskCoordinator: ObservableObject {
         workTaskManager.updateTask(task)
     }
 
-    private func handleAgentStalled(worktreeId: String) {
-        guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
-              let branch = worktree.branch,
-              var task = workTaskManager.task(forWorktree: branch),
-              task.status == .inProgress else { return }
-
-        // Don't clean up — keep the agent surface and observer alive.
-        // The process may still be running (e.g., waiting for user permission).
-        // If the process exits, handleChildExited will fire normally.
-        task.errorMessage = "Agent stalled — no activity detected"
-        workTaskManager.updateTask(task)
-    }
-
     /// Called when any Claude session JSONL activity is detected in a task's worktree.
     /// If the task is done, flips it back to inProgress — the user or another
     /// Claude session is actively working on it.
@@ -592,7 +567,7 @@ class WorkTaskCoordinator: ObservableObject {
         if observer.outputTokens > 0 { task.outputTokens = (task.outputTokens ?? 0) + observer.outputTokens }
     }
 
-    // MARK: - Auto-Fire (Phase 2)
+    // MARK: - Auto-Fire
 
     /// Routes a task status transition into `dispatchActions` when every
     /// gating precondition holds. Bails on the cheapest checks first so the

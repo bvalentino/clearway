@@ -1,7 +1,7 @@
 import Foundation
 import GhosttyKit
 
-// MARK: - Auto-Fire Dispatch (Phase 2)
+// MARK: - Auto-Fire Dispatch
 
 extension WorkTaskCoordinator {
     /// Dispatches every action in `actions` for `task` into `worktree` by
