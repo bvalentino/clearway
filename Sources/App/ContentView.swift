@@ -69,8 +69,6 @@ struct ContentView: View {
     @State private var selectedPromptId: String?
     @State private var promptEditorMode: TaskEditorMode = .preview
     @State private var sidePanelTab: SidePanelTab = .todos
-    @State private var showTrustConfirmation = false
-    @State private var pendingTrustAction: (() -> Void)?
     @State private var tabCloseQueue: [TabCloseRequest] = []
     @State private var previousDetailSelection: DetailSelection?
     @State private var columnWidthTracker = ColumnWidthTracker()
@@ -196,19 +194,6 @@ struct ContentView: View {
             }
         } message: {
             Text("This will delete the worktree and its working directory, including any uncommitted changes and untracked files.")
-        }
-        .confirmationDialog(
-            "Trust WORKFLOW.md hooks?",
-            isPresented: $showTrustConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Trust & Continue") {
-                workTaskCoordinator.approveTrust()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pendingTrustAction?(); pendingTrustAction = nil }
-            }
-            Button("Cancel", role: .cancel) { pendingTrustAction = nil }
-        } message: {
-            Text("This project's WORKFLOW.md configures hooks that will run shell commands. Review the file before approving.")
         }
         .confirmationDialog(
             tabCloseDialogTitle,
@@ -746,15 +731,15 @@ struct ContentView: View {
 
     private func startWorkTask(_ task: WorkTask) {
         guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.startTask(task, app: app)) { startWorkTask(task) }
+        handleStartResult(workTaskCoordinator.startTask(task, app: app))
     }
 
     private func continueWorkTask(_ task: WorkTask) {
         guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.continueTask(task, app: app)) { continueWorkTask(task) }
+        handleStartResult(workTaskCoordinator.continueTask(task, app: app))
     }
 
-    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, isAutoStart: Bool = false, retryAction: (() -> Void)? = nil) {
+    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, isAutoStart: Bool = false) {
         guard let app = ghosttyApp.app else { return }
         switch result {
         case .reuse(let wt):
@@ -767,12 +752,6 @@ struct ContentView: View {
             hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
                 onSuccess(); if !isAutoStart { self.detailSelection = .worktree(wt) }
             })
-        case .needsTrust:
-            if isAutoStart {
-                workTaskCoordinator.isAutoProcessing = false
-                pendingTrustAction = { [weak workTaskCoordinator] in workTaskCoordinator?.isAutoProcessing = true }
-            } else { pendingTrustAction = retryAction }
-            showTrustConfirmation = true
         case .ignored: break
         }
     }
@@ -976,11 +955,7 @@ struct ContentView: View {
                                     if let branch = selectedWorktree?.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            projectPath: worktreeManager.projectPath,
-                                            onRequestTrust: { retry in
-                                                pendingTrustAction = retry
-                                                showTrustConfirmation = true
-                                            }
+                                            projectPath: worktreeManager.projectPath
                                         )
                                     }
                                 case .todos:

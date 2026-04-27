@@ -10,7 +10,6 @@ struct TaskAsideView: View {
 
     let worktreeBranch: String
     let projectPath: String
-    var onRequestTrust: ((@escaping () -> Void) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)

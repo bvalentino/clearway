@@ -35,7 +35,7 @@ class WorkTaskCoordinator: ObservableObject {
     @Published var tickGeneration: Int = 0
 
     /// Result from auto-dispatching a task — ContentView observes `autoStartGeneration`
-    /// and consumes this value to handle worktree creation, hooks, and trust dialogs.
+    /// and consumes this value to handle worktree creation and hooks.
     var pendingAutoStart: StartResult?
 
     /// Maximum concurrent agents, read from project settings.
@@ -297,7 +297,7 @@ class WorkTaskCoordinator: ObservableObject {
         switch result {
         case .ignored, .reuse:
             break
-        case .createWorktree, .beforeRunHook, .needsTrust:
+        case .createWorktree, .beforeRunHook:
             pendingAutoStart = result
             autoStartGeneration += 1
         }
@@ -311,15 +311,11 @@ class WorkTaskCoordinator: ObservableObject {
         case createWorktree(String)
         /// A before_run hook needs to run first.
         case beforeRunHook(hookCommand: String, worktree: Worktree, onSuccess: () -> Void)
-        /// WORKFLOW.md hooks need user trust approval first. Call `approveTrust()` then retry.
-        case needsTrust(WorkflowConfig)
     }
 
     enum LaunchResult {
         case launched
         case ignored
-        /// WORKFLOW.md hooks need user trust approval first. Call `approveTrust()` then retry.
-        case needsTrust(WorkflowConfig)
     }
 
     func startTask(_ task: WorkTask, app: ghostty_app_t, isAutoStart: Bool = false) -> StartResult {
@@ -374,10 +370,6 @@ class WorkTaskCoordinator: ObservableObject {
         launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
         return .reuse(wt)
     }
-
-    /// No-op retained for the trust UI; `approveTrust` will be removed alongside the
-    /// trust dialog in slice T4.3.
-    func approveTrust() {}
 
     /// If a task launch was pending for this branch, returns a closure that launches Claude Code
     /// and whether this was an auto-start (to skip navigation).

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Parsed WORKFLOW.md configuration from the project root.
@@ -16,53 +15,6 @@ struct WorkflowConfig: Equatable {
     var stateCommandDone: String?
     var stateCommandCanceled: String?
     var promptTemplate: String
-
-    /// Whether this config has any executable content that needs trust approval.
-    /// The prompt template is included because the in-progress play button pastes
-    /// it into the active terminal, so body changes must require re-approval.
-    var hasExecutableConfig: Bool {
-        hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
-            || stateCommandInProgress != nil || stateCommandQa != nil
-            || stateCommandReadyForReview != nil || stateCommandDone != nil
-            || stateCommandCanceled != nil
-            || !promptTemplate.isEmpty
-    }
-
-    /// A deterministic fingerprint of the hooks content for trust verification.
-    /// Changes when any hook command, agent command, state command, or prompt
-    /// template body changes.
-    var hooksFingerprint: String {
-        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
-                       stateCommandInProgress, stateCommandQa,
-                       stateCommandReadyForReview, stateCommandDone,
-                       stateCommandCanceled,
-                       promptTemplate.isEmpty ? nil : promptTemplate]
-            .compactMap { $0 }
-            .joined(separator: "\n---\n")
-        let digest = SHA256.hash(data: Data(content.utf8))
-        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
-    }
-
-    // MARK: - Trust
-
-    /// Whether the hooks in this config have been approved by the user for the given project.
-    func isTrusted(forProject projectPath: String) -> Bool {
-        guard hasExecutableConfig else { return true }
-        let key = trustKey(forProject: projectPath)
-        return UserDefaults.standard.string(forKey: key) == hooksFingerprint
-    }
-
-    /// Mark the current hooks as trusted for the given project.
-    func markTrusted(forProject projectPath: String) {
-        let key = trustKey(forProject: projectPath)
-        UserDefaults.standard.set(hooksFingerprint, forKey: key)
-    }
-
-    private func trustKey(forProject projectPath: String) -> String {
-        let hash = SHA256.hash(data: Data(projectPath.utf8))
-        let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "clearway.workflow.trusted.\(hex)"
-    }
 
     // MARK: - Loading
 
