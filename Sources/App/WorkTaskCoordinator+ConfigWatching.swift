@@ -4,7 +4,10 @@ import Foundation
 /// When the file exists it's watched directly; when it doesn't, the project
 /// directory is watched for its creation, then we switch to per-file watching.
 extension WorkTaskCoordinator {
-    /// Start watching WORKFLOW.md and PLANNING.md for the current project.
+    /// Start watching WORKFLOW.md, PLANNING.md, and `.clearway/workflow.json`
+    /// for the current project. Phase 1 of the workflow.json migration: the
+    /// JSON watcher coexists with the legacy WORKFLOW.md watcher so the two
+    /// systems can run side-by-side until Phase 4 deletes the legacy code.
     func startWatching() {
         guard !isWatching else { return }
         isWatching = true
@@ -12,6 +15,7 @@ extension WorkTaskCoordinator {
         watchWorkflowFile()
         reloadPlanningConfig()
         watchPlanningFile()
+        startWatchingWorkflowJSON()
     }
 
     // MARK: - WORKFLOW.md

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import GhosttyKit
 
@@ -102,17 +103,46 @@ class WorkTaskCoordinator: ObservableObject {
     /// Live-reloaded planning config — watched for changes on disk.
     @Published private(set) var planningConfig: WorkflowConfig?
 
+    /// Live-reloaded workflow automation rules from `.clearway/workflow.json`.
+    /// Always non-nil — `WorkflowAutomation.load` yields an empty automation
+    /// when the file is absent or invalid, so consumers never need to
+    /// differentiate "absent" from "empty". Mutate via
+    /// `setWorkflowAutomation` so the `private(set)` contract reaches the
+    /// cross-file extension without being widened to internal.
+    @Published private(set) var workflowAutomation: WorkflowAutomation = WorkflowAutomation()
+
     func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
     func setPlanningConfig(_ config: WorkflowConfig?) { planningConfig = config }
+    func setWorkflowAutomation(_ automation: WorkflowAutomation) { workflowAutomation = automation }
 
     var isWatching = false
     var watcherSource: DispatchSourceFileSystemObject?
     var directoryWatcherSource: DispatchSourceFileSystemObject?
     var planningWatcherSource: DispatchSourceFileSystemObject?
     var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
+    var workflowJSONWatcherSource: DispatchSourceFileSystemObject?
+    var workflowJSONDirectoryWatcherSource: DispatchSourceFileSystemObject?
+    var workflowJSONProjectDirectoryWatcherSource: DispatchSourceFileSystemObject?
     var pendingReload: DispatchWorkItem?
     var pendingPlanningReload: DispatchWorkItem?
+    var pendingWorkflowJSONReload: DispatchWorkItem?
     private var exitObserver: Any?
+
+    // MARK: - Status Transitions
+
+    /// Hook invoked whenever an existing task's status changes. Parameters
+    /// are the up-to-date task (so `task.auto` reflects the new value), the
+    /// previous status, and the new status. Phase 2 will set this from
+    /// `ContentView` to drive workflow.json auto-fire dispatch.
+    var onStatusTransition: ((WorkTask, WorkTask.Status, WorkTask.Status) -> Void)?
+
+    /// Snapshot of every known task's last-observed status, keyed by id.
+    /// Used by the `$tasks` subscription to diff transitions. Seeded on the
+    /// first emission (so existing tasks don't fire spurious callbacks at
+    /// launch) and kept in sync as tasks are added, changed, or removed.
+    private var lastTaskStatusSnapshot: [UUID: WorkTask.Status] = [:]
+    private var didSeedStatusSnapshot = false
+    private var statusObserverCancellable: AnyCancellable?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
         self.workTaskManager = workTaskManager
@@ -128,19 +158,62 @@ class WorkTaskCoordinator: ObservableObject {
                 self?.handleChildExited(notification)
             }
         }
+
+        // Observe task status transitions so Phase 2 can hook auto-fire dispatch
+        // here. The first emission seeds the baseline snapshot — existing tasks
+        // present at launch must not retroactively trigger callbacks.
+        statusObserverCancellable = workTaskManager.$tasks
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] tasks in
+                self?.handleTasksChanged(tasks)
+            }
     }
 
     nonisolated deinit {
         autoProcessingTimer?.cancel()
         pendingReload?.cancel()
         pendingPlanningReload?.cancel()
+        pendingWorkflowJSONReload?.cancel()
         watcherSource?.cancel()
         directoryWatcherSource?.cancel()
         planningWatcherSource?.cancel()
         planningDirectoryWatcherSource?.cancel()
+        workflowJSONWatcherSource?.cancel()
+        workflowJSONDirectoryWatcherSource?.cancel()
+        workflowJSONProjectDirectoryWatcherSource?.cancel()
+        statusObserverCancellable?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    /// Diff every `$tasks` emission against the last-observed snapshot and
+    /// invoke `onStatusTransition` for any task whose status changed. New
+    /// tasks (no prior snapshot entry) and removed tasks do NOT fire the
+    /// callback — only true status transitions on previously-known tasks do.
+    private func handleTasksChanged(_ tasks: [WorkTask]) {
+        guard didSeedStatusSnapshot else {
+            // Seed the baseline from the first emission so existing tasks
+            // don't fire spurious callbacks at app launch / project open.
+            for task in tasks {
+                lastTaskStatusSnapshot[task.id] = task.status
+            }
+            didSeedStatusSnapshot = true
+            return
+        }
+
+        var nextSnapshot: [UUID: WorkTask.Status] = [:]
+        nextSnapshot.reserveCapacity(tasks.count)
+        for task in tasks {
+            nextSnapshot[task.id] = task.status
+            if let previous = lastTaskStatusSnapshot[task.id], previous != task.status {
+                onStatusTransition?(task, previous, task.status)
+            }
+            // New tasks (no prior entry) intentionally do not fire — there's
+            // no "old" status to transition from. They're just snapshotted so
+            // their next change dispatches correctly.
+        }
+        lastTaskStatusSnapshot = nextSnapshot
     }
 
     /// Provide a closure that resolves the current ghostty app reference for auto-processing.
