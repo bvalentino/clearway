@@ -227,7 +227,7 @@ struct ProjectSettingsView: View {
             return
         }
 
-        let isValid = WorkflowConfig.parse(from: planningText) != nil
+        let isValid = PlanningConfig.parse(from: planningText) != nil
 
         guard let data = planningText.data(using: .utf8) else { return }
         guard fm.createFile(atPath: planningFilePath, contents: data, attributes: [.posixPermissions: 0o600]) else {

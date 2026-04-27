@@ -5,7 +5,7 @@ import Foundation
 /// The file uses YAML frontmatter for the optional agent command and a
 /// markdown body as the prompt template (Mustache-style `{{ var }}`
 /// interpolation). Only the surface that PLANNING.md actually needs is
-/// modeled here — hooks/state commands/trust live in `WorkflowConfig`.
+/// modeled here.
 struct PlanningConfig: Equatable {
     var agentCommand: String?
     var promptTemplate: String
@@ -135,9 +135,7 @@ struct PlanningConfig: Equatable {
 
     // MARK: - Variable Interpolation
 
-    /// Variables available for prompt interpolation. Mirrors
-    /// `WorkflowConfig.taskVariables` so PLANNING.md and WORKFLOW.md expose
-    /// the same `{{ var }}` surface.
+    /// Variables available for prompt interpolation.
     private static func taskVariables(task: WorkTask, taskPath: String?, attempt: Int?) -> [String: String] {
         var vars: [String: String] = [
             "task.title": task.title,
@@ -163,7 +161,7 @@ struct PlanningConfig: Equatable {
     /// Renders the prompt template with task data interpolated.
     /// Uses simple `{{ var }}` Mustache-style replacement.
     /// Unknown variables are left as-is. An empty template falls back to
-    /// `task.body` to match `WorkflowConfig.renderPrompt`'s behavior.
+    /// `task.body`.
     func renderPrompt(task: WorkTask, taskPath: String?, attempt: Int?) -> String {
         guard !promptTemplate.isEmpty else { return task.body }
         let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: attempt)

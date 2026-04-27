@@ -118,12 +118,12 @@ struct WorkflowAutomation: Equatable {
 
     // MARK: - Variable Interpolation
 
-    /// Renders a `{{ var }}` template using the same variable set as
-    /// `WorkflowConfig.taskVariables` (`task.title`, `task.body`, `task.id`,
-    /// `task.path`, `task.worktree`, `attempt`, and `status.<rawValue>` for
-    /// every `WorkTask.Status`). Values are NOT shell-escaped — actions are
-    /// dispatched into agent terminals, not raw shells. Unknown variables are
-    /// left as-is so future templates degrade gracefully.
+    /// Renders a `{{ var }}` template using the standard task variable set
+    /// (`task.title`, `task.body`, `task.id`, `task.path`, `task.worktree`,
+    /// `attempt`, and `status.<rawValue>` for every `WorkTask.Status`).
+    /// Values are NOT shell-escaped — actions are dispatched into agent
+    /// terminals, not raw shells. Unknown variables are left as-is so future
+    /// templates degrade gracefully.
     static func render(_ template: String, task: WorkTask, taskPath: String?, attempt: Int?) -> String {
         var variables: [String: String] = [
             "task.title": task.title,
@@ -143,9 +143,8 @@ struct WorkflowAutomation: Equatable {
         return renderTemplate(template, variables: variables)
     }
 
-    /// Single-pass `{{ key }}` template renderer. Mirrors
-    /// `WorkflowConfig.renderTemplate` so the eventual replacement of
-    /// `WORKFLOW.md` is a drop-in swap. Unknown keys are emitted verbatim.
+    /// Single-pass `{{ key }}` template renderer. Unknown keys are emitted
+    /// verbatim.
     private static func renderTemplate(_ template: String, variables: [String: String]) -> String {
         var result = ""
         var i = template.startIndex
