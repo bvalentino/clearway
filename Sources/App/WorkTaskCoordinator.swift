@@ -297,7 +297,7 @@ class WorkTaskCoordinator: ObservableObject {
         switch result {
         case .ignored, .reuse:
             break
-        case .createWorktree, .beforeRunHook:
+        case .createWorktree:
             pendingAutoStart = result
             autoStartGeneration += 1
         }
@@ -309,13 +309,6 @@ class WorkTaskCoordinator: ObservableObject {
         case ignored
         case reuse(Worktree)
         case createWorktree(String)
-        /// A before_run hook needs to run first.
-        case beforeRunHook(hookCommand: String, worktree: Worktree, onSuccess: () -> Void)
-    }
-
-    enum LaunchResult {
-        case launched
-        case ignored
     }
 
     func startTask(_ task: WorkTask, app: ghostty_app_t, isAutoStart: Bool = false) -> StartResult {
@@ -492,9 +485,8 @@ class WorkTaskCoordinator: ObservableObject {
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = promptFile
 
-        // Start session observation for token tracking. Stall detection is currently
-        // disabled — it was only ever enabled when the legacy WORKFLOW.md set
-        // `agent.timeout_ms`, and that file is being retired.
+        // Start session observation for token tracking. There is no stall detection —
+        // the agent.timeout_ms knob was a WORKFLOW.md feature and is no longer wired up.
         if let worktreePath = worktree.path {
             let observer = AgentSessionObserver()
             // onActivity is live-agent-only: it drives task status transitions,

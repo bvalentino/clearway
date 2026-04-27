@@ -85,8 +85,9 @@ struct WorkflowAutomation: Equatable {
     /// Writes the automation to `.clearway/workflow.json`, creating the
     /// `.clearway/` directory when needed. Output is pretty-printed with
     /// sorted keys for stable diffs. The file is written atomically (via a
-    /// `.tmp` rename) with `0o600` permissions to match the existing
-    /// `WORKFLOW.md` precedent for project-local executable config.
+    /// `.tmp` rename) with `0o600` permissions because action commands can
+    /// reference paths inside the user's environment that don't need to be
+    /// world-readable.
     func save(to projectPath: String) throws {
         let fm = FileManager.default
         let dir = (projectPath as NSString).appendingPathComponent(".clearway")
@@ -104,7 +105,9 @@ struct WorkflowAutomation: Equatable {
 
         let finalPath = Self.filePath(forProject: projectPath)
         let tmpPath = finalPath + ".tmp"
-        fm.createFile(atPath: tmpPath, contents: data, attributes: [.posixPermissions: 0o600])
+        guard fm.createFile(atPath: tmpPath, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tmpPath])
+        }
         _ = try fm.replaceItemAt(
             URL(fileURLWithPath: finalPath),
             withItemAt: URL(fileURLWithPath: tmpPath)
