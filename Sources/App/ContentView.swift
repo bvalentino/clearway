@@ -151,28 +151,37 @@ struct ContentView: View {
         }
         .toolbar {
             if selectedWorktree != nil {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showRemoveConfirmation = true
-                    } label: {
-                        Image(systemName: "archivebox")
-                    }
-                    .help("Remove worktree")
-                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
-                }
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
                     Button(action: toggleSecondaryTerminal) {
                         Image(systemName: "rectangle.bottomhalf.inset.filled")
                             .opacity(secondaryVisible ? 1 : 0.5)
                     }
                     .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
-                }
-                ToolbarItem(placement: .primaryAction) {
+
                     Button(action: toggleAside) {
                         Image(systemName: "sidebar.trailing")
                             .opacity(asideVisible ? 1 : 0.5)
                     }
                     .help(asideVisible ? "Hide aside" : "Show aside")
+
+                    if isPlayPauseVisible, let task = currentLinkedTask {
+                        playPauseButton(for: task)
+                    }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            showRemoveConfirmation = true
+                        } label: {
+                            Label("Remove Worktree", systemImage: "archivebox")
+                        }
+                        .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuIndicator(.hidden)
+                    .help("More actions")
                 }
             }
         }
@@ -498,6 +507,41 @@ struct ContentView: View {
     }
 
     private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }
+
+    /// The task linked to the currently-selected worktree's branch, if any.
+    /// Drives the Play/Pause toolbar control's visibility and toggle target.
+    private var currentLinkedTask: WorkTask? {
+        guard let branch = selectedWorktree?.branch else { return nil }
+        return workTaskManager.task(forWorktree: branch)
+    }
+
+    /// True only when every gating condition for the Play/Pause toolbar
+    /// island holds: a worktree is selected, that worktree has a linked task
+    /// pointing back at it, and at least one workflow rule exists. Falls back
+    /// to "hidden" rather than "disabled" — there's nothing actionable about a
+    /// disabled play button when automation isn't even set up.
+    private var isPlayPauseVisible: Bool {
+        guard let task = currentLinkedTask else { return false }
+        guard task.worktree != nil else { return false }
+        return workTaskCoordinator.workflowAutomation.hasAnyRule
+    }
+
+    @ViewBuilder
+    private func playPauseButton(for task: WorkTask) -> some View {
+        Button {
+            togglePlayPause(for: task)
+        } label: {
+            Image(systemName: task.auto ? "pause.fill" : "play.fill")
+        }
+        .tint(task.auto ? .accentColor : nil)
+        .help(task.auto ? "Pause automation for this task" : "Resume automation for this task")
+    }
+
+    private func togglePlayPause(for task: WorkTask) {
+        var updated = task
+        updated.auto.toggle()
+        workTaskManager.updateTask(updated)
+    }
 
     /// Tabs available for the current worktree. The Task tab is always present; when no
     /// (visible) task is linked, `TaskAsideView` renders a Create-Task CTA instead of the

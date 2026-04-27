@@ -143,6 +143,15 @@ struct ProjectSettingsView: View {
                         .padding(4)
                 }
 
+                // MARK: - Workflow (workflow.json)
+
+                SettingsSection(
+                    "Workflow",
+                    footer: "Run agent commands automatically when a task changes status. Stored in `.clearway/workflow.json`."
+                ) {
+                    WorkflowEditorView(projectPath: projectPath)
+                }
+
                 // MARK: - WORKFLOW.md
 
                 SettingsSection("WORKFLOW.md", footer: Self.workflowFooter, trailing: { workflowTrailing }) {

@@ -99,7 +99,16 @@ struct WorkTaskListView: View {
                     if let task = selectedTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
-                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+                .disabled(
+                    selectedTask == nil
+                        || selectedTask?.status.isBacklog != true
+                        || !workTaskCoordinator.workflowAutomation.hasAnyRule
+                )
+                .help(
+                    workTaskCoordinator.workflowAutomation.hasAnyRule
+                        ? "Start this task"
+                        : "Define at least one rule in Project Settings → Workflow first"
+                )
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -229,6 +238,7 @@ struct WorkTaskListView: View {
                         Button { startTask(task) } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
+                        .disabled(!workTaskCoordinator.workflowAutomation.hasAnyRule)
                         if task.status == .new {
                             Button { workTaskManager.setStatus(task, to: .readyToStart) } label: {
                                 Label("Ready to Start", systemImage: "clock.arrow.circlepath")
