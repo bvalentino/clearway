@@ -187,7 +187,7 @@ extension WorkTaskCoordinator {
             setPlanningConfig(nil)
             return
         }
-        if let config = WorkflowConfig.load(projectPath: workTaskManager.projectPath, fileName: "PLANNING.md") {
+        if let config = PlanningConfig.load(projectPath: workTaskManager.projectPath, fileName: "PLANNING.md") {
             setPlanningConfig(config)
         }
     }

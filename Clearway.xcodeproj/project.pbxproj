@@ -68,6 +68,7 @@
 		7DA12F43C612C19B6EC1D01B /* ClaudeTodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFC31B3C3935529382C89CA /* ClaudeTodoManager.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
+		8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */; };
 		94E634B515C7B773A791EF1A /* MainTerminalTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */; };
 		980A81CFA86592849DCBC170 /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */; };
 		98B18A8F9508E08F7E852BF4 /* Prompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A28DBBCFBC067478FD8795 /* Prompt.swift */; };
@@ -176,6 +177,7 @@
 		B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupStoreTests.swift; sourceTree = "<group>"; };
 		B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		B95F7DA4ACA45BD15D5CE43A /* WorkTaskCoordinator+WorkflowWatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkTaskCoordinator+WorkflowWatching.swift"; sourceTree = "<group>"; };
+		BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningConfig.swift; sourceTree = "<group>"; };
 		BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		BF303BDB106268697C4BEB27 /* WorkTaskWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskWindow.swift; sourceTree = "<group>"; };
@@ -277,6 +279,7 @@
 				7844869D3D26BEAE9F97543F /* NotesView.swift */,
 				52EAD6E8D228C6BF10976F6F /* NoteWindow.swift */,
 				755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */,
+				BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */,
 				867076303E561F4171EF4C92 /* PreviewCSS.swift */,
 				179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */,
 				2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */,
@@ -641,6 +644,7 @@
 				4031D86051F555F3AA1246FF /* NoteWindow.swift in Sources */,
 				3C18348092C81FF44FD574A6 /* NotesManager.swift in Sources */,
 				7AFE7009A5CBDE5606F59B9D /* NotesView.swift in Sources */,
+				8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */,
 				580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */,
 				D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */,
 				42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */,

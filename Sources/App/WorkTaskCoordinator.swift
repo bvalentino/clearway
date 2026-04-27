@@ -124,7 +124,7 @@ class WorkTaskCoordinator: ObservableObject {
     @Published private(set) var workflowConfig: WorkflowConfig?
 
     /// Live-reloaded planning config — watched for changes on disk.
-    @Published private(set) var planningConfig: WorkflowConfig?
+    @Published private(set) var planningConfig: PlanningConfig?
 
     /// Live-reloaded workflow automation rules from `.clearway/workflow.json`.
     /// Always non-nil — `WorkflowAutomation.load` yields an empty automation
@@ -135,7 +135,7 @@ class WorkTaskCoordinator: ObservableObject {
     @Published private(set) var workflowAutomation: WorkflowAutomation = WorkflowAutomation()
 
     func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
-    func setPlanningConfig(_ config: WorkflowConfig?) { planningConfig = config }
+    func setPlanningConfig(_ config: PlanningConfig?) { planningConfig = config }
     func setWorkflowAutomation(_ automation: WorkflowAutomation) { workflowAutomation = automation }
 
     var isWatching = false
