@@ -223,11 +223,7 @@ struct WorkflowEditorView: View {
         let promptFont = Font.system(.body, design: .monospaced)
         ZStack(alignment: .topLeading) {
             if commandBinding.wrappedValue.isEmpty {
-                // Concrete example beats a generic "Prompt to inject…" hint
-                // — it telegraphs both the *what* (a sentence directed at
-                // the agent) and the *how* (use {{ task.* }} variables for
-                // per-task interpolation).
-                Text("e.g. Implement {{task.title}}")
+                Text("Write prompt…")
                     .font(promptFont)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 5)
