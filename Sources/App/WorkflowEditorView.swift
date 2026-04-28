@@ -167,14 +167,18 @@ struct WorkflowEditorView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Run")
                     .foregroundStyle(.secondary)
-                TextField("claude", text: agentBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
+                // Single-option Picker mirrors the SettingsView "Command"
+                // chooser. The list is intentionally a closed set rather than
+                // a free-form text field — adding an agent binary is a
+                // first-class app capability, not per-action user input.
+                Picker("Agent", selection: agentBinding) {
+                    Text("claude").tag("claude")
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
                 Text("with")
                     .foregroundStyle(.secondary)
-                TextField("command to run", text: commandBinding, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...8)
+                promptEditor(commandBinding: commandBinding)
                 reorderControls(for: status, index: index, total: total)
                 Button {
                     deleteAction(in: status, id: action.id)
@@ -205,6 +209,39 @@ struct WorkflowEditorView: View {
                 .strokeBorder(Color(.separatorColor), lineWidth: 0.5)
         )
         .padding(.leading, 24)
+    }
+
+    /// Multi-line prompt editor for the action's command. The text is pasted
+    /// verbatim into the agent's running terminal (no shell interpretation),
+    /// so this is fundamentally a *prompt* field — not a shell command —
+    /// hence the larger surface and TextEditor instead of a single-line
+    /// TextField. Renders a custom rounded border + placeholder overlay
+    /// because TextEditor on macOS ships without either by default.
+    @ViewBuilder
+    private func promptEditor(commandBinding: Binding<String>) -> some View {
+        TextEditor(text: commandBinding)
+            .font(.body)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 80)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(Color(.textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(alignment: .topLeading) {
+                if commandBinding.wrappedValue.isEmpty {
+                    Text("Prompt to inject into the agent")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(.separatorColor), lineWidth: 0.5)
+            )
+            .frame(maxWidth: .infinity)
     }
 
     /// Up/down chevrons for shifting an action within its trigger. Cards
