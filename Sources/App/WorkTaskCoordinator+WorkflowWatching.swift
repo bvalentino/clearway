@@ -66,9 +66,17 @@ extension WorkTaskCoordinator {
     /// Watches `<project>/.clearway/` for `workflow.json` creation. When the
     /// directory itself doesn't exist yet, defers to the project-root watcher
     /// to wait for `.clearway/` to appear first.
+    ///
+    /// Postcondition: only `workflowJSONDirectoryWatcherSource` (or the
+    /// project-root watcher, on chain-up) is live. Both other slots are
+    /// explicitly cancelled even though the typical caller (`watchWorkflowJSONFile`)
+    /// already cancelled the file watcher — keeping each method self-contained
+    /// makes the chain robust to direct invocation.
     private func watchClearwayDirectoryForFileCreation() {
         workflowJSONDirectoryWatcherSource?.cancel()
         workflowJSONDirectoryWatcherSource = nil
+        workflowJSONWatcherSource?.cancel()
+        workflowJSONWatcherSource = nil
 
         let dirPath = workflowJSONDirectoryPath
         let fd = open(dirPath, O_EVTONLY)
@@ -107,6 +115,10 @@ extension WorkTaskCoordinator {
     private func watchProjectDirectoryForClearwayCreation() {
         workflowJSONProjectDirectoryWatcherSource?.cancel()
         workflowJSONProjectDirectoryWatcherSource = nil
+        workflowJSONDirectoryWatcherSource?.cancel()
+        workflowJSONDirectoryWatcherSource = nil
+        workflowJSONWatcherSource?.cancel()
+        workflowJSONWatcherSource = nil
 
         let dirPath = workTaskManager.projectPath
         let fd = open(dirPath, O_EVTONLY)
