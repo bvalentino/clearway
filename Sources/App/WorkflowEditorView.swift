@@ -64,12 +64,7 @@ struct WorkflowEditorView: View {
                 emptyActionsRow(for: status)
             } else {
                 ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-                    actionCard(
-                        for: status,
-                        action: action,
-                        index: index,
-                        total: actions.count
-                    )
+                    actionCard(for: status, action: action, index: index)
                 }
                 addActionRow(for: status)
             }
@@ -135,8 +130,7 @@ struct WorkflowEditorView: View {
     private func actionCard(
         for status: WorkTask.Status,
         action: WorkflowAutomation.Action,
-        index: Int,
-        total: Int
+        index: Int
     ) -> some View {
         // Index-based read is O(1) per keystroke; the id-based fallback only
         // kicks in if a concurrent edit shifted the action under us, in which
@@ -179,11 +173,10 @@ struct WorkflowEditorView: View {
                 Text("with")
                     .foregroundStyle(.secondary)
                 Spacer()
-                reorderControls(for: status, index: index, total: total)
                 Button {
                     deleteAction(in: status, id: action.id)
                 } label: {
-                    Image(systemName: "trash")
+                    Image(systemName: "xmark")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
@@ -246,40 +239,6 @@ struct WorkflowEditorView: View {
             .frame(maxWidth: .infinity)
     }
 
-    /// Up/down chevrons for shifting an action within its trigger. Cards
-    /// can't live in a `List` (the card visual style depends on a custom
-    /// background), so we expose explicit reorder controls instead of
-    /// `.onMove`. The button is hidden — but still occupies layout space —
-    /// when the move would be out of range, so the card never reflows mid-drag.
-    @ViewBuilder
-    private func reorderControls(for status: WorkTask.Status, index: Int, total: Int) -> some View {
-        VStack(spacing: 2) {
-            Button {
-                moveAction(in: status, from: index, to: index - 1)
-            } label: {
-                Image(systemName: "chevron.up")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .disabled(index == 0)
-            .opacity(index == 0 ? 0.3 : 1)
-            .help("Move action up")
-
-            Button {
-                moveAction(in: status, from: index, to: index + 1)
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .disabled(index >= total - 1)
-            .opacity(index >= total - 1 ? 0.3 : 1)
-            .help("Move action down")
-        }
-    }
-
     // MARK: - Variable Tokens
 
     /// Returns an `AttributedString` preview of `text` with `{{ … }}` ranges
@@ -338,18 +297,6 @@ struct WorkflowEditorView: View {
         } else {
             rules[status] = actions
         }
-        automation = WorkflowAutomation(rules: rules)
-    }
-
-    private func moveAction(in status: WorkTask.Status, from source: Int, to destination: Int) {
-        var rules = automation.rules
-        guard var actions = rules[status] else { return }
-        guard source >= 0, source < actions.count,
-              destination >= 0, destination < actions.count,
-              source != destination else { return }
-        let item = actions.remove(at: source)
-        actions.insert(item, at: destination)
-        rules[status] = actions
         automation = WorkflowAutomation(rules: rules)
     }
 
