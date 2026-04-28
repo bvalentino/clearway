@@ -214,29 +214,35 @@ struct WorkflowEditorView: View {
     /// because TextEditor on macOS ships without either by default.
     @ViewBuilder
     private func promptEditor(commandBinding: Binding<String>) -> some View {
-        TextEditor(text: commandBinding)
-            .font(.body)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 80)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(Color(.textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(alignment: .topLeading) {
-                if commandBinding.wrappedValue.isEmpty {
-                    Text("Prompt to inject into the agent")
-                        .font(.body)
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
+        // Padding lives on the *container* (one value, applied symmetrically
+        // by the ZStack) so the placeholder and the live TextEditor text
+        // share an inset rather than each fighting their own. The TextEditor
+        // itself takes no extra outer padding — its NSTextView already
+        // contributes ~5pt of internal lead, which combined with this 8pt
+        // container inset lands the caret at roughly 13pt from each edge.
+        let promptFont = Font.system(.body, design: .monospaced)
+        ZStack(alignment: .topLeading) {
+            if commandBinding.wrappedValue.isEmpty {
+                Text("Prompt to inject into the agent")
+                    .font(promptFont)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 5)
+                    .padding(.top, 0)
+                    .allowsHitTesting(false)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(.separatorColor), lineWidth: 0.5)
-            )
-            .frame(maxWidth: .infinity)
+            TextEditor(text: commandBinding)
+                .font(promptFont)
+                .scrollContentBackground(.hidden)
+        }
+        .padding(8)
+        .frame(minHeight: 80)
+        .background(Color(.textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(.separatorColor), lineWidth: 0.5)
+        )
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Variable Tokens
