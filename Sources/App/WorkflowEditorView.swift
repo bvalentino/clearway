@@ -22,6 +22,11 @@ struct WorkflowEditorView: View {
 
     init(projectPath: String) {
         self.projectPath = projectPath
+        // Seed from disk rather than the coordinator's published value: the
+        // coordinator's reload is debounced 300ms behind the file watcher, so
+        // a fresh disk read here shows the user the newest content immediately
+        // when they open Settings during that window. Once the coordinator
+        // catches up, `onChange(of: workflowAutomation)` is a no-op.
         _automation = State(initialValue: WorkflowAutomation.load(projectPath: projectPath))
     }
 
@@ -133,12 +138,27 @@ struct WorkflowEditorView: View {
         index: Int,
         total: Int
     ) -> some View {
+        // Index-based read is O(1) per keystroke; the id-based fallback only
+        // kicks in if a concurrent edit shifted the action under us, in which
+        // case we render the captured snapshot until the next view update.
         let agentBinding = Binding<String>(
-            get: { automation.actions(for: status).first(where: { $0.id == action.id })?.agent ?? action.agent },
+            get: {
+                let actions = automation.rules[status] ?? []
+                if index < actions.count, actions[index].id == action.id {
+                    return actions[index].agent
+                }
+                return actions.first(where: { $0.id == action.id })?.agent ?? action.agent
+            },
             set: { newValue in updateAction(in: status, id: action.id) { $0.agent = newValue } }
         )
         let commandBinding = Binding<String>(
-            get: { automation.actions(for: status).first(where: { $0.id == action.id })?.command ?? action.command },
+            get: {
+                let actions = automation.rules[status] ?? []
+                if index < actions.count, actions[index].id == action.id {
+                    return actions[index].command
+                }
+                return actions.first(where: { $0.id == action.id })?.command ?? action.command
+            },
             set: { newValue in updateAction(in: status, id: action.id) { $0.command = newValue } }
         )
         let renderedCommand = commandBinding.wrappedValue
