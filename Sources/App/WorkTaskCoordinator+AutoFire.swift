@@ -21,6 +21,11 @@ extension WorkTaskCoordinator {
     ) {
         let taskPath = workTaskManager.filePath(for: task)
         for action in actions {
+            let agent = action.agent.trimmingCharacters(in: .whitespaces)
+            // Skip blank-agent rows so an unfinished editor card doesn't spawn
+            // a tab that immediately exits with `$1` empty.
+            guard !agent.isEmpty else { continue }
+
             let rendered = WorkflowAutomation.render(
                 action.command,
                 task: task,
@@ -33,7 +38,7 @@ extension WorkTaskCoordinator {
             // startup, not piped to stdin. $1 is the agent (intentionally
             // unquoted so multi-word commands word-split), $2 is PATH.
             let script = shellEscape("export PATH=\"$2\"; set -f; $1")
-            let args = [action.agent, ShellEnvironment.path].map(shellEscape).joined(separator: " ")
+            let args = [agent, ShellEnvironment.path].map(shellEscape).joined(separator: " ")
             let command = "/bin/sh -c \(script) -- \(args)"
 
             let surface = terminalManager.appendMainTab(
@@ -43,19 +48,16 @@ extension WorkTaskCoordinator {
                 projectPath: workTaskManager.projectPath
             )
 
-            // why: appendMainTab activates the new tab and returns its surface.
-            // If the user clicks another tab (or switches worktrees) during the
-            // 300ms agent-startup wait, sendToActiveMainTab would paste into
-            // the wrong tab — possibly into a different agent or shell. Capture
-            // the surface's identity now and only paste if `activeMainSurface`
-            // still points to it at fire time. Missing a paste is preferable
-            // to clobbering an unrelated terminal.
-            let capturedId = ObjectIdentifier(surface)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                guard let self else { return }
-                guard let active = self.terminalManager.activeMainSurface,
-                      ObjectIdentifier(active) == capturedId else { return }
-                self.terminalManager.sendToActiveMainTab(rendered, asCommand: false)
+            // Paste directly on the captured surface rather than routing through
+            // `sendToActiveMainTab`. Each iteration's `appendMainTab` activates
+            // its own tab, so by the time these timers fire only the final tab
+            // is "active" — gating on `activeMainSurface` would silently drop
+            // every paste except the last. `sendPaste` targets the surface
+            // itself, so the user clicking another tab during the 300ms wait
+            // does not redirect the paste; we also intentionally skip
+            // `transferFirstResponder` so background tabs don't steal focus.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak surface] in
+                surface?.sendPaste(rendered)
             }
         }
     }
