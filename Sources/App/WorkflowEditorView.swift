@@ -32,7 +32,7 @@ struct WorkflowEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(WorkTask.Status.allCases, id: \.self) { status in
+            ForEach(WorkflowAutomation.automatableStatuses, id: \.self) { status in
                 triggerSection(for: status)
             }
         }

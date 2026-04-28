@@ -571,6 +571,10 @@ class WorkTaskCoordinator: ObservableObject {
     /// hot path (no rules / task didn't opt in) is essentially free.
     private func handleAutoFire(task: WorkTask, newStatus: WorkTask.Status) {
         guard task.auto else { return }
+        // Defense-in-depth: skip pre-launch statuses even if a hand-edited
+        // JSON file lists rules for them. The editor doesn't expose them,
+        // but the on-disk schema can't enforce that on its own.
+        guard WorkflowAutomation.automatableStatuses.contains(newStatus) else { return }
         guard let branch = task.worktree else { return }
         guard visibleBranches.contains(branch) else { return }
         let actions = workflowAutomation.actions(for: newStatus)

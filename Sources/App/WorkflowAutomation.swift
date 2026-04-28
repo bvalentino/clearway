@@ -63,6 +63,17 @@ struct WorkflowAutomation: Equatable {
     /// Actions per status. Statuses without rules are absent from the map.
     var rules: [WorkTask.Status: [Action]] = [:]
 
+    /// Statuses that may have automation rules defined. `.new` and
+    /// `.readyToStart` are pre-launch user-intent states — auto-firing on
+    /// them would conflict with the explicit Start button. They are hidden
+    /// from the editor and skipped by the auto-fire dispatcher even when a
+    /// hand-edited JSON file lists rules for them. Order matches the
+    /// `WorkTask.Status` declaration order so the editor renders them in
+    /// the same sequence as the rest of the UI.
+    static let automatableStatuses: [WorkTask.Status] = [
+        .inProgress, .qa, .readyForReview, .done, .canceled
+    ]
+
     /// True when at least one status has at least one action configured.
     var hasAnyRule: Bool { rules.values.contains { !$0.isEmpty } }
 

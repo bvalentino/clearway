@@ -128,6 +128,19 @@ final class WorkflowAutomationTests: XCTestCase {
                        "automations with the same content must compare equal regardless of action ids")
     }
 
+    /// `.new` and `.readyToStart` are pre-launch user-intent states — the editor must hide
+    /// them and the auto-fire dispatcher must skip them. This list is the single source of
+    /// truth for both call sites; a regression here would either expose unautomatable triggers
+    /// in the editor or silently start firing actions before the user pressed Start.
+    func testAutomatableStatusesExcludesPreLaunchStates() {
+        XCTAssertFalse(WorkflowAutomation.automatableStatuses.contains(.new),
+                       ".new must not be automatable")
+        XCTAssertFalse(WorkflowAutomation.automatableStatuses.contains(.readyToStart),
+                       ".readyToStart must not be automatable")
+        XCTAssertEqual(Set(WorkflowAutomation.automatableStatuses),
+                       [.inProgress, .qa, .readyForReview, .done, .canceled])
+    }
+
     /// Forward-compat: a JSON file referencing a status key the current build doesn't recognize
     /// (e.g. a future "blocked" status) must be silently skipped, not fail the whole load.
     func testDecodeSkipsUnknownStatusKeysForForwardCompat() throws {
