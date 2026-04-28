@@ -163,7 +163,7 @@ struct WorkflowEditorView: View {
         )
         let renderedCommand = commandBinding.wrappedValue
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Run")
                     .foregroundStyle(.secondary)
@@ -178,7 +178,7 @@ struct WorkflowEditorView: View {
                 .pickerStyle(.menu)
                 Text("with")
                     .foregroundStyle(.secondary)
-                promptEditor(commandBinding: commandBinding)
+                Spacer()
                 reorderControls(for: status, index: index, total: total)
                 Button {
                     deleteAction(in: status, id: action.id)
@@ -189,6 +189,8 @@ struct WorkflowEditorView: View {
                 .buttonStyle(.borderless)
                 .help("Remove action")
             }
+
+            promptEditor(commandBinding: commandBinding)
 
             if !renderedCommand.isEmpty,
                let highlighted = highlightedTokens(in: renderedCommand) {
