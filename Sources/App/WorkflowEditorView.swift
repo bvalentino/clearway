@@ -164,7 +164,7 @@ struct WorkflowEditorView: View {
         let renderedCommand = commandBinding.wrappedValue
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Run")
                     .foregroundStyle(.secondary)
                 TextField("claude", text: agentBinding)
