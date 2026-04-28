@@ -185,6 +185,66 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertEqual(reparsed?.title, "Legacy")
     }
 
+    /// `auto: true` must round-trip through serialize → parse so opted-in tasks keep their flag
+    /// across edits. This is the brief's core opt-in mechanism for workflow.json automation.
+    func testAutoRoundTripsWhenTrue() throws {
+        var task = WorkTask(id: UUID(), title: "Auto", status: .inProgress, worktree: "feature/auto", body: "")
+        task.auto = true
+
+        let serialized = task.serialized()
+        XCTAssertTrue(serialized.contains("auto: true"), "frontmatter must emit auto: true when opted in")
+
+        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: task.createdAt)
+        XCTAssertEqual(reparsed?.auto, true)
+        XCTAssertEqual(reparsed?.title, "Auto")
+        XCTAssertEqual(reparsed?.worktree, "feature/auto")
+    }
+
+    /// Default (manual) tasks must not emit `auto:` at all — keeps existing files diff-clean and
+    /// matches the `hidden` precedent. A regression here would silently re-write every task file.
+    func testAutoOmittedFromFrontmatterWhenFalse() throws {
+        let task = WorkTask(id: UUID(), title: "Manual", status: .new, worktree: nil, body: "")
+        XCTAssertFalse(task.auto)
+
+        let serialized = task.serialized()
+        XCTAssertFalse(serialized.contains("auto:"), "frontmatter must omit auto key when false")
+
+        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: task.createdAt)
+        XCTAssertEqual(reparsed?.auto, false)
+    }
+
+    /// Legacy task files on disk (no `auto` key) must parse as `auto == false` so existing tasks
+    /// remain manual until the user explicitly opts in via Play/Pause.
+    func testLegacyFileWithoutAutoKeyParsesAsFalse() throws {
+        let legacy = """
+        ---
+        title: "Legacy"
+        status: new
+        worktree: null
+        ---
+
+        body
+        """
+        let reparsed = WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())
+        XCTAssertEqual(reparsed?.auto, false)
+    }
+
+    /// `auto: true` and `hidden: true` must coexist on the same task (a hidden shadow task can
+    /// also be auto-fired) — neither field's presence may strip the other.
+    func testAutoAndHiddenCoexistOnSameTask() throws {
+        var task = WorkTask(id: UUID(), title: "Combo", status: .inProgress, worktree: "feature/combo", body: "")
+        task.hidden = true
+        task.auto = true
+
+        let serialized = task.serialized()
+        XCTAssertTrue(serialized.contains("hidden: true"))
+        XCTAssertTrue(serialized.contains("auto: true"))
+
+        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: task.createdAt)
+        XCTAssertEqual(reparsed?.hidden, true)
+        XCTAssertEqual(reparsed?.auto, true)
+    }
+
     /// The CTA path: with no task linked to the branch, `createExposedTask` creates a fresh
     /// exposed task (hidden == false) titled after the branch. This is what the aside button
     /// calls when the worktree has no shadow task at all (pre-change worktrees).
