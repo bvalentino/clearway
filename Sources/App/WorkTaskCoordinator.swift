@@ -340,9 +340,9 @@ class WorkTaskCoordinator: ObservableObject {
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
         updated.status = .inProgress
-        // Continuing a task is functionally another "start" — opt it in when
-        // this project has any workflow rules. No rules → leave `auto` as-is.
-        updated.auto = workflowAutomation.hasAnyRule
+        // Preserve the user's Play/Pause choice across Continue. The toolbar
+        // is the source of truth for `auto` once the task has been started;
+        // silently re-arming on continue would override an explicit pause.
         workTaskManager.updateTask(updated)
 
         launchClaudeCode(for: updated, in: wt, app: app, isContinuation: true)
