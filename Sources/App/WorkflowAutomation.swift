@@ -22,7 +22,10 @@ struct WorkflowAutomation: Equatable {
     /// A single command to dispatch for a status, paired with the agent that
     /// should run it. `id` is a UI-only identity for SwiftUI list diffing and
     /// is intentionally NOT persisted to JSON — it is regenerated on every
-    /// decode.
+    /// decode. Equality compares content only (`command` + `agent`); the id
+    /// is excluded so a save→watcher→reload round-trip that produces fresh
+    /// ids does not register as a "different" automation and trigger a
+    /// view-tree replacement (which would steal TextField focus mid-edit).
     struct Action: Identifiable, Equatable, Codable {
         var id: UUID
         var command: String
@@ -32,6 +35,10 @@ struct WorkflowAutomation: Equatable {
             self.id = id
             self.command = command
             self.agent = agent
+        }
+
+        static func == (lhs: Action, rhs: Action) -> Bool {
+            lhs.command == rhs.command && lhs.agent == rhs.agent
         }
 
         private enum CodingKeys: String, CodingKey {

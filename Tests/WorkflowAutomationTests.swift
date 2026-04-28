@@ -109,6 +109,25 @@ final class WorkflowAutomationTests: XCTestCase {
         XCTAssertNotEqual(firstId, secondId, "fresh decode must yield a fresh UI id")
     }
 
+    /// Equality must compare content (`command`+`agent`) only, ignoring the
+    /// UI-only `id`. Otherwise a save→watcher→reload round-trip — which
+    /// regenerates ids on every decode — registers as a "different" automation
+    /// in the editor's `onChange(of: workflowAutomation)` gate, replaces the
+    /// `@State` model, and tears down every TextField (stealing focus while
+    /// the user is mid-edit).
+    func testActionEqualityIgnoresIdSoRoundTripPreservesEquality() throws {
+        let json = #"{ "rules": { "qa": [ { "command": "x", "agent": "claude" } ] } }"#
+
+        let first = try JSONDecoder().decode(WorkflowAutomation.self, from: Data(json.utf8))
+        let second = try JSONDecoder().decode(WorkflowAutomation.self, from: Data(json.utf8))
+
+        XCTAssertNotEqual(first.actions(for: .qa).first?.id,
+                          second.actions(for: .qa).first?.id,
+                          "precondition: ids differ across decodes")
+        XCTAssertEqual(first, second,
+                       "automations with the same content must compare equal regardless of action ids")
+    }
+
     /// Forward-compat: a JSON file referencing a status key the current build doesn't recognize
     /// (e.g. a future "blocked" status) must be silently skipped, not fail the whole load.
     func testDecodeSkipsUnknownStatusKeysForForwardCompat() throws {
