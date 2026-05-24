@@ -400,11 +400,12 @@ class TerminalManager: ObservableObject {
         return id
     }
 
-    /// How a launcher tab should be promoted: into a plain login shell or a prompt-driven
-    /// agent command.
+    /// How a launcher tab should be promoted: into a plain login shell, a prompt-driven
+    /// agent command, or a bare agent command with no stdin.
     enum LauncherPromotion {
         case loginShell
         case prompt(command: String, stdin: String)
+        case command(String)
     }
 
     /// Promote a `.launcher` tab to a `.surface` tab in-place, wiring a fresh Ghostty surface.
@@ -433,6 +434,9 @@ class TerminalManager: ObservableObject {
         case let .prompt(command, stdin):
             let cmd = buildPromptPipeCommand(agentCommand: command, prompt: stdin)
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
+        case let .command(command):
+            let cmd = buildBareCommand(agentCommand: command)
+            newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
         }
 
         panes[worktreeId]!.main.tabs[tabIndex].kind = .surface(newSurface)
@@ -455,6 +459,20 @@ class TerminalManager: ObservableObject {
         let recipe = "export PATH=\"$3\"; set -f; cat \"$2\" | $1; rc=$?; rm -f \"$2\"; exit $rc"
         return "/bin/sh -c " + shellEscape(recipe) + " -- "
             + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
+    }
+
+    /// Build a `/bin/sh -c` wrapper that runs the agent command with no stdin.
+    /// Mirrors `buildPromptPipeCommand`'s PATH export and `set -f` (no glob)
+    /// guarantees, but drops the temp-file/`cat` pipe and `exec`s so the wrapping
+    /// shell is replaced by the agent process — tab-close signals reach the agent
+    /// directly instead of the shell.
+    ///
+    /// Internal (not `private`) so `TerminalManagerTests` can pin the shell-injection
+    /// invariants without spinning up a Ghostty surface.
+    func buildBareCommand(agentCommand: String) -> String {
+        let recipe = "export PATH=\"$2\"; set -f; exec $1"
+        return "/bin/sh -c " + shellEscape(recipe) + " -- "
+            + shellEscape(agentCommand) + " " + shellEscape(ShellEnvironment.path)
     }
 
     /// Dispatch a first-responder handoff so keyboard focus follows the newly

@@ -61,9 +61,7 @@ struct PromptLauncherView: View {
     }
 
     private func submit() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        onSubmit(trimmed)
+        onSubmit(draft.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
 

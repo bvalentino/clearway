@@ -833,11 +833,15 @@ struct ContentView: View {
                                         ),
                                         onSubmit: { prompt in
                                             guard let app = ghosttyApp.app else { return }
+                                            let command = settings.resolvedMainTerminalCommand
+                                            let mode: TerminalManager.LauncherPromotion = prompt.isEmpty
+                                                ? .command(command)
+                                                : .prompt(command: command, stdin: prompt)
                                             terminalManager.promoteLauncher(
                                                 tabId: activeTab.id,
                                                 in: worktreeId,
                                                 app: app,
-                                                mode: .prompt(command: settings.resolvedMainTerminalCommand, stdin: prompt)
+                                                mode: mode
                                             )
                                         },
                                         onOpenTerminal: {
