@@ -66,4 +66,98 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertFalse(manager.isSecondaryVisible(for: wt.id),
                        "unwired provider must default to the opt-in-safe `false` path")
     }
+
+    // MARK: - LauncherPromotion.command
+
+    func test_launcherPromotion_command_pattern_matches() {
+        // Empty Enter should land in this case at the call site, carrying the
+        // resolved main command (e.g. "claude") with no stdin.
+        let mode: TerminalManager.LauncherPromotion = .command("claude")
+        guard case .command(let cmd) = mode else {
+            return XCTFail("Expected .command case but got \(mode)")
+        }
+        XCTAssertEqual(cmd, "claude")
+    }
+
+    // MARK: - buildBareCommand
+
+    /// The bare command must `exec` the agent so tab-close signals reach the
+    /// agent directly, not a wrapping `/bin/sh`. Mirrors the rationale in the
+    /// helper's docstring.
+    func test_buildBareCommand_usesExec_forDirectSignalDelivery() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "claude")
+        XCTAssertTrue(out.contains("exec $1"),
+                      "buildBareCommand must `exec` the agent; got: \(out)")
+    }
+
+    /// Without exporting the login-shell PATH, user-installed agents like
+    /// `~/.bun/bin/claude` or `~/.claude/local/claude` would `command not found`.
+    func test_buildBareCommand_exportsLoginShellPath() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "claude")
+        XCTAssertTrue(out.contains("export PATH="),
+                      "buildBareCommand must export PATH; got: \(out)")
+    }
+
+    /// `set -f` disables glob expansion so an agent name containing `*`/`?`
+    /// can't accidentally be globbed by the wrapping shell.
+    func test_buildBareCommand_disablesGlobbing() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "claude")
+        XCTAssertTrue(out.contains("set -f"),
+                      "buildBareCommand must `set -f` to disable globbing; got: \(out)")
+    }
+
+    /// Unlike the prompt-pipe recipe, the bare path takes no stdin: there
+    /// must be no temp-file argument and no `cat … | $1` pipe.
+    func test_buildBareCommand_hasNoStdinPipe_orTempFile() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "claude")
+        XCTAssertFalse(out.contains("cat "),
+                       "buildBareCommand must not pipe a temp file into the agent; got: \(out)")
+        XCTAssertFalse(out.contains("clearway-launcher-"),
+                       "buildBareCommand must not allocate a launcher temp file; got: \(out)")
+    }
+
+    /// Security: shell metacharacters in the user-configured main command
+    /// must be quoted, not interpolated. A command of `claude; rm -rf /`
+    /// must reach `/bin/sh -c` as a single positional argument.
+    func test_buildBareCommand_quotesShellMetacharacters_inAgentCommand() {
+        let manager = TerminalManager()
+        let malicious = "claude; rm -rf /"
+        let out = manager.buildBareCommand(agentCommand: malicious)
+
+        // The agent command must appear single-quoted (per `shellEscape`) so
+        // `/bin/sh -c` receives it as $1, not as additional commands.
+        XCTAssertTrue(out.contains("'claude; rm -rf /'"),
+                      "agent command must be single-quoted; got: \(out)")
+        // And the bare `rm -rf /` substring must NOT appear unquoted in a
+        // position where the outer shell would parse it as a new command.
+        // (We assert the only occurrence is inside the quoted form above.)
+        let unquotedCount = out.components(separatedBy: "rm -rf /").count - 1
+        let quotedCount = out.components(separatedBy: "'claude; rm -rf /'").count - 1
+        XCTAssertEqual(unquotedCount, quotedCount,
+                       "every occurrence of the dangerous substring must be inside a quoted argument; got: \(out)")
+    }
+
+    /// Single quotes in the agent command must be handled by the
+    /// `'\''` quote-escape recipe in `shellEscape`, not by string interpolation.
+    func test_buildBareCommand_escapesSingleQuotes_inAgentCommand() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "weird'name")
+        XCTAssertTrue(out.contains("'weird'\\''name'"),
+                      "single quotes must be escaped via `'\\''` to stay inside the quoted form; got: \(out)")
+    }
+
+    /// Sanity: the resulting command is a well-formed `/bin/sh -c <recipe> -- <agent> <path>`
+    /// invocation with exactly two positional arguments after `--`.
+    func test_buildBareCommand_shapeMatches_binShCRecipeWithTwoPositionals() {
+        let manager = TerminalManager()
+        let out = manager.buildBareCommand(agentCommand: "claude")
+        XCTAssertTrue(out.hasPrefix("/bin/sh -c "),
+                      "must invoke /bin/sh -c; got: \(out)")
+        XCTAssertTrue(out.contains(" -- "),
+                      "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
+    }
 }
