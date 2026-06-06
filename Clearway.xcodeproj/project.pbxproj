@@ -722,6 +722,7 @@
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
 				);
 				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = "Clearway (Debug)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -744,7 +745,7 @@
 					"-framework AppKit",
 					"-framework Carbon",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac;
+				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac.debug;
 				PRODUCT_NAME = Clearway;
 				SDKROOT = macosx;
 				SPARKLE_FEED_URL = "https://bvalentino.github.io/clearway/appcast.xml";
