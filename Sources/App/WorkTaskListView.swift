@@ -273,6 +273,12 @@ struct WorkTaskListView: View {
             return
         }
 
+        // Opening the planning terminal — switch to preview so the rendered task
+        // sits next to it (mirrors the selection-driven logic in ContentView).
+        if !task.body.isEmpty {
+            editorMode = .preview
+        }
+
         if let planningConfig = workTaskCoordinator.planningConfig {
             let taskPath = workTaskManager.filePath(for: task)
             let prompt = planningConfig.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
