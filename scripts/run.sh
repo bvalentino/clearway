@@ -21,11 +21,21 @@ fi
 APP_PATH=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug -showBuildSettings 2>/dev/null \
     | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')
 
-if [[ -z "$APP_PATH" || ! -d "$APP_PATH/$PRODUCT_NAME.app" ]]; then
-    echo "Error: could not locate $PRODUCT_NAME.app in DerivedData"
+# Prefer the worktree-suffixed name that build.sh produces, but fall back to
+# the default "Clearway.app" so this also finds builds made via the Xcode GUI
+# or a plain `xcodebuild` (which ignore build.sh's PRODUCT_NAME override).
+APP=""
+if [[ -n "$APP_PATH" && -d "$APP_PATH/$PRODUCT_NAME.app" ]]; then
+    APP="$APP_PATH/$PRODUCT_NAME.app"
+elif [[ -n "$APP_PATH" && -d "$APP_PATH/Clearway.app" ]]; then
+    APP="$APP_PATH/Clearway.app"
+fi
+
+if [[ -z "$APP" ]]; then
+    echo "Error: could not locate $PRODUCT_NAME.app (or Clearway.app) in DerivedData"
     echo "Run ./scripts/build.sh first."
     exit 1
 fi
 
-echo "==> Launching $APP_PATH/$PRODUCT_NAME.app"
-open "$APP_PATH/$PRODUCT_NAME.app"
+echo "==> Launching $APP"
+open "$APP"
