@@ -21,20 +21,32 @@ fi
 APP_PATH=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug -showBuildSettings 2>/dev/null \
     | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')
 
-# Prefer the worktree-suffixed name that build.sh produces, but fall back to
-# the default "Clearway.app" so this also finds builds made via the Xcode GUI
-# or a plain `xcodebuild` (which ignore build.sh's PRODUCT_NAME override).
-APP=""
-if [[ -n "$APP_PATH" && -d "$APP_PATH/$PRODUCT_NAME.app" ]]; then
-    APP="$APP_PATH/$PRODUCT_NAME.app"
-elif [[ -n "$APP_PATH" && -d "$APP_PATH/Clearway.app" ]]; then
-    APP="$APP_PATH/Clearway.app"
+# Collect the candidate bundles that exist: the worktree-suffixed name that
+# build.sh produces, plus the default "Clearway.app" from an Xcode GUI or plain
+# `xcodebuild` build (which ignore build.sh's PRODUCT_NAME override). When both
+# exist, launch whichever was built most recently.
+candidates=()
+if [[ -n "$APP_PATH" ]]; then
+    [[ -d "$APP_PATH/$PRODUCT_NAME.app" ]] && candidates+=("$APP_PATH/$PRODUCT_NAME.app")
+    if [[ "$PRODUCT_NAME" != "Clearway" && -d "$APP_PATH/Clearway.app" ]]; then
+        candidates+=("$APP_PATH/Clearway.app")
+    fi
 fi
 
-if [[ -z "$APP" ]]; then
-    echo "Error: could not locate $PRODUCT_NAME.app (or Clearway.app) in DerivedData"
+if [[ ${#candidates[@]} -eq 0 ]]; then
+    if [[ "$PRODUCT_NAME" == "Clearway" ]]; then
+        echo "Error: could not locate Clearway.app in DerivedData"
+    else
+        echo "Error: could not locate $PRODUCT_NAME.app (or Clearway.app) in DerivedData"
+    fi
     echo "Run ./scripts/build.sh first."
     exit 1
+fi
+
+# Newest build wins (the .app directory mtime is bumped on each build).
+APP="${candidates[0]}"
+if [[ ${#candidates[@]} -gt 1 && "${candidates[1]}" -nt "$APP" ]]; then
+    APP="${candidates[1]}"
 fi
 
 echo "==> Launching $APP"
