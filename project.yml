@@ -67,6 +67,8 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY: "-"
+          PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.debug
+          INFOPLIST_KEY_CFBundleDisplayName: "Clearway (Debug)"
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Developer ID Application: Bruno Valentino (76AEQBHY3K)"
