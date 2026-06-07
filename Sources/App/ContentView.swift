@@ -46,7 +46,6 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
-    @EnvironmentObject private var promptManager: PromptManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @State private var detailSelection: DetailSelection? = .planning
     @State private var sidebarSelection: DetailSelection? = .planning
