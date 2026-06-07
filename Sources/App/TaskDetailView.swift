@@ -33,6 +33,12 @@ struct TaskDetailView: View {
         terminalManager.isTaskTerminalVisible(for: taskId)
     }
 
+    /// The Markdown rendered in preview — mirrors the editor's live buffer so it
+    /// reflects unsaved edits rather than the last autosaved value.
+    private var previewMarkdown: String {
+        showFrontmatter ? YAML.bodyText(in: editorText) : bodyText
+    }
+
     var body: some View {
         if let task {
             VStack(spacing: 0) {
@@ -77,7 +83,7 @@ struct TaskDetailView: View {
                             MarkdownEditorView(text: $bodyText)
                         }
                     case .preview:
-                        MarkdownPreviewView(markdown: showFrontmatter ? YAML.bodyText(in: editorText) : bodyText)
+                        MarkdownPreviewView(markdown: previewMarkdown)
                     }
                 }
 
@@ -180,6 +186,14 @@ struct TaskDetailView: View {
             .onDisappear {
                 pendingSave?.cancel()
                 saveNow()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: WorkTaskNotification.planningTerminalOpened)) { note in
+                guard note.object as? UUID == taskId else { return }
+                // Show the rendered task beside the planning terminal, but only
+                // when there's content to preview (mirrors the empty-body guard).
+                if !previewMarkdown.isEmpty {
+                    editorMode = .preview
+                }
             }
         }
     }

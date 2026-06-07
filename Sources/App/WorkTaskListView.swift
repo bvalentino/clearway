@@ -273,12 +273,6 @@ struct WorkTaskListView: View {
             return
         }
 
-        // Opening the planning terminal — switch to preview so the rendered task
-        // sits next to it (mirrors the selection-driven logic in ContentView).
-        if !task.body.isEmpty {
-            editorMode = .preview
-        }
-
         if let planningConfig = workTaskCoordinator.planningConfig {
             let taskPath = workTaskManager.filePath(for: task)
             let prompt = planningConfig.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
@@ -304,6 +298,11 @@ struct WorkTaskListView: View {
                 terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
             }
         }
+
+        // Opening the planning terminal — tell the editor to switch to preview so
+        // the rendered task sits beside it. The editor owns the live (possibly
+        // unsaved) body buffer, so it decides whether there's anything to preview.
+        NotificationCenter.default.post(name: WorkTaskNotification.planningTerminalOpened, object: task.id)
     }
 
     private func confirmDeleteTask(_ task: WorkTask) {
