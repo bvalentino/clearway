@@ -298,6 +298,11 @@ struct WorkTaskListView: View {
                 terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
             }
         }
+
+        // Opening the planning terminal — tell the editor to switch to preview so
+        // the rendered task sits beside it. The editor owns the live (possibly
+        // unsaved) body buffer, so it decides whether there's anything to preview.
+        NotificationCenter.default.post(name: WorkTaskNotification.planningTerminalOpened, object: task.id)
     }
 
     private func confirmDeleteTask(_ task: WorkTask) {
