@@ -283,6 +283,117 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
     }
 
+    // MARK: - Location-aware filePath routing (Task 2)
+
+    /// A task linked to a live worktree resolves to that worktree's `.clearway/TASK.md`.
+    func testFilePathResolvesToWorktreeForLinkedTask() throws {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-alpha")
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/alpha", path: worktreePath)] }
+
+        let task = WorkTask(id: UUID(), title: "Linked", status: .inProgress, worktree: "feature/alpha")
+        let expected = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+        XCTAssertEqual(manager.filePath(for: task), expected)
+    }
+
+    /// A task with no live worktree (backlog, or branch not currently checked out) resolves to
+    /// the central `<UUID>.md`.
+    func testFilePathResolvesToCentralWhenNoLiveWorktree() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [] }
+
+        let task = WorkTask(id: UUID(), title: "Backlog", status: .new, worktree: nil)
+        let expected = ((tempRoot as NSString).appendingPathComponent(".clearway/tasks") as NSString)
+            .appendingPathComponent("\(task.id.uuidString).md")
+        XCTAssertEqual(manager.filePath(for: task), expected)
+    }
+
+    /// `updateTask` writes a worktree-linked task into the worktree's `TASK.md`, not the central dir.
+    func testWriteLandsInWorktreeForLinkedTask() throws {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-beta")
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/beta", path: worktreePath)] }
+
+        let task = WorkTask(id: UUID(), title: "In worktree", status: .inProgress, worktree: "feature/beta")
+        manager.updateTask(task)
+
+        let taskMd = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd), "TASK.md must be written into the worktree")
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        let centralFile = (centralDir as NSString).appendingPathComponent("\(task.id.uuidString).md")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: centralFile), "no central residue for a worktree-linked task")
+    }
+
+    // MARK: - Merge-load (Task 3)
+
+    /// Writes a `TASK.md` into `<tempRoot>/<dir>/.clearway/` and returns the worktree path.
+    @discardableResult
+    private func seedWorktreeTask(dir: String, _ task: WorkTask) throws -> String {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent(dir)
+        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
+        let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
+        try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
+        return worktreePath
+    }
+
+    /// `reload()` merges the central backlog and every live worktree's `TASK.md` into one pool;
+    /// `task(forWorktree:)` resolves the worktree copy.
+    func testMergeLoadCombinesCentralAndWorktreeTasks() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        guard let backlog = manager.createTask(title: "Backlog item") else {
+            XCTFail("createTask returned nil"); return
+        }
+
+        let worktreeTask = WorkTask(id: UUID(), title: "Active item", status: .inProgress, worktree: "feature/active")
+        let worktreePath = try seedWorktreeTask(dir: "wt-active", worktreeTask)
+        manager.worktreeResolver = { [(branch: "feature/active", path: worktreePath)] }
+        manager.setWatchedWorktrees([worktreePath])  // triggers re-merge
+
+        XCTAssertTrue(manager.tasks.contains { $0.id == backlog.id }, "central backlog task must remain in the pool")
+        XCTAssertEqual(manager.task(forWorktree: "feature/active")?.id, worktreeTask.id, "worktree task must be loaded and resolvable")
+    }
+
+    /// When the same task id exists both centrally and in a worktree (mid-move), the worktree
+    /// copy wins so a half-finished move never shows the stale central content.
+    func testMergeLoadPrefersWorktreeCopyOnDuplicateId() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        let sharedId = UUID()
+
+        // Stale central copy.
+        let central = WorkTask(id: sharedId, title: "Stale central", status: .new, worktree: "feature/dup")
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
+        try central.serialized().write(
+            toFile: (centralDir as NSString).appendingPathComponent("\(sharedId.uuidString).md"),
+            atomically: true, encoding: .utf8
+        )
+
+        // Fresh worktree copy with the same id.
+        let worktreeTask = WorkTask(id: sharedId, title: "Fresh worktree", status: .inProgress, worktree: "feature/dup")
+        let worktreePath = try seedWorktreeTask(dir: "wt-dup", worktreeTask)
+        manager.worktreeResolver = { [(branch: "feature/dup", path: worktreePath)] }
+        manager.setWatchedWorktrees([worktreePath])
+
+        let matches = manager.tasks.filter { $0.id == sharedId }
+        XCTAssertEqual(matches.count, 1, "duplicate ids must dedupe to a single task")
+        XCTAssertEqual(matches.first?.title, "Fresh worktree", "the worktree copy must win the dedupe")
+    }
+
+    /// `setWatchedWorktrees` re-merges against the current resolver — surfacing worktree tasks.
+    func testSetWatchedWorktreesReMerges() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        let worktreeTask = WorkTask(id: UUID(), title: "Surfaced", status: .inProgress, worktree: "feature/surf")
+        let worktreePath = try seedWorktreeTask(dir: "wt-surf", worktreeTask)
+
+        // Before wiring the resolver, the worktree task is invisible.
+        XCTAssertFalse(manager.tasks.contains { $0.id == worktreeTask.id })
+
+        manager.worktreeResolver = { [(branch: "feature/surf", path: worktreePath)] }
+        manager.setWatchedWorktrees([worktreePath])
+        XCTAssertTrue(manager.tasks.contains { $0.id == worktreeTask.id }, "re-merge must surface the worktree task")
+    }
+
     /// Fallback path: when no task with expectedId exists in memory, the parsed task is
     /// written wholesale to disk. We verify the disk file (the authoritative store) because
     /// `updateTask` only updates the in-memory array for ids already present.

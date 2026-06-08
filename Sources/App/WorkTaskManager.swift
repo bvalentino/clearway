@@ -13,6 +13,18 @@ class WorkTaskManager: ObservableObject {
     private var watcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: DispatchWorkItem?
 
+    /// `.clearway` watchers for opened worktrees, keyed by the watched directory path. Only
+    /// opened worktrees are watched (mirroring the central watcher); closed worktrees are still
+    /// loaded by `reload()` but not watched, keeping file-descriptor cost proportional to what's
+    /// on screen. Driven from the view layer via `setWatchedWorktrees(_:)`.
+    private var worktreeWatchers: [String: DispatchSourceFileSystemObject] = [:]
+
+    /// Resolves the live worktrees as `(branch, path)` pairs. Injected at construction so the
+    /// manager can route a task's file to its worktree (and merge-load every worktree's
+    /// `TASK.md`) without taking a hard dependency on `WorktreeManager`. Defaults to empty,
+    /// which yields central-only behavior — the shape unit tests exercise.
+    var worktreeResolver: @MainActor () -> [(branch: String, path: String)] = { [] }
+
     init(projectPath: String) {
         self.projectPath = projectPath
         self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".clearway/tasks")
@@ -20,9 +32,15 @@ class WorkTaskManager: ObservableObject {
         watchDirectory()
     }
 
+    /// Absolute path to a branch's live worktree, or nil when the branch has no worktree.
+    private func worktreePath(forBranch branch: String) -> String? {
+        worktreeResolver().first { $0.branch == branch }?.path
+    }
+
     nonisolated deinit {
         pendingReload?.cancel()
         watcherSource?.cancel()
+        worktreeWatchers.values.forEach { $0.cancel() }
     }
 
     // MARK: - Lookups
@@ -164,53 +182,100 @@ class WorkTaskManager: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Returns the file path for a task's markdown file.
+    /// Absolute path to this task's markdown file: the worktree's `TASK.md` when the task is
+    /// linked to a live worktree, else the central `<UUID>.md`. Location encodes association,
+    /// so the same task resolves to the worktree file the instant its branch becomes live.
     func filePath(for task: WorkTask) -> String {
-        (tasksDirectory as NSString).appendingPathComponent("\(task.id.uuidString).md")
+        if let branch = task.worktree,
+           let path = worktreePath(forBranch: branch) {
+            let clearway = (path as NSString).appendingPathComponent(".clearway")
+            return (clearway as NSString).appendingPathComponent("TASK.md")
+        }
+        return (tasksDirectory as NSString).appendingPathComponent("\(task.id.uuidString).md")
     }
 
     private func write(_ task: WorkTask) {
         let fm = FileManager.default
-        try? fm.createDirectory(atPath: tasksDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let path = filePath(for: task)
+        let directory = (path as NSString).deletingLastPathComponent
+        try? fm.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         guard let data = task.serialized().data(using: .utf8) else { return }
         fm.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
         if watcherSource == nil { watchDirectory() }
     }
 
+    /// Merge-loads the single task pool from two sources: the central backlog (`<UUID>.md`)
+    /// **and** every live worktree's `TASK.md`. A task that exists in both (e.g. mid-move) is
+    /// deduped by `id` with the worktree copy winning. Load breadth spans *all* worktrees — not
+    /// just watched ones — so the sidebar can label even unopened worktrees by title.
     private func reload() {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else {
-            tasks = []
-            return
+        var byId: [UUID: WorkTask] = [:]
+
+        // Central backlog files: keyed by filename UUID (also the fallback identity for legacy
+        // files written before `id` was serialized into frontmatter).
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: tasksDirectory) {
+            for file in files where file.hasSuffix(".md") {
+                guard let id = UUID(uuidString: (file as NSString).deletingPathExtension) else { continue }
+                let path = (tasksDirectory as NSString).appendingPathComponent(file)
+                if let task = loadTask(atPath: path, fallbackId: id) { byId[task.id] = task }
+            }
         }
 
-        var loaded: [WorkTask] = []
-        for file in files where file.hasSuffix(".md") {
-            guard let id = UUID(uuidString: (file as NSString).deletingPathExtension) else { continue }
-            let path = (tasksDirectory as NSString).appendingPathComponent(file)
-            let createdAt = (try? fm.attributesOfItem(atPath: path))?[.creationDate] as? Date ?? Date()
-            guard let data = fm.contents(atPath: path),
-                  let content = String(data: data, encoding: .utf8),
-                  let task = WorkTask.parse(from: content, id: id, createdAt: createdAt) else { continue }
-            loaded.append(task)
+        // Each live worktree's TASK.md (identity comes from frontmatter). The worktree copy wins
+        // over any central entry with the same id.
+        for worktree in worktreeResolver() {
+            let clearway = (worktree.path as NSString).appendingPathComponent(".clearway")
+            let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
+            if let task = loadTask(atPath: taskMd, fallbackId: UUID()) { byId[task.id] = task }
         }
 
         // Newest first
-        let sorted = loaded.sorted { $0.createdAt > $1.createdAt }
+        let sorted = byId.values.sorted { $0.createdAt > $1.createdAt }
         if sorted != tasks { tasks = sorted }
+    }
+
+    /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
+    /// `fallbackId` only when the frontmatter carries no `id`. Returns nil on read/parse failure.
+    private func loadTask(atPath path: String, fallbackId: UUID) -> WorkTask? {
+        let fm = FileManager.default
+        let createdAt = (try? fm.attributesOfItem(atPath: path))?[.creationDate] as? Date ?? Date()
+        guard let data = fm.contents(atPath: path),
+              let content = String(data: data, encoding: .utf8) else { return nil }
+        return WorkTask.parse(from: content, id: fallbackId, createdAt: createdAt)
     }
 
     // MARK: - File Watching
 
+    /// Sets which worktrees are watched for external `TASK.md` edits (by the in-worktree agent
+    /// or a hook). Only **opened** worktrees are passed here — closed worktrees are still loaded
+    /// by `reload()` but not watched. Adds/removes `.clearway` watchers to match `worktreePaths`,
+    /// then re-merges so the pool reflects the current worktree set.
+    func setWatchedWorktrees(_ worktreePaths: [String]) {
+        let desired = Set(worktreePaths.map { ($0 as NSString).appendingPathComponent(".clearway") })
+
+        for (dir, source) in worktreeWatchers where !desired.contains(dir) {
+            source.cancel()
+            worktreeWatchers.removeValue(forKey: dir)
+        }
+        for dir in desired where worktreeWatchers[dir] == nil {
+            if let source = makeWatcher(forDirectory: dir) { worktreeWatchers[dir] = source }
+        }
+
+        reload()
+    }
+
     private func watchDirectory() {
         watcherSource?.cancel()
-        watcherSource = nil
+        watcherSource = makeWatcher(forDirectory: tasksDirectory)
+    }
 
-        guard FileManager.default.fileExists(atPath: tasksDirectory) else { return }
+    /// Creates a debounced `.write` watcher on `directory`, or nil when it doesn't exist yet
+    /// (it gets created on first write, which re-arms the central watcher via `write`).
+    private func makeWatcher(forDirectory directory: String) -> DispatchSourceFileSystemObject? {
+        guard FileManager.default.fileExists(atPath: directory) else { return nil }
 
-        let fd = open(tasksDirectory, O_EVTONLY)
-        guard fd >= 0 else { return }
+        let fd = open(directory, O_EVTONLY)
+        guard fd >= 0 else { return nil }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
@@ -222,7 +287,7 @@ class WorkTaskManager: ObservableObject {
         }
         source.setCancelHandler { close(fd) }
         source.resume()
-        watcherSource = source
+        return source
     }
 
     private nonisolated func scheduleReload() {
