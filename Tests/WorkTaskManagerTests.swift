@@ -394,6 +394,95 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertTrue(manager.tasks.contains { $0.id == worktreeTask.id }, "re-merge must surface the worktree task")
     }
 
+    // MARK: - Shadow/exposed creation routed into the worktree (Task 5)
+
+    /// A shadow task created for a live worktree must land in that worktree's `TASK.md`, not the
+    /// central directory — its link + the location-routing in `write` carry it there.
+    func testCreateShadowTaskWritesIntoWorktree() throws {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-shadow")
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/shadow-wt", path: worktreePath)] }
+
+        _ = manager.createShadowTask(forBranch: "feature/shadow-wt")
+
+        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd), "shadow task must be written into the worktree")
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        let centralCount = (try? FileManager.default.contentsOfDirectory(atPath: centralDir))?.filter { $0.hasSuffix(".md") }.count ?? 0
+        XCTAssertEqual(centralCount, 0, "no central residue for a worktree shadow task")
+    }
+
+    /// Exposing a worktree shadow keeps the file in the worktree (flips `hidden` in place).
+    func testExposeKeepsTaskInWorktree() throws {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-expose")
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/expose-wt", path: worktreePath)] }
+
+        guard let shadow = manager.createShadowTask(forBranch: "feature/expose-wt") else {
+            XCTFail("createShadowTask returned nil"); return
+        }
+        _ = manager.expose(shadow)
+
+        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        let content = try String(contentsOfFile: taskMd, encoding: .utf8)
+        let reparsed = WorkTask.parse(from: content, id: shadow.id, createdAt: Date())
+        XCTAssertEqual(reparsed?.hidden, false, "expose must persist hidden=false into the worktree TASK.md")
+    }
+
+    // MARK: - Relocation on worktree creation (Task 4)
+
+    /// Relocating a backlog task moves `<UUID>.md` → `<worktree>/.clearway/TASK.md`: gone
+    /// centrally, present in the worktree, identity preserved, no central residue.
+    func testRelocateTaskMovesCentralFileIntoWorktree() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        guard let task = manager.createTask(title: "To relocate") else {
+            XCTFail("createTask returned nil"); return
+        }
+        // Link the task to a branch and a live worktree (the state after startTask + createWorktree).
+        var linked = task
+        linked.worktree = "feature/move"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-move")
+        // Resolver returns the worktree so post-move resolution finds TASK.md.
+        manager.worktreeResolver = { [(branch: "feature/move", path: worktreePath)] }
+        // updateTask would now write to the worktree; instead simulate the pre-move central file by
+        // writing it centrally with the link already set.
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
+        let centralFile = (centralDir as NSString).appendingPathComponent("\(task.id.uuidString).md")
+        try linked.serialized().write(toFile: centralFile, atomically: true, encoding: .utf8)
+
+        manager.relocateTaskToWorktree(id: task.id, worktreePath: worktreePath)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: centralFile), "central file must be gone after the move")
+        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd), "TASK.md must exist in the worktree")
+        XCTAssertEqual(manager.tasks.first(where: { $0.id == task.id })?.worktree, "feature/move", "identity + link preserved")
+    }
+
+    /// Relocation is idempotent: a second call with the central file already gone is a no-op and
+    /// does not throw or duplicate.
+    func testRelocateTaskIsIdempotent() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        guard let task = manager.createTask(title: "Idempotent") else {
+            XCTFail("createTask returned nil"); return
+        }
+        var linked = task
+        linked.worktree = "feature/idem"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-idem")
+        manager.worktreeResolver = { [(branch: "feature/idem", path: worktreePath)] }
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        let centralFile = (centralDir as NSString).appendingPathComponent("\(task.id.uuidString).md")
+        try linked.serialized().write(toFile: centralFile, atomically: true, encoding: .utf8)
+
+        manager.relocateTaskToWorktree(id: task.id, worktreePath: worktreePath)
+        manager.relocateTaskToWorktree(id: task.id, worktreePath: worktreePath)  // no-op
+
+        XCTAssertEqual(manager.tasks.filter { $0.id == task.id }.count, 1)
+    }
+
     /// Fallback path: when no task with expectedId exists in memory, the parsed task is
     /// written wholesale to disk. We verify the disk file (the authoritative store) because
     /// `updateTask` only updates the in-memory array for ids already present.

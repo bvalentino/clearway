@@ -37,6 +37,27 @@ class WorkTaskManager: ObservableObject {
         worktreeResolver().first { $0.branch == branch }?.path
     }
 
+    /// Relocates a task's central `<UUID>.md` into its now-live worktree as `TASK.md`, preserving
+    /// the file's creation date via `FileManager.moveItem` (never copy+delete). Idempotent: a no-op
+    /// when the central file is already gone; if the destination already exists, the central residue
+    /// is removed so the worktree copy wins. The `id` already lives in frontmatter (carried on every
+    /// write), so identity survives the rename. Re-merges the pool afterward.
+    func relocateTaskToWorktree(id: UUID, worktreePath: String) {
+        let fm = FileManager.default
+        let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
+        guard fm.fileExists(atPath: central) else { return }
+
+        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
+        let destination = (clearway as NSString).appendingPathComponent("TASK.md")
+        if fm.fileExists(atPath: destination) {
+            try? fm.removeItem(atPath: central)
+        } else {
+            try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try? fm.moveItem(atPath: central, toPath: destination)
+        }
+        reload()
+    }
+
     nonisolated deinit {
         pendingReload?.cancel()
         watcherSource?.cancel()
