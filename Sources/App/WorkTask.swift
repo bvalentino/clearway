@@ -1,7 +1,8 @@
 import Foundation
 
-/// A task — a unit of work persisted as a markdown file with YAML frontmatter
-/// in `.clearway/tasks/<id>.md`.
+/// A task — a unit of work persisted as a markdown file with YAML frontmatter. Its location
+/// encodes association: a backlog task lives centrally at `.clearway/tasks/<id>.md`; once a
+/// worktree is created for it the file moves into that worktree as `.clearway/TASK.md`.
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
