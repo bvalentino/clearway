@@ -12,8 +12,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
 
     var attempt: Int?
     var errorMessage: String?
-    var inputTokens: Int?
-    var outputTokens: Int?
 
     /// When true, the task is a shadow task for a worktree — it tracks state but
     /// stays out of the Planning backlog until the user exposes it.
@@ -57,12 +55,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         }
     }
 
-    /// Combined token count, or nil if no usage data.
-    var totalTokens: Int? {
-        guard inputTokens != nil || outputTokens != nil else { return nil }
-        return (inputTokens ?? 0) + (outputTokens ?? 0)
-    }
-
     init(id: UUID = UUID(), title: String, status: Status = .new, worktree: String? = nil, body: String = "") {
         self.id = id
         self.title = title
@@ -82,8 +74,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         lines.append("worktree: \(worktree.map { YAML.quote($0) } ?? "null")")
         if let attempt { lines.append("attempt: \(attempt)") }
         if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
-        if let inputTokens { lines.append("input_tokens: \(inputTokens)") }
-        if let outputTokens { lines.append("output_tokens: \(outputTokens)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
         return lines.joined(separator: "\n")
@@ -167,8 +157,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         task.createdAt = createdAt
         task.attempt = fields["attempt"].flatMap { Int($0) }
         task.errorMessage = fields["error_message"]
-        task.inputTokens = fields["input_tokens"].flatMap { Int($0) }
-        task.outputTokens = fields["output_tokens"].flatMap { Int($0) }
         task.hidden = fields["hidden"] == "true"
         return task
     }

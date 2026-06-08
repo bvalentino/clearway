@@ -21,26 +21,18 @@ struct SendToTerminalButton: View {
     }
 }
 
-/// Combines user todos and Claude Code todos into a single panel.
+/// Displays the user's todos for the selected worktree.
 struct TodosPanelView: View {
-    @EnvironmentObject private var claudeTodoManager: ClaudeTodoManager
     @EnvironmentObject private var todoManager: TodoManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @State private var editingTodoId: Int?
     @State private var isCreatingNew = false
     @State private var newTodoGeneration = 0
-    @State private var selectedTodo: TodoSelection?
+    @State private var selectedTodoId: Int?
     @State private var todoPendingDeletion: Todo?
-    @State private var sessionConfirmingClear: String?
-    @State private var confirmResetTask: Task<Void, Never>?
-
-    enum TodoSelection: Hashable {
-        case todo(Int)
-        case claude(sessionId: String, todoId: String)
-    }
 
     private var isEmpty: Bool {
-        todoManager.todos.isEmpty && !isCreatingNew && claudeTodoManager.sessions.isEmpty
+        todoManager.todos.isEmpty && !isCreatingNew
     }
 
     private var canSend: Bool {
@@ -83,36 +75,6 @@ struct TodosPanelView: View {
                                 todoRow(todo)
                             }
                         }
-
-                        ForEach(claudeTodoManager.sessions) { session in
-                            ClaudeSessionSection(
-                                session: session,
-                                selectedTodoId: selectedClaudeTodoId(for: session.id),
-                                isConfirming: sessionConfirmingClear == session.id,
-                                onSelect: { todo in
-                                    selectTodo(.claude(sessionId: session.id, todoId: todo.id))
-                                },
-                                onConfirmStart: {
-                                    sessionConfirmingClear = session.id
-                                    confirmResetTask?.cancel()
-                                    confirmResetTask = Task {
-                                        try? await Task.sleep(for: .seconds(3))
-                                        if !Task.isCancelled {
-                                            sessionConfirmingClear = nil
-                                        }
-                                    }
-                                },
-                                onClear: {
-                                    if case .claude(session.id, _) = selectedTodo {
-                                        selectedTodo = nil
-                                    }
-                                    claudeTodoManager.clearSession(session.id)
-                                    sessionConfirmingClear = nil
-                                    confirmResetTask?.cancel()
-                                    confirmResetTask = nil
-                                }
-                            )
-                        }
                     }
                     .padding()
                 }
@@ -131,24 +93,15 @@ struct TodosPanelView: View {
             Button("Delete", role: .destructive) {
                 if let todo = todoPendingDeletion {
                     todoManager.deleteTodo(todo)
-                    if selectedTodo == .todo(todo.id) { selectedTodo = nil }
+                    if selectedTodoId == todo.id { selectedTodoId = nil }
                 }
                 todoPendingDeletion = nil
             }
         }
-        .onDisappear {
-            confirmResetTask?.cancel()
-            confirmResetTask = nil
-        }
     }
 
-    private func selectedClaudeTodoId(for sessionId: String) -> String? {
-        if case .claude(sessionId, let todoId) = selectedTodo { return todoId }
-        return nil
-    }
-
-    private func selectTodo(_ selection: TodoSelection) {
-        selectedTodo = selection
+    private func selectTodo(_ id: Int) {
+        selectedTodoId = id
         isCreatingNew = false
         editingTodoId = nil
     }
@@ -157,9 +110,9 @@ struct TodosPanelView: View {
         TodoRow(
             todo: todo,
             isEditing: editingTodoId == todo.id,
-            isSelected: selectedTodo == .todo(todo.id),
+            isSelected: selectedTodoId == todo.id,
             canSend: canSend,
-            onSelect: { selectTodo(.todo(todo.id)) },
+            onSelect: { selectTodo(todo.id) },
             onSend: { sendTodoToTerminal(todo) },
             onEditStart: { editingTodoId = todo.id },
             onEditCommit: { subject in
@@ -217,78 +170,5 @@ struct TodosPanelView: View {
         }
         .buttonStyle(.plain)
         .padding(12)
-    }
-}
-
-/// A group of Claude Code todos from a single session.
-private struct ClaudeSessionSection: View {
-    let session: ClaudeSession
-    var selectedTodoId: String?
-    var isConfirming: Bool
-    var onSelect: (ClaudeTodo) -> Void
-    var onConfirmStart: () -> Void
-    var onClear: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Claude")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.orange, in: Capsule())
-
-                Spacer()
-
-                Button(isConfirming ? "Confirm clear" : "Clear") {
-                    if isConfirming {
-                        onClear()
-                    } else {
-                        onConfirmStart()
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(isConfirming ? .orange : .secondary)
-                .buttonStyle(.plain)
-            }
-
-            ForEach(session.todos) { todo in
-                ClaudeTodoRow(
-                    todo: todo,
-                    isSelected: selectedTodoId == todo.id,
-                    onSelect: { onSelect(todo) }
-                )
-            }
-        }
-    }
-}
-
-/// Displays a single Claude Code todo.
-private struct ClaudeTodoRow: View {
-    let todo: ClaudeTodo
-    var isSelected: Bool
-    var onSelect: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: todo.status.symbol)
-                .font(.system(size: 16))
-                .foregroundStyle(todo.status.color)
-                .frame(width: 20)
-
-            Text(todo.subject)
-                .font(.body)
-                .foregroundStyle(todo.status == .completed ? .secondary : .primary)
-                .strikethrough(todo.status == .completed)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(isSelected ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
     }
 }
