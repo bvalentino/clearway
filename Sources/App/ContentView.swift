@@ -220,11 +220,6 @@ struct ContentView: View {
         .focusedSceneValue(\.newTabAction, newTabAction)
         .focusedSceneValue(\.newShellTabAction, newShellTabAction)
         .focusedSceneValue(\.newTaskAction, newTaskAction)
-        .onChange(of: workTaskCoordinator.autoStartGeneration) { _ in
-            guard let result = workTaskCoordinator.pendingAutoStart else { return }
-            workTaskCoordinator.pendingAutoStart = nil
-            handleStartResult(result, isAutoStart: true)
-        }
         .navigationTitle(navigationTitle)
         .navigationSubtitle(navigationSubtitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
@@ -277,22 +272,18 @@ struct ContentView: View {
             let pending = ghosttyApp.app.flatMap { app in
                 workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
             }
-            let isAutoStart = pending?.isAutoStart ?? false
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskCoordinator.ensureShadowTask(forBranch: branch)
 
-            // Only navigate for manual starts
-            if !isAutoStart {
-                detailSelection = .worktree(wt)
-            }
+            detailSelection = .worktree(wt)
 
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
             let afterCreateCmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd)
 
-            if !isAutoStart, let cmd = afterCreateCmd, let app = ghosttyApp.app {
+            if let cmd = afterCreateCmd, let app = ghosttyApp.app {
                 let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
                 var continued = false
                 afterCreateHookState = .blocking(InlineHook(
@@ -300,11 +291,11 @@ struct ContentView: View {
                     hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: {
                         guard !continued else { return }
                         continued = true
-                        pending?.launch()
+                        pending?()
                     }, allowContinueOnFailure: true)
                 ))
             } else {
-                pending?.launch()
+                pending?()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
@@ -692,24 +683,21 @@ struct ContentView: View {
         handleStartResult(workTaskCoordinator.continueTask(task, app: app)) { continueWorkTask(task) }
     }
 
-    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, isAutoStart: Bool = false, retryAction: (() -> Void)? = nil) {
+    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, retryAction: (() -> Void)? = nil) {
         guard let app = ghosttyApp.app else { return }
         switch result {
         case .reuse(let wt):
-            selectedTaskId = nil; if !isAutoStart { detailSelection = .worktree(wt) }
+            selectedTaskId = nil; detailSelection = .worktree(wt)
         case .createWorktree(let branch):
             selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
         case .beforeRunHook(let hookCmd, let wt, let onSuccess):
             selectedTaskId = nil
             let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(hookCmd))
             hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
-                onSuccess(); if !isAutoStart { self.detailSelection = .worktree(wt) }
+                onSuccess(); self.detailSelection = .worktree(wt)
             })
         case .needsTrust:
-            if isAutoStart {
-                workTaskCoordinator.isAutoProcessing = false
-                pendingTrustAction = { [weak workTaskCoordinator] in workTaskCoordinator?.isAutoProcessing = true }
-            } else { pendingTrustAction = retryAction }
+            pendingTrustAction = retryAction
             showTrustConfirmation = true
         case .ignored: break
         }

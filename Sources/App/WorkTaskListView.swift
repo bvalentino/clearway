@@ -39,13 +39,6 @@ struct WorkTaskListView: View {
         "\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s") in worktrees"
     }
 
-    private var inProgressCount: Int {
-        let liveBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
-        return workTaskManager.tasks.filter { task in
-            task.status == .inProgress && task.worktree.map { liveBranches.contains($0) } == true
-        }.count
-    }
-
     var body: some View {
         Group {
             if backlogTasks.isEmpty {
@@ -56,32 +49,18 @@ struct WorkTaskListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) {
-            HStack(spacing: 8) {
-                if workTaskCoordinator.isAutoProcessingEnabled {
-                    AutoProcessButton(
-                        isAutoProcessing: workTaskCoordinator.isAutoProcessing,
-                        tickGeneration: workTaskCoordinator.tickGeneration,
-                        pollingSeconds: workTaskCoordinator.pollingInterval.rawValue,
-                        inProgressCount: inProgressCount,
-                        maxConcurrent: workTaskCoordinator.maxConcurrent
-                    ) {
-                        workTaskCoordinator.isAutoProcessing.toggle()
-                    }
-                }
-
-                Button {
-                    createAndEdit()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
-                        .background(.thinMaterial, in: Circle())
-                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-                .help("New task")
+            Button {
+                createAndEdit()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .background(.thinMaterial, in: Circle())
+                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
             }
+            .buttonStyle(.plain)
+            .help("New task")
             .padding(12)
         }
         .toolbar {
@@ -409,69 +388,6 @@ private struct WorkTaskRow: View {
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 5)
-    }
-}
-
-// MARK: - Auto-Process Button
-
-private struct AutoProcessButton: View {
-    let isAutoProcessing: Bool
-    let tickGeneration: Int
-    let pollingSeconds: Int
-    let inProgressCount: Int
-    let maxConcurrent: Int
-    let action: () -> Void
-
-    @State private var progress: CGFloat = 0
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.primary.opacity(0.15), lineWidth: 2)
-                        .frame(width: 18, height: 18)
-
-                    if isAutoProcessing {
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(Color.primary.opacity(0.5), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                            .frame(width: 18, height: 18)
-                            .rotationEffect(.degrees(-90))
-                    }
-
-                    Image(systemName: isAutoProcessing ? "pause.fill" : "play.fill")
-                        .font(.system(size: 7, weight: .bold))
-                }
-
-                Text("\(inProgressCount)/\(maxConcurrent)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .frame(height: 36)
-            .background(.thinMaterial, in: Capsule())
-            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
-        .onChange(of: tickGeneration) { _ in
-            progress = 0
-            withAnimation(.linear(duration: Double(pollingSeconds))) {
-                progress = 1
-            }
-        }
-        .onChange(of: isAutoProcessing) { running in
-            if running {
-                progress = 0
-                withAnimation(.linear(duration: Double(pollingSeconds))) {
-                    progress = 1
-                }
-            } else {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    progress = 0
-                }
-            }
-        }
     }
 }
 
