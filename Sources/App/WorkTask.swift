@@ -69,6 +69,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// Returns the raw YAML lines for this task's frontmatter, without `---` delimiters or a trailing newline.
     func frontmatterLines() -> String {
         var lines: [String] = []
+        // Identity is carried in frontmatter so it survives the rename away from `<UUID>.md`
+        // when a task moves into its worktree as `TASK.md`.
+        lines.append("id: \(id.uuidString)")
         lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status.rawValue)")
         lines.append("worktree: \(worktree.map { YAML.quote($0) } ?? "null")")
@@ -147,13 +150,18 @@ struct WorkTask: Identifiable, Equatable, Hashable {
               let statusString = fields["status"],
               let status = Status(migrating: statusString) else { return nil }
 
+        // Prefer the frontmatter `id` (authoritative once a task moves to `TASK.md`, where the
+        // filename no longer carries the UUID); fall back to the caller-supplied id for legacy
+        // central `<UUID>.md` files written before identity was serialized.
+        let resolvedId = fields["id"].flatMap { UUID(uuidString: $0) } ?? id
+
         let worktree: String? = {
             guard let value = fields["worktree"], value != "null", !value.isEmpty else { return nil }
             guard isValidBranchName(value) else { return nil }
             return value
         }()
 
-        var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
+        var task = WorkTask(id: resolvedId, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
         task.attempt = fields["attempt"].flatMap { Int($0) }
         task.errorMessage = fields["error_message"]
