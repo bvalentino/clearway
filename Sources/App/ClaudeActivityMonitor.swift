@@ -74,10 +74,10 @@ class ClaudeActivityMonitor: ObservableObject {
     // MARK: - Per-Worktree Watching
 
     private func startWatching(worktreeId: String, worktreePath: String) {
-        let projectDir = ClaudeTodoManager.projectDir(forWorktreePath: worktreePath)
+        let projectDir = ClaudeSessionFiles.projectDir(forWorktreePath: worktreePath)
         var state = WatcherState(projectDir: projectDir)
 
-        if let source = ClaudeTodoManager.makeWatcher(path: projectDir, handler: { [weak self] in
+        if let source = ClaudeSessionFiles.makeWatcher(path: projectDir, handler: { [weak self] in
             self?.handleDirEvent(worktreeId: worktreeId)
         }) {
             state.dirSource = source
@@ -106,7 +106,7 @@ class ClaudeActivityMonitor: ObservableObject {
     private func installWatchers(worktreeId: String, projectDir: String) {
         guard watchers[worktreeId] != nil else { return }
 
-        if let source = ClaudeTodoManager.makeWatcher(path: projectDir, handler: { [weak self] in
+        if let source = ClaudeSessionFiles.makeWatcher(path: projectDir, handler: { [weak self] in
             self?.handleDirEvent(worktreeId: worktreeId)
         }) {
             watchers[worktreeId]?.dirSource = source
@@ -164,7 +164,7 @@ class ClaudeActivityMonitor: ObservableObject {
         }
 
         guard let path = newestPath else { return nil }
-        guard let source = ClaudeTodoManager.makeWatcher(path: path, handler: { [weak monitor] in
+        guard let source = ClaudeSessionFiles.makeWatcher(path: path, handler: { [weak monitor] in
             monitor?.handleActivity(worktreeId: worktreeId)
         }) else { return nil }
         return (source, newestDate)
@@ -229,8 +229,8 @@ class ClaudeActivityMonitor: ObservableObject {
     private func ensureParentWatcher() {
         guard parentDirSource == nil else { return }
 
-        let parentDir = ClaudeTodoManager.projectsParentDir
-        if let source = ClaudeTodoManager.makeWatcher(path: parentDir, handler: { [weak self] in
+        let parentDir = ClaudeSessionFiles.projectsParentDir
+        if let source = ClaudeSessionFiles.makeWatcher(path: parentDir, handler: { [weak self] in
             self?.checkPendingWorktrees()
         }) {
             parentDirSource = source
@@ -271,7 +271,7 @@ class ClaudeActivityMonitor: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(
-                atPath: ClaudeTodoManager.projectsParentDir, isDirectory: &isDir
+                atPath: ClaudeSessionFiles.projectsParentDir, isDirectory: &isDir
             ) && isDir.boolValue
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.pendingWorktrees.isEmpty else {

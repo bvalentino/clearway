@@ -49,7 +49,7 @@ class AgentSessionObserver: ObservableObject {
         self.timeoutMs = timeoutMs
         self.launchTime = Date()
 
-        sessionDir = ClaudeTodoManager.projectDir(forWorktreePath: worktreePath)
+        sessionDir = ClaudeSessionFiles.projectDir(forWorktreePath: worktreePath)
 
         reload()
         watchSessionDirectory()
@@ -186,8 +186,8 @@ class AgentSessionObserver: ObservableObject {
         watcherSource = nil
 
         guard let sessionDir else { return }
-        // Reuse existing watcher factory from ClaudeTodoManager
-        watcherSource = ClaudeTodoManager.makeWatcher(path: sessionDir) { [weak self] in
+        // Reuse the shared watcher factory from ClaudeSessionFiles
+        watcherSource = ClaudeSessionFiles.makeWatcher(path: sessionDir) { [weak self] in
             self?.scheduleReload()
         }
     }
