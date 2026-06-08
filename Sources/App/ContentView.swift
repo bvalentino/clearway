@@ -39,7 +39,6 @@ struct ContentView: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
-    @EnvironmentObject private var claudeTodoManager: ClaudeTodoManager
     @EnvironmentObject private var todoManager: TodoManager
     @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
@@ -255,7 +254,6 @@ struct ContentView: View {
             // focus stays on the sidebar so ↑/↓ keeps moving the selection (Notes.app
             // model). Click the terminal (or Ctrl+1) to focus it.
             terminalManager.clearNotification(for: wt.id)
-            claudeTodoManager.setWorktreePath(wt.path)
             todoManager.setWorktreePath(wt.path)
             notesManager.setWorktreePath(wt.path)
 
@@ -370,7 +368,6 @@ struct ContentView: View {
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
-            claudeTodoManager.setWorktreePath(selectedWorktree?.path)
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
 
@@ -425,7 +422,6 @@ struct ContentView: View {
             removeSidebarKeyMonitor()
             removeMainTerminalKeyMonitor()
             ctrlHeld = false
-            claudeTodoManager.stopWatching()
             todoManager.stopWatching()
             notesManager.stopWatching()
             for observer in taskWindowObservers {
