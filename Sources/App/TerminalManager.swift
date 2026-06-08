@@ -222,6 +222,14 @@ class TerminalManager: ObservableObject {
     /// explicitly so the launcher view re-renders and pushes the new text in.
     var launcherDrafts: [UUID: String] = [:]
 
+    /// One-shot signal: the id of a launcher tab that was *explicitly created* (Cmd+T)
+    /// and should focus its prompt input on mount. Set in `appendLauncherTab`, read by
+    /// `PromptLauncherView` via `ContentView`, and cleared once consumed. Plain selection
+    /// of a worktree whose active tab is a launcher leaves this nil, so the launcher no
+    /// longer steals focus on re-select. Not `@Published`: it is set alongside an
+    /// `objectWillChange.send()` and clearing it must not trigger a re-render.
+    var pendingFocusTabId: UUID?
+
     /// Send text to the active main tab. Launcher tabs append it to the draft
     /// (newline-separated), so repeated prompt/task/todo clicks stack instead of
     /// clobbering. Surface tabs forward to `sendCommand` (asCommand=true, appends
@@ -379,12 +387,18 @@ class TerminalManager: ObservableObject {
             setInitialPanelVisibility(for: key, worktree: worktree)
         }
 
-        objectWillChange.send()
-
-        // No main command configured → promote immediately to a login shell.
+        // No main command configured → promote immediately to a login shell (which
+        // focuses via `promoteLauncher`). Otherwise the tab stays a launcher, so signal
+        // its view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
+        // `pendingFocusTabId` isn't `@Published`, so it must be set *before* the
+        // `objectWillChange.send()` below to be visible in the resulting render pass.
         if mainCommandProvider() == nil {
             promoteLauncher(tabId: newTab.id, in: key, app: app, mode: .loginShell)
+        } else {
+            pendingFocusTabId = newTab.id
         }
+
+        objectWillChange.send()
 
         return newTab.id
     }
@@ -442,6 +456,10 @@ class TerminalManager: ObservableObject {
         panes[worktreeId]!.main.tabs[tabIndex].kind = .surface(newSurface)
         panes[worktreeId]!.main.activeId = tabId
         launcherDrafts.removeValue(forKey: tabId)
+        // Promotion focuses the new surface directly, so any pending launcher-focus
+        // signal for this tab is now moot — drop it so it can't dangle (e.g. the
+        // `appendShellTab` path sets it, then promotes here with no launcher to consume it).
+        if pendingFocusTabId == tabId { pendingFocusTabId = nil }
         objectWillChange.send()
         transferFirstResponder(to: newSurface)
         return newSurface

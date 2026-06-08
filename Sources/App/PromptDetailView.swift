@@ -7,6 +7,9 @@ struct PromptDetailView: View {
 
     let promptId: String
     @Binding var editorMode: TaskEditorMode
+    /// One-shot creation-focus signal owned by `ContentView`. Focus the title only when
+    /// this view *is* the just-created prompt; plain re-selection leaves it untouched.
+    @Binding var newlyCreatedPromptId: String?
 
     @State private var title: String = ""
     @State private var bodyText: String = ""
@@ -45,7 +48,8 @@ struct PromptDetailView: View {
                 title = prompt.title
                 bodyText = prompt.content
                 editorMode = prompt.content.isEmpty ? .edit : .preview
-                if prompt.title.isEmpty {
+                if newlyCreatedPromptId == promptId {
+                    newlyCreatedPromptId = nil
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
             }

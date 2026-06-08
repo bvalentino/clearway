@@ -6,6 +6,9 @@ struct PromptListView: View {
     @Environment(\.openWindow) private var openWindow
     @Binding var selection: String?
     @Binding var editorMode: TaskEditorMode
+    /// One-shot creation-focus signal owned by `ContentView`; set when this list creates
+    /// a prompt so the detail view focuses its title (creation is exempt from no-auto-focus).
+    @Binding var newlyCreatedPromptId: String?
     @State private var showDeleteConfirmation = false
     @State private var isCopied = false
 
@@ -27,6 +30,7 @@ struct PromptListView: View {
             Button {
                 if let prompt = promptManager.createPrompt() {
                     selection = prompt.id
+                    newlyCreatedPromptId = prompt.id
                 }
             } label: {
                 Image(systemName: "plus")

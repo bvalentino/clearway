@@ -18,6 +18,9 @@ struct WorkTaskListView: View {
     let projectPath: String
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
+    /// One-shot creation-focus signal owned by `ContentView`; set when this list creates
+    /// a task so the detail view focuses its title (creation is exempt from no-auto-focus).
+    @Binding var newlyCreatedTaskId: UUID?
     @State private var showDeleteConfirmation = false
     @State private var isCopied = false
     @State private var taskToForceDelete: WorkTask?
@@ -251,6 +254,7 @@ struct WorkTaskListView: View {
     private func createAndEdit() {
         if let task = workTaskManager.createTask() {
             selection = task.id
+            newlyCreatedTaskId = task.id   // one-shot focus signal (creation only)
         }
     }
 

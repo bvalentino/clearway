@@ -14,6 +14,9 @@ struct TaskDetailView: View {
 
     let taskId: UUID
     @Binding var editorMode: TaskEditorMode
+    /// One-shot creation-focus signal owned by `ContentView`. Focus the title only when
+    /// this view *is* the just-created task; plain re-selection leaves it untouched.
+    @Binding var newlyCreatedTaskId: UUID?
 
     @State private var title: String = ""
     @State private var bodyText: String = ""
@@ -121,7 +124,8 @@ struct TaskDetailView: View {
                 title = task.title
                 bodyText = task.body
                 editorText = task.serialized()
-                if task.title.isEmpty {
+                if newlyCreatedTaskId == taskId {
+                    newlyCreatedTaskId = nil
                     DispatchQueue.main.async { isTitleFocused = true }
                 }
             }
