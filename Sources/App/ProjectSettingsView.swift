@@ -4,8 +4,6 @@ struct ProjectSettingsView: View {
     let projectPath: String
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @State private var hooks: ProjectHooks
-    @State private var maxConcurrentAgents: Int
-    @State private var pollingInterval: ProjectSettings.PollingInterval
     @State private var workflowText = ""
     @State private var workflowStatus: WorkflowStatus = .empty
     /// Suppresses external reload while a local save is pending.
@@ -28,8 +26,6 @@ struct ProjectSettingsView: View {
     init(projectPath: String) {
         self.projectPath = projectPath
         self._hooks = State(initialValue: ProjectHooks.load(for: projectPath))
-        self._maxConcurrentAgents = State(initialValue: ProjectSettings.maxConcurrentAgents(for: projectPath))
-        self._pollingInterval = State(initialValue: ProjectSettings.pollingInterval(for: projectPath))
     }
 
     private var workflowFilePath: String {
@@ -107,28 +103,6 @@ struct ProjectSettingsView: View {
                     }
                 }
 
-                // MARK: - Automation
-
-                SettingsSection("Automation", footer: "Automatically process tasks marked as Ready to Start.") {
-                    HStack {
-                        Text("Polling")
-                        Spacer()
-                        Picker("", selection: $pollingInterval) {
-                            ForEach(ProjectSettings.PollingInterval.allCases, id: \.self) { interval in
-                                Text(interval.label).tag(interval)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                    Divider()
-                        .padding(.vertical, 8)
-                    HStack {
-                        Text("Maximum In Progress")
-                        Spacer()
-                        Stepper("\(maxConcurrentAgents)", value: $maxConcurrentAgents, in: 1...16)
-                    }
-                }
-
                 // MARK: - PLANNING.md
 
                 SettingsSection("PLANNING.md", footer: Self.planningFooter, trailing: { planningTrailing }) {
@@ -167,18 +141,6 @@ struct ProjectSettingsView: View {
         }
         .onChange(of: hooks.afterCreate) { _ in hooks.save(for: projectPath) }
         .onChange(of: hooks.beforeRemove) { _ in hooks.save(for: projectPath) }
-        .onChange(of: maxConcurrentAgents) { newValue in
-            ProjectSettings.setMaxConcurrentAgents(newValue, for: projectPath)
-        }
-        .onChange(of: pollingInterval) { newValue in
-            ProjectSettings.setPollingInterval(newValue, for: projectPath)
-            if newValue == .disabled {
-                workTaskCoordinator.isAutoProcessing = false
-            } else if workTaskCoordinator.isAutoProcessing {
-                // Restart timer with new interval
-                workTaskCoordinator.restartAutoProcessingTimer()
-            }
-        }
         .onChange(of: workflowText) { _ in
             guard !isLoading else { return }
             scheduleSave()
