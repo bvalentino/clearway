@@ -12,9 +12,16 @@ import SwiftUI
 struct PromptLauncherView: View {
     /// Resolved command label used as the text area placeholder (caller passes `SettingsManager.resolvedMainTerminalCommand`).
     let command: String
+    /// True only when this launcher tab was just explicitly created (Cmd+T). Plain
+    /// selection of a worktree whose active tab is a launcher passes false, so the
+    /// editor is shown but not focused.
+    let autoFocus: Bool
     @Binding var draft: String
     let onSubmit: (String) -> Void
     let onOpenTerminal: () -> Void
+    /// Called once the one-shot `autoFocus` signal has been consumed, so the source
+    /// signal can be cleared and re-selecting this tab won't re-grab focus.
+    let onConsumeFocus: () -> Void
 
     @State private var contentHeight: CGFloat = 40
     @FocusState private var editorFocused: Bool
@@ -57,7 +64,11 @@ struct PromptLauncherView: View {
             .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { editorFocused = true }
+        .onAppear {
+            guard autoFocus else { return }
+            onConsumeFocus()
+            editorFocused = true
+        }
     }
 
     private func submit() {
@@ -187,19 +198,6 @@ private struct PromptTextEditor: NSViewRepresentable {
 private final class SubmitTextView: NSTextView {
     var onSubmitRequested: (() -> Void)?
     var placeholder: String = ""
-    private var didAutoFocus = false
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard !didAutoFocus, let window else { return }
-        didAutoFocus = true
-        // Defer to the next runloop turn so SwiftUI's default focus choice
-        // (which may prefer the "Open terminal" button) doesn't clobber us.
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            window.makeFirstResponder(self)
-        }
-    }
 
     override func keyDown(with event: NSEvent) {
         let isReturn = event.keyCode == 0x24 || event.keyCode == 0x4C
@@ -236,9 +234,11 @@ private final class SubmitTextView: NSTextView {
 #Preview {
     PromptLauncherView(
         command: "claude",
+        autoFocus: false,
         draft: .constant(""),
         onSubmit: { print("submit: \($0)") },
-        onOpenTerminal: { print("open terminal") }
+        onOpenTerminal: { print("open terminal") },
+        onConsumeFocus: {}
     )
     .frame(width: 800, height: 500)
 }

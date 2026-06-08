@@ -64,8 +64,14 @@ struct ContentView: View {
     @State private var hookSheet: HookSheet?
     @State private var afterCreateHookState: AfterCreateHookState = .none
     @State private var selectedTaskId: UUID?
+    /// One-shot: id of a task just created via an explicit "New Task" action. The matching
+    /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
+    /// of an existing task leaves it nil, so re-selecting never auto-focuses.
+    @State private var newlyCreatedTaskId: UUID?
     @State private var taskEditorMode: TaskEditorMode = .edit
     @State private var selectedPromptId: String?
+    /// One-shot creation-focus signal for prompts; mirrors `newlyCreatedTaskId`.
+    @State private var newlyCreatedPromptId: String?
     @State private var promptEditorMode: TaskEditorMode = .preview
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var showTrustConfirmation = false
@@ -104,6 +110,7 @@ struct ContentView: View {
             // Write synchronously so Planning mounts with the new selection in one render pass.
             detailSelection = .planning
             selectedTaskId = task.id
+            newlyCreatedTaskId = task.id   // one-shot focus signal (creation only)
         }
     }
 
@@ -248,13 +255,10 @@ struct ContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
                 }
-            } else if !sidebarArrowKeyInFlight {
-                // Brief delay so the sidebar row shows its active (blue) highlight
-                // before the terminal steals first responder. Without this, a mouse
-                // click flashes straight to the inactive (gray) state and the click
-                // reads as "didn't take."
-                focusActiveMainTab(delay: 0.12)
             }
+            // Selecting a worktree shows its terminal but no longer steals focus —
+            // focus stays on the sidebar so ↑/↓ keeps moving the selection (Notes.app
+            // model). Click the terminal (or Ctrl+1) to focus it.
             terminalManager.clearNotification(for: wt.id)
             claudeTodoManager.setWorktreePath(wt.path)
             todoManager.setWorktreePath(wt.path)
@@ -498,11 +502,10 @@ struct ContentView: View {
                 DispatchQueue.main.async { sidebarArrowKeyInFlight = false }
                 return event
             }
-            // Return / Keypad Enter: commit sidebarSelection so closed worktrees open + focus.
+            // Return / Keypad Enter: commit a previewed selection (e.g. open a closed
+            // worktree) without moving focus into the content — focus stays on the sidebar.
             if sidebarSelection != detailSelection {
                 detailSelection = sidebarSelection
-            } else {
-                focusActiveMainTab()
             }
             return nil
         }
@@ -739,14 +742,16 @@ struct ContentView: View {
             WorkTaskListView(
                 projectPath: worktreeManager.projectPath,
                 selection: $selectedTaskId,
-                editorMode: $taskEditorMode
+                editorMode: $taskEditorMode,
+                newlyCreatedTaskId: $newlyCreatedTaskId
             )
             .background(columnWidthReader)
             .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth, max: listsColumnMaxWidth)
         } else if detailSelection == .prompts {
             PromptListView(
                 selection: $selectedPromptId,
-                editorMode: $promptEditorMode
+                editorMode: $promptEditorMode,
+                newlyCreatedPromptId: $newlyCreatedPromptId
             )
             .background(columnWidthReader)
             .navigationSplitViewColumnWidth(min: listsColumnMinWidth, ideal: listsColumnIdealWidth, max: listsColumnMaxWidth)
@@ -810,6 +815,7 @@ struct ContentView: View {
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
                                     PromptLauncherView(
                                         command: settings.resolvedMainTerminalCommand,
+                                        autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
                                         draft: Binding(
                                             get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
                                             set: { terminalManager.launcherDrafts[activeTab.id] = $0 }
@@ -835,7 +841,8 @@ struct ContentView: View {
                                                 app: app,
                                                 mode: .loginShell
                                             )
-                                        }
+                                        },
+                                        onConsumeFocus: { terminalManager.pendingFocusTabId = nil }
                                     )
                                     .id(activeTab.id)
                                 } else if let activeSurface = pane.main.activeSurface {
@@ -934,13 +941,13 @@ struct ContentView: View {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 if let promptId = selectedPromptId {
-                    PromptDetailView(promptId: promptId, editorMode: $promptEditorMode).id(promptId)
+                    PromptDetailView(promptId: promptId, editorMode: $promptEditorMode, newlyCreatedPromptId: $newlyCreatedPromptId).id(promptId)
                 } else {
                     detailPlaceholder("Select a prompt")
                 }
             } else if detailSelection == .planning {
                 if let taskId = selectedTaskId {
-                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode).id(taskId)
+                    TaskDetailView(taskId: taskId, editorMode: $taskEditorMode, newlyCreatedTaskId: $newlyCreatedTaskId).id(taskId)
                 } else {
                     detailPlaceholder("Select a task")
                 }

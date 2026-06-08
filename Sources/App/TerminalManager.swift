@@ -222,6 +222,14 @@ class TerminalManager: ObservableObject {
     /// explicitly so the launcher view re-renders and pushes the new text in.
     var launcherDrafts: [UUID: String] = [:]
 
+    /// One-shot signal: the id of a launcher tab that was *explicitly created* (Cmd+T)
+    /// and should focus its prompt input on mount. Set in `appendLauncherTab`, read by
+    /// `PromptLauncherView` via `ContentView`, and cleared once consumed. Plain selection
+    /// of a worktree whose active tab is a launcher leaves this nil, so the launcher no
+    /// longer steals focus on re-select. Not `@Published`: it is set alongside an
+    /// `objectWillChange.send()` and clearing it must not trigger a re-render.
+    var pendingFocusTabId: UUID?
+
     /// Send text to the active main tab. Launcher tabs append it to the draft
     /// (newline-separated), so repeated prompt/task/todo clicks stack instead of
     /// clobbering. Surface tabs forward to `sendCommand` (asCommand=true, appends
@@ -381,9 +389,13 @@ class TerminalManager: ObservableObject {
 
         objectWillChange.send()
 
-        // No main command configured → promote immediately to a login shell.
+        // No main command configured → promote immediately to a login shell (which
+        // focuses via `promoteLauncher`). Otherwise the tab stays a launcher, so signal
+        // its view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
         if mainCommandProvider() == nil {
             promoteLauncher(tabId: newTab.id, in: key, app: app, mode: .loginShell)
+        } else {
+            pendingFocusTabId = newTab.id
         }
 
         return newTab.id
