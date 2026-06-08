@@ -88,7 +88,7 @@ struct WorkTaskWindow: View {
                         Label("Copy Task", systemImage: "doc.on.doc")
                     }
 
-                    if let task, task.status.isBacklog {
+                    if let task, task.worktree == nil {
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
                         } label: {
@@ -233,7 +233,7 @@ struct WorkTaskWindow: View {
             }
 
             // Agent metadata (show for tasks that have been worked on)
-            if !task.status.isBacklog, WorkTaskAgentMetadata.hasContent(for: task) {
+            if task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
                 WorkTaskAgentMetadata(task: task)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)

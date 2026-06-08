@@ -38,12 +38,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             }
         }
 
-        /// Whether this status belongs in the backlog (not yet dispatched to a worktree).
-        var isBacklog: Bool { self == .new || self == .readyToStart }
-
-        /// Whether this status represents active work in a worktree.
-        var isActive: Bool { self == .inProgress || self == .qa || self == .readyForReview }
-
         /// Migrate legacy status values from older task files.
         init?(migrating rawValue: String) {
             switch rawValue {

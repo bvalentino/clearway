@@ -74,7 +74,7 @@ struct TaskAsideView: View {
                 }
 
                 // Agent metadata (show for tasks that have been worked on; never for placeholders)
-                if !task.hidden, !task.status.isBacklog, WorkTaskAgentMetadata.hasContent(for: task) {
+                if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
                     WorkTaskAgentMetadata(task: task)
                 }
             }
