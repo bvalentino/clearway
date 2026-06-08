@@ -21,9 +21,8 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// Session observers for running agents, keyed by agent surface identifier.
     /// Per-surface keying ensures overlapping launches (a superseded agent + the live one)
-    /// have distinct observers — so `handleChildExited` can attribute tokens to the exact
-    /// surface that exited instead of reading whichever observer happened to land in the
-    /// worktree slot last.
+    /// have distinct observers — so `handleChildExited` retires the exact surface that
+    /// exited instead of whichever observer happened to land in the worktree slot last.
     private var sessionObservers: [ObjectIdentifier: AgentSessionObserver] = [:]
 
     /// Per-launch prompt file paths, keyed by surface identifier. Unique per launch so
@@ -308,14 +307,14 @@ class WorkTaskCoordinator: ObservableObject {
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = promptFile
 
-        // Start session observation for token tracking (always) + stall detection (opt-in).
+        // Start session observation for activity + stall detection.
         // Stall detection is only enabled when agent.timeout_ms is explicitly set in WORKFLOW.md,
         // because Claude Code legitimately idles during permission prompts and user interaction.
         if let worktreePath = worktree.path {
             let observer = AgentSessionObserver()
             // onActivity/onStall are live-agent-only: they drive task status transitions,
             // which shift-click (markAsLive: false) launches must not trigger. The observer
-            // itself is still created so token counts continue to accumulate in handleChildExited.
+            // is still created for every launch so handleChildExited can tear it down uniformly.
             if markAsLive {
                 observer.onActivity = { [weak self] in
                     self?.handleSessionActivity(worktreeId: worktree.id)
@@ -359,8 +358,7 @@ class WorkTaskCoordinator: ObservableObject {
         }
 
         // Retire the observer for this specific surface. Each launch has its own observer,
-        // so reading + stopping it here attributes tokens to the correct run and avoids
-        // double-counting when a superseded agent exits.
+        // so stopping it here retires the correct run without disturbing a superseded agent.
         let observer = sessionObservers.removeValue(forKey: ObjectIdentifier(surface))
         observer?.stopObserving()
 
@@ -380,14 +378,13 @@ class WorkTaskCoordinator: ObservableObject {
               var task = workTaskManager.task(forWorktree: branch) else { return }
 
         // Don't auto-change status — user may have exited to start a new session.
-        // Just accumulate tokens and record error on failure.
+        // Just record an error on non-zero exit.
         if exitCode == 0 {
             task.errorMessage = nil
         } else {
             task.errorMessage = "Agent exited with code \(exitCode)"
         }
 
-        accumulateTokens(from: observer, into: &task)
         workTaskManager.updateTask(task)
     }
 
@@ -417,12 +414,6 @@ class WorkTaskCoordinator: ObservableObject {
         task.status = .inProgress
         task.errorMessage = nil
         workTaskManager.updateTask(task)
-    }
-
-    private func accumulateTokens(from observer: AgentSessionObserver?, into task: inout WorkTask) {
-        guard let observer else { return }
-        if observer.inputTokens > 0 { task.inputTokens = (task.inputTokens ?? 0) + observer.inputTokens }
-        if observer.outputTokens > 0 { task.outputTokens = (task.outputTokens ?? 0) + observer.outputTokens }
     }
 }
 

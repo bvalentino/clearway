@@ -5,16 +5,13 @@ import Foundation
 /// Provides two features:
 /// 1. **Stall detection**: if the session file hasn't been modified for `timeoutMs`,
 ///    reports the agent as stalled via the `onStall` callback.
-/// 2. **Token tracking**: parses JSONL entries for usage data and reports
-///    cumulative token counts via the `onTokenUpdate` callback.
+/// 2. **Activity detection**: reports genuinely new session writes via the
+///    `onActivity` callback (used to resume a `done` task on new session activity).
 ///
 /// Degrades gracefully — if session files are unavailable or unparseable,
 /// the observer does nothing. Process exit detection is the reliable baseline.
 @MainActor
 class AgentSessionObserver: ObservableObject {
-    @Published var inputTokens: Int = 0
-    @Published var outputTokens: Int = 0
-
     private var worktreePath: String?
     private var timeoutMs: Int?
     private var watcherSource: DispatchSourceFileSystemObject?
@@ -93,7 +90,7 @@ class AgentSessionObserver: ObservableObject {
         return latest
     }
 
-    // MARK: - Token Parsing
+    // MARK: - Activity Detection
 
     private func reload() {
         guard let session = findLatestSessionFile() else { return }
@@ -103,59 +100,6 @@ class AgentSessionObserver: ObservableObject {
         lastSeenFile = session.path
         lastSeenModDate = session.modDate
         if isNewActivity { onActivity?() }
-
-        let sessionFile = session.path
-
-        // Read full file (learnings: don't tail-only read)
-        Task.detached { [weak self] in
-            guard let data = FileManager.default.contents(atPath: sessionFile),
-                  let content = String(data: data, encoding: .utf8) else { return }
-
-            let (input, output) = Self.parseTokenUsage(from: content)
-
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                if input > 0, input != self.inputTokens { self.inputTokens = input }
-                if output > 0, output != self.outputTokens { self.outputTokens = output }
-            }
-        }
-    }
-
-    /// Parses cumulative token usage from JSONL content.
-    /// Looks for entries with `costUSD` or usage-related fields.
-    /// Best-effort — returns (0, 0) if nothing found.
-    nonisolated static func parseTokenUsage(from content: String) -> (input: Int, output: Int) {
-        var totalInput = 0
-        var totalOutput = 0
-
-        for line in content.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-
-            // Quick check: skip lines without token-related fields
-            guard trimmed.contains("\"input_tokens\"") || trimmed.contains("\"output_tokens\"") else { continue }
-
-            // Simple JSON field extraction without full parsing
-            if let input = extractInt(from: trimmed, regex: inputTokensRegex) {
-                totalInput += input
-            }
-            if let output = extractInt(from: trimmed, regex: outputTokensRegex) {
-                totalOutput += output
-            }
-        }
-
-        return (totalInput, totalOutput)
-    }
-
-    // Pre-compiled regex patterns for token extraction
-    private nonisolated static let inputTokensRegex = try! NSRegularExpression(pattern: "\"input_tokens\"\\s*:\\s*(\\d+)")
-    private nonisolated static let outputTokensRegex = try! NSRegularExpression(pattern: "\"output_tokens\"\\s*:\\s*(\\d+)")
-
-    /// Extracts an integer value for a JSON field using a pre-compiled regex.
-    private nonisolated static func extractInt(from json: String, regex: NSRegularExpression) -> Int? {
-        guard let match = regex.firstMatch(in: json, range: NSRange(json.startIndex..., in: json)),
-              let range = Range(match.range(at: 1), in: json) else { return nil }
-        return Int(json[range])
     }
 
     // MARK: - Stall Detection
