@@ -1,10 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// Per-project settings stored in UserDefaults.
-enum ProjectSettings {
-}
-
 /// Per-project hook configuration stored in UserDefaults.
 struct ProjectHooks {
     var afterCreate: String
