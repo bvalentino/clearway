@@ -28,12 +28,8 @@ struct TodosPanelView: View {
     @State private var editingTodoId: Int?
     @State private var isCreatingNew = false
     @State private var newTodoGeneration = 0
-    @State private var selectedTodo: TodoSelection?
+    @State private var selectedTodoId: Int?
     @State private var todoPendingDeletion: Todo?
-
-    enum TodoSelection: Hashable {
-        case todo(Int)
-    }
 
     private var isEmpty: Bool {
         todoManager.todos.isEmpty && !isCreatingNew
@@ -97,15 +93,15 @@ struct TodosPanelView: View {
             Button("Delete", role: .destructive) {
                 if let todo = todoPendingDeletion {
                     todoManager.deleteTodo(todo)
-                    if selectedTodo == .todo(todo.id) { selectedTodo = nil }
+                    if selectedTodoId == todo.id { selectedTodoId = nil }
                 }
                 todoPendingDeletion = nil
             }
         }
     }
 
-    private func selectTodo(_ selection: TodoSelection) {
-        selectedTodo = selection
+    private func selectTodo(_ id: Int) {
+        selectedTodoId = id
         isCreatingNew = false
         editingTodoId = nil
     }
@@ -114,9 +110,9 @@ struct TodosPanelView: View {
         TodoRow(
             todo: todo,
             isEditing: editingTodoId == todo.id,
-            isSelected: selectedTodo == .todo(todo.id),
+            isSelected: selectedTodoId == todo.id,
             canSend: canSend,
-            onSelect: { selectTodo(.todo(todo.id)) },
+            onSelect: { selectTodo(todo.id) },
             onSend: { sendTodoToTerminal(todo) },
             onEditStart: { editingTodoId = todo.id },
             onEditCommit: { subject in

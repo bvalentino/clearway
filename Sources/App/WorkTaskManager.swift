@@ -106,7 +106,7 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// Applies an editor buffer's parsed form to the persisted task. System-managed fields
-    /// (`worktree`, `status`, `attempt`, token counts, timestamps) are owned by
+    /// (`worktree`, `status`, `attempt`, timestamps) are owned by
     /// `WorkTaskCoordinator` and state commands — editor buffers never overwrite them, which
     /// is what prevents a stale buffer from clobbering a concurrent coordinator write.
     /// Returns `false` if the buffer has unparseable frontmatter.

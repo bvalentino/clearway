@@ -11,7 +11,7 @@ import Foundation
 /// Degrades gracefully — if session files are unavailable or unparseable,
 /// the observer does nothing. Process exit detection is the reliable baseline.
 @MainActor
-class AgentSessionObserver: ObservableObject {
+class AgentSessionObserver {
     private var worktreePath: String?
     private var timeoutMs: Int?
     private var watcherSource: DispatchSourceFileSystemObject?
