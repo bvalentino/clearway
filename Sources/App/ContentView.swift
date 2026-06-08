@@ -46,7 +46,6 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
-    @EnvironmentObject private var promptManager: PromptManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @State private var detailSelection: DetailSelection? = .planning
     @State private var sidebarSelection: DetailSelection? = .planning
@@ -226,7 +225,6 @@ struct ContentView: View {
             handleStartResult(result, isAutoStart: true)
         }
         .navigationTitle(navigationTitle)
-        .navigationSubtitle(navigationSubtitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
@@ -455,22 +453,7 @@ struct ContentView: View {
 
     private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
 
-    private var navigationTitle: String {
-        if detailSelection == .planning { return "Planning" }
-        if detailSelection == .prompts { return "Prompts" }
-        return currentWorktree?.displayName ?? projectName
-    }
-
-    private var navigationSubtitle: String {
-        if detailSelection == .planning {
-            let c = workTaskManager.tasks.filter { $0.status.isBacklog && !$0.hidden }.count
-            return "\(c) task\(c == 1 ? "" : "s")"
-        } else if detailSelection == .prompts {
-            let c = promptManager.prompts.count
-            return "\(c) prompt\(c == 1 ? "" : "s")"
-        }
-        return ""
-    }
+    private var navigationTitle: String { projectName }
 
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
