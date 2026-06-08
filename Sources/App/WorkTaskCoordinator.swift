@@ -189,16 +189,14 @@ class WorkTaskCoordinator: ObservableObject {
         pendingLaunch = nil
 
         // Move the task file into the now-live worktree BEFORE launch, so the rendered prompt's
-        // taskPath already resolves to TASK.md.
+        // taskPath (resolved via filePath(for:), which keys off the branch) already points at
+        // TASK.md. The move doesn't mutate the task's fields, so the captured value stays accurate.
         if let path = worktree.path {
             workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path)
         }
 
         return { [weak self] in
-            guard let self else { return }
-            // Re-resolve post-move so the launch closure renders against the relocated copy.
-            let resolved = self.workTaskManager.tasks.first(where: { $0.id == task.id }) ?? task
-            self.launchClaudeCode(for: resolved, in: worktree, app: app)
+            self?.launchClaudeCode(for: task, in: worktree, app: app)
         }
     }
 

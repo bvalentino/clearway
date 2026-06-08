@@ -20,6 +20,9 @@ class WorkTaskManager: ObservableObject {
     /// on screen. Driven from the view layer via `setWatchedWorktrees(_:)`.
     private var worktreeWatchers: [String: DispatchSourceFileSystemObject] = [:]
 
+    /// Guards `migrateCentralTasks()` so it runs at most once per manager instance.
+    private var didMigrate = false
+
     /// Resolves the live worktrees as `(branch, path)` pairs. Injected at construction so the
     /// manager can route a task's file to its worktree (and merge-load every worktree's
     /// `TASK.md`) without taking a hard dependency on `WorktreeManager`. Defaults to empty,
@@ -44,6 +47,14 @@ class WorkTaskManager: ObservableObject {
     /// is removed so the worktree copy wins. The `id` already lives in frontmatter (carried on every
     /// write), so identity survives the rename. Re-merges the pool afterward.
     func relocateTaskToWorktree(id: UUID, worktreePath: String) {
+        moveCentralFileIntoWorktree(id: id, worktreePath: worktreePath)
+        reload()
+    }
+
+    /// The file move itself, without a re-merge — so batch callers (migration) can move many files
+    /// and reload once. See `relocateTaskToWorktree` for the doc on creation-date preservation and
+    /// idempotency.
+    private func moveCentralFileIntoWorktree(id: UUID, worktreePath: String) {
         let fm = FileManager.default
         let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
         guard fm.fileExists(atPath: central) else { return }
@@ -56,7 +67,6 @@ class WorkTaskManager: ObservableObject {
             try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try? fm.moveItem(atPath: central, toPath: destination)
         }
-        reload()
     }
 
     nonisolated deinit {
@@ -276,9 +286,13 @@ class WorkTaskManager: ObservableObject {
     ///       **Trash** — recoverable, never `removeItem`, because `.clearway/` is gitignored so
     ///       permanent deletion would destroy user-authored task bodies on upgrade.
     /// After the first run the central directory holds only backlog (`worktree == nil`,
-    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. Re-running is
-    /// a no-op.
+    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. The manager
+    /// guards this to run once per instance; the caller decides *when* (after the live worktree set
+    /// is known).
     func migrateCentralTasks() {
+        guard !didMigrate else { return }
+        didMigrate = true
+
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else { return }
         let liveWorktrees = worktreeResolver()
@@ -290,7 +304,7 @@ class WorkTaskManager: ObservableObject {
 
             if let branch = task.worktree,
                let live = liveWorktrees.first(where: { $0.branch == branch }) {
-                relocateTaskToWorktree(id: task.id, worktreePath: live.path)
+                moveCentralFileIntoWorktree(id: task.id, worktreePath: live.path)
             } else if task.status == .done || task.status == .canceled {
                 try? fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
             }
@@ -324,25 +338,14 @@ class WorkTaskManager: ObservableObject {
         watcherSource = makeWatcher(forDirectory: tasksDirectory)
     }
 
-    /// Creates a debounced `.write` watcher on `directory`, or nil when it doesn't exist yet
-    /// (it gets created on first write, which re-arms the central watcher via `write`).
+    /// Debounced watcher on `directory` (nil when it doesn't exist yet — it gets created on first
+    /// write, which re-arms the central watcher via `write`). Delegates to the shared
+    /// `ClaudeSessionFiles.makeWatcher`, whose broad event mask catches the atomic write-then-rename
+    /// an in-worktree agent uses when it edits `TASK.md`.
     private func makeWatcher(forDirectory directory: String) -> DispatchSourceFileSystemObject? {
-        guard FileManager.default.fileExists(atPath: directory) else { return nil }
-
-        let fd = open(directory, O_EVTONLY)
-        guard fd >= 0 else { return nil }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
+        ClaudeSessionFiles.makeWatcher(path: directory) { [weak self] in
             self?.scheduleReload()
         }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        return source
     }
 
     private nonisolated func scheduleReload() {
