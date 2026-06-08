@@ -1,9 +1,10 @@
 import Foundation
 
-/// Manages tasks persisted as markdown files in `.clearway/tasks/`.
-///
-/// Unlike `TodoManager` (per-worktree), this is project-scoped — it always
-/// reads/writes from the project root (main worktree path).
+/// Manages tasks persisted as markdown files whose location encodes their association with a
+/// worktree. Backlog tasks live centrally in `.clearway/tasks/<UUID>.md`; a task linked to a live
+/// worktree lives in that worktree as `.clearway/TASK.md`. The pool is merge-loaded from both
+/// sources, with a branch→worktree-path resolver injected at construction so the manager keeps no
+/// `WorktreeManager` dependency.
 @MainActor
 class WorkTaskManager: ObservableObject {
     @Published var tasks: [WorkTask] = []
@@ -263,6 +264,39 @@ class WorkTaskManager: ObservableObject {
         guard let data = fm.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else { return nil }
         return WorkTask.parse(from: content, id: fallbackId, createdAt: createdAt)
+    }
+
+    // MARK: - Migration
+
+    /// One-time, idempotent migration toward location-encoded association. For each central
+    /// `<UUID>.md`:
+    ///   (a) if its `worktree` matches a **live** worktree, relocate it into that worktree's
+    ///       `TASK.md` (so pre-existing active tasks converge on their worktree); else
+    ///   (b) if it is a `done`/`canceled` orphan (no live worktree owns it), move it to the
+    ///       **Trash** — recoverable, never `removeItem`, because `.clearway/` is gitignored so
+    ///       permanent deletion would destroy user-authored task bodies on upgrade.
+    /// After the first run the central directory holds only backlog (`worktree == nil`,
+    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. Re-running is
+    /// a no-op.
+    func migrateCentralTasks() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else { return }
+        let liveWorktrees = worktreeResolver()
+
+        for file in files where file.hasSuffix(".md") {
+            let path = (tasksDirectory as NSString).appendingPathComponent(file)
+            guard let id = UUID(uuidString: (file as NSString).deletingPathExtension),
+                  let task = loadTask(atPath: path, fallbackId: id) else { continue }
+
+            if let branch = task.worktree,
+               let live = liveWorktrees.first(where: { $0.branch == branch }) {
+                relocateTaskToWorktree(id: task.id, worktreePath: live.path)
+            } else if task.status == .done || task.status == .canceled {
+                try? fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
+            }
+        }
+
+        reload()
     }
 
     // MARK: - File Watching

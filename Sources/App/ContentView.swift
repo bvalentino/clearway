@@ -63,6 +63,9 @@ struct ContentView: View {
     @State private var hookSheet: HookSheet?
     @State private var afterCreateHookState: AfterCreateHookState = .none
     @State private var selectedTaskId: UUID?
+    /// Guards the one-time task-file migration so it runs once per window, after the first
+    /// successful worktree load (when the live set is known).
+    @State private var didMigrateTasks = false
     /// One-shot: id of a task just created via an explicit "New Task" action. The matching
     /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
     /// of an existing task leaves it nil, so re-selecting never auto-focuses.
@@ -307,6 +310,12 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
+            // One-time migration once the live worktree set is known: relocate pre-existing active
+            // central tasks into their worktrees and trash legacy terminal-status orphans.
+            if !didMigrateTasks && !newWorktrees.isEmpty {
+                didMigrateTasks = true
+                workTaskManager.migrateCentralTasks()
+            }
             // Re-merge the task pool: a created/removed worktree adds/drops its TASK.md, and a
             // just-appeared worktree path may newly enable a watcher for an opened worktree.
             syncWatchedWorktrees()

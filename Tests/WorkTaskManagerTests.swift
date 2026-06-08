@@ -394,6 +394,72 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertTrue(manager.tasks.contains { $0.id == worktreeTask.id }, "re-merge must surface the worktree task")
     }
 
+    // MARK: - Migration (Task 10)
+
+    /// Writes a task as a central `<UUID>.md` and returns its path.
+    @discardableResult
+    private func seedCentralTask(_ task: WorkTask) throws -> String {
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
+        let path = (centralDir as NSString).appendingPathComponent("\(task.id.uuidString).md")
+        try task.serialized().write(toFile: path, atomically: true, encoding: .utf8)
+        return path
+    }
+
+    /// Migration relocates a central task whose worktree is live into that worktree, leaves
+    /// backlog tasks central, and trashes legacy done/canceled orphans — converging the central
+    /// directory on backlog-only.
+    func testMigrationRelocatesActiveTrashesOrphansKeepsBacklog() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+
+        // (a) Active central task whose worktree is live → relocate.
+        let active = WorkTask(id: UUID(), title: "Active", status: .inProgress, worktree: "feature/live")
+        let activePath = try seedCentralTask(active)
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-live")
+
+        // (b) Legacy terminal-status orphan with no live worktree → Trash.
+        let orphan = WorkTask(id: UUID(), title: "Old done", status: .done, worktree: "feature/gone")
+        let orphanPath = try seedCentralTask(orphan)
+
+        // (c) Backlog task → stays central.
+        guard let backlog = manager.createTask(title: "Still backlog") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let backlogPath = manager.filePath(for: backlog)
+
+        manager.worktreeResolver = { [(branch: "feature/live", path: worktreePath)] }
+        manager.migrateCentralTasks()
+
+        // (a) relocated
+        XCTAssertFalse(FileManager.default.fileExists(atPath: activePath), "active central file must be relocated")
+        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd), "active task must now live in its worktree")
+        // (b) trashed (gone from central)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "terminal-status orphan must be trashed")
+        // (c) backlog stays
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backlogPath), "backlog task must remain central")
+    }
+
+    /// Migration is idempotent — a second run after convergence changes nothing.
+    func testMigrationIsIdempotent() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        let orphan = WorkTask(id: UUID(), title: "Canceled", status: .canceled, worktree: nil)
+        _ = try seedCentralTask(orphan)
+        guard manager.createTask(title: "Backlog") != nil else { XCTFail("createTask returned nil"); return }
+
+        manager.worktreeResolver = { [] }
+        manager.migrateCentralTasks()
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        let afterFirst = (try? FileManager.default.contentsOfDirectory(atPath: centralDir))?.filter { $0.hasSuffix(".md") }.sorted()
+
+        manager.migrateCentralTasks()
+        let afterSecond = (try? FileManager.default.contentsOfDirectory(atPath: centralDir))?.filter { $0.hasSuffix(".md") }.sorted()
+
+        XCTAssertEqual(afterFirst, afterSecond, "second migration run must be a no-op")
+        XCTAssertEqual(afterFirst?.count, 1, "only the backlog task remains central after convergence")
+    }
+
     // MARK: - Shadow/exposed creation routed into the worktree (Task 5)
 
     /// A shadow task created for a live worktree must land in that worktree's `TASK.md`, not the
