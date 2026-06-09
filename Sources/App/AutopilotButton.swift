@@ -13,10 +13,15 @@ import SwiftUI
 ///   state into the view. While running, the accessibility label/value/help shift to a third state
 ///   ("Autopilot running") so VoiceOver reflects the in-flight step.
 ///
-/// Clicking is the *only* write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
+/// Clicking is the primary write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
 /// `WorkTaskManager.setAutopilot`. The established watcher flip path (`handleAutopilotFlip`) then
 /// enacts the intent — enable resumes the current action, disable pauses after the running step
-/// finishes. The view adds no second launch path and never terminates a surface.
+/// finishes. The view adds no second launch path.
+///
+/// A **context-menu "Stop Agent"** item (shown only while a step is running) is the lone exception:
+/// it invokes the coordinator's `manualKill`, which pauses *and* terminates the running agent
+/// surface. This is the spec's manual kill — the one affordance that interrupts a running agent,
+/// kept distinct from the pause toggle that lets the in-flight step finish.
 struct AutopilotButton: View {
     let worktree: Worktree
 
@@ -50,6 +55,14 @@ struct AutopilotButton: View {
             .help(helpText)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(accessibilityValue)
+            .contextMenu {
+                // Manual kill — the only affordance that interrupts a running agent (distinct from
+                // the pause toggle, which lets the running step finish). Shown only while a step is
+                // mid-run, since there is nothing to terminate otherwise.
+                if isRunning {
+                    Button("Stop Agent", role: .destructive, action: manualKill)
+                }
+            }
         }
     }
 
@@ -76,5 +89,12 @@ struct AutopilotButton: View {
     private func toggle() {
         guard let task else { return }
         workTaskManager.setAutopilot(task, to: !isLive)
+    }
+
+    /// Pauses the loop and terminates the running agent surface — the manual kill. Unlike `toggle`,
+    /// this interrupts the in-flight step rather than letting it finish.
+    private func manualKill() {
+        guard let branch = worktree.branch else { return }
+        workTaskCoordinator.manualKill(forBranch: branch)
     }
 }

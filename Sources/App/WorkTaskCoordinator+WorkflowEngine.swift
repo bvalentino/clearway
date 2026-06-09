@@ -143,6 +143,39 @@ extension WorkTaskCoordinator {
         WorkflowDefinition.markTrusted(projectPath: workTaskManager.projectPath)
     }
 
+    /// Whether a manual kill should terminate a surface for a worktree — true only when a live agent
+    /// surface is tracked. Pure (a function of the surface dictionary) so the kill *decision* is
+    /// unit-testable without a live Ghostty app; the actual `terminateSurface` side effect needs one.
+    /// The kill always pauses autopilot regardless; this only governs the surface-termination half.
+    @MainActor
+    func shouldTerminateOnManualKill(forWorktree worktreeId: String) -> Bool {
+        agentSurfaces[worktreeId] != nil
+    }
+
+    /// **Manual kill** — the engine operation distinct from the autopilot *pause* (which never
+    /// interrupts a running agent). It does two things, in order:
+    ///
+    /// 1. Pauses the loop by writing `autopilot = false` via the existing `setAutopilot` field-write,
+    ///    so even after the surface dies the loop won't auto-advance.
+    /// 2. Terminates the worktree's currently-running agent surface via `TerminalManager`'s existing
+    ///    `terminateSurface` (which routes through `closeMainTab` → `closeSurface()` / SIGHUP).
+    ///
+    /// Because `handleChildExited` clears `runningAction` when the live surface exits (Phase 3), the
+    /// termination tears down the engine's in-memory `P`, and the now-paused loop stays put. This is
+    /// the **only** path allowed to interrupt a running agent. No-op for a worktree with no task /
+    /// no live surface (nothing to kill — but autopilot is still paused if a task exists).
+    @MainActor
+    func manualKill(forBranch branch: String) {
+        guard let task = workTaskManager.task(forWorktree: branch) else { return }
+        // 1. Pause first so a race between the SIGHUP and the next reload can't auto-advance.
+        workTaskManager.setAutopilot(task, to: false)
+        // 2. Terminate the live agent surface for this worktree, if one is running.
+        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
+              shouldTerminateOnManualKill(forWorktree: worktree.id),
+              let surface = agentSurfaces[worktree.id] else { return }
+        terminalManager.terminateSurface(surface, in: worktree.id)
+    }
+
     /// Test/restart seam: sets the in-memory running action (`P`) for a worktree directly, without a
     /// launch. Phase 3's restart-resume rebuilds this from disk; tests use it to stage a mid-loop
     /// state. The worktree id (its path) is the key, matching how `advanceWorkflow` reads `P`.
