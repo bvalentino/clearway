@@ -71,10 +71,10 @@ struct WorkTaskListView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                let isReady = selectedTask?.status == .readyToStart
+                let isReady = selectedTask?.status == WorkTask.ReservedStatus.readyToStart
                 Button {
                     guard let task = selectedTask else { return }
-                    workTaskManager.setStatus(task, to: isReady ? .new : .readyToStart)
+                    workTaskManager.setStatus(task, to: isReady ? WorkTask.ReservedStatus.new : WorkTask.ReservedStatus.readyToStart)
                 } label: {
                     Label("Ready to Start", systemImage: isReady ? "checkmark.circle.fill" : "checkmark.circle")
                 }
@@ -214,8 +214,8 @@ struct WorkTaskListView: View {
                         Button { startTask(task) } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
-                        if task.status == .new {
-                            Button { workTaskManager.setStatus(task, to: .readyToStart) } label: {
+                        if task.status == WorkTask.ReservedStatus.new {
+                            Button { workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.readyToStart) } label: {
                                 Label("Ready to Start", systemImage: "clock.arrow.circlepath")
                             }
                         }
@@ -343,12 +343,12 @@ struct WorkTaskCard: View {
         .contentShape(Rectangle())
         .onTapGesture { onEdit() }
         .contextMenu(showContextMenu ? ContextMenu {
-            if let onStartNow, task.status == .new || task.status == .readyToStart {
+            if let onStartNow, task.status == WorkTask.ReservedStatus.new || task.status == WorkTask.ReservedStatus.readyToStart {
                 Button { onStartNow() } label: {
                     Label("Start Now", systemImage: "play.fill")
                 }
             }
-            if let onReadyToStart, task.status == .new {
+            if let onReadyToStart, task.status == WorkTask.ReservedStatus.new {
                 Button { onReadyToStart() } label: {
                     Label("Ready to Start", systemImage: "clock.arrow.circlepath")
                 }
@@ -383,7 +383,7 @@ private struct WorkTaskRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if task.status == .readyToStart {
+                if task.status == WorkTask.ReservedStatus.readyToStart {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.secondary)
                         .help("Ready to Start")
@@ -401,15 +401,15 @@ private struct WorkTaskRow: View {
 // MARK: - Status Badge
 
 struct WorkTaskStatusBadge: View {
-    let status: WorkTask.Status
+    let status: String
     @State private var pulsing = false
 
     var body: some View {
         HStack(spacing: 4) {
-            if status == .readyToStart {
+            if status == WorkTask.ReservedStatus.readyToStart {
                 Image(systemName: "checkmark")
                     .font(.caption2.weight(.bold))
-            } else if status == .inProgress {
+            } else if status == WorkTask.ReservedStatus.inProgress {
                 Circle()
                     .fill(.green)
                     .frame(width: 6, height: 6)
@@ -418,27 +418,28 @@ struct WorkTaskStatusBadge: View {
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulsing)
                     .onAppear { pulsing = true }
             }
-            Text(status.label)
+            Text(WorkTask.displayLabel(for: status))
         }
         .font(.caption2)
         .fontWeight(.medium)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .foregroundStyle(status.badgeColor)
-        .background(status.badgeColor.opacity(0.12), in: Capsule())
+        .foregroundStyle(Self.badgeColor(for: status))
+        .background(Self.badgeColor(for: status).opacity(0.12), in: Capsule())
     }
-}
 
-extension WorkTask.Status {
-    var badgeColor: Color {
-        switch self {
-        case .new: return .blue
-        case .readyToStart: return .indigo
-        case .inProgress: return .green
-        case .qa: return .purple
-        case .readyForReview: return .orange
-        case .done: return .secondary
-        case .canceled: return .red
+    /// Accent color for a status slug. Known reserved/legacy slugs keep their existing colors;
+    /// an arbitrary action slug falls back to the running-state accent.
+    static func badgeColor(for status: String) -> Color {
+        switch status {
+        case WorkTask.ReservedStatus.new: return .blue
+        case WorkTask.ReservedStatus.readyToStart: return .indigo
+        case WorkTask.ReservedStatus.inProgress: return .green
+        case WorkTask.ReservedStatus.qa: return .purple
+        case WorkTask.ReservedStatus.readyForReview: return .orange
+        case WorkTask.ReservedStatus.done: return .secondary
+        case WorkTask.ReservedStatus.canceled: return .red
+        default: return .green
         }
     }
 }

@@ -143,7 +143,7 @@ class WorkTaskManager: ObservableObject {
         if let existing = task(forWorktree: branch) { return existing }
         // Title is intentionally empty — the user fills it in when they expose the task
         // via the aside's Create Task button (which opens the editor window).
-        var shadow = WorkTask(title: "", status: .inProgress, worktree: branch)
+        var shadow = WorkTask(title: "", status: WorkTask.ReservedStatus.inProgress, worktree: branch)
         shadow.hidden = true
         write(shadow)
         reload()
@@ -168,7 +168,7 @@ class WorkTaskManager: ObservableObject {
             return existing.hidden ? expose(existing) : existing
         }
         // Same defaults as shadow tasks: in-progress, empty title (the editor fills it in).
-        let task = WorkTask(title: "", status: .inProgress, worktree: branch)
+        let task = WorkTask(title: "", status: WorkTask.ReservedStatus.inProgress, worktree: branch)
         write(task)
         reload()
         return tasks.first { $0.id == task.id }
@@ -208,7 +208,7 @@ class WorkTaskManager: ObservableObject {
         return true
     }
 
-    func setStatus(_ task: WorkTask, to status: WorkTask.Status) {
+    func setStatus(_ task: WorkTask, to status: String) {
         guard task.status != status else { return }
         var updated = task
         updated.status = status
@@ -353,7 +353,7 @@ class WorkTaskManager: ObservableObject {
                let live = liveWorktrees.first(where: { $0.branch == branch }) {
                 moveCentralFileIntoWorktree(id: task.id, worktreePath: live.path)
                 changed = true
-            } else if task.status == .done || task.status == .canceled {
+            } else if task.status == WorkTask.ReservedStatus.done || task.status == WorkTask.ReservedStatus.canceled {
                 archiveCentralFile(at: path, named: file)
                 changed = true
             } else if task.worktree != nil {

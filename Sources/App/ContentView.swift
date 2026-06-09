@@ -583,7 +583,7 @@ struct ContentView: View {
             sidePanelTab = tab
         } else if let branch = worktree.branch,
                   let task = workTaskManager.task(forWorktree: branch),
-                  task.status == .inProgress {
+                  task.status == WorkTask.ReservedStatus.inProgress {
             sidePanelTab = .task
         } else if sidePanelTab == .task {
             sidePanelTab = .todos

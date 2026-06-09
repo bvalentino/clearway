@@ -6,7 +6,11 @@ import Foundation
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
-    var status: Status
+    /// The task's current state. A plain slug string: the reserved backlog markers
+    /// (`new` / `ready_to_start`), a user-defined action slug from `WORKFLOW.json` while a
+    /// loop runs, or one of the legacy fixed states used by the `WORKFLOW.md` path. Display
+    /// labels come from `WorkTask.displayLabel(for:)`.
+    var status: String
     var worktree: String?
     var createdAt: Date
     var body: String
@@ -18,39 +22,69 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// stays out of the Planning backlog until the user exposes it.
     var hidden: Bool = false
 
-    enum Status: String, CaseIterable {
-        case new
-        case readyToStart = "ready_to_start"
-        case inProgress = "in_progress"
-        case qa
-        case readyForReview = "ready_for_review"
-        case done
-        case canceled
+    /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
+    /// a namespace — it has no cases, so it can never be instantiated; the values are plain
+    /// `static let` strings. The first two are reserved backlog markers (pre-worktree). The
+    /// remainder are legacy fixed states used **only** by the `WORKFLOW.md` path; the new
+    /// `WORKFLOW.json` engine uses arbitrary action slugs instead.
+    enum ReservedStatus {
+        // Reserved backlog markers (pre-worktree).
+        static let new = "new"
+        static let readyToStart = "ready_to_start"
 
-        var label: String {
-            switch self {
-            case .new: return "New"
-            case .readyToStart: return "Ready to Start"
-            case .inProgress: return "In Progress"
-            case .qa: return "QA"
-            case .readyForReview: return "Ready for Review"
-            case .done: return "Done"
-            case .canceled: return "Canceled"
-            }
-        }
+        // Legacy fixed middle/terminal states — used only by the legacy WORKFLOW.md path.
+        static let inProgress = "in_progress"
+        static let qa = "qa"
+        static let readyForReview = "ready_for_review"
+        static let done = "done"
+        static let canceled = "canceled"
 
-        /// Migrate legacy status values from older task files.
-        init?(migrating rawValue: String) {
-            switch rawValue {
-            case "open": self = .new
-            case "started", "in_progress": self = .inProgress
-            case "stopped": self = .canceled
-            default: self.init(rawValue: rawValue)
-            }
+        /// The legacy status slugs in display order. Drives the legacy `WORKFLOW.md` template
+        /// variables (`status.<slug>`); the new engine doesn't enumerate states.
+        static let legacyOrdered: [String] = [
+            new, readyToStart, inProgress, qa, readyForReview, done, canceled,
+        ]
+    }
+
+    /// Migrates a legacy status value to its current slug. Older task files used `open`,
+    /// `started`, and `stopped`; everything else passes through unchanged so arbitrary
+    /// `WORKFLOW.json` action slugs round-trip verbatim.
+    static func migrateStatus(_ rawValue: String) -> String {
+        switch rawValue {
+        case "open": return ReservedStatus.new
+        case "started", "in_progress": return ReservedStatus.inProgress
+        case "stopped": return ReservedStatus.canceled
+        default: return rawValue
         }
     }
 
-    init(id: UUID = UUID(), title: String, status: Status = .new, worktree: String? = nil, body: String = "") {
+    /// Human-readable label for a status slug. The known reserved/legacy slugs map to their
+    /// existing labels; an arbitrary action slug (e.g. `ready_for_review`-style snake_case)
+    /// is humanized (`review` → "Review", `run_tests` → "Run Tests").
+    static func displayLabel(for status: String) -> String {
+        switch status {
+        case ReservedStatus.new: return "New"
+        case ReservedStatus.readyToStart: return "Ready to Start"
+        case ReservedStatus.inProgress: return "In Progress"
+        case ReservedStatus.qa: return "QA"
+        case ReservedStatus.readyForReview: return "Ready for Review"
+        case ReservedStatus.done: return "Done"
+        case ReservedStatus.canceled: return "Canceled"
+        default: return humanize(status)
+        }
+    }
+
+    /// Turns an arbitrary slug into a Title Cased label (`run_tests`/`run-tests` → "Run Tests").
+    /// Falls back to the raw slug when it has no word characters to capitalize.
+    private static func humanize(_ slug: String) -> String {
+        let words = slug
+            .split(whereSeparator: { $0 == "_" || $0 == "-" || $0 == " " })
+            .filter { !$0.isEmpty }
+        guard !words.isEmpty else { return slug }
+        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+
+    init(id: UUID = UUID(), title: String, status: String = ReservedStatus.new, worktree: String? = nil, body: String = "") {
         self.id = id
         self.title = title
         self.status = status
@@ -68,7 +102,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // when a task moves into its worktree as `TASK.md`.
         lines.append("id: \(id.uuidString)")
         lines.append("title: \(YAML.quote(title))")
-        lines.append("status: \(status.rawValue)")
+        lines.append("status: \(status)")
         // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
         // Planning task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
@@ -144,8 +178,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         guard let (fields, body) = YAML.parseFrontmatter(from: content) else { return nil }
 
         guard let title = fields["title"],
-              let statusString = fields["status"],
-              let status = Status(migrating: statusString) else { return nil }
+              let statusString = fields["status"], !statusString.isEmpty else { return nil }
+        let status = migrateStatus(statusString)
 
         // Prefer the frontmatter `id` (authoritative once a task moves to `TASK.md`, where the
         // filename no longer carries the UUID); fall back to the caller-supplied id for legacy

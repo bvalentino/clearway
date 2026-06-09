@@ -109,7 +109,9 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     func startTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == .new || task.status == .readyToStart || task.status == .canceled else { return .ignored }
+        guard task.status == WorkTask.ReservedStatus.new
+                || task.status == WorkTask.ReservedStatus.readyToStart
+                || task.status == WorkTask.ReservedStatus.canceled else { return .ignored }
 
         // Check trust before executing any hooks
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
@@ -117,7 +119,7 @@ class WorkTaskCoordinator: ObservableObject {
         }
 
         var updated = task
-        if task.status == .canceled {
+        if task.status == WorkTask.ReservedStatus.canceled {
             updated.attempt = (task.attempt ?? 0) + 1
         }
         updated.errorMessage = nil
@@ -126,7 +128,7 @@ class WorkTaskCoordinator: ObservableObject {
         // is temporarily detached (e.g. mid-rebase), because `branch` is stored separately.
         if let branch = task.worktree,
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
-            updated.status = .inProgress
+            updated.status = WorkTask.ReservedStatus.inProgress
             workTaskManager.updateTask(updated)
 
             if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -143,7 +145,7 @@ class WorkTaskCoordinator: ObservableObject {
             let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
             let branch = task.worktree ?? workTaskManager.deriveBranchName(from: task.title, existingBranches: existingBranches)
             updated.worktree = branch
-            updated.status = .inProgress
+            updated.status = WorkTask.ReservedStatus.inProgress
             workTaskManager.updateTask(updated)
             pendingLaunch = (id: updated.id, branch: branch)
             return .createWorktree(branch)
@@ -152,7 +154,9 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// Continues a completed task — re-launches agent with a continuation prompt.
     func continueTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == .done || task.status == .readyForReview || task.status == .qa,
+        guard task.status == WorkTask.ReservedStatus.done
+                || task.status == WorkTask.ReservedStatus.readyForReview
+                || task.status == WorkTask.ReservedStatus.qa,
               let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
 
@@ -162,7 +166,7 @@ class WorkTaskCoordinator: ObservableObject {
 
         var updated = task
         updated.attempt = (task.attempt ?? 0) + 1
-        updated.status = .inProgress
+        updated.status = WorkTask.ReservedStatus.inProgress
         workTaskManager.updateTask(updated)
 
         if let hookCmd = workflowConfig?.hooksBeforeRun {
@@ -392,7 +396,7 @@ class WorkTaskCoordinator: ObservableObject {
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch),
-              task.status == .inProgress else { return }
+              task.status == WorkTask.ReservedStatus.inProgress else { return }
 
         // Don't clean up — keep the agent surface and observer alive.
         // The process may still be running (e.g., waiting for user permission).
@@ -408,10 +412,10 @@ class WorkTaskCoordinator: ObservableObject {
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
               var task = workTaskManager.task(forWorktree: branch),
-              task.status == .done else { return }
+              task.status == WorkTask.ReservedStatus.done else { return }
 
         Ghostty.logger.info("Session activity detected for worktree \(worktreeId, privacy: .public), resuming task")
-        task.status = .inProgress
+        task.status = WorkTask.ReservedStatus.inProgress
         task.errorMessage = nil
         workTaskManager.updateTask(task)
     }

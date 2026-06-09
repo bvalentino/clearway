@@ -56,7 +56,7 @@ struct TaskAsideView: View {
                         set: { workTaskManager.setStatus(task, to: $0) }
                     )) {
                         ForEach(allowedStatuses(for: task), id: \.self) { status in
-                            Text(status.label).tag(status)
+                            Text(WorkTask.displayLabel(for: status)).tag(status)
                         }
                     } label: {
                         EmptyView()
@@ -148,9 +148,15 @@ struct TaskAsideView: View {
         terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
-    /// `.new` and `.readyToStart` are reserved for Planning (pre-worktree). Once a worktree
-    /// exists, its task starts at `.inProgress` and can only move forward through these states.
-    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        [.inProgress, .qa, .readyForReview, .done, .canceled]
+    /// `new` and `ready_to_start` are reserved for Planning (pre-worktree). Once a worktree
+    /// exists, its task starts at `in_progress` and can only move forward through these states.
+    private func allowedStatuses(for task: WorkTask) -> [String] {
+        [
+            WorkTask.ReservedStatus.inProgress,
+            WorkTask.ReservedStatus.qa,
+            WorkTask.ReservedStatus.readyForReview,
+            WorkTask.ReservedStatus.done,
+            WorkTask.ReservedStatus.canceled,
+        ]
     }
 }
