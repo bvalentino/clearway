@@ -172,9 +172,11 @@ struct WorkflowDefinition: Equatable, Decodable {
     }
 
     /// The legal next `status` values an agent may write from `slug` (v1: 0 or 1). Unknown
-    /// slugs yield no legal next values.
+    /// slugs yield no legal next values. Sorted so the value injected into the agent prompt is
+    /// stable across calls — `routes` is an unordered map, so without this the "first" next value
+    /// could differ run to run.
     func legalNext(from slug: String) -> [String] {
-        Array(actions[slug]?.routes.values ?? [String: String]().values)
+        Array(actions[slug]?.routes.values ?? [String: String]().values).sorted()
     }
 }
 

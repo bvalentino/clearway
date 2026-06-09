@@ -123,6 +123,47 @@ final class WorkflowLoopEngineTests: XCTestCase {
         XCTAssertEqual(second, .ignore, "the same status written twice yields a single launch")
     }
 
+    // MARK: - Multi-route (v1 deterministic injection)
+
+    /// A 2-route action documenting v1 behavior: the prompt injection uses the deterministic
+    /// (sorted-first) next value, while `decideTransition` still accepts EITHER legal route value as
+    /// a valid advance — so a branch landing on the non-first route later doesn't break the loop.
+    func testMultiRouteActionInjectsDeterministicNextAndAcceptsAnyLegalRoute() {
+        let json = """
+        {
+          "version": 1,
+          "start": "implement",
+          "actions": {
+            "implement": {
+              "name": "Implement",
+              "instructions": "Implement the task.",
+              "routes": { "pass": "review", "fail": "fix" }
+            },
+            "review": { "name": "Review", "instructions": "Review the diff." },
+            "fix": { "name": "Fix", "instructions": "Fix the failure." }
+          }
+        }
+        """
+        // swiftlint:disable:next force_try
+        let multi = try! JSONDecoder().decode(WorkflowDefinition.self, from: Data(json.utf8))
+
+        // legalNext is deterministic (sorted): "fix" < "review".
+        XCTAssertEqual(multi.legalNext(from: "implement"), ["fix", "review"])
+
+        // Injection uses the deterministic sorted-first value ("fix").
+        let launch = WorkflowLoopEngine.decideTransition(running: nil, written: "implement", definition: multi)
+        XCTAssertEqual(launch, .launch(slug: "implement", nextValue: "fix"),
+                       "the injected next value is the deterministic sorted-first route target")
+
+        // Both legal route targets are accepted as a valid advance from `implement`.
+        let advanceToFix = WorkflowLoopEngine.decideTransition(running: "implement", written: "fix", definition: multi)
+        XCTAssertEqual(advanceToFix, .launch(slug: "fix", nextValue: nil),
+                       "the sorted-first route is a legal advance")
+        let advanceToReview = WorkflowLoopEngine.decideTransition(running: "implement", written: "review", definition: multi)
+        XCTAssertEqual(advanceToReview, .launch(slug: "review", nextValue: nil),
+                       "the other legal route is also accepted, not halted")
+    }
+
     // MARK: - Prompt injection
 
     func testBuildPromptAppendsAdvanceContract() {

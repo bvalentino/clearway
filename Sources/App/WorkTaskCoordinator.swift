@@ -49,7 +49,7 @@ class WorkTaskCoordinator: ObservableObject {
     /// Supplies the live `ghostty_app_t` so the watcher-driven engine can launch surfaces without
     /// the per-call `app:` argument the view passes elsewhere. Set by the view in `onAppear`
     /// (mirroring `TerminalManager.mainCommandProvider`). `nil` until Ghostty is ready.
-    var appProvider: () -> ghostty_app_t? = { nil }
+    var appProvider: @MainActor () -> ghostty_app_t? = { nil }
 
     // MARK: - Dependencies
     //
@@ -108,11 +108,26 @@ class WorkTaskCoordinator: ObservableObject {
     /// Re-evaluates the loop engine for each worktree after a `TASK.md` reload. No-op for projects
     /// without a valid `.clearway/WORKFLOW.json`, so legacy projects are untouched. Idempotent: the
     /// pure transition decision ignores a `status` that already equals the running action.
+    @MainActor
     private func handleTasksReloaded(branches: [String]) {
         guard hasJSONWorkflow(), let app = appProvider() else { return }
         for branch in branches {
-            _ = advanceWorkflow(forBranch: branch, app: app)
+            if case .needsTrust = advanceWorkflow(forBranch: branch, app: app) {
+                surfaceNeedsTrust(forBranch: branch)
+            }
         }
+    }
+
+    /// Surfaces a stalled-on-trust loop the same way a halt surfaces its reason: writes a diagnosable
+    /// `errorMessage` onto the task so the dead loop is visible. Does **not** auto-trust and — unlike
+    /// the seed — never writes a `status` value, keeping the "engine writes status only for seed"
+    /// invariant intact. Idempotent: skips the write if the message is already set.
+    private func surfaceNeedsTrust(forBranch branch: String) {
+        let message = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
+        guard var task = workTaskManager.task(forWorktree: branch),
+              task.errorMessage != message else { return }
+        task.errorMessage = message
+        workTaskManager.updateTask(task)
     }
 
     nonisolated deinit {
@@ -470,14 +485,18 @@ class WorkTaskCoordinator: ObservableObject {
             return .halted(reason: reason)
 
         case .launch(let slug, let nextValue):
+            // Resolve everything that can early-return BEFORE any state mutation, so the only thing
+            // left to do after `runningAction` is set is the launch itself.
+            guard let action = definition.actions[slug] else { return .ignored }
             // Executable config — gate on trust before launching anything. Surface, never run silently.
+            // Untrusted returns without setting `runningAction` or launching.
             guard WorkflowDefinition.isTrusted(projectPath: workTaskManager.projectPath) else {
                 return .needsTrust
             }
-            // Mark P before launching so an immediate re-fire of the same status is idempotent.
-            runningAction[worktree.id] = slug
-            guard let action = definition.actions[slug] else { return .ignored }
             let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
+            // runningAction must be set atomically with launchWorkflowAgent — no `await` may be
+            // introduced between them (idempotency guard depends on it).
+            runningAction[worktree.id] = slug
             launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
             return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
         }
