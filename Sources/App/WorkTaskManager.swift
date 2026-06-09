@@ -254,11 +254,16 @@ class WorkTaskManager: ObservableObject {
         }
 
         // Each live worktree's TASK.md (identity comes from frontmatter). The worktree copy wins
-        // over any central entry with the same id.
+        // over any central entry with the same id. A `TASK.md` whose frontmatter carries no usable
+        // `id` is skipped — without one its identity would be a fresh random UUID on every reload,
+        // flapping the task in and out of the pool. (Going forward every write emits `id`; this
+        // guards against an external agent/hook rewriting `TASK.md` and dropping the line.)
         for worktree in worktreeResolver() {
             let clearway = (worktree.path as NSString).appendingPathComponent(".clearway")
             let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-            if let task = loadTask(atPath: taskMd, fallbackId: UUID()) { byId[task.id] = task }
+            if let task = loadTask(atPath: taskMd, fallbackId: UUID(), requireFrontmatterID: true) {
+                byId[task.id] = task
+            }
         }
 
         // Newest first
@@ -267,12 +272,16 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
-    /// `fallbackId` only when the frontmatter carries no `id`. Returns nil on read/parse failure.
-    private func loadTask(atPath path: String, fallbackId: UUID) -> WorkTask? {
+    /// `fallbackId` only when the frontmatter carries no `id`. When `requireFrontmatterID` is set
+    /// (worktree `TASK.md`, whose filename carries no UUID), a file lacking a usable frontmatter
+    /// `id` is rejected rather than loaded under the synthetic `fallbackId`. Returns nil on
+    /// read/parse failure.
+    private func loadTask(atPath path: String, fallbackId: UUID, requireFrontmatterID: Bool = false) -> WorkTask? {
         let fm = FileManager.default
         let createdAt = (try? fm.attributesOfItem(atPath: path))?[.creationDate] as? Date ?? Date()
         guard let data = fm.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else { return nil }
+        if requireFrontmatterID, WorkTask.frontmatterID(from: content) == nil { return nil }
         return WorkTask.parse(from: content, id: fallbackId, createdAt: createdAt)
     }
 
@@ -284,11 +293,15 @@ class WorkTaskManager: ObservableObject {
     ///       `TASK.md` (so pre-existing active tasks converge on their worktree); else
     ///   (b) if it is a `done`/`canceled` orphan (no live worktree owns it), move it to the
     ///       **Trash** — recoverable, never `removeItem`, because `.clearway/` is gitignored so
-    ///       permanent deletion would destroy user-authored task bodies on upgrade.
+    ///       permanent deletion would destroy user-authored task bodies on upgrade; else
+    ///   (c) if it is a non-terminal task linked to a branch with no live worktree (a legacy
+    ///       phantom — the worktree was removed out-of-band before upgrade), clear the stale link
+    ///       so it returns to Planning instead of lingering as a never-converging "active" task.
+    ///       The body is preserved; only the frontmatter link is rewritten in place.
     /// After the first run the central directory holds only backlog (`worktree == nil`,
     /// non-terminal), so Planning's `worktree == nil` filter needs no status check. The manager
-    /// guards this to run once per instance; the caller decides *when* (after the live worktree set
-    /// is known).
+    /// guards this to run once per instance; the caller decides *when* (after a trustworthy live
+    /// worktree set is known — a partial set could mis-classify (c) and clear a valid link).
     func migrateCentralTasks() {
         guard !didMigrate else { return }
         didMigrate = true
@@ -296,6 +309,7 @@ class WorkTaskManager: ObservableObject {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else { return }
         let liveWorktrees = worktreeResolver()
+        var changed = false
 
         for file in files where file.hasSuffix(".md") {
             let path = (tasksDirectory as NSString).appendingPathComponent(file)
@@ -305,12 +319,21 @@ class WorkTaskManager: ObservableObject {
             if let branch = task.worktree,
                let live = liveWorktrees.first(where: { $0.branch == branch }) {
                 moveCentralFileIntoWorktree(id: task.id, worktreePath: live.path)
+                changed = true
             } else if task.status == .done || task.status == .canceled {
                 try? fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
+                changed = true
+            } else if task.worktree != nil {
+                var detached = task
+                detached.worktree = nil
+                write(detached)  // worktree == nil routes back to the same central `<UUID>.md`
+                changed = true
             }
         }
 
-        reload()
+        // The migration trigger always re-merges the pool afterward; only pay for a reload here
+        // when this run actually moved files (the steady-state post-convergence run is a no-op).
+        if changed { reload() }
     }
 
     // MARK: - File Watching

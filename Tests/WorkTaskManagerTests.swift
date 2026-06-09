@@ -394,6 +394,50 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertTrue(manager.tasks.contains { $0.id == worktreeTask.id }, "re-merge must surface the worktree task")
     }
 
+    /// A worktree `TASK.md` whose frontmatter carries no `id` is skipped, not loaded under a fresh
+    /// random UUID — otherwise its identity would flap on every reload. (The filename `TASK.md`
+    /// carries no UUID, so frontmatter is the only identity source.)
+    func testWorktreeTaskWithoutFrontmatterIdIsSkipped() throws {
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-noid")
+        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
+        let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
+        // Agent/legacy-written content with no `id:` line.
+        let content = """
+        ---
+        title: "No id"
+        status: in_progress
+        worktree: feature/noid
+        ---
+
+        body
+        """
+        try content.write(toFile: taskMd, atomically: true, encoding: .utf8)
+
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/noid", path: worktreePath)] }
+        manager.setWatchedWorktrees([worktreePath])  // triggers re-merge
+
+        XCTAssertNil(manager.task(forWorktree: "feature/noid"), "a worktree TASK.md without an id must be skipped")
+        XCTAssertTrue(manager.tasks.isEmpty, "no phantom task should be loaded")
+    }
+
+    /// A worktree `TASK.md` *with* a frontmatter `id` keeps that stable identity across reloads —
+    /// the complement of the skip case above.
+    func testWorktreeTaskKeepsStableIdAcrossReloads() throws {
+        let id = UUID()
+        let worktreeTask = WorkTask(id: id, title: "Stable", status: .inProgress, worktree: "feature/stable")
+        let worktreePath = try seedWorktreeTask(dir: "wt-stable", worktreeTask)
+
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.worktreeResolver = { [(branch: "feature/stable", path: worktreePath)] }
+        manager.setWatchedWorktrees([worktreePath])
+        XCTAssertEqual(manager.task(forWorktree: "feature/stable")?.id, id)
+
+        manager.setWatchedWorktrees([worktreePath])  // reload again
+        XCTAssertEqual(manager.task(forWorktree: "feature/stable")?.id, id, "id must be stable across reloads")
+    }
+
     // MARK: - Migration (Task 10)
 
     /// Writes a task as a central `<UUID>.md` and returns its path.
@@ -458,6 +502,25 @@ final class WorkTaskManagerTests: XCTestCase {
 
         XCTAssertEqual(afterFirst, afterSecond, "second migration run must be a no-op")
         XCTAssertEqual(afterFirst?.count, 1, "only the backlog task remains central after convergence")
+    }
+
+    /// Migration converges a legacy phantom — a central, non-terminal task linked to a branch with
+    /// no live worktree — by clearing the stale link so it returns to Planning (central,
+    /// `worktree == nil`) instead of lingering forever as an "active" task pointing at a dead
+    /// branch. The file stays central and its body is preserved.
+    func testMigrationClearsStaleLinkOnActivePhantom() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        let phantom = WorkTask(id: UUID(), title: "Phantom active", status: .inProgress, worktree: "feature/dead", body: "keep me")
+        let phantomPath = try seedCentralTask(phantom)
+
+        manager.worktreeResolver = { [] }  // no live worktree owns "feature/dead"
+        manager.migrateCentralTasks()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: phantomPath), "phantom stays central (same <UUID>.md)")
+        let reloaded = manager.tasks.first { $0.id == phantom.id }
+        XCTAssertNotNil(reloaded, "phantom must remain in the pool")
+        XCTAssertNil(reloaded?.worktree, "stale worktree link must be cleared so the task converges to Planning")
+        XCTAssertEqual(reloaded?.body, "keep me", "body must be preserved")
     }
 
     // MARK: - Shadow/exposed creation routed into the worktree (Task 5)

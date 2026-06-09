@@ -307,10 +307,13 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
-            // One-time migration once the live worktree set is known: relocate pre-existing active
-            // central tasks into their worktrees and trash legacy terminal-status orphans. The
-            // manager guards this to run once; we only gate on the worktree set being loaded.
-            if !newWorktrees.isEmpty {
+            // One-time migration once a *trustworthy* live worktree set is known: relocate
+            // pre-existing active central tasks into their worktrees, trash legacy terminal-status
+            // orphans, and clear stale links on active phantoms. Gated on the same signal as the
+            // pruning below (non-empty, no refresh error) because migration also reconciles against
+            // the worktree set destructively — a transient/partial `git worktree list` must not
+            // drive it. The manager additionally guards this to run once per instance.
+            if !newWorktrees.isEmpty && worktreeManager.error == nil {
                 workTaskManager.migrateCentralTasks()
             }
             // Re-merge the task pool: a created/removed worktree adds/drops its TASK.md, and a

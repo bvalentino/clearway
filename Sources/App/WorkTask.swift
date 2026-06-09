@@ -169,6 +169,14 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         parse(from: content, id: UUID(), createdAt: Date())
     }
 
+    /// Returns the frontmatter `id`, if present and a valid UUID. A worktree `TASK.md` carries no
+    /// UUID in its filename, so its identity *must* come from here — callers loading such files use
+    /// this to skip a file with no usable identity rather than mint a fresh random id on every read.
+    static func frontmatterID(from content: String) -> UUID? {
+        guard let (fields, _) = YAML.parseFrontmatter(from: content) else { return nil }
+        return fields["id"].flatMap { UUID(uuidString: $0) }
+    }
+
     private static let branchNameCharacters = CharacterSet.lowercaseLetters
         .union(.uppercaseLetters)
         .union(.decimalDigits)
