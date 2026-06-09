@@ -451,9 +451,9 @@ final class WorkTaskManagerTests: XCTestCase {
     }
 
     /// Migration relocates a central task whose worktree is live into that worktree, leaves
-    /// backlog tasks central, and trashes legacy done/canceled orphans — converging the central
-    /// directory on backlog-only.
-    func testMigrationRelocatesActiveTrashesOrphansKeepsBacklog() throws {
+    /// backlog tasks central, and archives legacy done/canceled orphans into
+    /// `.clearway/tasks-archive/` — converging the central directory on backlog-only.
+    func testMigrationRelocatesActiveArchivesOrphansKeepsBacklog() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
 
         // (a) Active central task whose worktree is live → relocate.
@@ -461,7 +461,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let activePath = try seedCentralTask(active)
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-live")
 
-        // (b) Legacy terminal-status orphan with no live worktree → Trash.
+        // (b) Legacy terminal-status orphan with no live worktree → archive.
         let orphan = WorkTask(id: UUID(), title: "Old done", status: .done, worktree: "feature/gone")
         let orphanPath = try seedCentralTask(orphan)
 
@@ -479,8 +479,11 @@ final class WorkTaskManagerTests: XCTestCase {
         let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
             .appendingPathComponent("TASK.md")
         XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd), "active task must now live in its worktree")
-        // (b) trashed (gone from central)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "terminal-status orphan must be trashed")
+        // (b) archived: gone from central, present (recoverable) under tasks-archive/
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "terminal-status orphan must leave the central backlog")
+        let archived = (((tempRoot as NSString).appendingPathComponent(".clearway/tasks-archive")) as NSString)
+            .appendingPathComponent("\(orphan.id.uuidString).md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived), "orphan must be archived, not deleted")
         // (c) backlog stays
         XCTAssertTrue(FileManager.default.fileExists(atPath: backlogPath), "backlog task must remain central")
     }
@@ -539,7 +542,7 @@ final class WorkTaskManagerTests: XCTestCase {
         manager.migrateCentralTasks()
         XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "migration must not act before the worktree set loads")
 
-        // Once the set loads, the deferred migration runs and trashes the terminal orphan.
+        // Once the set loads, the deferred migration runs and archives the terminal orphan.
         manager.worktreeResolver = { [(branch: "main", path: (self.tempRoot as NSString).appendingPathComponent("wt-main"))] }
         manager.migrateCentralTasks()
         XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "deferred migration must run once worktrees are known")

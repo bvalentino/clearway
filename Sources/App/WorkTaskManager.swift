@@ -308,9 +308,10 @@ class WorkTaskManager: ObservableObject {
     /// `<UUID>.md`:
     ///   (a) if its `worktree` matches a **live** worktree, relocate it into that worktree's
     ///       `TASK.md` (so pre-existing active tasks converge on their worktree); else
-    ///   (b) if it is a `done`/`canceled` orphan (no live worktree owns it), move it to the
-    ///       **Trash** — recoverable, never `removeItem`, because `.clearway/` is gitignored so
-    ///       permanent deletion would destroy user-authored task bodies on upgrade; else
+    ///   (b) if it is a `done`/`canceled` orphan (no live worktree owns it), move it into
+    ///       `.clearway/tasks-archive/` — kept in-repo (never `removeItem`), because `.clearway/`
+    ///       is gitignored so permanent deletion would destroy user-authored task bodies on
+    ///       upgrade. The archive is never scanned, so the task leaves the pool but stays on disk; else
     ///   (c) if it is a non-terminal task linked to a branch with no live worktree (a legacy
     ///       phantom — the worktree was removed out-of-band before upgrade), clear the stale link
     ///       so it returns to Planning instead of lingering as a never-converging "active" task.
@@ -343,7 +344,7 @@ class WorkTaskManager: ObservableObject {
                 moveCentralFileIntoWorktree(id: task.id, worktreePath: live.path)
                 changed = true
             } else if task.status == .done || task.status == .canceled {
-                try? fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
+                archiveCentralFile(at: path, named: file)
                 changed = true
             } else if task.worktree != nil {
                 var detached = task
@@ -356,6 +357,22 @@ class WorkTaskManager: ObservableObject {
         // The migration trigger always re-merges the pool afterward; only pay for a reload here
         // when this run actually moved files (the steady-state post-convergence run is a no-op).
         if changed { reload() }
+    }
+
+    /// Moves a terminal-status orphan out of the active backlog into `.clearway/tasks-archive/`,
+    /// keeping the file (and its `<UUID>.md` name) in-repo instead of deleting it. The archive is a
+    /// sibling of `tasks/` and is never scanned by `reload()`, so the task leaves the pool while the
+    /// history stays recoverable on disk. Idempotent: if already archived, drops the active copy.
+    private func archiveCentralFile(at path: String, named filename: String) {
+        let fm = FileManager.default
+        let archiveDir = (projectPath as NSString).appendingPathComponent(".clearway/tasks-archive")
+        try? fm.createDirectory(atPath: archiveDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let destination = (archiveDir as NSString).appendingPathComponent(filename)
+        if fm.fileExists(atPath: destination) {
+            try? fm.removeItem(atPath: path)
+        } else {
+            try? fm.moveItem(atPath: path, toPath: destination)
+        }
     }
 
     // MARK: - File Watching
