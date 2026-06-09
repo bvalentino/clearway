@@ -530,58 +530,6 @@ final class WorkTaskManagerTests: XCTestCase {
         XCTAssertEqual(reloaded?.body, "keep me", "body must be preserved")
     }
 
-    /// Migration defers (does not consume its one-shot) while the live worktree set is empty —
-    /// i.e. not loaded yet — so it can still run once worktrees appear. Guards against destructively
-    /// reconciling against a not-yet-loaded set.
-    func testMigrationDefersUntilWorktreeSetLoaded() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        let orphan = WorkTask(id: UUID(), title: "Old done", status: .done, worktree: nil)
-        let orphanPath = try seedCentralTask(orphan)
-
-        manager.worktreeResolver = { [] }  // worktrees not loaded yet
-        manager.migrateCentralTasks()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "migration must not act before the worktree set loads")
-
-        // Once the set loads, the deferred migration runs and archives the terminal orphan.
-        manager.worktreeResolver = { [(branch: "main", path: (self.tempRoot as NSString).appendingPathComponent("wt-main"))] }
-        manager.migrateCentralTasks()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "deferred migration must run once worktrees are known")
-    }
-
-    /// Relocating a legacy central file (filename UUID, NO frontmatter `id`) injects that UUID into
-    /// the moved `TASK.md`, so identity survives the rename and reload doesn't skip the id-less file.
-    func testRelocatePreservesIdentityForLegacyFileWithoutFrontmatterId() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        let id = UUID()
-        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-legacy")
-        manager.worktreeResolver = { [(branch: "feature/legacy", path: worktreePath)] }
-
-        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
-        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
-        let legacy = """
-        ---
-        title: "Legacy"
-        status: in_progress
-        worktree: "feature/legacy"
-        ---
-
-        legacy body
-        """
-        let centralFile = (centralDir as NSString).appendingPathComponent("\(id.uuidString).md")
-        try legacy.write(toFile: centralFile, atomically: true, encoding: .utf8)
-
-        manager.relocateTaskToWorktree(id: id, worktreePath: worktreePath)
-
-        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
-            .appendingPathComponent("TASK.md")
-        let content = try String(contentsOfFile: taskMd, encoding: .utf8)
-        XCTAssertTrue(content.contains("id: \(id.uuidString)"), "filename UUID must be injected as the frontmatter id")
-        let reloaded = manager.tasks.first { $0.id == id }
-        XCTAssertNotNil(reloaded, "relocated legacy task must remain in the pool (not skipped as id-less)")
-        XCTAssertEqual(reloaded?.worktree, "feature/legacy", "link preserved")
-        XCTAssertEqual(reloaded?.body, "legacy body", "body preserved")
-    }
-
     // MARK: - Shadow/exposed creation routed into the worktree (Task 5)
 
     /// A shadow task created for a live worktree must land in that worktree's `TASK.md`, not the

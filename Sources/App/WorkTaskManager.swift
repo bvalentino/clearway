@@ -42,18 +42,20 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// Relocates a task's central `<UUID>.md` into its now-live worktree as `TASK.md`, preserving
-    /// the file's creation date via `FileManager.moveItem` (never copy+delete). Idempotent: a no-op
-    /// when the central file is already gone; if the destination already exists, the central residue
-    /// is removed so the worktree copy wins. The `id` already lives in frontmatter (carried on every
-    /// write), so identity survives the rename. Re-merges the pool afterward.
+    /// the file's creation date via `FileManager.moveItem` (never copy+delete). The move happens
+    /// only when the worktree slot is empty (no `TASK.md` yet); if one already exists the central
+    /// file is left **untouched** — a worktree `TASK.md` (even an empty shadow) must never cost the
+    /// user the real central task. Idempotent: a no-op when the central file is already gone. The
+    /// `id` is carried into the moved file (injected for legacy files), so identity survives the
+    /// rename. Re-merges the pool afterward.
     func relocateTaskToWorktree(id: UUID, worktreePath: String) {
         moveCentralFileIntoWorktree(id: id, worktreePath: worktreePath)
         reload()
     }
 
     /// The file move itself, without a re-merge — so batch callers (migration) can move many files
-    /// and reload once. See `relocateTaskToWorktree` for the doc on creation-date preservation and
-    /// idempotency.
+    /// and reload once. See `relocateTaskToWorktree` for the contract (move only into an empty
+    /// worktree slot, never delete the central file on collision, creation-date preservation).
     private func moveCentralFileIntoWorktree(id: UUID, worktreePath: String) {
         let fm = FileManager.default
         let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
@@ -61,17 +63,18 @@ class WorkTaskManager: ObservableObject {
 
         let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
         let destination = (clearway as NSString).appendingPathComponent("TASK.md")
-        if fm.fileExists(atPath: destination) {
-            try? fm.removeItem(atPath: central)
-        } else {
-            try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try? fm.moveItem(atPath: central, toPath: destination)
-            // Legacy files carried identity in the filename (`<UUID>.md`), which the rename to
-            // `TASK.md` discards. Inject the id into the moved file's frontmatter so identity
-            // survives — otherwise the next reload, having no filename UUID and no frontmatter id,
-            // would skip it (see `reload`) and the task would vanish.
-            ensureFrontmatterID(id, atPath: destination)
-        }
+        // Adopt the central file only into an empty slot. If the worktree already has a TASK.md,
+        // leave the central file in place — NEVER delete it to resolve a collision. The merge-load
+        // dedups by id, so at worst the task is shown once; at best the user keeps their data.
+        guard !fm.fileExists(atPath: destination) else { return }
+
+        try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? fm.moveItem(atPath: central, toPath: destination)
+        // Legacy files carried identity in the filename (`<UUID>.md`), which the rename to
+        // `TASK.md` discards. Inject the id into the moved file's frontmatter so identity
+        // survives — otherwise the next reload, having no filename UUID and no frontmatter id,
+        // would skip it (see `reload`) and the task would vanish.
+        ensureFrontmatterID(id, atPath: destination)
     }
 
     /// Inserts `id: <uuid>` as the first frontmatter line of the file at `path` when its frontmatter
