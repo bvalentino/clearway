@@ -433,14 +433,20 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     /// Seeds a freshly created worktree's `TASK.md` with the workflow's `start` slug — the engine's
-    /// **only** write to `status`. No-op for projects without a valid `.clearway/WORKFLOW.json`, so
-    /// legacy projects are untouched. Idempotent: only seeds when the task isn't already sitting on
-    /// the start action (e.g. a re-created or resumed worktree keeps its place).
+    /// **only** write to `status` — and defaults `autopilot` to `true` in the same write (a valid
+    /// `WORKFLOW.json` project gets autopilot on by default). No-op for projects without a valid
+    /// `.clearway/WORKFLOW.json`, so legacy projects keep no autopilot field and are untouched.
+    /// Idempotent: only seeds when the task isn't already sitting on the start action (e.g. a
+    /// re-created or resumed worktree keeps its place) — but still backfills `autopilot` if absent,
+    /// so a worktree that already sits on `start` (from a prior write) still gains the default flag.
     func seedWorkflowStatus(forBranch branch: String) {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
               var task = workTaskManager.task(forWorktree: branch),
-              task.status != definition.start else { return }
+              task.status != definition.start || task.autopilot == nil else { return }
         task.status = definition.start
+        // Default autopilot on for a JSON-workflow project — written alongside the seed as a single
+        // coherent creation write. Only set when absent so a user's prior pause isn't clobbered.
+        if task.autopilot == nil { task.autopilot = true }
         task.errorMessage = nil
         // Clear any stale halt for a reused branch so the fresh seed can launch.
         engineHalted.remove(branch)

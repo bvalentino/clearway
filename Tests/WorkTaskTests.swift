@@ -84,6 +84,47 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(WorkTask.displayLabel(for: "_"), "_", "a slug with no words falls back to the raw value")
     }
 
+    /// The `autopilot` flag is tri-state and round-trips through serialize → parse:
+    ///   - present `true`  → emits `autopilot: true`, parses back to `true`
+    ///   - present `false` → emits `autopilot: false`, parses back to `false`
+    ///   - absent (`nil`)  → emits no line (back-compat / legacy), parses back to `nil`
+    func testAutopilotRoundTrips() throws {
+        // Present true.
+        var on = WorkTask(id: UUID(), title: "On", status: "implement", worktree: "feature/x")
+        on.autopilot = true
+        let onSerialized = on.serialized()
+        XCTAssertTrue(onSerialized.contains("autopilot: true"), "autopilot:true must serialize")
+        XCTAssertEqual(WorkTask.parse(from: onSerialized, id: on.id, createdAt: Date())?.autopilot, true)
+
+        // Present false.
+        var off = WorkTask(id: UUID(), title: "Off", status: "implement", worktree: "feature/y")
+        off.autopilot = false
+        let offSerialized = off.serialized()
+        XCTAssertTrue(offSerialized.contains("autopilot: false"), "autopilot:false must serialize")
+        XCTAssertEqual(WorkTask.parse(from: offSerialized, id: off.id, createdAt: Date())?.autopilot, false)
+
+        // Absent — a legacy task never gains the field and parses back to nil.
+        let legacy = WorkTask(id: UUID(), title: "Legacy", status: WorkTask.ReservedStatus.new, worktree: nil)
+        let legacySerialized = legacy.serialized()
+        XCTAssertFalse(legacySerialized.contains("autopilot"), "an absent autopilot must not emit a line")
+        XCTAssertNil(WorkTask.parse(from: legacySerialized, id: legacy.id, createdAt: Date())?.autopilot)
+    }
+
+    /// A back-compat file written before the `autopilot` field existed must parse cleanly to a
+    /// `nil` autopilot — its absence is "not applicable", not "off".
+    func testFileWithoutAutopilotFieldParsesToNil() throws {
+        let legacy = """
+        ---
+        id: \(UUID().uuidString)
+        title: "No autopilot"
+        status: in_progress
+        worktree: "feature/legacy"
+        ---
+        """
+        XCTAssertNil(WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())?.autopilot,
+                     "a file without the field parses to nil, not false")
+    }
+
     /// A malformed frontmatter `id` must not crash parsing — it falls back to the filename UUID.
     func testInvalidFrontmatterIdFallsBackToFilenameUUID() throws {
         let malformed = """

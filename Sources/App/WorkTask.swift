@@ -22,6 +22,14 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// stays out of the Planning backlog until the user exposes it.
     var hidden: Bool = false
 
+    /// Per-worktree autopilot flag for the `WORKFLOW.json` loop engine. `true` = the loop
+    /// auto-advances; `false` = paused (a running step finishes, but nothing new launches);
+    /// `nil` = not applicable (a legacy `WORKFLOW.md` project, which has no autopilot). Defaulted
+    /// to `true` at worktree creation **only** for projects with a valid `WORKFLOW.json`, so legacy
+    /// task files never gain the field and stay byte-for-byte identical. Serialized only when set,
+    /// mirroring how `worktree`/`hidden` are emitted only when meaningful.
+    var autopilot: Bool?
+
     /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
     /// a namespace — it has no cases, so it can never be instantiated; the values are plain
     /// `static let` strings. The first two are reserved backlog markers (pre-worktree). The
@@ -110,6 +118,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
+        // Emit autopilot only when set — a legacy (non-JSON-workflow) task has no autopilot, so
+        // its file stays byte-for-byte identical. Present means the JSON engine owns this worktree.
+        if let autopilot { lines.append("autopilot: \(autopilot)") }
         return lines.joined(separator: "\n")
     }
 
@@ -197,6 +208,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         task.attempt = fields["attempt"].flatMap { Int($0) }
         task.errorMessage = fields["error_message"]
         task.hidden = fields["hidden"] == "true"
+        // Autopilot is tri-state: an absent line is `nil` (legacy / not applicable), so back-compat
+        // files without the field parse cleanly; `true`/`false` map to the explicit flag.
+        task.autopilot = fields["autopilot"].map { $0 == "true" }
         return task
     }
 
