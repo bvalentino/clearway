@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Manages tasks persisted as markdown files whose location encodes their association with a
 /// worktree. Backlog tasks live centrally in `.clearway/tasks/<UUID>.md`; a task linked to a live
@@ -20,8 +21,15 @@ class WorkTaskManager: ObservableObject {
     /// on screen. Driven from the view layer via `setWatchedWorktrees(_:)`.
     private var worktreeWatchers: [String: DispatchSourceFileSystemObject] = [:]
 
-    /// Guards `migrateCentralTasks()` so it runs at most once per manager instance.
-    private var didMigrate = false
+    /// Persisted per-project key so `migrateCentralTasks()` runs **once per project**, not once per
+    /// launch. Re-running every launch would also risk re-archiving a task that legitimately becomes
+    /// terminal (done/canceled) while still central after the initial migration. Keyed by a hash of
+    /// the project path (mirrors `WorkflowConfig`'s trust flag).
+    private var migrationDoneKey: String {
+        let hash = SHA256.hash(data: Data(projectPath.utf8))
+        let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "clearway.tasks.migrated.\(hex)"
+    }
 
     /// Resolves the live worktrees as `(branch, path)` pairs. Injected at construction so the
     /// manager can route a task's file to its worktree (and merge-load every worktree's
@@ -320,21 +328,20 @@ class WorkTaskManager: ObservableObject {
     ///       so it returns to Planning instead of lingering as a never-converging "active" task.
     ///       The body is preserved; only the frontmatter link is rewritten in place.
     /// After the first run the central directory holds only backlog (`worktree == nil`,
-    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. The manager
-    /// guards this to run once per instance; the caller decides *when* (after a trustworthy live
-    /// worktree set is known — a partial set could mis-classify (c) and clear a valid link).
+    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. Runs **once per
+    /// project** (persisted via `migrationDoneKey`); the caller decides *when* (after a trustworthy
+    /// live worktree set is known — a partial set could mis-classify (c) and clear a valid link).
     func migrateCentralTasks() {
-        guard !didMigrate else { return }
+        guard !UserDefaults.standard.bool(forKey: migrationDoneKey) else { return }
 
         let liveWorktrees = worktreeResolver()
-        // Defer (without consuming the one-shot) until the live worktree set is known: an empty
-        // resolver means worktrees haven't loaded yet, and running now would mis-classify active
-        // tasks as orphans and clear valid links. Safe to call repeatedly from the view until then.
+        // Defer (without marking done) until the live worktree set is known: an empty resolver
+        // means worktrees haven't loaded yet, and running now would mis-classify active tasks as
+        // orphans and clear valid links. Safe to call repeatedly from the view until then.
         guard !liveWorktrees.isEmpty else { return }
-        didMigrate = true
 
         let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else { return }
+        let files = (try? fm.contentsOfDirectory(atPath: tasksDirectory)) ?? []
         var changed = false
 
         for file in files where file.hasSuffix(".md") {
@@ -356,6 +363,10 @@ class WorkTaskManager: ObservableObject {
                 changed = true
             }
         }
+
+        // Mark this project migrated so it never runs again — neither re-scanning each launch nor,
+        // crucially, re-archiving a task that becomes terminal while still central after this point.
+        UserDefaults.standard.set(true, forKey: migrationDoneKey)
 
         // The migration trigger always re-merges the pool afterward; only pay for a reload here
         // when this run actually moved files (the steady-state post-convergence run is a no-op).
