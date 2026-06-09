@@ -111,7 +111,7 @@ enum WorkflowLoopEngine {
     /// and the coordinator's resume path so both inject the identical value.
     static func legalNextValue(from slug: String, definition: WorkflowDefinition) -> String? {
         if definition.isTerminal(slug) { return nil }
-        return definition.legalNext(from: slug).sorted().first
+        return definition.legalNext(from: slug).first   // legalNext is already sorted (deterministic)
     }
 
     // MARK: - Restart resume

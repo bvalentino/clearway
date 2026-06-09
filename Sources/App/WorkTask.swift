@@ -60,7 +60,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     static func migrateStatus(_ rawValue: String) -> String {
         switch rawValue {
         case "open": return ReservedStatus.new
-        case "started", "in_progress": return ReservedStatus.inProgress
+        case "started": return ReservedStatus.inProgress
         case "stopped": return ReservedStatus.canceled
         default: return rawValue
         }
