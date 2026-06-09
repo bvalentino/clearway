@@ -25,6 +25,7 @@ enum WorkTaskNotification {
 /// A standalone task editor window with traffic lights and toolbar.
 struct WorkTaskWindow: View {
     @StateObject private var workTaskManager: WorkTaskManager
+    @StateObject private var worktreeManager: WorktreeManager
     let taskId: UUID
 
     @State private var title: String = ""
@@ -45,7 +46,19 @@ struct WorkTaskWindow: View {
     }
 
     init(identifier: WorkTaskIdentifier) {
-        _workTaskManager = StateObject(wrappedValue: WorkTaskManager(projectPath: identifier.projectPath))
+        let wm = WorktreeManager(projectPath: identifier.projectPath)
+        let taskMgr = WorkTaskManager(projectPath: identifier.projectPath)
+        // This standalone window builds its own managers. Without a resolver the task manager only
+        // scans central and can't find a task that now lives in a worktree's `TASK.md` — the cause
+        // of "Task not found" for started tasks. Wire it exactly like ProjectWindow.
+        taskMgr.worktreeResolver = { [weak wm] in
+            (wm?.worktrees ?? []).compactMap { wt in
+                guard let branch = wt.branch, let path = wt.path else { return nil }
+                return (branch, path)
+            }
+        }
+        _worktreeManager = StateObject(wrappedValue: wm)
+        _workTaskManager = StateObject(wrappedValue: taskMgr)
         taskId = identifier.taskId
     }
 
@@ -125,6 +138,12 @@ struct WorkTaskWindow: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This action cannot be undone.")
+        }
+        .onChange(of: worktreeManager.worktrees) { worktrees in
+            // Worktrees load asynchronously; re-merge so a task living in a worktree's `TASK.md`
+            // is found (the `.onChange(of: task)` below then populates the editor), and watch
+            // those worktrees so external edits to `TASK.md` flow into the open window.
+            workTaskManager.setWatchedWorktrees(worktrees.compactMap(\.path))
         }
         .onAppear {
             if let task {
