@@ -32,9 +32,35 @@ enum WorkflowLoopEngine {
     ///   - running: The action currently running in the worktree (`P`), or `nil` before the first
     ///     launch (right after the `start` seed, or after a halt/restart with nothing running).
     ///   - written: The `status` value just read from `TASK.md` (`S`).
+    ///   - autopilot: Whether the worktree's loop is live. `false` = paused: a step that resolves to
+    ///     a launch is suppressed (`.ignore`) — the running agent finishes, but the engine never
+    ///     advances. Halts and no-op ignores are unaffected (a paused loop still surfaces an illegal
+    ///     write). `nil` is treated as on (a JSON-workflow worktree seeds `true`; this guards the
+    ///     theoretical case of a missing flag rather than silently pausing). This is the single
+    ///     source of truth for the pause gate — the coordinator never re-decides it.
     ///   - definition: The project's parsed, validated `WorkflowDefinition`.
     /// - Returns: The `Transition` the caller should act on. Pure — no I/O, no mutation.
     static func decideTransition(
+        running: String?,
+        written: String,
+        autopilot: Bool?,
+        definition: WorkflowDefinition
+    ) -> Transition {
+        let decision = routeTransition(running: running, written: written, definition: definition)
+        // Pause gate: a paused worktree (`autopilot == false`) never launches. A `.launch` is
+        // demoted to `.ignore` — the running step finishes, nothing new starts. `.ignore`/`.halt`
+        // pass through so a paused loop still no-ops on its own status and still surfaces an
+        // illegal write. `nil`/`true` autopilot launches normally.
+        if autopilot == false, case .launch = decision {
+            return .ignore
+        }
+        return decision
+    }
+
+    /// The autopilot-independent routing/validation decision. Pure — separated from the pause gate
+    /// so `decideTransition` can layer autopilot on top while this stays the one place that knows
+    /// the graph rules (S == P, backlog markers, unknown slug, first-launch-is-start, legal routes).
+    private static func routeTransition(
         running: String?,
         written: String,
         definition: WorkflowDefinition
@@ -73,15 +99,19 @@ enum WorkflowLoopEngine {
     }
 
     /// Builds the `.launch` transition for `slug`, computing the single legal next value to inject
-    /// (or `nil` when terminal). v1 routing is action→action, so a non-terminal action has exactly
-    /// one legal next value; if multiple are present (a future branch) the first is taken
-    /// deterministically so the contract stays single-valued.
+    /// (or `nil` when terminal).
     private static func launchTransition(for slug: String, definition: WorkflowDefinition) -> Transition {
-        if definition.isTerminal(slug) {
-            return .launch(slug: slug, nextValue: nil)
-        }
-        let next = definition.legalNext(from: slug).sorted().first
-        return .launch(slug: slug, nextValue: next)
+        .launch(slug: slug, nextValue: legalNextValue(from: slug, definition: definition))
+    }
+
+    /// The single `status` value to inject into `slug`'s prompt as the advance contract, or `nil`
+    /// when `slug` is terminal (routeless). v1 routing is action→action, so a non-terminal action
+    /// has exactly one legal next value; if multiple are present (a future branch) the deterministic
+    /// (sorted-first) one is taken so the contract stays single-valued. Shared by the pure decision
+    /// and the coordinator's resume path so both inject the identical value.
+    static func legalNextValue(from slug: String, definition: WorkflowDefinition) -> String? {
+        if definition.isTerminal(slug) { return nil }
+        return definition.legalNext(from: slug).sorted().first
     }
 
     // MARK: - Prompt injection

@@ -58,14 +58,16 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         try Self.workflowJSON.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
-    /// Writes a worktree `TASK.md` with the given status and returns the worktree path.
+    /// Writes a worktree `TASK.md` with the given status (and optional autopilot) and returns the
+    /// worktree path.
     @discardableResult
-    private func writeWorktreeTask(branch: String, status: String, id: UUID = UUID()) throws -> String {
+    private func writeWorktreeTask(branch: String, status: String, autopilot: Bool? = nil, id: UUID = UUID()) throws -> String {
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
         let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
         let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-        let task = WorkTask(id: id, title: "Task", status: status, worktree: branch)
+        var task = WorkTask(id: id, title: "Task", status: status, worktree: branch)
+        task.autopilot = autopilot
         try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
         return worktreePath
     }
@@ -185,6 +187,37 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
 
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
         guard case .halted = result else { return XCTFail("expected halt, got \(result)") }
+    }
+
+    // MARK: - Autopilot pause (advance gating)
+
+    /// A paused worktree (`autopilot: false`) never advances: a legal next status that would launch
+    /// is suppressed to `.ignored` *before* the trust gate, so the running step finishes and nothing
+    /// new starts. (An unpaused legal advance reaches `.needsTrust` here — see
+    /// `testLegalAdvanceReachesLaunchDecision` — so `.ignored` proves the pause, not a trust stall.)
+    func testAutopilotFalsePausesAdvance() throws {
+        try writeWorkflow()
+        let branch = "paused"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: false)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+        XCTAssertEqual(result, .ignored, "a paused worktree does not advance even on a legal next status")
+    }
+
+    /// Re-enabling reaches the (trust-gated) launch of the current action: with the workflow
+    /// approved removed for surface-safety, an enabled worktree whose status sits on a real action
+    /// resolves to `.needsTrust` (the launch path) rather than `.ignored` (the pause path).
+    func testAutopilotTrueReachesAdvance() throws {
+        try writeWorkflow()
+        let branch = "enabled"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+        XCTAssertEqual(result, .needsTrust, "an enabled worktree reaches the (trust-gated) launch path")
     }
 
     func testSameStatusAsRunningIsIgnored() throws {
