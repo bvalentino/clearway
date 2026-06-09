@@ -176,3 +176,85 @@ struct WorkflowDefinition: Equatable, Decodable {
         Array(actions[slug]?.routes.values ?? [String: String]().values)
     }
 }
+
+// MARK: - Loading + validation
+
+extension WorkflowDefinition {
+    /// The well-known location of the workflow file, relative to a project root.
+    /// Consolidated under `.clearway/` with `TASK.md` and the backlog.
+    static let relativePath = ".clearway/WORKFLOW.json"
+
+    /// A structured, typed description of why a `WORKFLOW.json` failed to load or validate.
+    /// Surfaced so callers can report the *specific* defect rather than a generic failure.
+    enum LoadError: Error, Equatable {
+        /// No file at `.clearway/WORKFLOW.json`. (Distinct from a malformed file — an absent
+        /// file just means the project uses the legacy path, not that anything is broken.)
+        case fileNotFound(path: String)
+
+        /// The file bytes could not be read or decoded as UTF-8 / JSON.
+        case unreadable(reason: String)
+
+        /// JSON decoded but did not match the `WorkflowDefinition` shape.
+        case malformedJSON(reason: String)
+
+        /// `actions` is present but empty — a workflow with no actions can never run.
+        case noActions
+
+        /// `start` does not resolve to any action in `actions`.
+        case startTargetMissing(start: String)
+
+        /// A route's target slug does not resolve to any action.
+        case routeTargetMissing(action: String, outcome: String, target: String)
+
+        /// An `on_max_attempts` escape slug does not resolve to any action.
+        case onMaxAttemptsTargetMissing(action: String, target: String)
+    }
+
+    /// Loads and validates `.clearway/WORKFLOW.json` for a project. Throws a typed `LoadError`
+    /// describing the specific defect (missing file, bad JSON, dangling pointer, …).
+    static func load(projectPath: String) throws -> WorkflowDefinition {
+        let path = (projectPath as NSString).appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw LoadError.fileNotFound(path: path)
+        }
+        guard let data = FileManager.default.contents(atPath: path) else {
+            throw LoadError.unreadable(reason: "could not read file at \(path)")
+        }
+        let definition: WorkflowDefinition
+        do {
+            definition = try JSONDecoder().decode(WorkflowDefinition.self, from: data)
+        } catch {
+            throw LoadError.malformedJSON(reason: String(describing: error))
+        }
+        try definition.validate()
+        return definition
+    }
+
+    /// Whether the project has a **valid** `.clearway/WORKFLOW.json`. Returns `true` only when
+    /// the file exists, decodes, and passes validation — this is the gate that decides whether
+    /// the agent-driven engine (and autopilot) is available, so a malformed file reads as
+    /// "no JSON workflow" and the project falls back to the legacy path rather than silently
+    /// enabling a broken loop.
+    static func hasJSONWorkflow(projectPath: String) -> Bool {
+        (try? load(projectPath: projectPath)) != nil
+    }
+
+    /// Validates the graph's pointers. Run after a successful decode. Throws the first defect
+    /// found so the caller can surface a precise, actionable error.
+    func validate() throws {
+        guard !actions.isEmpty else { throw LoadError.noActions }
+
+        guard actions[start] != nil else {
+            throw LoadError.startTargetMissing(start: start)
+        }
+
+        for (slug, action) in actions {
+            for (outcome, target) in action.routes where actions[target] == nil {
+                throw LoadError.routeTargetMissing(action: slug, outcome: outcome, target: target)
+            }
+            if let escape = action.onMaxAttempts, actions[escape] == nil {
+                throw LoadError.onMaxAttemptsTargetMissing(action: slug, target: escape)
+            }
+        }
+    }
+}
