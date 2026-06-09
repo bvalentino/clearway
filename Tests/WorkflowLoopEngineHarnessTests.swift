@@ -391,6 +391,85 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
         XCTAssertEqual(result, .ignored, "a write equal to the running action is idempotently ignored")
     }
+
+    // MARK: - Manual kill
+
+    /// The manual kill pauses the loop by writing `autopilot = false` — the half that needs no
+    /// Ghostty surface. (Surface termination is exercised via `shouldTerminateOnManualKill` below,
+    /// since a live surface needs a real app.)
+    func testManualKillPausesAutopilot() throws {
+        try writeWorkflow()
+        let branch = "kill"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        coordinator.manualKill(forBranch: branch)
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false,
+                       "the manual kill pauses the loop by writing autopilot = false")
+    }
+
+    /// The surface-termination *decision* is false when no live agent surface is tracked, so a kill
+    /// on an idle worktree pauses without requesting a (nonexistent) termination.
+    func testManualKillDoesNotTerminateWhenNoSurface() throws {
+        try writeWorkflow()
+        let branch = "kill-idle"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+
+        XCTAssertFalse(coordinator.shouldTerminateOnManualKill(forWorktree: worktreeId),
+                       "no tracked agent surface means nothing to terminate")
+        // The kill still pauses, even with nothing to terminate.
+        coordinator.manualKill(forBranch: branch)
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false)
+    }
+
+    /// `manualKill` on a branch with no task is a safe no-op (nothing to pause or terminate).
+    func testManualKillNoTaskIsNoOp() throws {
+        try writeWorkflow()
+        let branch = "kill-notask"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        coordinator.manualKill(forBranch: "nonexistent-branch")
+        // The real branch is untouched.
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "killing an unknown branch leaves other worktrees untouched")
+    }
+
+    // MARK: - Loop guard (cap persistence via attempt)
+
+    /// A capped action's cap fires only once approved (trust gates before the cap). Until then the
+    /// launch path short-circuits to `.needsTrust`, so the cap can't leak an execution past trust.
+    /// This documents the ordering: an untrusted capped workflow surfaces trust, not a cap halt.
+    func testCappedWorkflowStillTrustGated() throws {
+        let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
+        let capped = """
+        {
+          "version": 1,
+          "start": "fix",
+          "actions": {
+            "fix": { "name": "Fix", "instructions": "Fix.", "routes": { "again": "fix" }, "max_attempts": 1 }
+          }
+        }
+        """
+        try capped.write(toFile: (clearway as NSString).appendingPathComponent("WORKFLOW.json"),
+                         atomically: true, encoding: .utf8)
+        let branch = "capped"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "fix", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("fix", branch: branch, worktreePath: worktreePath)
+
+        // Re-entry of `fix` (running fix, status fix) is S == P → ignored before any cap evaluation.
+        // Force a launch decision via the seed/first-launch instead: clear runningAction so the
+        // first write of `start` reaches the launch path — which trust-gates first.
+        coordinator.runningAction.removeValue(forKey: worktreePath)
+        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+        XCTAssertEqual(result, .needsTrust,
+                       "trust gates before the cap — an untrusted capped workflow surfaces trust, not a cap halt")
+    }
 }
 
 /// SHA-256 hex prefix matching `WorkflowDefinition`'s trust-key derivation (test-local helper).
