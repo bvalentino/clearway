@@ -23,7 +23,10 @@ extension WorkTaskCoordinator {
     /// the pure decision (any launch is demoted to ignore — the running step finishes untouched).
     @MainActor
     func handleTasksReloaded(branches: [String]) {
-        guard hasJSONWorkflow(), let app = appProvider() else { return }
+        // Refresh the cached toolbar gate on every `.clearway/` reload — this path already fires on
+        // WORKFLOW.json adds/removes — *before* the gate guard, so a removal flips the cache too.
+        refreshWorkflowJSONGate()
+        guard isWorkflowJSONProject, let app = appProvider() else { return }
         for branch in branches {
             let resumed = handleAutopilotFlip(forBranch: branch, app: app)
             // The resume already drove a launch decision; advancing again on the same reload would

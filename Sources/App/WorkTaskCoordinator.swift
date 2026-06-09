@@ -53,7 +53,9 @@ class WorkTaskCoordinator: ObservableObject {
     /// The action currently running in each worktree, keyed by worktree id. The engine's `P`.
     /// Also the idempotency guard: a `TASK.md` change whose `status` already equals the running
     /// action is ignored, so the same value never double-launches.
-    var runningAction: [String: String] = [:]
+    /// `@Published` so the toolbar's `isAgentRunning(forWorktree:)` has a guaranteed reactive path
+    /// off both its inputs (the other being `agentSurfaces`), not just a coincidental re-render.
+    @Published var runningAction: [String: String] = [:]
 
     /// Worktrees whose loop has halted (illegal/unknown status). Once halted the engine stops
     /// launching for that worktree until something external resets it.
@@ -99,6 +101,21 @@ class WorkTaskCoordinator: ObservableObject {
     /// Live-reloaded planning config — watched for changes on disk.
     @Published private(set) var planningConfig: WorkflowConfig?
 
+    /// Cached, reactive answer to "does this project have a valid `.clearway/WORKFLOW.json`?" — the
+    /// `AutopilotButton`'s visibility gate. Reading this `@Published` flag (instead of calling
+    /// `hasJSONWorkflow()` per `body`) both avoids a full load+validate filesystem parse on every
+    /// render and makes the button react when WORKFLOW.json is added/removed. Refreshed from the
+    /// existing `.clearway/`-change reload path (`handleTasksReloaded`) plus once at init, so it is
+    /// correct before the first reload. Same gate semantics: true only for a valid JSON workflow.
+    @Published private(set) var isWorkflowJSONProject: Bool = false
+
+    /// Recomputes the cached workflow-json gate from disk. Called from init and the reload hook;
+    /// the assignment is guarded so `objectWillChange` only fires when the value actually flips.
+    func refreshWorkflowJSONGate() {
+        let value = hasJSONWorkflow()
+        if value != isWorkflowJSONProject { isWorkflowJSONProject = value }
+    }
+
     func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
     func setPlanningConfig(_ config: WorkflowConfig?) { planningConfig = config }
 
@@ -131,6 +148,10 @@ class WorkTaskCoordinator: ObservableObject {
         self.workTaskManager.onTasksReloaded = { [weak self] branches in
             self?.handleTasksReloaded(branches: branches)
         }
+
+        // Seed the cached workflow-json gate so the toolbar button is correct before the first
+        // reload; subsequent `.clearway/` changes refresh it via `handleTasksReloaded`.
+        refreshWorkflowJSONGate()
     }
 
     nonisolated deinit {

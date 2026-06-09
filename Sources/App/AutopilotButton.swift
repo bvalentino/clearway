@@ -10,7 +10,8 @@ import SwiftUI
 ///   when live (`autopilot == true`). A missing `autopilot` (not yet seeded) reads as paused.
 /// - **Activity indicator** in place of the glyph while a step is actually running — derived from
 ///   the coordinator's read-only `isAgentRunning(forWorktree:)`, which never leaks mutable engine
-///   state into the view.
+///   state into the view. While running, the accessibility label/value/help shift to a third state
+///   ("Autopilot running") so VoiceOver reflects the in-flight step.
 ///
 /// Clicking is the *only* write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
 /// `WorkTaskManager.setAutopilot`. The established watcher flip path (`handleAutopilotFlip`) then
@@ -35,8 +36,10 @@ struct AutopilotButton: View {
     private var isRunning: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktree.id) }
 
     var body: some View {
-        // Gate on a valid WORKFLOW.json — projects without one render nothing at all.
-        if workTaskCoordinator.hasJSONWorkflow() {
+        // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
+        // coordinator's cached, reactive flag (no per-render filesystem parse; shows/hides when the
+        // file is added/removed).
+        if workTaskCoordinator.isWorkflowJSONProject {
             Button(action: toggle) {
                 if isRunning {
                     ProgressView().controlSize(.small)
@@ -44,9 +47,28 @@ struct AutopilotButton: View {
                     Image(systemName: isLive ? "pause.fill" : "play.fill")
                 }
             }
-            .help(isLive ? "Pause autopilot" : "Start autopilot")
-            .accessibilityLabel(isLive ? "Pause autopilot" : "Start autopilot")
+            .help(helpText)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(accessibilityValue)
         }
+    }
+
+    /// Three-state accessibility/help strings so VoiceOver reflects a running step — not just the
+    /// paused/live glyph. Running takes precedence over `isLive` because the ProgressView replaces
+    /// the glyph while a step is in flight.
+    private var accessibilityLabel: String {
+        if isRunning { return "Autopilot running" }
+        return isLive ? "Pause autopilot" : "Start autopilot"
+    }
+
+    private var accessibilityValue: String {
+        if isRunning { return "Step in progress" }
+        return isLive ? "Active" : "Paused"
+    }
+
+    private var helpText: String {
+        if isRunning { return "Autopilot step running…" }
+        return isLive ? "Pause autopilot" : "Start autopilot"
     }
 
     /// Writes the toggled `autopilot` flag; the watcher flip path enacts resume/pause. No-op when
