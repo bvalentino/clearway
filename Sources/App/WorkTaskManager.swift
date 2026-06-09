@@ -66,7 +66,24 @@ class WorkTaskManager: ObservableObject {
         } else {
             try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try? fm.moveItem(atPath: central, toPath: destination)
+            // Legacy files carried identity in the filename (`<UUID>.md`), which the rename to
+            // `TASK.md` discards. Inject the id into the moved file's frontmatter so identity
+            // survives — otherwise the next reload, having no filename UUID and no frontmatter id,
+            // would skip it (see `reload`) and the task would vanish.
+            ensureFrontmatterID(id, atPath: destination)
         }
+    }
+
+    /// Inserts `id: <uuid>` as the first frontmatter line of the file at `path` when its frontmatter
+    /// carries no usable `id`. Rewrites in place (non-atomic, so the same inode — and the creation
+    /// date the move preserved — is kept) and touches nothing else byte-for-byte.
+    private func ensureFrontmatterID(_ id: UUID, atPath path: String) {
+        guard let data = FileManager.default.contents(atPath: path),
+              var content = String(data: data, encoding: .utf8),
+              WorkTask.frontmatterID(from: content) == nil,
+              content.hasPrefix("---\n") else { return }
+        content.insert(contentsOf: "id: \(id.uuidString)\n", at: content.index(content.startIndex, offsetBy: 4))
+        try? content.write(toFile: path, atomically: false, encoding: .utf8)
     }
 
     nonisolated deinit {
@@ -304,11 +321,16 @@ class WorkTaskManager: ObservableObject {
     /// worktree set is known — a partial set could mis-classify (c) and clear a valid link).
     func migrateCentralTasks() {
         guard !didMigrate else { return }
+
+        let liveWorktrees = worktreeResolver()
+        // Defer (without consuming the one-shot) until the live worktree set is known: an empty
+        // resolver means worktrees haven't loaded yet, and running now would mis-classify active
+        // tasks as orphans and clear valid links. Safe to call repeatedly from the view until then.
+        guard !liveWorktrees.isEmpty else { return }
         didMigrate = true
 
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) else { return }
-        let liveWorktrees = worktreeResolver()
         var changed = false
 
         for file in files where file.hasSuffix(".md") {
