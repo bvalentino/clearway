@@ -40,11 +40,14 @@ class WorkTaskCoordinator: ObservableObject {
 
     // MARK: - WORKFLOW.json Loop Engine
     //
-    // State the agent-driven loop tracks **in memory**, keyed by worktree branch (`Worktree.id`
-    // is a path that can churn; the branch is the task's stable link). `runningAction` is the
-    // action currently launched in a worktree (`P` in the engine semantics); `engineHalted`
-    // records worktrees whose loop has stopped on an illegal/unknown status so the watcher
-    // doesn't keep re-evaluating them. Both are rebuilt from `TASK.md` on restart (Phase 3).
+    // State the agent-driven loop tracks **in memory**. The keying is mixed by design and each
+    // collection documents its own key: `runningAction` is keyed by `Worktree.id` (path), matching
+    // the surface dictionaries (`agentSurfaces`/`launchPromptFiles`) it moves in lockstep with;
+    // `engineHalted` and `lastKnownAutopilot` are keyed by branch (the task's stable link). Within a
+    // session a worktree's path is stable, so the two key spaces never disagree; on restart this
+    // state is empty and rebuilt from `TASK.md` (Phase 3). `runningAction` is the action currently
+    // launched in a worktree (`P` in the engine semantics); `engineHalted` records worktrees whose
+    // loop has stopped on an illegal/unknown status so the watcher doesn't keep re-evaluating them.
 
     // These three drive the JSON loop engine, whose methods live in the
     // `WorkTaskCoordinator+WorkflowEngine.swift` extension; they are internal (not private) so that

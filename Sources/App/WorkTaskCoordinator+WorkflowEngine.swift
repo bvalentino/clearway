@@ -176,14 +176,17 @@ extension WorkTaskCoordinator {
         terminalManager.terminateSurface(surface, in: worktree.id)
     }
 
+    #if DEBUG
     /// Test/restart seam: sets the in-memory running action (`P`) for a worktree directly, without a
     /// launch. Phase 3's restart-resume rebuilds this from disk; tests use it to stage a mid-loop
     /// state. The worktree id (its path) is the key, matching how `advanceWorkflow` reads `P`.
+    /// DEBUG-only — the test bundle builds DEBUG, so this stays reachable from tests but never ships.
     @MainActor
     func setRunningActionForTesting(_ slug: String, branch: String, worktreePath: String) {
         let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
         runningAction[worktreeId] = slug
     }
+    #endif
 
     /// The outcome of feeding a `TASK.md` change through the loop engine.
     enum WorkflowAdvanceResult: Equatable {
@@ -200,15 +203,19 @@ extension WorkTaskCoordinator {
     /// **only** write to `status` — and defaults `autopilot` to `true` in the same write (a valid
     /// `WORKFLOW.json` project gets autopilot on by default). No-op for projects without a valid
     /// `.clearway/WORKFLOW.json`, so legacy projects keep no autopilot field and are untouched.
-    /// Idempotent: only seeds when the task isn't already sitting on the start action (e.g. a
-    /// re-created or resumed worktree keeps its place) — but still backfills `autopilot` if absent,
-    /// so a worktree that already sits on `start` (from a prior write) still gains the default flag.
+    /// Idempotent: only seeds when the task isn't already sitting on a **real action slug** — a
+    /// re-created or resumed mid-loop worktree (status on any defined action) keeps its place rather
+    /// than being yanked back to `start`. At creation `status` is a backlog/legacy value (not an
+    /// action), so the seed still fires. It still backfills `autopilot` if absent, so a worktree
+    /// already sitting on a real action only-missing-the-flag gains the default without losing place.
     @MainActor
     func seedWorkflowStatus(forBranch branch: String) {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
               var task = workTaskManager.task(forWorktree: branch),
-              task.status != definition.start || task.autopilot == nil else { return }
-        task.status = definition.start
+              definition.actions[task.status] == nil || task.autopilot == nil else { return }
+        // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
+        // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
+        if definition.actions[task.status] == nil { task.status = definition.start }
         // Default autopilot on for a JSON-workflow project — written alongside the seed as a single
         // coherent creation write. Only set when absent so a user's prior pause isn't clobbered.
         if task.autopilot == nil { task.autopilot = true }
