@@ -188,6 +188,13 @@ class WorkTaskCoordinator: ObservableObject {
               let task = workTaskManager.tasks.first(where: { $0.id == pending.id }) else { return nil }
         pendingLaunch = nil
 
+        // Move the task file into the now-live worktree BEFORE launch, so the rendered prompt's
+        // taskPath (resolved via filePath(for:), which keys off the branch) already points at
+        // TASK.md. The move doesn't mutate the task's fields, so the captured value stays accurate.
+        if let path = worktree.path {
+            workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path)
+        }
+
         return { [weak self] in
             self?.launchClaudeCode(for: task, in: worktree, app: app)
         }
@@ -198,28 +205,21 @@ class WorkTaskCoordinator: ObservableObject {
         return worktreeManager.worktrees.first(where: { $0.branch == branch })
     }
 
-    /// Called when a worktree is removed — marks the task as done and clears the worktree link,
-    /// or deletes the task if it was only a hidden shadow. Fully tears down surface and observer.
+    /// Called when a worktree is removed. The task's `TASK.md` lives in the worktree directory and
+    /// dies with it (git removes it), so this only tears down the worktree's surfaces and observers
+    /// — it writes nothing back to the central store. A re-merge (driven by the worktree-set change)
+    /// drops the now-gone task from the in-memory pool.
     func handleWorktreeRemoved(branch: String) {
-        guard let task = workTaskManager.task(forWorktree: branch) else { return }
+        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
 
-        if let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
-            agentSurfaces.removeValue(forKey: worktree.id)
-            for surfaceId in agentSurfaceIdentities[worktree.id] ?? [] {
-                sessionObservers.removeValue(forKey: surfaceId)?.stopObserving()
-                if let promptFile = launchPromptFiles.removeValue(forKey: surfaceId) {
-                    try? FileManager.default.removeItem(atPath: promptFile)
-                }
+        agentSurfaces.removeValue(forKey: worktree.id)
+        for surfaceId in agentSurfaceIdentities[worktree.id] ?? [] {
+            sessionObservers.removeValue(forKey: surfaceId)?.stopObserving()
+            if let promptFile = launchPromptFiles.removeValue(forKey: surfaceId) {
+                try? FileManager.default.removeItem(atPath: promptFile)
             }
-            agentSurfaceIdentities.removeValue(forKey: worktree.id)
         }
-
-        if task.hidden { workTaskManager.deleteTask(task); return }
-
-        var updated = task
-        updated.worktree = nil
-        updated.status = .done
-        workTaskManager.updateTask(updated)
+        agentSurfaceIdentities.removeValue(forKey: worktree.id)
     }
 
     /// Whether the given surface is an agent surface (should not be auto-restarted).

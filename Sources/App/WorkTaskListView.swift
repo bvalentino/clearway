@@ -30,12 +30,15 @@ struct WorkTaskListView: View {
         return workTaskManager.tasks.first { $0.id == id }
     }
 
+    /// Backlog = tasks not yet associated with a worktree. Location encodes association, so a
+    /// `worktree == nil` task is one that still lives centrally (shadow tasks always carry a
+    /// worktree, so they're excluded without a separate `hidden` check).
     private var backlogTasks: [WorkTask] {
-        workTaskManager.tasks.filter { $0.status.isBacklog && !$0.hidden }
+        workTaskManager.tasks.filter { $0.worktree == nil }
     }
 
     private var activeTaskCount: Int {
-        workTaskManager.tasks.filter { $0.status.isActive }.count
+        workTaskManager.tasks.filter { $0.worktree != nil }.count
     }
 
     private var activeTaskLabel: String {
@@ -75,13 +78,13 @@ struct WorkTaskListView: View {
                 } label: {
                     Label("Ready to Start", systemImage: isReady ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+                .disabled(selectedTask == nil || selectedTask?.worktree != nil)
 
                 Button("Start Now") {
                     if let task = selectedTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
-                .disabled(selectedTask == nil || selectedTask?.status.isBacklog != true)
+                .disabled(selectedTask == nil || selectedTask?.worktree != nil)
             }
 
             ToolbarItem(placement: .primaryAction) {

@@ -72,6 +72,16 @@ class WorktreeManager: ObservableObject {
         refresh()
     }
 
+    /// The live worktrees as `(branch, path)` pairs — only those with both a branch and a path.
+    /// This is the shape `WorkTaskManager.worktreeResolver` expects; every window that wires the
+    /// task manager points its resolver here so the mapping lives in one place.
+    func taskResolverPairs() -> [(branch: String, path: String)] {
+        worktrees.compactMap { wt in
+            guard let branch = wt.branch, let path = wt.path else { return nil }
+            return (branch, path)
+        }
+    }
+
     func refresh(showLoading: Bool = true) {
         let projectPath = self.projectPath
         if showLoading { isLoading = true }

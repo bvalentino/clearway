@@ -1,7 +1,8 @@
 import Foundation
 
-/// A task — a unit of work persisted as a markdown file with YAML frontmatter
-/// in `.clearway/tasks/<id>.md`.
+/// A task — a unit of work persisted as a markdown file with YAML frontmatter. Its location
+/// encodes association: a backlog task lives centrally at `.clearway/tasks/<id>.md`; once a
+/// worktree is created for it the file moves into that worktree as `.clearway/TASK.md`.
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
@@ -38,12 +39,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             }
         }
 
-        /// Whether this status belongs in the backlog (not yet dispatched to a worktree).
-        var isBacklog: Bool { self == .new || self == .readyToStart }
-
-        /// Whether this status represents active work in a worktree.
-        var isActive: Bool { self == .inProgress || self == .qa || self == .readyForReview }
-
         /// Migrate legacy status values from older task files.
         init?(migrating rawValue: String) {
             switch rawValue {
@@ -69,9 +64,14 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// Returns the raw YAML lines for this task's frontmatter, without `---` delimiters or a trailing newline.
     func frontmatterLines() -> String {
         var lines: [String] = []
+        // Identity is carried in frontmatter so it survives the rename away from `<UUID>.md`
+        // when a task moves into its worktree as `TASK.md`.
+        lines.append("id: \(id.uuidString)")
         lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status.rawValue)")
-        lines.append("worktree: \(worktree.map { YAML.quote($0) } ?? "null")")
+        // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
+        // Planning task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
+        if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
         if let attempt { lines.append("attempt: \(attempt)") }
         if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
@@ -147,13 +147,18 @@ struct WorkTask: Identifiable, Equatable, Hashable {
               let statusString = fields["status"],
               let status = Status(migrating: statusString) else { return nil }
 
+        // Prefer the frontmatter `id` (authoritative once a task moves to `TASK.md`, where the
+        // filename no longer carries the UUID); fall back to the caller-supplied id for legacy
+        // central `<UUID>.md` files written before identity was serialized.
+        let resolvedId = fields["id"].flatMap { UUID(uuidString: $0) } ?? id
+
         let worktree: String? = {
             guard let value = fields["worktree"], value != "null", !value.isEmpty else { return nil }
             guard isValidBranchName(value) else { return nil }
             return value
         }()
 
-        var task = WorkTask(id: id, title: title, status: status, worktree: worktree, body: body)
+        var task = WorkTask(id: resolvedId, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
         task.attempt = fields["attempt"].flatMap { Int($0) }
         task.errorMessage = fields["error_message"]
@@ -164,6 +169,14 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// Convenience overload for callers parsing editor buffer content without filesystem context.
     static func parse(from content: String) -> WorkTask? {
         parse(from: content, id: UUID(), createdAt: Date())
+    }
+
+    /// Returns the frontmatter `id`, if present and a valid UUID. A worktree `TASK.md` carries no
+    /// UUID in its filename, so its identity *must* come from here — callers loading such files use
+    /// this to skip a file with no usable identity rather than mint a fresh random id on every read.
+    static func frontmatterID(from content: String) -> UUID? {
+        guard let (fields, _) = YAML.parseFrontmatter(from: content) else { return nil }
+        return fields["id"].flatMap { UUID(uuidString: $0) }
     }
 
     private static let branchNameCharacters = CharacterSet.lowercaseLetters

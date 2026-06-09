@@ -307,6 +307,10 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
+            // Re-merge the task pool (and run the one-time migration once the live worktree set is
+            // known): a created/removed worktree adds/drops its TASK.md, and a just-appeared
+            // worktree path may newly enable a watcher for an opened worktree.
+            syncWatchedWorktrees()
             let currentIds = Set(newWorktrees.map(\.id))
             // Skip pruning on a failed or empty refresh — a transient `git worktree list`
             // error zeroes the array, and pruning against an empty known-set would wipe
@@ -328,6 +332,9 @@ struct ContentView: View {
             if let refreshed, refreshed != selected { detailSelection = .worktree(refreshed) } else if refreshed == nil { selectFallback() }
         }
         .onChange(of: terminalManager.openWorktreeIds) { openIds in
+            // Watch only opened worktrees' TASK.md for live agent/hook edits (load breadth is
+            // every worktree; watch breadth is what's on screen).
+            syncWatchedWorktrees()
             guard let selected = selectedWorktree, !selected.isMain, !openIds.contains(selected.id) else { return }
             selectFallback()
         }
@@ -370,6 +377,7 @@ struct ContentView: View {
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
             notesManager.setWorktreePath(selectedWorktree?.path)
+            syncWatchedWorktrees()
 
             // onChange(of: detailSelection) doesn't fire for initial value on macOS 13
             if let wt = selectedWorktree {
@@ -615,6 +623,27 @@ struct ContentView: View {
         } else {
             detailSelection = .planning
         }
+    }
+
+    // MARK: - Task File Watching
+
+    /// Tells `WorkTaskManager` which worktrees to watch for live `TASK.md` edits — the opened
+    /// set, resolved to filesystem paths. Also re-merges the pool. Mirrors the
+    /// `todoManager/notesManager.setWorktreePath` wiring so the manager needs no `TerminalManager`
+    /// dependency.
+    ///
+    /// Runs the one-time task-file migration first, gated on a trustworthy live worktree set
+    /// (non-empty, no refresh error — the same boundary as pruning). Driven from here rather than a
+    /// single `onChange` so it fires from whichever path first sees the loaded set (worktree-set
+    /// change, opened-set change, or `onAppear`); the manager guards it to run once.
+    private func syncWatchedWorktrees() {
+        if !worktreeManager.worktrees.isEmpty && worktreeManager.error == nil {
+            workTaskManager.migrateCentralTasks()
+        }
+        let paths = terminalManager.openWorktreeIds.compactMap { id in
+            worktreeManager.worktrees.first { $0.id == id }?.path
+        }
+        workTaskManager.setWatchedWorktrees(paths)
     }
 
     // MARK: - Refresh
