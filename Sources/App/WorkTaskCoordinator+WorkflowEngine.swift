@@ -283,12 +283,12 @@ extension WorkTaskCoordinator {
         return performLaunch(slug: task.status, nextValue: nextValue, in: worktree, definition: definition, app: app)
     }
 
-    /// Shared launch tail for `advanceWorkflow` and `relaunchCurrentAction`: trust-gates, applies the
-    /// per-action entry cap (the loop guard), builds the prompt, sets the idempotency guard
-    /// (`runningAction`), and spawns the agent surface. Returns `.needsTrust` (surfaced, never run)
-    /// when unapproved; `.halted` when the cap is exceeded with no escape; `.ended` for a terminal
-    /// action; else `.launched`. `runningAction` is set immediately before `launchWorkflowAgent` with
-    /// no `await` between — the method is synchronous on `@MainActor`, so guard+launch are atomic.
+    /// Shared launch tail for `advanceWorkflow` and `relaunchCurrentAction`: trust-gates, builds the
+    /// prompt, sets the idempotency guard (`runningAction`), and spawns the agent surface. Returns
+    /// `.needsTrust` (surfaced, never run) when unapproved; `.ended` for a terminal action; else
+    /// `.launched`. `runningAction` is set immediately before `launchWorkflowAgent` with no `await`
+    /// between — the method is synchronous on `@MainActor`, so guard+launch are atomic (a concurrent
+    /// reload can't interleave between the idempotency guard being set and the surface spawning).
     @MainActor
     private func performLaunch(
         slug: String,
@@ -297,80 +297,17 @@ extension WorkTaskCoordinator {
         definition: WorkflowDefinition,
         app: ghostty_app_t
     ) -> WorkflowAdvanceResult {
-        // Resolve everything that can early-return BEFORE any state mutation, so the only thing
-        // left to do after `runningAction` is set is the launch itself.
-        guard definition.actions[slug] != nil else { return .ignored }
+        guard let action = definition.actions[slug] else { return .ignored }
         // Executable config — gate on trust before launching anything. Surface, never run silently.
-        // Untrusted returns without mutating any state (no `attempt` write, no `runningAction`).
+        // Untrusted returns without mutating any state (no `runningAction`).
         guard WorkflowDefinition.isTrusted(projectPath: workTaskManager.projectPath) else {
             return .needsTrust
         }
 
-        // Loop guard: apply the per-action entry cap against the action the worktree was *last*
-        // running (`P`) and the persisted `attempt`. The decision tells us the count to persist and
-        // whether to proceed, divert to an escape action, or halt.
-        let previousAction = runningAction[worktree.id]
-        let persistedAttempt = workTaskManager.task(forWorktree: worktree.branch ?? "")?.attempt
-        let capDecision = WorkflowLoopEngine.applyEntryCap(
-            entering: slug,
-            previousAction: previousAction,
-            currentAttempt: persistedAttempt,
-            definition: definition
-        )
-
-        switch capDecision {
-        case .halt(let reason):
-            // Cap exceeded with no escape — stop the loop and surface, exactly like an illegal route.
-            // `worktree.branch` is the resolving branch (callers match the worktree by it), so the
-            // halt key matches `advanceWorkflow`'s `engineHalted.contains(branch)` guard.
-            if let branch = worktree.branch { engineHalted.insert(branch) }
-            runningAction.removeValue(forKey: worktree.id)
-            persistAttempt(nil, forBranch: worktree.branch, errorMessage: reason)
-            return .halted(reason: reason)
-
-        case .routeToEscape(let escapeSlug, let newCount):
-            // Divert to the escape action via the SAME launch path — the engine never writes
-            // `status` to route; it just *enters* the escape slug (which becomes the running action).
-            // Persist the reset count for the escape's fresh entry, then launch it.
-            persistAttempt(newCount, forBranch: worktree.branch, errorMessage: nil)
-            let escapeNext = WorkflowLoopEngine.legalNextValue(from: escapeSlug, definition: definition)
-            return launchAction(
-                slug: escapeSlug, nextValue: escapeNext, in: worktree, definition: definition, app: app)
-
-        case .proceed(let newCount):
-            persistAttempt(newCount, forBranch: worktree.branch, errorMessage: nil)
-            return launchAction(
-                slug: slug, nextValue: nextValue, in: worktree, definition: definition, app: app)
-        }
-    }
-
-    /// The final launch step shared by the proceed/escape cap branches: builds the prompt, sets the
-    /// idempotency guard, and spawns the surface. Assumes trust + cap have already been resolved.
-    @MainActor
-    private func launchAction(
-        slug: String,
-        nextValue: String?,
-        in worktree: Worktree,
-        definition: WorkflowDefinition,
-        app: ghostty_app_t
-    ) -> WorkflowAdvanceResult {
-        guard let action = definition.actions[slug] else { return .ignored }
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
         runningAction[worktree.id] = slug
         launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
         return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
-    }
-
-    /// Persists the loop-guard entry count into the task's existing `attempt` field (and optionally
-    /// updates `errorMessage`). `nil` count clears the field (reset). No-op when the branch has no
-    /// task. This is a non-`status` write — the "engine writes status only for seed" invariant holds.
-    @MainActor
-    private func persistAttempt(_ count: Int?, forBranch branch: String?, errorMessage: String?) {
-        guard let branch, var task = workTaskManager.task(forWorktree: branch) else { return }
-        guard task.attempt != count || task.errorMessage != errorMessage else { return }
-        task.attempt = count
-        task.errorMessage = errorMessage
-        workTaskManager.updateTask(task)
     }
 
     /// Launches an action's agent in `worktree`, reusing the prompt-file → stdin → Ghostty-surface

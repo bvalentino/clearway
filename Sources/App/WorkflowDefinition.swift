@@ -92,10 +92,14 @@ struct WorkflowDefinition: Equatable, Decodable {
         /// so branches/loops drop in later with no format migration. Empty/absent = terminal.
         let routes: [String: String]
 
-        /// Per-action entry cap (loop guard). `nil` = uncapped.
+        /// Per-action entry cap. **Reserved for a future loop guard and NOT enforced in v1** — the
+        /// manual kill ("Stop Agent") is the v1 loop-stopper. Decoded and validated (a reserved part
+        /// of the `WORKFLOW.json` format) but never acted on by the engine. `nil` = unset.
         let maxAttempts: Int?
 
-        /// Escape slug routed to when `maxAttempts` is hit. `nil` = halt instead.
+        /// Escape slug routed to when `maxAttempts` is hit. **Reserved for a future loop guard and
+        /// NOT enforced in v1.** Its target is still validated to resolve (so a future enforcement
+        /// can trust the pointer), but the engine never routes to it today. `nil` = unset.
         let onMaxAttempts: String?
 
         private enum CodingKeys: String, CodingKey {

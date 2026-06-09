@@ -438,15 +438,16 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "killing an unknown branch leaves other worktrees untouched")
     }
 
-    // MARK: - Loop guard (cap persistence via attempt)
+    // MARK: - Reserved cap fields are decoded but not enforced (trust ordering)
 
-    /// A capped action's cap fires only once approved (trust gates before the cap). Until then the
-    /// launch path short-circuits to `.needsTrust`, so the cap can't leak an execution past trust.
-    /// This documents the ordering: an untrusted capped workflow surfaces trust, not a cap halt.
-    func testCappedWorkflowStillTrustGated() throws {
+    /// `max_attempts` is a reserved, NOT-enforced field in v1 (manual kill is the loop-stopper). A
+    /// workflow carrying it still decodes/validates and launches exactly like any other: the launch
+    /// path trust-gates first, so an untrusted self-routing action surfaces `.needsTrust` rather than
+    /// any cap-driven halt. This pins that the reserved field never short-circuits a launch.
+    func testReservedMaxAttemptsFieldDoesNotBlockLaunch() throws {
         let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
-        let capped = """
+        let withReservedField = """
         {
           "version": 1,
           "start": "fix",
@@ -455,20 +456,16 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
           }
         }
         """
-        try capped.write(toFile: (clearway as NSString).appendingPathComponent("WORKFLOW.json"),
-                         atomically: true, encoding: .utf8)
-        let branch = "capped"
+        try withReservedField.write(toFile: (clearway as NSString).appendingPathComponent("WORKFLOW.json"),
+                                    atomically: true, encoding: .utf8)
+        let branch = "reserved"
         let worktreePath = try writeWorktreeTask(branch: branch, status: "fix", autopilot: true)
         let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.setRunningActionForTesting("fix", branch: branch, worktreePath: worktreePath)
 
-        // Re-entry of `fix` (running fix, status fix) is S == P → ignored before any cap evaluation.
-        // Force a launch decision via the seed/first-launch instead: clear runningAction so the
-        // first write of `start` reaches the launch path — which trust-gates first.
-        coordinator.runningAction.removeValue(forKey: worktreePath)
+        // First write of `start` (no runningAction) reaches the launch path, which trust-gates first.
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
         XCTAssertEqual(result, .needsTrust,
-                       "trust gates before the cap — an untrusted capped workflow surfaces trust, not a cap halt")
+                       "a workflow carrying the reserved max_attempts field still trust-gates and launches normally")
     }
 }
 
