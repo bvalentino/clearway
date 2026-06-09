@@ -122,6 +122,17 @@ extension WorkTaskCoordinator {
         WorkflowDefinition.hasJSONWorkflow(projectPath: workTaskManager.projectPath)
     }
 
+    /// Whether the loop engine has a step *actually running* for this worktree — a live agent
+    /// surface and/or a tracked running action (`P`). Read-only window onto the engine's internal
+    /// state for the toolbar's activity indicator; it never mutates `runningAction`/`agentSurfaces`,
+    /// so the view can't leak engine state. The two move in lockstep (`performLaunch` sets
+    /// `runningAction` immediately before spawning the surface), so either being set means a step
+    /// is mid-run. Keyed by worktree id (its path), matching how the engine stores both.
+    @MainActor
+    func isAgentRunning(forWorktree worktreeId: String) -> Bool {
+        runningAction[worktreeId] != nil || agentSurfaces[worktreeId] != nil
+    }
+
     /// Marks the current `.clearway/WORKFLOW.json` as trusted for this project, so its
     /// `agent.command` / `hooks` may execute. Mirrors `approveTrust()` for the legacy path.
     @MainActor

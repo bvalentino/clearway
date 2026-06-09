@@ -238,6 +238,24 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         XCTAssertEqual(result, .needsTrust, "an enabled worktree reaches the (trust-gated) launch path")
     }
 
+    // MARK: - Agent-running accessor (toolbar activity indicator)
+
+    /// `isAgentRunning(forWorktree:)` — the read-only window the toolbar's activity indicator reads —
+    /// is false for an idle worktree and true once a running action (`P`) is staged, matching how the
+    /// engine sets `runningAction` in lockstep with the live agent surface.
+    func testIsAgentRunningReflectsRunningAction() throws {
+        try writeWorkflow()
+        let branch = "activity"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+
+        XCTAssertFalse(coordinator.isAgentRunning(forWorktree: worktreeId), "idle worktree has no running step")
+
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        XCTAssertTrue(coordinator.isAgentRunning(forWorktree: worktreeId), "a staged running action reads as running")
+    }
+
     // MARK: - Restart resume
 
     /// Restart-resume relaunches only `autopilot: true` worktrees sitting on a real, non-terminal

@@ -223,6 +223,17 @@ class WorkTaskManager: ObservableObject {
         updateTask(updated)
     }
 
+    /// Writes the `autopilot` flag into the task's `.clearway/TASK.md` (the single field-write
+    /// path the autopilot toolbar button drives). Clearway is the writer for this field; the
+    /// loop engine's watcher then enacts the flip (enable → resume, disable → pause). Unlike
+    /// `status`, `autopilot` is Clearway-owned, so this write is allowed. No-op on no change.
+    func setAutopilot(_ task: WorkTask, to autopilot: Bool) {
+        guard task.autopilot != autopilot else { return }
+        var updated = task
+        updated.autopilot = autopilot
+        updateTask(updated)
+    }
+
     func deleteTask(_ task: WorkTask) {
         try? FileManager.default.removeItem(atPath: filePath(for: task))
     }
