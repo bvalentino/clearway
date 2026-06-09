@@ -76,6 +76,7 @@ extension WorkTaskCoordinator {
     /// A disable (`true`→`false`) needs no action here: the pure decision suppresses the next launch
     /// on the following advance, and a running agent is never interrupted. No prior value (first
     /// observation) is treated as "no flip" — the normal advance/seed paths own the initial launch.
+    @MainActor
     private func handleAutopilotFlip(forBranch branch: String, app: ghostty_app_t) -> Bool {
         guard let task = workTaskManager.task(forWorktree: branch) else { return false }
         let previous = lastKnownAutopilot[branch]
@@ -93,6 +94,7 @@ extension WorkTaskCoordinator {
     }
 
     /// The worktree id (path) for a branch, or `nil` when no live worktree matches.
+    @MainActor
     private func worktreeId(forBranch branch: String) -> String? {
         worktreeManager.worktrees.first(where: { $0.branch == branch })?.id
     }
@@ -101,6 +103,7 @@ extension WorkTaskCoordinator {
     /// `errorMessage` onto the task so the dead loop is visible. Does **not** auto-trust and — unlike
     /// the seed — never writes a `status` value, keeping the "engine writes status only for seed"
     /// invariant intact. Idempotent: skips the write if the message is already set.
+    @MainActor
     private func surfaceNeedsTrust(forBranch branch: String) {
         let message = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
         guard var task = workTaskManager.task(forWorktree: branch),
@@ -114,12 +117,14 @@ extension WorkTaskCoordinator {
     /// Whether the project is driven by the new agent-driven loop engine — true only when a
     /// **valid** `.clearway/WORKFLOW.json` is present. Projects without one keep the legacy
     /// `WORKFLOW.md` path entirely unchanged, so every engine entry point gates on this.
+    @MainActor
     func hasJSONWorkflow() -> Bool {
         WorkflowDefinition.hasJSONWorkflow(projectPath: workTaskManager.projectPath)
     }
 
     /// Marks the current `.clearway/WORKFLOW.json` as trusted for this project, so its
     /// `agent.command` / `hooks` may execute. Mirrors `approveTrust()` for the legacy path.
+    @MainActor
     func approveJSONWorkflowTrust() {
         WorkflowDefinition.markTrusted(projectPath: workTaskManager.projectPath)
     }
@@ -127,6 +132,7 @@ extension WorkTaskCoordinator {
     /// Test/restart seam: sets the in-memory running action (`P`) for a worktree directly, without a
     /// launch. Phase 3's restart-resume rebuilds this from disk; tests use it to stage a mid-loop
     /// state. The worktree id (its path) is the key, matching how `advanceWorkflow` reads `P`.
+    @MainActor
     func setRunningActionForTesting(_ slug: String, branch: String, worktreePath: String) {
         let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
         runningAction[worktreeId] = slug
@@ -150,6 +156,7 @@ extension WorkTaskCoordinator {
     /// Idempotent: only seeds when the task isn't already sitting on the start action (e.g. a
     /// re-created or resumed worktree keeps its place) — but still backfills `autopilot` if absent,
     /// so a worktree that already sits on `start` (from a prior write) still gains the default flag.
+    @MainActor
     func seedWorkflowStatus(forBranch branch: String) {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
               var task = workTaskManager.task(forWorktree: branch),
@@ -175,6 +182,7 @@ extension WorkTaskCoordinator {
     /// on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid, **trusted**
     /// `.clearway/WORKFLOW.json`; legacy projects never reach here.
     @discardableResult
+    @MainActor
     func advanceWorkflow(forBranch branch: String, app: ghostty_app_t) -> WorkflowAdvanceResult {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
             return .ignored
@@ -213,6 +221,7 @@ extension WorkTaskCoordinator {
     /// injected next value the same way a launch would. Idempotent and trust-gated. No-op if the
     /// loop is halted, the status isn't a real action, or that action is already running.
     @discardableResult
+    @MainActor
     private func relaunchCurrentAction(forBranch branch: String, app: ghostty_app_t) -> WorkflowAdvanceResult {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
             return .ignored
@@ -232,6 +241,7 @@ extension WorkTaskCoordinator {
     /// `.needsTrust` (surfaced, never run) when unapproved; `.ended` for a terminal action, else
     /// `.launched`. `runningAction` is set immediately before `launchWorkflowAgent` with no `await`
     /// between them — the method is synchronous on `@MainActor`, so guard+launch are one atomic step.
+    @MainActor
     private func performLaunch(
         slug: String,
         nextValue: String?,
@@ -258,6 +268,7 @@ extension WorkTaskCoordinator {
     /// legacy activity/stall observers (which mutate `status` to `in_progress`/`done`) — under the
     /// JSON engine the agent owns every `status` advance, so the engine must never write status
     /// other than the initial seed. The surface is still tracked for teardown/`isAgentSurface`.
+    @MainActor
     private func launchWorkflowAgent(prompt: String, command: String, in worktree: Worktree, app: ghostty_app_t) {
         // Unique per-launch prompt file (same contract as the legacy launch).
         let tempDir = NSTemporaryDirectory()

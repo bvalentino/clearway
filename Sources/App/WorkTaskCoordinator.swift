@@ -404,6 +404,22 @@ class WorkTaskCoordinator: ObservableObject {
 
     // MARK: - Agent Lifecycle
 
+    /// Whether an exiting agent surface should clear the worktree's live-agent state
+    /// (`agentSurfaces` + the loop engine's `runningAction`).
+    ///
+    /// Returns `true` only when the exiting surface IS the worktree's currently-tracked live agent
+    /// — i.e. it hasn't been superseded by a newer launch. A superseded (old) surface exiting after
+    /// a normal advance must NOT clear state, or it would wipe the next action's freshly-set
+    /// `runningAction`/live surface. Identity is compared by reference, matching how `agentSurfaces`
+    /// tracks the live surface elsewhere. Generic over `AnyObject` (rather than `SurfaceView`) so it's
+    /// unit-testable without a live Ghostty app — production passes the `SurfaceView`s directly.
+    static func shouldClearLiveAgentState(
+        exitingSurface: AnyObject,
+        liveAgentSurface: AnyObject?
+    ) -> Bool {
+        liveAgentSurface === exitingSurface
+    }
+
     private func handleChildExited(_ notification: Notification) {
         guard let surface = notification.object as? Ghostty.SurfaceView,
               let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32 else { return }
@@ -419,8 +435,17 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Only clear the live-agent entry if the exiting surface IS the currently-tracked live agent.
         // A superseded agent must not wipe the live agent entry.
-        if agentSurfaces[worktreeId] === surface {
+        //
+        // Same guard governs clearing the loop engine's `runningAction` (the engine's `P`): if the
+        // live agent exits abnormally BEFORE writing its next status (crash/kill), `runningAction`
+        // would otherwise stay set, and `relaunchCurrentAction`'s `runningAction != status` guard
+        // stays false forever — stranding the worktree (no autopilot-flip or restart resume). During
+        // a NORMAL advance the next action's surface is launched first (it overwrites both
+        // `agentSurfaces[worktreeId]` and `runningAction` with the next step), so the OLD surface
+        // is already superseded here and this guard is false — leaving the freshly-set values intact.
+        if Self.shouldClearLiveAgentState(exitingSurface: surface, liveAgentSurface: agentSurfaces[worktreeId]) {
             agentSurfaces.removeValue(forKey: worktreeId)
+            runningAction.removeValue(forKey: worktreeId)
         }
 
         // Retire the observer for this specific surface. Each launch has its own observer,

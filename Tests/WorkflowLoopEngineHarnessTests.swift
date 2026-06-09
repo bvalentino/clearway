@@ -299,6 +299,70 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                      "a second resume call is a no-op (guard already set)")
     }
 
+    // MARK: - Agent-exit clears runningAction (stranded-worktree fix)
+
+    /// When the worktree's CURRENTLY-tracked live agent exits, the exit-decision helper says to clear
+    /// live-agent state (`agentSurfaces` + `runningAction`). The real `handleChildExited` path needs a
+    /// Ghostty surface, so we test the pure decision directly with stand-in reference objects.
+    func testLiveAgentExitClearsRunningActionDecision() {
+        let live = NSObject()
+        XCTAssertTrue(
+            WorkTaskCoordinator.shouldClearLiveAgentState(exitingSurface: live, liveAgentSurface: live),
+            "the live agent's own exit must clear runningAction so a later relaunch/advance can re-fire"
+        )
+    }
+
+    /// A superseded (old) surface exiting AFTER a normal advance already swapped in the next action's
+    /// surface must NOT clear state — otherwise it would wipe the next action's freshly-set
+    /// `runningAction`. The decision is keyed on identity vs. the *current* live surface.
+    func testSupersededAgentExitDoesNotClearRunningActionDecision() {
+        let oldSurface = NSObject()
+        let newSurface = NSObject()
+        XCTAssertFalse(
+            WorkTaskCoordinator.shouldClearLiveAgentState(exitingSurface: oldSurface, liveAgentSurface: newSurface),
+            "a superseded surface's exit must leave the next action's runningAction intact"
+        )
+        // And a worktree with no tracked live surface (already cleared) also must not re-trigger.
+        XCTAssertFalse(
+            WorkTaskCoordinator.shouldClearLiveAgentState(exitingSurface: oldSurface, liveAgentSurface: nil),
+            "no live surface means nothing to clear"
+        )
+    }
+
+    /// End-to-end at the coordinator state level, exercising the exact guard the fix unblocks.
+    /// `relaunchCurrentAction` (the autopilot-flip / restart-resume path, reached here via
+    /// `resumeWorkflowsOnStartup`) skips a worktree whose `runningAction` already equals its `status`.
+    /// If an agent crashes BEFORE writing its next status, that stale `runningAction` would strand the
+    /// worktree forever. Clearing it on the live agent's exit lets the resume re-fire — observable as
+    /// the trust message `surfaceNeedsTrust` records once the relaunch reaches the (untrusted) launch.
+    /// We drive `runningAction` directly because the surface-exit notification needs a live Ghostty app.
+    func testRunningActionClearedAllowsResumeAfterExit() throws {
+        try writeWorkflow()
+        let trustMessage = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
+        let branch = "exit-resume"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+
+        // STRANDED case: runningAction still set to the current status (agent died before advancing).
+        // resumeWorkflowsOnStartup → relaunchCurrentAction's `runningAction != status` guard is FALSE,
+        // so nothing relaunches and no trust message is surfaced.
+        let stranded = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        stranded.appProvider = { [dummyApp] in dummyApp }
+        stranded.setRunningActionForTesting("test", branch: branch, worktreePath: worktreePath)
+        stranded.resumeWorkflowsOnStartup()
+        XCTAssertNil(stranded.workTaskManager.task(forWorktree: branch)?.errorMessage,
+                     "a stale runningAction == status blocks the resume relaunch (the stranded bug)")
+
+        // FIXED case: the live agent's exit cleared runningAction (the guarded handleChildExited
+        // branch). Now relaunchCurrentAction's guard passes and the resume reaches the launch path,
+        // surfacing the trust message — proof the worktree is no longer stranded.
+        let resumed = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        resumed.appProvider = { [dummyApp] in dummyApp }
+        // runningAction left unset = the cleared state after the live agent exited.
+        resumed.resumeWorkflowsOnStartup()
+        XCTAssertEqual(resumed.workTaskManager.task(forWorktree: branch)?.errorMessage, trustMessage,
+                       "clearing runningAction on the live agent's exit lets resume relaunch the action")
+    }
+
     func testSameStatusAsRunningIsIgnored() throws {
         try writeWorkflow()
         let branch = "idem"
