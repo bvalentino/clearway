@@ -51,12 +51,7 @@ struct WorkTaskWindow: View {
         // This standalone window builds its own managers. Without a resolver the task manager only
         // scans central and can't find a task that now lives in a worktree's `TASK.md` — the cause
         // of "Task not found" for started tasks. Wire it exactly like ProjectWindow.
-        taskMgr.worktreeResolver = { [weak wm] in
-            (wm?.worktrees ?? []).compactMap { wt in
-                guard let branch = wt.branch, let path = wt.path else { return nil }
-                return (branch, path)
-            }
-        }
+        taskMgr.worktreeResolver = { [weak wm] in wm?.taskResolverPairs() ?? [] }
         _worktreeManager = StateObject(wrappedValue: wm)
         _workTaskManager = StateObject(wrappedValue: taskMgr)
         taskId = identifier.taskId

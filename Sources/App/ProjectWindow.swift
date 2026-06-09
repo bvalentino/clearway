@@ -88,12 +88,7 @@ struct ProjectContentView: View {
         let taskMgr = WorkTaskManager(projectPath: projectPath)
         // Let the task manager route files to (and merge-load from) live worktrees without
         // depending on WorktreeManager. The closure reads the published list at call time.
-        taskMgr.worktreeResolver = { [weak wm] in
-            (wm?.worktrees ?? []).compactMap { wt in
-                guard let branch = wt.branch, let path = wt.path else { return nil }
-                return (branch, path)
-            }
-        }
+        taskMgr.worktreeResolver = { [weak wm] in wm?.taskResolverPairs() ?? [] }
         let gm = WorktreeGroupManager(projectPath: projectPath)
         let promptsDir = UserDefaults.standard.string(forKey: SettingsKey.promptsDirectory) ?? SettingsManager.defaultPromptsDirectory
         _worktreeManager = StateObject(wrappedValue: wm)
