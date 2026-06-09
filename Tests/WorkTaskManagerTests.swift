@@ -32,14 +32,14 @@ final class WorkTaskManagerTests: XCTestCase {
 
         var mutated = seed
         mutated.body = "Original body"
-        mutated.status = .inProgress
+        mutated.status = WorkTask.ReservedStatus.inProgress
         mutated.worktree = "some-branch"
         manager.updateTask(mutated)
 
         let staleTask = WorkTask(
             id: seed.id,
             title: "Original",
-            status: .new,
+            status: WorkTask.ReservedStatus.new,
             worktree: nil,
             body: "User edit"
         )
@@ -49,21 +49,21 @@ final class WorkTaskManagerTests: XCTestCase {
             XCTFail("Task not found in manager.tasks after applyEditorBuffer")
             return
         }
-        XCTAssertEqual(result.status, .inProgress, "status must be preserved by applyEditorBuffer")
+        XCTAssertEqual(result.status, WorkTask.ReservedStatus.inProgress, "status must be preserved by applyEditorBuffer")
         XCTAssertEqual(result.worktree, "some-branch", "worktree must be preserved by applyEditorBuffer")
         XCTAssertEqual(result.body, "User edit", "body must be taken from the editor buffer")
         XCTAssertEqual(result.title, "Original", "title must be taken from the editor buffer")
 
         let diskContent = try String(contentsOfFile: manager.filePath(for: result), encoding: .utf8)
         let reparsed = WorkTask.parse(from: diskContent, id: result.id, createdAt: result.createdAt)
-        XCTAssertEqual(reparsed?.status, .inProgress)
+        XCTAssertEqual(reparsed?.status, WorkTask.ReservedStatus.inProgress)
         XCTAssertEqual(reparsed?.worktree, "some-branch")
         XCTAssertEqual(reparsed?.body, "User edit")
     }
 
     /// `hidden: true` must round-trip through serialize → parse so shadow tasks keep their flag.
     func testHiddenRoundTripsWhenTrue() throws {
-        var task = WorkTask(id: UUID(), title: "Shadow", status: .new, worktree: "feature/x", body: "")
+        var task = WorkTask(id: UUID(), title: "Shadow", status: WorkTask.ReservedStatus.new, worktree: "feature/x", body: "")
         task.hidden = true
 
         let serialized = task.serialized()
@@ -77,7 +77,7 @@ final class WorkTaskManagerTests: XCTestCase {
 
     /// Default (exposed) tasks must not emit `hidden:` at all — keeps old files diff-clean.
     func testHiddenOmittedFromFrontmatterWhenFalse() throws {
-        let task = WorkTask(id: UUID(), title: "Regular", status: .new, worktree: nil, body: "")
+        let task = WorkTask(id: UUID(), title: "Regular", status: WorkTask.ReservedStatus.new, worktree: nil, body: "")
         XCTAssertFalse(task.hidden)
 
         let serialized = task.serialized()
@@ -97,7 +97,7 @@ final class WorkTaskManagerTests: XCTestCase {
         }
 
         XCTAssertTrue(shadow.hidden)
-        XCTAssertEqual(shadow.status, .inProgress, ".new / .readyToStart are planning-only; worktree tasks start in-progress")
+        XCTAssertEqual(shadow.status, WorkTask.ReservedStatus.inProgress, ".new / .readyToStart are planning-only; worktree tasks start in-progress")
         XCTAssertEqual(shadow.worktree, "feature/alpha")
         XCTAssertEqual(shadow.title, "", "placeholder tasks have no title until the user fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == shadow.id }))
@@ -197,7 +197,7 @@ final class WorkTaskManagerTests: XCTestCase {
         }
 
         XCTAssertFalse(created.hidden)
-        XCTAssertEqual(created.status, .inProgress, "worktree-linked tasks start in-progress, not in backlog")
+        XCTAssertEqual(created.status, WorkTask.ReservedStatus.inProgress, "worktree-linked tasks start in-progress, not in backlog")
         XCTAssertEqual(created.worktree, "feature/delta")
         XCTAssertEqual(created.title, "", "CTA-created tasks have no title until the editor fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == created.id }))
@@ -273,13 +273,13 @@ final class WorkTaskManagerTests: XCTestCase {
             XCTFail("createShadowTask returned nil")
             return
         }
-        manager.setStatus(shadow, to: .qa)
+        manager.setStatus(shadow, to: WorkTask.ReservedStatus.qa)
 
         guard let reloaded = manager.tasks.first(where: { $0.id == shadow.id }) else {
             XCTFail("Task missing after setStatus")
             return
         }
-        XCTAssertEqual(reloaded.status, .qa)
+        XCTAssertEqual(reloaded.status, WorkTask.ReservedStatus.qa)
         XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
     }
 
@@ -291,7 +291,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let manager = WorkTaskManager(projectPath: tempRoot)
         manager.worktreeResolver = { [(branch: "feature/alpha", path: worktreePath)] }
 
-        let task = WorkTask(id: UUID(), title: "Linked", status: .inProgress, worktree: "feature/alpha")
+        let task = WorkTask(id: UUID(), title: "Linked", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/alpha")
         let expected = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
         XCTAssertEqual(manager.filePath(for: task), expected)
     }
@@ -302,7 +302,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let manager = WorkTaskManager(projectPath: tempRoot)
         manager.worktreeResolver = { [] }
 
-        let task = WorkTask(id: UUID(), title: "Backlog", status: .new, worktree: nil)
+        let task = WorkTask(id: UUID(), title: "Backlog", status: WorkTask.ReservedStatus.new, worktree: nil)
         let expected = ((tempRoot as NSString).appendingPathComponent(".clearway/tasks") as NSString)
             .appendingPathComponent("\(task.id.uuidString).md")
         XCTAssertEqual(manager.filePath(for: task), expected)
@@ -314,7 +314,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let manager = WorkTaskManager(projectPath: tempRoot)
         manager.worktreeResolver = { [(branch: "feature/beta", path: worktreePath)] }
 
-        let task = WorkTask(id: UUID(), title: "In worktree", status: .inProgress, worktree: "feature/beta")
+        let task = WorkTask(id: UUID(), title: "In worktree", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/beta")
         manager.updateTask(task)
 
         let taskMd = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
@@ -345,7 +345,7 @@ final class WorkTaskManagerTests: XCTestCase {
             XCTFail("createTask returned nil"); return
         }
 
-        let worktreeTask = WorkTask(id: UUID(), title: "Active item", status: .inProgress, worktree: "feature/active")
+        let worktreeTask = WorkTask(id: UUID(), title: "Active item", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/active")
         let worktreePath = try seedWorktreeTask(dir: "wt-active", worktreeTask)
         manager.worktreeResolver = { [(branch: "feature/active", path: worktreePath)] }
         manager.setWatchedWorktrees([worktreePath])  // triggers re-merge
@@ -361,7 +361,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let sharedId = UUID()
 
         // Stale central copy.
-        let central = WorkTask(id: sharedId, title: "Stale central", status: .new, worktree: "feature/dup")
+        let central = WorkTask(id: sharedId, title: "Stale central", status: WorkTask.ReservedStatus.new, worktree: "feature/dup")
         let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
         try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
         try central.serialized().write(
@@ -370,7 +370,7 @@ final class WorkTaskManagerTests: XCTestCase {
         )
 
         // Fresh worktree copy with the same id.
-        let worktreeTask = WorkTask(id: sharedId, title: "Fresh worktree", status: .inProgress, worktree: "feature/dup")
+        let worktreeTask = WorkTask(id: sharedId, title: "Fresh worktree", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/dup")
         let worktreePath = try seedWorktreeTask(dir: "wt-dup", worktreeTask)
         manager.worktreeResolver = { [(branch: "feature/dup", path: worktreePath)] }
         manager.setWatchedWorktrees([worktreePath])
@@ -383,7 +383,7 @@ final class WorkTaskManagerTests: XCTestCase {
     /// `setWatchedWorktrees` re-merges against the current resolver — surfacing worktree tasks.
     func testSetWatchedWorktreesReMerges() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
-        let worktreeTask = WorkTask(id: UUID(), title: "Surfaced", status: .inProgress, worktree: "feature/surf")
+        let worktreeTask = WorkTask(id: UUID(), title: "Surfaced", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/surf")
         let worktreePath = try seedWorktreeTask(dir: "wt-surf", worktreeTask)
 
         // Before wiring the resolver, the worktree task is invisible.
@@ -426,7 +426,7 @@ final class WorkTaskManagerTests: XCTestCase {
     /// the complement of the skip case above.
     func testWorktreeTaskKeepsStableIdAcrossReloads() throws {
         let id = UUID()
-        let worktreeTask = WorkTask(id: id, title: "Stable", status: .inProgress, worktree: "feature/stable")
+        let worktreeTask = WorkTask(id: id, title: "Stable", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/stable")
         let worktreePath = try seedWorktreeTask(dir: "wt-stable", worktreeTask)
 
         let manager = WorkTaskManager(projectPath: tempRoot)
@@ -457,12 +457,12 @@ final class WorkTaskManagerTests: XCTestCase {
         let manager = WorkTaskManager(projectPath: tempRoot)
 
         // (a) Active central task whose worktree is live → relocate.
-        let active = WorkTask(id: UUID(), title: "Active", status: .inProgress, worktree: "feature/live")
+        let active = WorkTask(id: UUID(), title: "Active", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/live")
         let activePath = try seedCentralTask(active)
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-live")
 
         // (b) Legacy terminal-status orphan with no live worktree → archive.
-        let orphan = WorkTask(id: UUID(), title: "Old done", status: .done, worktree: "feature/gone")
+        let orphan = WorkTask(id: UUID(), title: "Old done", status: WorkTask.ReservedStatus.done, worktree: "feature/gone")
         let orphanPath = try seedCentralTask(orphan)
 
         // (c) Backlog task → stays central.
@@ -491,7 +491,7 @@ final class WorkTaskManagerTests: XCTestCase {
     /// Migration is idempotent — a second run after convergence changes nothing.
     func testMigrationIsIdempotent() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
-        let orphan = WorkTask(id: UUID(), title: "Canceled", status: .canceled, worktree: nil)
+        let orphan = WorkTask(id: UUID(), title: "Canceled", status: WorkTask.ReservedStatus.canceled, worktree: nil)
         _ = try seedCentralTask(orphan)
         guard manager.createTask(title: "Backlog") != nil else { XCTFail("createTask returned nil"); return }
 
@@ -516,7 +516,7 @@ final class WorkTaskManagerTests: XCTestCase {
     /// branch. The file stays central and its body is preserved.
     func testMigrationClearsStaleLinkOnActivePhantom() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
-        let phantom = WorkTask(id: UUID(), title: "Phantom active", status: .inProgress, worktree: "feature/dead", body: "keep me")
+        let phantom = WorkTask(id: UUID(), title: "Phantom active", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/dead", body: "keep me")
         let phantomPath = try seedCentralTask(phantom)
 
         // Live set is loaded (contains main) but nothing owns "feature/dead".
@@ -628,7 +628,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let novelTask = WorkTask(
             id: UUID(),
             title: "Brand New",
-            status: .readyToStart,
+            status: WorkTask.ReservedStatus.readyToStart,
             worktree: nil,
             body: "Fallback body"
         )
@@ -639,7 +639,7 @@ final class WorkTaskManagerTests: XCTestCase {
         let diskContent = try String(contentsOfFile: diskPath, encoding: .utf8)
         let reparsed = WorkTask.parse(from: diskContent, id: novelTask.id, createdAt: novelTask.createdAt)
         XCTAssertEqual(reparsed?.title, "Brand New")
-        XCTAssertEqual(reparsed?.status, .readyToStart)
+        XCTAssertEqual(reparsed?.status, WorkTask.ReservedStatus.readyToStart)
         XCTAssertEqual(reparsed?.body, "Fallback body")
     }
 }

@@ -34,7 +34,7 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
 
         let id = UUID()
-        let task = WorkTask(id: id, title: "Active", status: .inProgress, worktree: "feature/gone")
+        let task = WorkTask(id: id, title: "Active", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/gone")
         try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
 
         let taskManager = WorkTaskManager(projectPath: tempRoot)
