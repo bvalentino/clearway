@@ -114,6 +114,30 @@ enum WorkflowLoopEngine {
         return definition.legalNext(from: slug).sorted().first
     }
 
+    // MARK: - Restart resume
+
+    /// Whether a worktree should auto-resume its loop on app/project restart, given its persisted
+    /// `status` and `autopilot`. Pure so the restart policy is unit-testable without `git worktree
+    /// list` or Ghostty. A resumable worktree relaunches the action its `status` sits on (idempotent).
+    ///
+    /// Resumes **only** when ALL hold:
+    /// - `autopilot == true` — a paused (`false`) or flag-less (`nil`, e.g. legacy) worktree stays put.
+    /// - `status` names a real, **non-terminal** action — a terminal action already ran and ended the
+    ///   loop; relaunching it would re-run completed work.
+    /// - `status` is not a backlog marker (`new`/`ready_to_start`) — those are pre-worktree, not a
+    ///   running loop.
+    ///
+    /// An unknown slug (a halted loop left a bad value, or a hand-edit) is **not** resumable: there is
+    /// no action to launch, so the worktree stays put rather than halting fresh on startup.
+    static func shouldResumeOnRestart(status: String, autopilot: Bool?, definition: WorkflowDefinition) -> Bool {
+        guard autopilot == true else { return false }
+        guard status != WorkTask.ReservedStatus.new, status != WorkTask.ReservedStatus.readyToStart else {
+            return false
+        }
+        guard definition.actions[status] != nil else { return false }
+        return !definition.isTerminal(status)
+    }
+
     // MARK: - Prompt injection
 
     /// Builds the agent prompt for an action launch: the action's `instructions` followed by the

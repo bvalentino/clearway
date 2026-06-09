@@ -66,6 +66,12 @@ class WorkTaskCoordinator: ObservableObject {
     /// `nil` until the first reload observes the worktree.
     var lastKnownAutopilot: [String: Bool] = [:]
 
+    /// One-shot guard so restart-resume runs exactly once per window, even though its trigger
+    /// (`resumeWorkflowsOnStartup`, called from the same `syncWatchedWorktrees` path as the task
+    /// migration) fires from several lifecycle paths. Set the first time resume runs with a loaded
+    /// worktree set; thereafter the live watcher owns all advances.
+    var didResumeWorkflows = false
+
     /// Supplies the live `ghostty_app_t` so the watcher-driven engine can launch surfaces without
     /// the per-call `app:` argument the view passes elsewhere. Set by the view in `onAppear`
     /// (mirroring `TerminalManager.mainCommandProvider`). `nil` until Ghostty is ready.

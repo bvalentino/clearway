@@ -35,6 +35,39 @@ extension WorkTaskCoordinator {
         }
     }
 
+    /// Rebuilds the watch-set on app/project startup: enumerates the project's live worktrees, reads
+    /// each one's persisted `TASK.md` (`status` + `autopilot`), and relaunches the matching action —
+    /// **only** for worktrees `WorkflowLoopEngine.shouldResumeOnRestart` deems resumable (autopilot on,
+    /// status on a real non-terminal action). A paused, halted, terminal, backlog, or unknown-slug
+    /// worktree stays put. No-op for projects without a valid `.clearway/WORKFLOW.json`.
+    ///
+    /// Idempotent: `relaunchCurrentAction` skips a worktree whose action is already running, so a
+    /// double startup (or a reload firing right after) never double-launches. Reads the already-merged
+    /// task pool (the manager loads every worktree's `TASK.md`) rather than re-shelling `git worktree
+    /// list`, reusing existing plumbing while honoring the "enumerate worktrees" contract.
+    @MainActor
+    func resumeWorkflowsOnStartup() {
+        // Run once per window, and only once the worktree set has loaded — an empty set means
+        // worktrees haven't arrived yet (the caller retries on the next lifecycle tick). Leaving the
+        // guard unset until then lets a later call with a real set do the work.
+        guard !didResumeWorkflows, !worktreeManager.worktrees.isEmpty else { return }
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
+              let app = appProvider() else { return }
+        didResumeWorkflows = true
+        for worktree in worktreeManager.worktrees {
+            guard let branch = worktree.branch,
+                  let task = workTaskManager.task(forWorktree: branch) else { continue }
+            // Seed the flip baseline so the first post-resume reload doesn't read a false→true edge.
+            if let autopilot = task.autopilot { lastKnownAutopilot[branch] = autopilot }
+            guard WorkflowLoopEngine.shouldResumeOnRestart(
+                status: task.status, autopilot: task.autopilot, definition: definition
+            ) else { continue }
+            if case .needsTrust = relaunchCurrentAction(forBranch: branch, app: app) {
+                surfaceNeedsTrust(forBranch: branch)
+            }
+        }
+    }
+
     /// Reacts to an `autopilot` change since the last reload. Updates the last-known value and, on an
     /// enable (`false`→`true`) of an idle worktree, idempotently re-launches the action the worktree
     /// currently sits on (the resume path the spec specifies — "status is X, X not running → run it").
