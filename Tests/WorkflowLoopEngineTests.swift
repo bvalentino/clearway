@@ -263,4 +263,123 @@ final class WorkflowLoopEngineTests: XCTestCase {
         XCTAssertEqual(prompt, "Review the diff.",
                        "a terminal action gets its instructions verbatim with no advance contract")
     }
+
+    // MARK: - Loop guard (per-action entry cap)
+
+    /// A `fix ↔ test` graph where `fix` is capped at 2 re-entries with a `review` escape — the
+    /// canonical loop-guard fixture. `fix` self-routes so it can re-enter itself (the bounded case).
+    private static let cappedFixLoop: WorkflowDefinition = {
+        let json = """
+        {
+          "version": 1,
+          "start": "fix",
+          "actions": {
+            "fix": {
+              "name": "Fix",
+              "instructions": "Fix the failure.",
+              "routes": { "again": "fix", "done": "test" },
+              "max_attempts": 2,
+              "on_max_attempts": "review"
+            },
+            "test": { "name": "Test", "instructions": "Run the tests.", "routes": { "success": "fix" } },
+            "review": { "name": "Review", "instructions": "Escalate to a human." }
+          }
+        }
+        """
+        // swiftlint:disable:next force_try
+        return try! JSONDecoder().decode(WorkflowDefinition.self, from: Data(json.utf8))
+    }()
+
+    /// A capped action with NO escape — re-entering past the cap must halt, never loop forever.
+    private static let cappedNoEscape: WorkflowDefinition = {
+        let json = """
+        {
+          "version": 1,
+          "start": "fix",
+          "actions": {
+            "fix": {
+              "name": "Fix",
+              "instructions": "Fix the failure.",
+              "routes": { "again": "fix" },
+              "max_attempts": 2
+            }
+          }
+        }
+        """
+        // swiftlint:disable:next force_try
+        return try! JSONDecoder().decode(WorkflowDefinition.self, from: Data(json.utf8))
+    }()
+
+    /// First entry of a fresh (uncapped-context) action counts as 1, regardless of prior attempt.
+    func testCapFreshEntryCountsAsOne() {
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: "test", currentAttempt: 9,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .proceed(newCount: 1),
+                       "entering a different action than the one running resets the count to 1")
+    }
+
+    /// Re-entering the same action increments the persisted attempt count.
+    func testCapReentryIncrements() {
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: "fix", currentAttempt: 1,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .proceed(newCount: 2), "a re-entry of the same action increments the count")
+    }
+
+    /// Exceeding the cap with an escape defined routes to the escape slug (count reset).
+    func testCapExceededRoutesToEscape() {
+        // currentAttempt 2 == maxAttempts; the next re-entry would be 3 > 2 → escape.
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: "fix", currentAttempt: 2,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .routeToEscape(slug: "review", newCount: 1),
+                       "exceeding the cap routes to on_max_attempts instead of relaunching the capped action")
+    }
+
+    /// Exceeding the cap with NO escape halts (never loop forever).
+    func testCapExceededWithoutEscapeHalts() {
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: "fix", currentAttempt: 2,
+            definition: Self.cappedNoEscape)
+        guard case .halt = decision else {
+            return XCTFail("a capped action with no escape must halt past the cap, got \(decision)")
+        }
+    }
+
+    /// Entering the cap's last permitted attempt still proceeds (boundary: count == maxAttempts).
+    func testCapAtBoundaryProceeds() {
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: "fix", currentAttempt: 1,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .proceed(newCount: 2),
+                       "count reaching maxAttempts is still within the cap; only exceeding it fires")
+    }
+
+    /// An uncapped action always proceeds, still tracking the count.
+    func testUncappedActionAlwaysProceeds() {
+        let reentry = WorkflowLoopEngine.applyEntryCap(
+            entering: "test", previousAction: "test", currentAttempt: 50,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(reentry, .proceed(newCount: 51), "an uncapped action proceeds and keeps counting")
+    }
+
+    /// Entering a different action resets the count even when the previous action was the capped one
+    /// — the per-action count is consecutive-entry, so leaving the action clears it.
+    func testCapResetsWhenActionChanges() {
+        // Was running `fix` (count high); now entering `test` (a different, uncapped action).
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "test", previousAction: "fix", currentAttempt: 99,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .proceed(newCount: 1),
+                       "the entry counter resets to 1 when the action slug changes")
+    }
+
+    /// First-ever launch (no previous action, no attempt) counts as 1.
+    func testCapFirstLaunchNoPreviousCountsAsOne() {
+        let decision = WorkflowLoopEngine.applyEntryCap(
+            entering: "fix", previousAction: nil, currentAttempt: nil,
+            definition: Self.cappedFixLoop)
+        XCTAssertEqual(decision, .proceed(newCount: 1), "the first launch of an action counts as 1")
+    }
 }
