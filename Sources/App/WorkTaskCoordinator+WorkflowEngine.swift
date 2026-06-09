@@ -32,9 +32,7 @@ extension WorkTaskCoordinator {
             // The resume already drove a launch decision; advancing again on the same reload would
             // re-evaluate the now-running action (a harmless ignore), so skip the redundant call.
             guard !resumed else { continue }
-            if case .needsTrust = advanceWorkflow(forBranch: branch, app: app) {
-                surfaceNeedsTrust(forBranch: branch)
-            }
+            advanceWorkflow(forBranch: branch, app: app)
         }
     }
 
@@ -65,9 +63,7 @@ extension WorkTaskCoordinator {
             guard WorkflowLoopEngine.shouldResumeOnRestart(
                 status: task.status, autopilot: task.autopilot, definition: definition
             ) else { continue }
-            if case .needsTrust = relaunchCurrentAction(forBranch: branch, app: app) {
-                surfaceNeedsTrust(forBranch: branch)
-            }
+            relaunchCurrentAction(forBranch: branch, app: app)
         }
     }
 
@@ -90,9 +86,7 @@ extension WorkTaskCoordinator {
         // its current step keeps running and the normal advance handles the next status write.
         let isIdle = worktreeId(forBranch: branch).map { agentSurfaces[$0] == nil } ?? true
         guard previous == false, task.autopilot == true, isIdle else { return false }
-        if case .needsTrust = relaunchCurrentAction(forBranch: branch, app: app) {
-            surfaceNeedsTrust(forBranch: branch)
-        }
+        relaunchCurrentAction(forBranch: branch, app: app)
         return true
     }
 
@@ -100,19 +94,6 @@ extension WorkTaskCoordinator {
     @MainActor
     private func worktreeId(forBranch branch: String) -> String? {
         worktreeManager.worktrees.first(where: { $0.branch == branch })?.id
-    }
-
-    /// Surfaces a stalled-on-trust loop the same way a halt surfaces its reason: writes a diagnosable
-    /// `errorMessage` onto the task so the dead loop is visible. Does **not** auto-trust and — unlike
-    /// the seed — never writes a `status` value, keeping the "engine writes status only for seed"
-    /// invariant intact. Idempotent: skips the write if the message is already set.
-    @MainActor
-    private func surfaceNeedsTrust(forBranch branch: String) {
-        let message = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
-        guard var task = workTaskManager.task(forWorktree: branch),
-              task.errorMessage != message else { return }
-        task.errorMessage = message
-        workTaskManager.updateTask(task)
     }
 
     // MARK: - WORKFLOW.json Loop Engine
@@ -134,13 +115,6 @@ extension WorkTaskCoordinator {
     @MainActor
     func isAgentRunning(forWorktree worktreeId: String) -> Bool {
         runningAction[worktreeId] != nil || agentSurfaces[worktreeId] != nil
-    }
-
-    /// Marks the current `.clearway/WORKFLOW.json` as trusted for this project, so its
-    /// `agent.command` / `hooks` may execute. Mirrors `approveTrust()` for the legacy path.
-    @MainActor
-    func approveJSONWorkflowTrust() {
-        WorkflowDefinition.markTrusted(projectPath: workTaskManager.projectPath)
     }
 
     /// Whether a manual kill should terminate a surface for a worktree — true only when a live agent
@@ -194,9 +168,6 @@ extension WorkTaskCoordinator {
         case ignored
         case ended(slug: String)
         case halted(reason: String)
-        /// The `.clearway/WORKFLOW.json` carries executable config that the user hasn't approved.
-        /// The caller surfaces this (it does **not** execute) and may call `approveJSONWorkflowTrust()`.
-        case needsTrust
     }
 
     /// Seeds a freshly created worktree's `TASK.md` with the workflow's `start` slug — the engine's
@@ -233,7 +204,7 @@ extension WorkTaskCoordinator {
 
     /// Feeds a worktree's current `TASK.md` `status` through the pure transition decision and acts on
     /// the result: launches the next action, ends on a terminal action, halts (surfacing the error)
-    /// on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid, **trusted**
+    /// on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid
     /// `.clearway/WORKFLOW.json`; legacy projects never reach here.
     @discardableResult
     @MainActor
@@ -272,8 +243,8 @@ extension WorkTaskCoordinator {
     /// Re-launches the action a worktree currently sits on — the autopilot **resume** path. Unlike
     /// `advanceWorkflow` this is not an advance (no route validation): an enable flip resumes the
     /// *current* state, so the engine relaunches whatever action `status` names, computing its
-    /// injected next value the same way a launch would. Idempotent and trust-gated. No-op if the
-    /// loop is halted, the status isn't a real action, or that action is already running.
+    /// injected next value the same way a launch would. Idempotent. No-op if the loop is halted, the
+    /// status isn't a real action, or that action is already running.
     @discardableResult
     @MainActor
     private func relaunchCurrentAction(forBranch branch: String, app: ghostty_app_t) -> WorkflowAdvanceResult {
@@ -290,12 +261,15 @@ extension WorkTaskCoordinator {
         return performLaunch(slug: task.status, nextValue: nextValue, in: worktree, definition: definition, app: app)
     }
 
-    /// Shared launch tail for `advanceWorkflow` and `relaunchCurrentAction`: trust-gates, builds the
-    /// prompt, sets the idempotency guard (`runningAction`), and spawns the agent surface. Returns
-    /// `.needsTrust` (surfaced, never run) when unapproved; `.ended` for a terminal action; else
-    /// `.launched`. `runningAction` is set immediately before `launchWorkflowAgent` with no `await`
-    /// between — the method is synchronous on `@MainActor`, so guard+launch are atomic (a concurrent
-    /// reload can't interleave between the idempotency guard being set and the surface spawning).
+    /// Shared launch tail for `advanceWorkflow` and `relaunchCurrentAction`: builds the prompt, sets
+    /// the idempotency guard (`runningAction`), and spawns the agent surface. Returns `.ended` for a
+    /// terminal action; else `.launched`. `runningAction` is set immediately before the surface spawn
+    /// with no `await` between — the method is synchronous on `@MainActor`, so guard+launch are atomic
+    /// (a concurrent reload can't interleave between the idempotency guard being set and the spawn).
+    ///
+    /// The actual surface spawn goes through `workflowAgentLauncher` — `nil` in production (so the real
+    /// `launchWorkflowAgent` runs), overridable in harness tests so they can observe a launch without a
+    /// live Ghostty surface (mirroring the `appProvider` seam).
     @MainActor
     private func performLaunch(
         slug: String,
@@ -305,15 +279,13 @@ extension WorkTaskCoordinator {
         app: ghostty_app_t
     ) -> WorkflowAdvanceResult {
         guard let action = definition.actions[slug] else { return .ignored }
-        // Executable config — gate on trust before launching anything. Surface, never run silently.
-        // Untrusted returns without mutating any state (no `runningAction`).
-        guard WorkflowDefinition.isTrusted(projectPath: workTaskManager.projectPath) else {
-            return .needsTrust
-        }
-
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
         runningAction[worktree.id] = slug
-        launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
+        if let launcher = workflowAgentLauncher {
+            launcher(prompt, definition.agent.command, worktree, app)
+        } else {
+            launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
+        }
         return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
     }
 

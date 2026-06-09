@@ -1,23 +1,23 @@
-import CryptoKit
 import XCTest
 import GhosttyKit
 @testable import Clearway
 
 /// Harness tests for the stateful `WorkTaskCoordinator` side of the `WORKFLOW.json` loop engine:
-/// the `start` seed, trust gating, and the watcher-driven advance/halt decisions.
+/// the `start` seed and the watcher-driven advance / halt / resume decisions.
 ///
 /// These exercise everything *except* the actual Ghostty surface launch, which needs a live
-/// `ghostty_app_t`. To stay surface-free the fixture workflow is left **untrusted**, so a `.launch`
-/// decision short-circuits to `.needsTrust` *before* any surface is created — letting us assert the
-/// engine reached a launch decision (legal advance, terminal end) without spawning a terminal. The
-/// pure routing/validation logic itself is covered exhaustively in `WorkflowLoopEngineTests`.
+/// `ghostty_app_t`. To stay surface-free, each coordinator is given a no-op `workflowAgentLauncher`
+/// (the production seam that normally spawns the surface) — so a `.launch` runs the engine's full
+/// bookkeeping (`runningAction`, return value) without creating a terminal. Tests that need to count
+/// or attribute launches override that seam with a recorder. The pure routing/validation logic is
+/// covered exhaustively in `WorkflowLoopEngineTests`.
 @MainActor
 final class WorkflowLoopEngineHarnessTests: XCTestCase {
 
     private var tempRoot: String!
 
-    /// A non-null placeholder `ghostty_app_t` (`void*`). Never dereferenced: every assertion here
-    /// drives a path that returns before `launchWorkflowAgent` would touch it.
+    /// A non-null placeholder `ghostty_app_t` (`void*`). Never dereferenced: the no-op launcher seam
+    /// stands in for the real surface spawn, so `app` is only ever passed around, never touched.
     private let dummyApp: ghostty_app_t = UnsafeMutableRawPointer(bitPattern: 0x1)!
 
     override func setUp() {
@@ -28,8 +28,6 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
 
     override func tearDown() {
         if let root = tempRoot {
-            // Clear any trust approval this test minted so runs stay independent.
-            UserDefaults.standard.removeObject(forKey: trustDefaultsKey(forProject: root))
             try? FileManager.default.removeItem(atPath: root)
         }
         tempRoot = nil
@@ -73,7 +71,8 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
     }
 
     /// Builds a coordinator wired to a manager + worktree manager scoped to `tempRoot`, with one
-    /// live worktree on `branch` at `worktreePath`.
+    /// live worktree on `branch` at `worktreePath`. Installs a no-op launcher so any launch the test
+    /// drives stays surface-free; tests that need to observe launches override it with a recorder.
     private func makeCoordinator(branch: String, worktreePath: String) -> WorkTaskCoordinator {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
@@ -83,11 +82,13 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         worktreeManager.worktrees = [
             Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached),
         ]
-        return WorkTaskCoordinator(
+        let coordinator = WorkTaskCoordinator(
             workTaskManager: taskManager,
             terminalManager: TerminalManager(),
             worktreeManager: worktreeManager
         )
+        coordinator.workflowAgentLauncher = { _, _, _, _ in }
+        return coordinator
     }
 
     /// Builds a coordinator over several live worktrees (their `TASK.md` files must already be
@@ -101,17 +102,13 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         worktreeManager.worktrees = pairs.map {
             Worktree(branch: $0.branch, path: $0.path, isMain: false, headStatus: .attached)
         }
-        return WorkTaskCoordinator(
+        let coordinator = WorkTaskCoordinator(
             workTaskManager: taskManager,
             terminalManager: TerminalManager(),
             worktreeManager: worktreeManager
         )
-    }
-
-    /// Mirrors `WorkflowDefinition`'s private trust key so the test can clear it in `tearDown`.
-    private func trustDefaultsKey(forProject projectPath: String) -> String {
-        let hash = SHA256Hex(projectPath)
-        return "clearway.workflow.json.trusted.\(hash)"
+        coordinator.workflowAgentLauncher = { _, _, _, _ in }
+        return coordinator
     }
 
     // MARK: - Seed
@@ -141,45 +138,18 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "a project without WORKFLOW.json is untouched by the seed")
     }
 
-    // MARK: - Trust gating
+    // MARK: - Advance / halt
 
-    func testUntrustedWorkflowDoesNotLaunch() throws {
-        try writeWorkflow()
-        let branch = "trust"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
-        XCTAssertEqual(result, .needsTrust,
-                       "executable WORKFLOW.json must not run until approved — it surfaces instead")
-    }
-
-    func testTrustGateClearsAfterApproval() throws {
-        try writeWorkflow()
-        let branch = "trust2"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        coordinator.approveJSONWorkflowTrust()
-        // Now a legal launch decision would proceed to a real surface, which the harness can't
-        // create — so we only assert the gate itself flipped, via the model API.
-        XCTAssertTrue(WorkflowDefinition.isTrusted(projectPath: tempRoot),
-                      "approval marks the current WORKFLOW.json bytes trusted")
-    }
-
-    // MARK: - Advance / halt (untrusted → launch short-circuits to needsTrust)
-
-    func testLegalAdvanceReachesLaunchDecision() throws {
+    func testLegalAdvanceLaunchesNextAction() throws {
         try writeWorkflow()
         let branch = "advance"
-        // Running `implement`; agent wrote `test` (a legal route). Untrusted → needsTrust proves the
-        // decision was `.launch` (an illegal value would have returned `.halted` regardless of trust).
+        // Running `implement`; agent wrote `test` (a legal route) → the engine launches `test`.
         let worktreePath = try writeWorktreeTask(branch: branch, status: "test")
         let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
         coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
 
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
-        XCTAssertEqual(result, .needsTrust, "a legal advance reaches the (trust-gated) launch path")
+        XCTAssertEqual(result, .launched(slug: "test"), "a legal advance launches the next action")
     }
 
     func testIllegalValueHalts() throws {
@@ -210,9 +180,9 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
     // MARK: - Autopilot pause (advance gating)
 
     /// A paused worktree (`autopilot: false`) never advances: a legal next status that would launch
-    /// is suppressed to `.ignored` *before* the trust gate, so the running step finishes and nothing
-    /// new starts. (An unpaused legal advance reaches `.needsTrust` here — see
-    /// `testLegalAdvanceReachesLaunchDecision` — so `.ignored` proves the pause, not a trust stall.)
+    /// is suppressed to `.ignored`, so the running step finishes and nothing new starts. (An unpaused
+    /// legal advance launches — see `testLegalAdvanceLaunchesNextAction` — so `.ignored` proves the
+    /// pause, not some other stall.)
     func testAutopilotFalsePausesAdvance() throws {
         try writeWorkflow()
         let branch = "paused"
@@ -224,9 +194,8 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         XCTAssertEqual(result, .ignored, "a paused worktree does not advance even on a legal next status")
     }
 
-    /// Re-enabling reaches the (trust-gated) launch of the current action: with the workflow
-    /// approved removed for surface-safety, an enabled worktree whose status sits on a real action
-    /// resolves to `.needsTrust` (the launch path) rather than `.ignored` (the pause path).
+    /// Re-enabling launches the current action: an enabled worktree whose status sits on a real
+    /// action resolves to `.launched` (the launch path) rather than `.ignored` (the pause path).
     func testAutopilotTrueReachesAdvance() throws {
         try writeWorkflow()
         let branch = "enabled"
@@ -235,7 +204,7 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
 
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
-        XCTAssertEqual(result, .needsTrust, "an enabled worktree reaches the (trust-gated) launch path")
+        XCTAssertEqual(result, .launched(slug: "test"), "an enabled worktree launches the next action")
     }
 
     // MARK: - Agent-running accessor (toolbar activity indicator)
@@ -259,13 +228,10 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
     // MARK: - Restart resume
 
     /// Restart-resume relaunches only `autopilot: true` worktrees sitting on a real, non-terminal
-    /// action. A paused (`false`), terminal, or backlog worktree stays put. The fixture workflow is
-    /// untrusted, so a worktree that *reaches* the resume launch short-circuits to `.needsTrust`,
-    /// which `surfaceNeedsTrust` records as an errorMessage — the observable proof it tried to resume.
-    /// A worktree that never reaches the launch path keeps a nil errorMessage.
+    /// action. A paused (`false`), terminal, or backlog worktree stays put. A launch recorder captures
+    /// which worktrees actually reached the launch path — the observable proof of who resumed.
     func testResumeRelaunchesOnlyAutopiloted() throws {
         try writeWorkflow()
-        let trustMessage = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
 
         // resumable: autopilot on, mid-loop on a real non-terminal action.
         let resumePath = try writeWorktreeTask(branch: "resume", status: "test", autopilot: true)
@@ -283,38 +249,31 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
             (branch: "back", path: backlogPath),
         ])
         coordinator.appProvider = { [dummyApp] in dummyApp }
+        var launchedBranches: [String] = []
+        coordinator.workflowAgentLauncher = { _, _, worktree, _ in launchedBranches.append(worktree.branch ?? "?") }
 
         coordinator.resumeWorkflowsOnStartup()
 
-        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: "resume")?.errorMessage, trustMessage,
-                       "the autopilot:true mid-loop worktree reached the resume launch path")
-        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "paused")?.errorMessage,
-                     "a paused worktree must not resume")
-        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "term")?.errorMessage,
-                     "a terminal worktree must not resume")
-        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "back")?.errorMessage,
-                     "a backlog worktree must not resume")
+        XCTAssertEqual(launchedBranches, ["resume"],
+                       "only the autopilot:true mid-loop worktree reaches the resume launch path")
     }
 
     /// Restart-resume runs once per window: the `didResumeWorkflows` one-shot guard means a second
-    /// call does nothing (the first already drove the resume decisions).
+    /// call does nothing (the first already drove the resume launches).
     func testResumeRunsOnce() throws {
         try writeWorkflow()
         let path = try writeWorktreeTask(branch: "once", status: "test", autopilot: true)
         let coordinator = makeMultiCoordinator([(branch: "once", path: path)])
         coordinator.appProvider = { [dummyApp] in dummyApp }
+        var launchCount = 0
+        coordinator.workflowAgentLauncher = { _, _, _, _ in launchCount += 1 }
 
         coordinator.resumeWorkflowsOnStartup()
         XCTAssertTrue(coordinator.didResumeWorkflows, "resume marks the one-shot guard after running")
+        XCTAssertEqual(launchCount, 1, "the autopilot:true worktree relaunched once")
 
-        // Clear the surfaced message; a second call must not re-run resume (so it stays cleared).
-        if var task = coordinator.workTaskManager.task(forWorktree: "once") {
-            task.errorMessage = nil
-            coordinator.workTaskManager.updateTask(task)
-        }
         coordinator.resumeWorkflowsOnStartup()
-        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "once")?.errorMessage,
-                     "a second resume call is a no-op (guard already set)")
+        XCTAssertEqual(launchCount, 1, "a second resume call is a no-op (guard already set)")
     }
 
     // MARK: - Agent-exit clears runningAction (stranded-worktree fix)
@@ -351,33 +310,35 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
     /// `relaunchCurrentAction` (the autopilot-flip / restart-resume path, reached here via
     /// `resumeWorkflowsOnStartup`) skips a worktree whose `runningAction` already equals its `status`.
     /// If an agent crashes BEFORE writing its next status, that stale `runningAction` would strand the
-    /// worktree forever. Clearing it on the live agent's exit lets the resume re-fire — observable as
-    /// the trust message `surfaceNeedsTrust` records once the relaunch reaches the (untrusted) launch.
+    /// worktree forever. Clearing it on the live agent's exit lets the resume re-fire — observed here
+    /// via a launch recorder: the stranded coordinator never launches, the cleared one launches once.
     /// We drive `runningAction` directly because the surface-exit notification needs a live Ghostty app.
     func testRunningActionClearedAllowsResumeAfterExit() throws {
         try writeWorkflow()
-        let trustMessage = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
         let branch = "exit-resume"
         let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
 
         // STRANDED case: runningAction still set to the current status (agent died before advancing).
         // resumeWorkflowsOnStartup → relaunchCurrentAction's `runningAction != status` guard is FALSE,
-        // so nothing relaunches and no trust message is surfaced.
+        // so nothing relaunches.
         let stranded = makeCoordinator(branch: branch, worktreePath: worktreePath)
         stranded.appProvider = { [dummyApp] in dummyApp }
+        var strandedLaunches = 0
+        stranded.workflowAgentLauncher = { _, _, _, _ in strandedLaunches += 1 }
         stranded.setRunningActionForTesting("test", branch: branch, worktreePath: worktreePath)
         stranded.resumeWorkflowsOnStartup()
-        XCTAssertNil(stranded.workTaskManager.task(forWorktree: branch)?.errorMessage,
-                     "a stale runningAction == status blocks the resume relaunch (the stranded bug)")
+        XCTAssertEqual(strandedLaunches, 0,
+                       "a stale runningAction == status blocks the resume relaunch (the stranded bug)")
 
         // FIXED case: the live agent's exit cleared runningAction (the guarded handleChildExited
-        // branch). Now relaunchCurrentAction's guard passes and the resume reaches the launch path,
-        // surfacing the trust message — proof the worktree is no longer stranded.
+        // branch). Now relaunchCurrentAction's guard passes and the resume reaches the launch path.
         let resumed = makeCoordinator(branch: branch, worktreePath: worktreePath)
         resumed.appProvider = { [dummyApp] in dummyApp }
+        var resumedLaunches = 0
+        resumed.workflowAgentLauncher = { _, _, _, _ in resumedLaunches += 1 }
         // runningAction left unset = the cleared state after the live agent exited.
         resumed.resumeWorkflowsOnStartup()
-        XCTAssertEqual(resumed.workTaskManager.task(forWorktree: branch)?.errorMessage, trustMessage,
+        XCTAssertEqual(resumedLaunches, 1,
                        "clearing runningAction on the live agent's exit lets resume relaunch the action")
     }
 
@@ -438,12 +399,12 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "killing an unknown branch leaves other worktrees untouched")
     }
 
-    // MARK: - Reserved cap fields are decoded but not enforced (trust ordering)
+    // MARK: - Reserved cap fields are decoded but not enforced
 
     /// `max_attempts` is a reserved, NOT-enforced field in v1 (manual kill is the loop-stopper). A
-    /// workflow carrying it still decodes/validates and launches exactly like any other: the launch
-    /// path trust-gates first, so an untrusted self-routing action surfaces `.needsTrust` rather than
-    /// any cap-driven halt. This pins that the reserved field never short-circuits a launch.
+    /// workflow carrying it still decodes/validates and launches exactly like any other: a self-routing
+    /// action launches normally rather than hitting any cap-driven halt. This pins that the reserved
+    /// field never short-circuits a launch.
     func testReservedMaxAttemptsFieldDoesNotBlockLaunch() throws {
         let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
@@ -462,15 +423,9 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         let worktreePath = try writeWorktreeTask(branch: branch, status: "fix", autopilot: true)
         let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
 
-        // First write of `start` (no runningAction) reaches the launch path, which trust-gates first.
+        // First write of `start` (no runningAction) launches; the self-route makes `fix` its own next.
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
-        XCTAssertEqual(result, .needsTrust,
-                       "a workflow carrying the reserved max_attempts field still trust-gates and launches normally")
+        XCTAssertEqual(result, .launched(slug: "fix"),
+                       "a workflow carrying the reserved max_attempts field still launches normally")
     }
-}
-
-/// SHA-256 hex prefix matching `WorkflowDefinition`'s trust-key derivation (test-local helper).
-private func SHA256Hex(_ string: String) -> String {
-    let digest = SHA256.hash(data: Data(string.utf8))
-    return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
 }

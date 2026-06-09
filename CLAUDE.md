@@ -81,7 +81,7 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
   Write it last.
   ```
   A **terminal** action (`nextValue == nil`) gets **no** advance contract — it runs once and the loop ends.
-- **Trust.** `agent.command` / `hooks` execution is gated by `WorkflowDefinition.isTrusted` — a SHA-256 fingerprint of the file bytes + per-project UserDefaults approval, the same primitive the legacy `WorkflowConfig` uses (distinct key namespace). Untrusted → `.needsTrust`, surfaced, never run.
+- **No trust gate.** Unlike the legacy `WORKFLOW.md` path (`WorkflowConfig`, fingerprint + approval), `WORKFLOW.json` is **not** trust-gated: it is authored by the project's own user, so the engine launches `agent.command` directly. The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
 
 ### Autopilot (`WorkTask.autopilot: Bool?`)
 

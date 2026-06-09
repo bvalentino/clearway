@@ -82,6 +82,11 @@ class WorkTaskCoordinator: ObservableObject {
     /// (mirroring `TerminalManager.mainCommandProvider`). `nil` until Ghostty is ready.
     var appProvider: @MainActor () -> ghostty_app_t? = { nil }
 
+    /// Test seam for the JSON loop's surface spawn. `nil` in production → `performLaunch` runs the real
+    /// `launchWorkflowAgent` (prompt file → stdin → Ghostty surface). Harness tests override it to
+    /// observe that a launch was reached without a live Ghostty app (mirrors `appProvider`).
+    var workflowAgentLauncher: (@MainActor (_ prompt: String, _ command: String, _ worktree: Worktree, _ app: ghostty_app_t) -> Void)?
+
     // MARK: - Dependencies
     //
     // Watcher state (isWatching, watcherSource, pendingReload, workflowConfig, etc.) and
