@@ -204,6 +204,48 @@ final class WorkflowLoopEngineTests: XCTestCase {
         XCTAssertEqual(result, .launch(slug: "test", nextValue: "review"))
     }
 
+    // MARK: - Restart resume policy (pure)
+
+    /// Only an `autopilot: true` worktree sitting on a real, non-terminal action resumes on restart.
+    func testResumesAutopilotTrueOnRealAction() {
+        XCTAssertTrue(WorkflowLoopEngine.shouldResumeOnRestart(
+            status: "test", autopilot: true, definition: definition))
+    }
+
+    /// A paused worktree (`autopilot: false`) never auto-resumes — it stays paused across restarts.
+    func testDoesNotResumePausedWorktree() {
+        XCTAssertFalse(WorkflowLoopEngine.shouldResumeOnRestart(
+            status: "test", autopilot: false, definition: definition))
+    }
+
+    /// A flag-less worktree (`autopilot: nil`, e.g. legacy / not-applicable) does not auto-resume.
+    func testDoesNotResumeWhenAutopilotAbsent() {
+        XCTAssertFalse(WorkflowLoopEngine.shouldResumeOnRestart(
+            status: "test", autopilot: nil, definition: definition))
+    }
+
+    /// A terminal (routeless) action already ran and ended the loop — never relaunch it on restart.
+    func testDoesNotResumeTerminalAction() {
+        XCTAssertFalse(WorkflowLoopEngine.shouldResumeOnRestart(
+            status: "review", autopilot: true, definition: definition),
+            "a routeless action ended the loop; restart must not re-run it")
+    }
+
+    /// Backlog markers are pre-worktree, not a running loop — they don't resume.
+    func testDoesNotResumeBacklogMarkers() {
+        for marker in [WorkTask.ReservedStatus.new, WorkTask.ReservedStatus.readyToStart] {
+            XCTAssertFalse(WorkflowLoopEngine.shouldResumeOnRestart(
+                status: marker, autopilot: true, definition: definition),
+                "backlog marker '\(marker)' is not a resumable loop state")
+        }
+    }
+
+    /// An unknown slug (a halted loop's bad value, or a hand-edit) has no action to launch — stay put.
+    func testDoesNotResumeUnknownSlug() {
+        XCTAssertFalse(WorkflowLoopEngine.shouldResumeOnRestart(
+            status: "frobnicate", autopilot: true, definition: definition))
+    }
+
     // MARK: - Prompt injection
 
     func testBuildPromptAppendsAdvanceContract() {

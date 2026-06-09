@@ -90,6 +90,24 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         )
     }
 
+    /// Builds a coordinator over several live worktrees (their `TASK.md` files must already be
+    /// written via `writeWorktreeTask`). Used by restart-resume tests that stage a mix of worktrees.
+    private func makeMultiCoordinator(_ pairs: [(branch: String, path: String)]) -> WorkTaskCoordinator {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        taskManager.worktreeResolver = { pairs }
+        taskManager.setWatchedWorktrees(pairs.map(\.path))
+
+        let worktreeManager = WorktreeManager(projectPath: tempRoot)
+        worktreeManager.worktrees = pairs.map {
+            Worktree(branch: $0.branch, path: $0.path, isMain: false, headStatus: .attached)
+        }
+        return WorkTaskCoordinator(
+            workTaskManager: taskManager,
+            terminalManager: TerminalManager(),
+            worktreeManager: worktreeManager
+        )
+    }
+
     /// Mirrors `WorkflowDefinition`'s private trust key so the test can clear it in `tearDown`.
     private func trustDefaultsKey(forProject projectPath: String) -> String {
         let hash = SHA256Hex(projectPath)
@@ -218,6 +236,67 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
 
         let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
         XCTAssertEqual(result, .needsTrust, "an enabled worktree reaches the (trust-gated) launch path")
+    }
+
+    // MARK: - Restart resume
+
+    /// Restart-resume relaunches only `autopilot: true` worktrees sitting on a real, non-terminal
+    /// action. A paused (`false`), terminal, or backlog worktree stays put. The fixture workflow is
+    /// untrusted, so a worktree that *reaches* the resume launch short-circuits to `.needsTrust`,
+    /// which `surfaceNeedsTrust` records as an errorMessage — the observable proof it tried to resume.
+    /// A worktree that never reaches the launch path keeps a nil errorMessage.
+    func testResumeRelaunchesOnlyAutopiloted() throws {
+        try writeWorkflow()
+        let trustMessage = "Workflow paused: .clearway/WORKFLOW.json is not trusted. Approve it to run."
+
+        // resumable: autopilot on, mid-loop on a real non-terminal action.
+        let resumePath = try writeWorktreeTask(branch: "resume", status: "test", autopilot: true)
+        // paused: autopilot off — must NOT resume.
+        let pausedPath = try writeWorktreeTask(branch: "paused", status: "test", autopilot: false)
+        // terminal: routeless action already ran — must NOT resume.
+        let terminalPath = try writeWorktreeTask(branch: "term", status: "review", autopilot: true)
+        // backlog marker — not a running loop — must NOT resume.
+        let backlogPath = try writeWorktreeTask(branch: "back", status: WorkTask.ReservedStatus.new, autopilot: true)
+
+        let coordinator = makeMultiCoordinator([
+            (branch: "resume", path: resumePath),
+            (branch: "paused", path: pausedPath),
+            (branch: "term", path: terminalPath),
+            (branch: "back", path: backlogPath),
+        ])
+        coordinator.appProvider = { [dummyApp] in dummyApp }
+
+        coordinator.resumeWorkflowsOnStartup()
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: "resume")?.errorMessage, trustMessage,
+                       "the autopilot:true mid-loop worktree reached the resume launch path")
+        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "paused")?.errorMessage,
+                     "a paused worktree must not resume")
+        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "term")?.errorMessage,
+                     "a terminal worktree must not resume")
+        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "back")?.errorMessage,
+                     "a backlog worktree must not resume")
+    }
+
+    /// Restart-resume runs once per window: the `didResumeWorkflows` one-shot guard means a second
+    /// call does nothing (the first already drove the resume decisions).
+    func testResumeRunsOnce() throws {
+        try writeWorkflow()
+        let path = try writeWorktreeTask(branch: "once", status: "test", autopilot: true)
+        let coordinator = makeMultiCoordinator([(branch: "once", path: path)])
+        coordinator.appProvider = { [dummyApp] in dummyApp }
+
+        coordinator.resumeWorkflowsOnStartup()
+        XCTAssertTrue(coordinator.didResumeWorkflows, "resume marks the one-shot guard after running")
+
+        // Clear the surfaced message; a second call must not re-run resume (so it stays cleared).
+        if var task = coordinator.workTaskManager.task(forWorktree: "once") {
+            task.errorMessage = nil
+            coordinator.workTaskManager.updateTask(task)
+        }
+        coordinator.resumeWorkflowsOnStartup()
+        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "once")?.errorMessage,
+                     "a second resume call is a no-op (guard already set)")
     }
 
     func testSameStatusAsRunningIsIgnored() throws {
