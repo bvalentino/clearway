@@ -17,6 +17,18 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(reparsed?.id, original.id, "frontmatter id must take precedence over the caller-supplied id")
     }
 
+    /// A backlog task (no worktree) serializes without a `worktree:` line — Planning tasks aren't
+    /// cluttered with `worktree: null` — and still round-trips to a nil worktree.
+    func testBacklogTaskOmitsWorktreeLine() throws {
+        let backlog = WorkTask(id: UUID(), title: "Backlog", status: .new, worktree: nil)
+
+        let serialized = backlog.serialized()
+        XCTAssertFalse(serialized.contains("worktree:"), "a backlog task must not emit a worktree line")
+
+        let reparsed = WorkTask.parse(from: serialized, id: backlog.id, createdAt: Date())
+        XCTAssertNil(reparsed?.worktree, "an absent worktree line must round-trip to nil")
+    }
+
     /// A legacy central file with no `id:` line must fall back to the caller-supplied filename UUID.
     func testLegacyFileWithoutIdFallsBackToFilenameUUID() throws {
         let legacy = """
