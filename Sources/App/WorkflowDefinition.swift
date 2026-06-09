@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A parsed `WORKFLOW.json` (read from `.clearway/WORKFLOW.json`). The action graph plus
@@ -256,5 +257,48 @@ extension WorkflowDefinition {
                 throw LoadError.onMaxAttemptsTargetMissing(action: slug, target: escape)
             }
         }
+    }
+}
+
+// MARK: - Trust
+
+/// `WORKFLOW.json` carries executable config — `agent.command` and shell `hooks` — so before the
+/// engine launches anything from it, it must be approved by the user, exactly as the legacy
+/// `WORKFLOW.md` path gates execution behind a content fingerprint + UserDefaults approval
+/// (`WorkflowConfig`). This reuses that primitive rather than inventing a new trust UI: a SHA-256 of
+/// the file's raw bytes, stored per-project in `UserDefaults`. The fingerprint is over the *file
+/// bytes* (not the decoded model) so any change to a command, hook, or instruction re-arms approval.
+extension WorkflowDefinition {
+    /// A deterministic fingerprint of the `.clearway/WORKFLOW.json` bytes for a project, or `nil`
+    /// when the file is absent/unreadable. Computed from the raw bytes so any edit to executable
+    /// content (or anything else) invalidates a prior approval.
+    static func trustFingerprint(projectPath: String) -> String? {
+        let path = (projectPath as NSString).appendingPathComponent(relativePath)
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        let digest = SHA256.hash(data: data)
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Whether the current `.clearway/WORKFLOW.json` bytes are approved for this project. An absent
+    /// or unreadable file reads as **not** trusted — the engine never executes an unapproved (or
+    /// missing) command path. Mirrors `WorkflowConfig.isTrusted`'s UserDefaults comparison.
+    static func isTrusted(projectPath: String) -> Bool {
+        guard let fingerprint = trustFingerprint(projectPath: projectPath) else { return false }
+        return UserDefaults.standard.string(forKey: trustKey(forProject: projectPath)) == fingerprint
+    }
+
+    /// Marks the current `.clearway/WORKFLOW.json` bytes as approved for this project. No-op when the
+    /// file is absent/unreadable (nothing to fingerprint).
+    static func markTrusted(projectPath: String) {
+        guard let fingerprint = trustFingerprint(projectPath: projectPath) else { return }
+        UserDefaults.standard.set(fingerprint, forKey: trustKey(forProject: projectPath))
+    }
+
+    /// Per-project UserDefaults key. Namespaced distinctly from the legacy `WORKFLOW.md` trust key
+    /// (`clearway.workflow.trusted.*`) so the two engines' approvals never collide.
+    private static func trustKey(forProject projectPath: String) -> String {
+        let hash = SHA256.hash(data: Data(projectPath.utf8))
+        let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "clearway.workflow.json.trusted.\(hex)"
     }
 }
