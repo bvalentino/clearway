@@ -277,6 +277,12 @@ struct ContentView: View {
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskCoordinator.ensureShadowTask(forBranch: branch)
 
+            // Seed the WORKFLOW.json loop at its `start` action — the engine's ONLY write to
+            // `status`. No-op for projects without a valid .clearway/WORKFLOW.json. The task's
+            // TASK.md is now live in the worktree (moved by completePendingLaunch / created by
+            // ensureShadowTask above), so this is the single chokepoint that owns the seed.
+            workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
+
             detailSelection = .worktree(wt)
 
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
@@ -373,6 +379,10 @@ struct ContentView: View {
             // the command at runtime immediately skips the prompt screen on new tabs.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
+
+            // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
+            // can launch agent surfaces without the per-call app argument.
+            workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)

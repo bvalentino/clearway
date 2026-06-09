@@ -29,6 +29,28 @@ class WorkTaskCoordinator: ObservableObject {
     /// overlapping runs for the same task don't share or clobber each other's temp file.
     private var launchPromptFiles: [ObjectIdentifier: String] = [:]
 
+    // MARK: - WORKFLOW.json Loop Engine
+    //
+    // State the agent-driven loop tracks **in memory**, keyed by worktree branch (`Worktree.id`
+    // is a path that can churn; the branch is the task's stable link). `runningAction` is the
+    // action currently launched in a worktree (`P` in the engine semantics); `engineHalted`
+    // records worktrees whose loop has stopped on an illegal/unknown status so the watcher
+    // doesn't keep re-evaluating them. Both are rebuilt from `TASK.md` on restart (Phase 3).
+
+    /// The action currently running in each worktree, keyed by worktree id. The engine's `P`.
+    /// Also the idempotency guard: a `TASK.md` change whose `status` already equals the running
+    /// action is ignored, so the same value never double-launches.
+    private var runningAction: [String: String] = [:]
+
+    /// Worktrees whose loop has halted (illegal/unknown status). Once halted the engine stops
+    /// launching for that worktree until something external resets it.
+    private var engineHalted: Set<String> = []
+
+    /// Supplies the live `ghostty_app_t` so the watcher-driven engine can launch surfaces without
+    /// the per-call `app:` argument the view passes elsewhere. Set by the view in `onAppear`
+    /// (mirroring `TerminalManager.mainCommandProvider`). `nil` until Ghostty is ready.
+    var appProvider: () -> ghostty_app_t? = { nil }
+
     // MARK: - Dependencies
     //
     // Watcher state (isWatching, watcherSource, pendingReload, workflowConfig, etc.) and
@@ -74,6 +96,22 @@ class WorkTaskCoordinator: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.handleChildExited(notification)
             }
+        }
+
+        // Drive the WORKFLOW.json loop engine off the manager's debounced TASK.md reload. The
+        // closure hops back through `self` so the engine logic stays on `WorkTaskCoordinator`.
+        self.workTaskManager.onTasksReloaded = { [weak self] branches in
+            self?.handleTasksReloaded(branches: branches)
+        }
+    }
+
+    /// Re-evaluates the loop engine for each worktree after a `TASK.md` reload. No-op for projects
+    /// without a valid `.clearway/WORKFLOW.json`, so legacy projects are untouched. Idempotent: the
+    /// pure transition decision ignores a `status` that already equals the running action.
+    private func handleTasksReloaded(branches: [String]) {
+        guard hasJSONWorkflow(), let app = appProvider() else { return }
+        for branch in branches {
+            _ = advanceWorkflow(forBranch: branch, app: app)
         }
     }
 
@@ -224,6 +262,11 @@ class WorkTaskCoordinator: ObservableObject {
             }
         }
         agentSurfaceIdentities.removeValue(forKey: worktree.id)
+
+        // Drop the loop engine's in-memory state for this worktree (P + halt flag) so a later
+        // worktree reusing the path/branch starts clean.
+        runningAction.removeValue(forKey: worktree.id)
+        engineHalted.remove(branch)
     }
 
     /// Whether the given surface is an agent surface (should not be auto-restarted).
@@ -338,6 +381,131 @@ class WorkTaskCoordinator: ObservableObject {
         }
 
         return surface
+    }
+
+    // MARK: - WORKFLOW.json Loop Engine
+
+    /// Whether the project is driven by the new agent-driven loop engine — true only when a
+    /// **valid** `.clearway/WORKFLOW.json` is present. Projects without one keep the legacy
+    /// `WORKFLOW.md` path entirely unchanged, so every engine entry point gates on this.
+    func hasJSONWorkflow() -> Bool {
+        WorkflowDefinition.hasJSONWorkflow(projectPath: workTaskManager.projectPath)
+    }
+
+    /// Marks the current `.clearway/WORKFLOW.json` as trusted for this project, so its
+    /// `agent.command` / `hooks` may execute. Mirrors `approveTrust()` for the legacy path.
+    func approveJSONWorkflowTrust() {
+        WorkflowDefinition.markTrusted(projectPath: workTaskManager.projectPath)
+    }
+
+    /// Test/restart seam: sets the in-memory running action (`P`) for a worktree directly, without a
+    /// launch. Phase 3's restart-resume rebuilds this from disk; tests use it to stage a mid-loop
+    /// state. The worktree id (its path) is the key, matching how `advanceWorkflow` reads `P`.
+    func setRunningActionForTesting(_ slug: String, branch: String, worktreePath: String) {
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+        runningAction[worktreeId] = slug
+    }
+
+    /// The outcome of feeding a `TASK.md` change through the loop engine.
+    enum WorkflowAdvanceResult: Equatable {
+        case launched(slug: String)
+        case ignored
+        case ended(slug: String)
+        case halted(reason: String)
+        /// The `.clearway/WORKFLOW.json` carries executable config that the user hasn't approved.
+        /// The caller surfaces this (it does **not** execute) and may call `approveJSONWorkflowTrust()`.
+        case needsTrust
+    }
+
+    /// Seeds a freshly created worktree's `TASK.md` with the workflow's `start` slug — the engine's
+    /// **only** write to `status`. No-op for projects without a valid `.clearway/WORKFLOW.json`, so
+    /// legacy projects are untouched. Idempotent: only seeds when the task isn't already sitting on
+    /// the start action (e.g. a re-created or resumed worktree keeps its place).
+    func seedWorkflowStatus(forBranch branch: String) {
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
+              var task = workTaskManager.task(forWorktree: branch),
+              task.status != definition.start else { return }
+        task.status = definition.start
+        task.errorMessage = nil
+        // Clear any stale halt for a reused branch so the fresh seed can launch.
+        engineHalted.remove(branch)
+        workTaskManager.updateTask(task)
+
+        // `updateTask` mutates the in-memory pool without re-running `reload()`, so the
+        // `onTasksReloaded` engine hook won't fire for the seed. Kick the first launch directly.
+        if let app = appProvider() {
+            _ = advanceWorkflow(forBranch: branch, app: app)
+        }
+    }
+
+    /// Feeds a worktree's current `TASK.md` `status` through the pure transition decision and acts on
+    /// the result: launches the next action, ends on a terminal action, halts (surfacing the error)
+    /// on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid, **trusted**
+    /// `.clearway/WORKFLOW.json`; legacy projects never reach here.
+    @discardableResult
+    func advanceWorkflow(forBranch branch: String, app: ghostty_app_t) -> WorkflowAdvanceResult {
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
+            return .ignored
+        }
+        // A halted loop stays halted until something external clears it; don't re-evaluate.
+        guard !engineHalted.contains(branch) else { return .ignored }
+        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
+              var task = workTaskManager.task(forWorktree: branch) else { return .ignored }
+
+        let decision = WorkflowLoopEngine.decideTransition(
+            running: runningAction[worktree.id],
+            written: task.status,
+            definition: definition
+        )
+
+        switch decision {
+        case .ignore:
+            return .ignored
+
+        case .halt(let reason):
+            engineHalted.insert(branch)
+            runningAction.removeValue(forKey: worktree.id)
+            task.errorMessage = reason
+            workTaskManager.updateTask(task)
+            return .halted(reason: reason)
+
+        case .launch(let slug, let nextValue):
+            // Executable config — gate on trust before launching anything. Surface, never run silently.
+            guard WorkflowDefinition.isTrusted(projectPath: workTaskManager.projectPath) else {
+                return .needsTrust
+            }
+            // Mark P before launching so an immediate re-fire of the same status is idempotent.
+            runningAction[worktree.id] = slug
+            guard let action = definition.actions[slug] else { return .ignored }
+            let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
+            launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
+            return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
+        }
+    }
+
+    /// Launches an action's agent in `worktree`, reusing the prompt-file → stdin → Ghostty-surface
+    /// plumbing but driven by `WORKFLOW.json`'s `agent.command`. Deliberately does **not** attach the
+    /// legacy activity/stall observers (which mutate `status` to `in_progress`/`done`) — under the
+    /// JSON engine the agent owns every `status` advance, so the engine must never write status
+    /// other than the initial seed. The surface is still tracked for teardown/`isAgentSurface`.
+    private func launchWorkflowAgent(prompt: String, command: String, in worktree: Worktree, app: ghostty_app_t) {
+        // Unique per-launch prompt file (same contract as the legacy launch).
+        let tempDir = NSTemporaryDirectory()
+        let launchId = UUID().uuidString
+        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-workflow-prompt-\(launchId).md")
+        FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
+
+        // Pipe prompt file to the agent command via stdin. Command + path are positional args to
+        // avoid shell injection; $1 is unquoted so multi-word commands word-split; $3 injects PATH.
+        let script = shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1")
+        let args = [command, promptFile, ShellEnvironment.path].map(shellEscape).joined(separator: " ")
+        let shellCommand = "/bin/sh -c \(script) -- \(args)"
+
+        let surface = terminalManager.launchAgentTab(for: worktree, app: app, command: shellCommand)
+        agentSurfaces[worktree.id] = surface
+        agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
+        launchPromptFiles[ObjectIdentifier(surface)] = promptFile
+        Ghostty.logger.info("Workflow agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
     }
 
     // MARK: - Agent Lifecycle

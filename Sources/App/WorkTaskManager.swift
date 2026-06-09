@@ -37,6 +37,14 @@ class WorkTaskManager: ObservableObject {
     /// which yields central-only behavior — the shape unit tests exercise.
     var worktreeResolver: @MainActor () -> [(branch: String, path: String)] = { [] }
 
+    /// Invoked after every `reload()` that changes the pool, with the branches of all
+    /// worktree-linked tasks. The `WorkTaskCoordinator` sets this to drive the `WORKFLOW.json`
+    /// loop engine off the existing debounced `TASK.md` watcher: each changed `TASK.md` re-merges
+    /// the pool, then the engine re-evaluates `status` per worktree (idempotent — a no-op when the
+    /// written status already equals the running action). Defaults to a no-op so the legacy path
+    /// and unit tests are unaffected.
+    var onTasksReloaded: @MainActor (_ worktreeBranches: [String]) -> Void = { _ in }
+
     init(projectPath: String) {
         self.projectPath = projectPath
         self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".clearway/tasks")
@@ -296,7 +304,13 @@ class WorkTaskManager: ObservableObject {
 
         // Newest first
         let sorted = byId.values.sorted { $0.createdAt > $1.createdAt }
-        if sorted != tasks { tasks = sorted }
+        guard sorted != tasks else { return }
+        tasks = sorted
+
+        // Drive the loop engine off the same reload the watcher already debounces. Only worktree-
+        // linked tasks can be in a running loop, so that's the set the engine re-evaluates.
+        let branches = sorted.compactMap(\.worktree)
+        if !branches.isEmpty { onTasksReloaded(branches) }
     }
 
     /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
