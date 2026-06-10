@@ -12,6 +12,10 @@ import SwiftUI
 ///   the coordinator's read-only `isAgentRunning(forWorktree:)`, which never leaks mutable engine
 ///   state into the view. While running, the accessibility label/value/help shift to a third state
 ///   ("Autopilot running") so VoiceOver reflects the in-flight step.
+/// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false) and nothing
+///   is running — there is nothing for an agent to do against a blank `TASK.md`, so autopilot can't
+///   be toggled on until the user adds a title/body. A live step keeps the control enabled so
+///   pause / Stop Agent stay reachable.
 ///
 /// Clicking is the primary write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
 /// `WorkTaskManager.setAutopilot`. The established watcher flip path (`handleAutopilotFlip`) then
@@ -40,6 +44,14 @@ struct AutopilotButton: View {
     /// A step is mid-run when the engine has a live agent / running action for this worktree.
     private var isRunning: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktree.id) }
 
+    /// Whether the task has anything for an agent to act on. Autopilot is pointless against a blank
+    /// `TASK.md` (e.g. a freshly-created manual worktree), so the button is disabled until it does.
+    private var hasContent: Bool { task?.hasContent ?? false }
+
+    /// Disabled when there's nothing to run — no task content and no step already in flight. A
+    /// running step keeps the control live so pause / Stop Agent stay reachable.
+    private var isDisabled: Bool { !hasContent && !isRunning }
+
     var body: some View {
         // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
         // coordinator's cached, reactive flag (no per-render filesystem parse; shows/hides when the
@@ -52,6 +64,7 @@ struct AutopilotButton: View {
                     Image(systemName: isLive ? "pause.fill" : "play.fill")
                 }
             }
+            .disabled(isDisabled)
             .help(helpText)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(accessibilityValue)
@@ -76,11 +89,13 @@ struct AutopilotButton: View {
 
     private var accessibilityValue: String {
         if isRunning { return "Step in progress" }
+        if !hasContent { return "Unavailable — add a task description first" }
         return isLive ? "Active" : "Paused"
     }
 
     private var helpText: String {
         if isRunning { return "Autopilot step running…" }
+        if !hasContent { return "Add a task description to enable autopilot" }
         return isLive ? "Pause autopilot" : "Start autopilot"
     }
 

@@ -187,9 +187,11 @@ extension WorkTaskCoordinator {
         // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
         // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
         if definition.actions[task.status] == nil { task.status = definition.start }
-        // Default autopilot on for a JSON-workflow project — written alongside the seed as a single
-        // coherent creation write. Only set when absent so a user's prior pause isn't clobbered.
-        if task.autopilot == nil { task.autopilot = true }
+        // Default autopilot on **only when the task has content** to work on — a manually-created
+        // worktree with a blank TASK.md starts paused (`false`, not `nil`, since the engine treats a
+        // missing flag as on and would launch anyway). Written alongside the seed as one coherent
+        // creation write; only set when absent so a user's prior pause isn't clobbered.
+        if task.autopilot == nil { task.autopilot = task.hasContent }
         task.errorMessage = nil
         // Clear any stale halt for a reused branch so the fresh seed can launch.
         engineHalted.remove(branch)

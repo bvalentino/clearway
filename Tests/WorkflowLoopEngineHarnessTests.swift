@@ -59,12 +59,12 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
     /// Writes a worktree `TASK.md` with the given status (and optional autopilot) and returns the
     /// worktree path.
     @discardableResult
-    private func writeWorktreeTask(branch: String, status: String, autopilot: Bool? = nil, id: UUID = UUID()) throws -> String {
+    private func writeWorktreeTask(branch: String, status: String, autopilot: Bool? = nil, title: String = "Task", id: UUID = UUID()) throws -> String {
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
         let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
         let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-        var task = WorkTask(id: id, title: "Task", status: status, worktree: branch)
+        var task = WorkTask(id: id, title: title, status: status, worktree: branch)
         task.autopilot = autopilot
         try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
         return worktreePath
@@ -123,6 +123,34 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
 
         let task = coordinator.workTaskManager.task(forWorktree: branch)
         XCTAssertEqual(task?.status, "implement", "seed writes the workflow's start slug")
+    }
+
+    func testSeedDefaultsAutopilotOnForTaskWithContent() throws {
+        try writeWorkflow()
+        let branch = "filled"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.new, title: "Add dark mode")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        coordinator.seedWorkflowStatus(forBranch: branch)
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "a task with content defaults to autopilot on")
+    }
+
+    func testSeedStartsPausedForEmptyTask() throws {
+        try writeWorkflow()
+        let branch = "empty"
+        // A manually-created worktree's shadow task: empty title + body, no content.
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.inProgress, title: "")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        coordinator.seedWorkflowStatus(forBranch: branch)
+
+        let task = coordinator.workTaskManager.task(forWorktree: branch)
+        XCTAssertEqual(task?.status, "implement", "seed still positions the loop at start")
+        XCTAssertEqual(task?.autopilot, false,
+                       "an empty task starts paused — no point auto-running an agent on a blank TASK.md")
+        XCTAssertTrue(coordinator.runningAction.isEmpty, "a paused empty task launches no agent")
     }
 
     func testSeedIsNoOpWithoutJSONWorkflow() throws {

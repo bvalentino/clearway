@@ -30,6 +30,15 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// mirroring how `worktree`/`hidden` are emitted only when meaningful.
     var autopilot: Bool?
 
+    /// Whether the task carries any author-provided content for an agent to act on — a non-empty
+    /// title or body. A freshly-created manual worktree's shadow task (empty title *and* body) has
+    /// none, so the workflow loop must not auto-run an agent against its blank `TASK.md`, and the
+    /// autopilot button is disabled until the user gives it something to do.
+    var hasContent: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
     /// a namespace — it has no cases, so it can never be instantiated; the values are plain
     /// `static let` strings. The first two are reserved backlog markers (pre-worktree). The
