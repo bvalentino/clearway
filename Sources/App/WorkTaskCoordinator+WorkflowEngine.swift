@@ -113,16 +113,24 @@ extension WorkTaskCoordinator {
         return definition.orderedActionSlugs()
     }
 
-    /// Runs the worktree's **current** action once — the aside's per-state play button. Distinct from
-    /// the toolbar autopilot toggle (which governs the continuous loop): this is an explicit "run this
-    /// step now" that launches whatever action `status` names, regardless of `autopilot`, clearing any
-    /// halt first. Idempotent — `relaunchCurrentAction` skips a worktree whose action is already
-    /// running. No-op when the status isn't a real action or no Ghostty app is ready.
+    /// Runs the worktree's **current** action manually — the aside's per-state play button. Sends the
+    /// action's prompt (instructions + injection contract) to the worktree's **main terminal**, the
+    /// legacy "send to terminal" model: `activate` opens the main terminal if none exists (and makes it
+    /// active), then `sendToActiveMainTab` pastes the prompt into the live surface (where an agent like
+    /// Claude picks it up) or drops it into the launcher draft. This is a manual paste, distinct from
+    /// the toolbar autopilot loop (which spawns dedicated agent surfaces) — it never touches engine
+    /// state. Always available; no-op only when the status isn't a real action or Ghostty isn't ready.
     @MainActor
     func playWorkflowAction(forBranch branch: String) {
-        guard let app = appProvider() else { return }
-        engineHalted.remove(branch)
-        relaunchCurrentAction(forBranch: branch, app: app)
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
+              let app = appProvider(),
+              let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
+              let task = workTaskManager.task(forWorktree: branch),
+              let action = definition.actions[task.status] else { return }
+        let nextValue = WorkflowLoopEngine.legalNextValue(from: task.status, definition: definition)
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
+        terminalManager.activate(worktree, app: app, projectPath: workTaskManager.projectPath)
+        terminalManager.sendToActiveMainTab(prompt, asCommand: false)
     }
 
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit

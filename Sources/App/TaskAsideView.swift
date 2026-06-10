@@ -76,19 +76,19 @@ struct TaskAsideView: View {
     }
 
     /// The small play button beside the Status picker. For a JSON-workflow project it **runs the
-    /// current action** (`playWorkflowAction`) — a one-shot "run this step now", distinct from the
-    /// toolbar autopilot loop — shown only when the status sits on a real action, and disabled with no
-    /// content or while that action is already running. For a legacy project it keeps the WORKFLOW.md
-    /// state-command behavior (`SendToTerminalButton` → active terminal), gated on `hasStateCommand`.
+    /// current action by sending its prompt to the main terminal** (`playWorkflowAction`) — pasting
+    /// into the live terminal, or opening one if none. **Always enabled** (the action's prompt comes
+    /// from `WORKFLOW.json`, not the task, so there's always something to run); shown when the status
+    /// sits on a real action. For a legacy project it keeps the WORKFLOW.md state-command behavior
+    /// (`SendToTerminalButton` → active terminal), gated on `hasStateCommand`.
     @ViewBuilder
     private func statusPlayButton(for task: WorkTask) -> some View {
         if workTaskCoordinator.isWorkflowJSONProject {
             let isAction = workTaskCoordinator.workflowActionSlugs()?.contains(task.status) == true
-            if let worktree = workTaskCoordinator.worktreeForTask(task), isAction {
+            if workTaskCoordinator.worktreeForTask(task) != nil, isAction {
                 SendToTerminalButton(
                     action: { workTaskCoordinator.playWorkflowAction(forBranch: worktreeBranch) },
-                    disabled: !task.hasContent || workTaskCoordinator.isAgentRunning(forWorktree: worktree.id),
-                    help: "Run \(WorkTask.displayLabel(for: task.status))"
+                    help: "Run \(WorkTask.displayLabel(for: task.status)) in the terminal"
                 )
             }
         } else {
