@@ -114,11 +114,15 @@ extension WorkTaskCoordinator {
     }
 
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
-    /// intent, not an agent advance, so for a JSON project it **clears any halt + error first** so the
-    /// engine re-evaluates from the new value (rather than ignoring it because the loop was halted) and
-    /// the picked action isn't stranded behind a stale error. The watcher then drives it: the relaxed
-    /// idle rule launches the action (or the pause gate holds it when autopilot is off). A legacy
-    /// project just writes the status. No-op when the value is unchanged.
+    /// intent — the user may set **any** state — so it is never validated as a route. For a JSON
+    /// project it:
+    /// - **clears the running pointer** (`runningAction`) so the engine sees the worktree as *idle* on
+    ///   the new state. The watcher's `advanceWorkflow` then takes the idle path (launch any real
+    ///   action under autopilot, or hold under the pause gate) instead of route-validating a transition
+    ///   from the previously-running action — which is what produced "X is not a legal next from Y".
+    /// - **clears any halt + error** so a halted loop recovers from the pick.
+    ///
+    /// A legacy project just writes the status. No-op when the value is unchanged.
     @MainActor
     func setWorkflowStatus(_ task: WorkTask, to slug: String) {
         guard task.status != slug else { return }
@@ -127,6 +131,7 @@ extension WorkTaskCoordinator {
             return
         }
         engineHalted.remove(branch)
+        if let id = worktreeId(forBranch: branch) { runningAction.removeValue(forKey: id) }
         var updated = task
         updated.status = slug
         updated.errorMessage = nil

@@ -412,6 +412,32 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "an idle worktree launches the manually-picked action instead of halting")
     }
 
+    /// A manual pick made **while a step is running** must not halt as "not a legal next" — the user
+    /// can set any state. Clearing the running pointer makes the engine treat it as an idle launch of
+    /// the picked action (no route validation).
+    func testManualPickWhileRunningNeverHalts() throws {
+        try writeWorkflow()
+        let branch = "redirect"
+        // Running `implement`; the user picks `review` — NOT a legal next from `implement`.
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        guard let task = coordinator.workTaskManager.task(forWorktree: branch) else {
+            return XCTFail("task missing")
+        }
+
+        coordinator.setWorkflowStatus(task, to: "review")
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.status, "review",
+                       "the picked state is set even though it isn't a legal route")
+        XCTAssertFalse(coordinator.engineHalted.contains(branch), "a manual pick never halts")
+        // The follow-up advance (what the watcher drives) runs the picked action, not a halt. `review`
+        // is terminal, so launching it resolves to `.ended` (runs once) — the point is it never halts.
+        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+        XCTAssertEqual(result, .ended(slug: "review"),
+                       "the picked action runs via the idle rule, with no route validation or halt")
+    }
+
     /// A manual status pick clears a prior halt + error so the loop can recover, rather than being
     /// ignored because `engineHalted` is still set.
     func testManualStatusPickClearsHalt() throws {
