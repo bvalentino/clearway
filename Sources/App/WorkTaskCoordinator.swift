@@ -377,10 +377,14 @@ class WorkTaskCoordinator: ObservableObject {
         }
     }
 
-    /// Returns the WORKFLOW.md after_create hook command if configured. Suppressed entirely for
-    /// JSON-workflow projects, which never use the legacy WORKFLOW.md path.
+    /// The after_create hook command to run when a worktree is created, sourced from whichever engine
+    /// owns the project: a JSON-workflow project uses `WORKFLOW.json`'s `hooks.after_create` (never the
+    /// legacy `WORKFLOW.md` hook); a legacy project uses `WorkflowConfig`'s. `nil` when neither defines
+    /// one. The caller runs it before launching the agent so setup (deps, codegen, …) finishes first.
     func workflowAfterCreateHook() -> String? {
-        guard !hasJSONWorkflow() else { return nil }
+        if let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) {
+            return definition.hooks?.afterCreate
+        }
         return workflowConfig?.hooksAfterCreate
     }
 

@@ -282,13 +282,16 @@ struct ContentView: View {
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskCoordinator.ensureShadowTask(forBranch: branch)
 
-            // Seed the WORKFLOW.json loop at its `start` action — the engine's ONLY write to
-            // `status`. No-op for projects without a valid .clearway/WORKFLOW.json. The task's
-            // TASK.md is now live in the worktree (moved by completePendingLaunch / created by
-            // ensureShadowTask above), so this is the single chokepoint that owns the seed.
-            workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
-
             detailSelection = .worktree(wt)
+
+            // The launch step runs AFTER any after_create hook, so worktree setup (deps, codegen, …)
+            // finishes before the agent starts. Legacy projects fire `pending` (the WORKFLOW.md
+            // launch); JSON projects seed `status = start` — the engine's ONLY write to `status` —
+            // and the loop engine launches the agent. Only one is active per project; the other no-ops.
+            let launch = {
+                pending?()
+                workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
+            }
 
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
@@ -302,11 +305,11 @@ struct ContentView: View {
                     hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: {
                         guard !continued else { return }
                         continued = true
-                        pending?()
+                        launch()
                     }, allowContinueOnFailure: true)
                 ))
             } else {
-                pending?()
+                launch()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in

@@ -437,6 +437,41 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         XCTAssertNil(launch, "a JSON project gets no legacy launch closure from completePendingLaunch")
     }
 
+    // MARK: - after_create hook is sourced from WORKFLOW.json
+
+    /// A JSON-workflow project's after_create hook comes from `WORKFLOW.json`'s `hooks.after_create`,
+    /// not the legacy `WORKFLOW.md`. A workflow without a `hooks` block yields no hook.
+    func testAfterCreateHookComesFromWorkflowJSON() throws {
+        let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
+        let withHook = """
+        {
+          "version": 1,
+          "start": "implement",
+          "hooks": { "after_create": "npm install" },
+          "actions": { "implement": { "name": "Implement", "instructions": "Go." } }
+        }
+        """
+        try withHook.write(toFile: (clearway as NSString).appendingPathComponent("WORKFLOW.json"),
+                           atomically: true, encoding: .utf8)
+        let branch = "hooked"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.new)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        XCTAssertEqual(coordinator.workflowAfterCreateHook(), "npm install",
+                       "the after_create hook is sourced from WORKFLOW.json")
+    }
+
+    func testNoAfterCreateHookWhenWorkflowJSONOmitsHooks() throws {
+        try writeWorkflow()   // fixture has no `hooks` block
+        let branch = "nohook"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.new)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        XCTAssertNil(coordinator.workflowAfterCreateHook(),
+                     "a JSON workflow without a hooks block runs no after_create hook")
+    }
+
     // MARK: - Reserved cap fields are decoded but not enforced
 
     /// `max_attempts` is a reserved, NOT-enforced field in v1 (manual kill is the loop-stopper). A

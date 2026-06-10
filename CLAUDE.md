@@ -56,7 +56,7 @@ Decoded with `Codable` (snake_case JSON keys → camelCase Swift):
 
 - `version` (Int), `start` (slug pointer into `actions`).
 - `agent` (`AgentSettings`): `command` (default `"claude"`) + `timeoutMs` (`timeout_ms`, default 600_000). An omitted `agent` falls back entirely to defaults.
-- `hooks` (optional `Hooks`): `afterCreate` (`after_create`) / `beforeRun` (`before_run`) shell commands.
+- `hooks` (optional `Hooks`): `afterCreate` (`after_create`) / `beforeRun` (`before_run`) shell commands. **`after_create` is wired** — sourced via `workflowAfterCreateHook()` and run on worktree creation *before* the agent launches (`ContentView`'s `lastCreatedBranch` handler). **`before_run` is decoded but NOT yet executed** (reserved; a per-action interactive hook sheet would break autopilot — wiring it would need a non-interactive run before each launch).
 - `actions: [String: Action]` — a **map keyed by frozen slug** (order is cosmetic). Each `Action` has `name` (editable display label), `instructions` (agent prompt), `routes` (`[outcome: targetSlug]`, v1 has a single `success` outcome; empty/absent = **terminal**), and the **reserved** `maxAttempts` (`max_attempts`) / `onMaxAttempts` (`on_max_attempts`).
 
 `maxAttempts`/`onMaxAttempts` are **decoded and validated but NOT enforced in v1** (see loop guard below). Pointers (`start`, route values, `onMaxAttempts`) target slugs, never `name`. `validate()` rejects empty `actions`, a `start`/route/`onMaxAttempts` target that doesn't resolve, etc. Helpers: `isTerminal(_:)`, `legalNext(from:)` (sorted for deterministic injection).
