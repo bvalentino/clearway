@@ -76,6 +76,28 @@ final class WorkflowDefinitionTests: XCTestCase {
         XCTAssertNoThrow(try definition.validate())
     }
 
+    func testOrderedActionSlugsFollowsFlowThenAppendsUnreached() throws {
+        // Linear flow: start → test → review (terminal) — flow order, not map order.
+        let linear = try decode(Self.validGraphJSON)
+        XCTAssertEqual(linear.orderedActionSlugs(), ["implement", "test", "review"],
+                       "slugs come out in flow order from start")
+
+        // A self-cycle plus an island the walk never reaches: the cycle must terminate after one
+        // visit, and the unreached action is appended (sorted) rather than dropped.
+        let branched = try decode("""
+        {
+          "version": 1,
+          "start": "fix",
+          "actions": {
+            "fix": { "name": "Fix", "instructions": "Fix.", "routes": { "again": "fix" } },
+            "island": { "name": "Island", "instructions": "Detached." }
+          }
+        }
+        """)
+        XCTAssertEqual(branched.orderedActionSlugs(), ["fix", "island"],
+                       "a self-cycle stops after one visit; the unreached island is appended")
+    }
+
     func testIsTerminalAndLegalNext() throws {
         let definition = try decode(Self.validGraphJSON)
 

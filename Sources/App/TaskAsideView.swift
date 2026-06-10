@@ -148,10 +148,16 @@ struct TaskAsideView: View {
         terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
-    /// `new` and `ready_to_start` are reserved for Planning (pre-worktree). Once a worktree
-    /// exists, its task starts at `in_progress` and can only move forward through these states.
+    /// The statuses the picker offers. A JSON-workflow project lists its `WORKFLOW.json` actions (in
+    /// flow order); the current status is always included so it stays selectable even if it's off-graph
+    /// (e.g. a halted/unknown value). A legacy `WORKFLOW.md` project keeps the fixed forward states:
+    /// `new`/`ready_to_start` are reserved for Planning (pre-worktree); once a worktree exists its task
+    /// starts at `in_progress` and moves forward through these.
     private func allowedStatuses(for task: WorkTask) -> [String] {
-        [
+        if let actions = workTaskCoordinator.workflowActionSlugs() {
+            return actions.contains(task.status) ? actions : [task.status] + actions
+        }
+        return [
             WorkTask.ReservedStatus.inProgress,
             WorkTask.ReservedStatus.qa,
             WorkTask.ReservedStatus.readyForReview,

@@ -181,6 +181,25 @@ struct WorkflowDefinition: Equatable, Decodable {
     func legalNext(from slug: String) -> [String] {
         Array(actions[slug]?.routes.values ?? [String: String]().values).sorted()
     }
+
+    /// All action slugs in **flow order** for display (e.g. the status picker): start at `start` and
+    /// follow the single v1 route (deterministic via the sorted `legalNext`) until a terminal action
+    /// or a cycle, then append any actions the walk didn't reach (branches/islands), sorted for a
+    /// stable order. `actions` is an unordered map, so this is the one place that imposes an order.
+    func orderedActionSlugs() -> [String] {
+        var ordered: [String] = []
+        var visited: Set<String> = []
+        var current: String? = start
+        while let slug = current, actions[slug] != nil, !visited.contains(slug) {
+            ordered.append(slug)
+            visited.insert(slug)
+            current = legalNext(from: slug).first
+        }
+        for slug in actions.keys.sorted() where !visited.contains(slug) {
+            ordered.append(slug)
+        }
+        return ordered
+    }
 }
 
 // MARK: - Loading + validation

@@ -106,6 +106,18 @@ extension WorkTaskCoordinator {
         WorkflowDefinition.hasJSONWorkflow(projectPath: workTaskManager.projectPath)
     }
 
+    /// The WORKFLOW.json action slugs in flow order, for the status picker — or `nil` for a legacy
+    /// project (which keeps its fixed `WORKFLOW.md` states). Manually selecting one writes `status`
+    /// like any other change; the watcher then feeds it through the same validation the agent's
+    /// writes go through (a non-legal-next value halts and surfaces, exactly as a stray agent write).
+    @MainActor
+    func workflowActionSlugs() -> [String]? {
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
+            return nil
+        }
+        return definition.orderedActionSlugs()
+    }
+
     /// Whether the loop engine has a step *actually running* for this worktree — a live agent
     /// surface and/or a tracked running action (`P`). Read-only window onto the engine's internal
     /// state for the toolbar's activity indicator; it never mutates `runningAction`/`agentSurfaces`,
