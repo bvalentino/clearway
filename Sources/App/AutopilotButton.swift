@@ -7,14 +7,12 @@ import SwiftUI
 /// - **Hidden** unless the project has a valid `.clearway/WORKFLOW.json` (Success Criterion #5/#7).
 ///   Legacy `WORKFLOW.md` projects show no button and are byte-for-byte unchanged.
 /// - **Play glyph** when the worktree's loop is paused (`autopilot == false`); **pause glyph**
-///   when live (`autopilot == true`). A missing `autopilot` (not yet seeded) reads as paused.
-/// - **Activity indicator** in place of the glyph while a step is actually running — derived from
-///   the coordinator's read-only `isAgentRunning(forWorktree:)`, which never leaks mutable engine
-///   state into the view. While running, the accessibility label/value/help shift to a third state
-///   ("Autopilot running") so VoiceOver reflects the in-flight step.
-/// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false) and nothing
-///   is running — there is nothing for an agent to do against a blank `TASK.md`, so autopilot can't
-///   be toggled on until the user adds a title/body. A live step keeps the control enabled so
+///   when live (`autopilot == true`). A missing `autopilot` (not yet seeded) reads as paused. The
+///   glyph reflects `autopilot` *directly* — there is no spinner state, because the agent's Ghostty
+///   terminal persists after a step finishes, so an activity indicator would never clear.
+/// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false) and no agent
+///   surface is live — there is nothing for an agent to do against a blank `TASK.md`, so autopilot
+///   can't be toggled on until the user adds a title/body. A live agent keeps the control enabled so
 ///   pause / Stop Agent stay reachable.
 ///
 /// Clicking is the primary write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
@@ -41,28 +39,30 @@ struct AutopilotButton: View {
     /// The loop is live when its task explicitly opts in; absent/false reads as paused.
     private var isLive: Bool { task?.autopilot == true }
 
-    /// A step is mid-run when the engine has a live agent / running action for this worktree.
-    private var isRunning: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktree.id) }
+    /// Whether a live agent surface is tracked for this worktree. NOT a "step in progress" signal —
+    /// the agent's Ghostty terminal persists after a step finishes, so this stays true across the
+    /// whole loop. Used only to offer "Stop Agent" and to keep the control enabled, never to drive
+    /// the glyph (which reflects `autopilot`).
+    private var hasLiveAgent: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktree.id) }
 
     /// Whether the task has anything for an agent to act on. Autopilot is pointless against a blank
     /// `TASK.md` (e.g. a freshly-created manual worktree), so the button is disabled until it does.
     private var hasContent: Bool { task?.hasContent ?? false }
 
-    /// Disabled when there's nothing to run — no task content and no step already in flight. A
-    /// running step keeps the control live so pause / Stop Agent stay reachable.
-    private var isDisabled: Bool { !hasContent && !isRunning }
+    /// Disabled when there's nothing to run — no task content and no live agent. A live agent keeps
+    /// the control reachable so pause / Stop Agent stay available.
+    private var isDisabled: Bool { !hasContent && !hasLiveAgent }
 
     var body: some View {
         // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
         // coordinator's cached, reactive flag (no per-render filesystem parse; shows/hides when the
         // file is added/removed).
         if workTaskCoordinator.isWorkflowJSONProject {
+            // The glyph reflects `autopilot` directly: pause when live, play when paused. (No spinner
+            // — the agent surface persists, so an "activity" indicator off `hasLiveAgent` would never
+            // clear and would mask the play/pause state the user acts on.)
             Button(action: toggle) {
-                if isRunning {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: isLive ? "pause.fill" : "play.fill")
-                }
+                Image(systemName: isLive ? "pause.fill" : "play.fill")
             }
             .disabled(isDisabled)
             .help(helpText)
@@ -70,31 +70,25 @@ struct AutopilotButton: View {
             .accessibilityValue(accessibilityValue)
             .contextMenu {
                 // Manual kill — the only affordance that interrupts a running agent (distinct from
-                // the pause toggle, which lets the running step finish). Shown only while a step is
-                // mid-run, since there is nothing to terminate otherwise.
-                if isRunning {
+                // the pause toggle, which lets the running step finish). Shown only while an agent
+                // surface is live, since there is nothing to terminate otherwise.
+                if hasLiveAgent {
                     Button("Stop Agent", role: .destructive, action: manualKill)
                 }
             }
         }
     }
 
-    /// Three-state accessibility/help strings so VoiceOver reflects a running step — not just the
-    /// paused/live glyph. Running takes precedence over `isLive` because the ProgressView replaces
-    /// the glyph while a step is in flight.
     private var accessibilityLabel: String {
-        if isRunning { return "Autopilot running" }
-        return isLive ? "Pause autopilot" : "Start autopilot"
+        isLive ? "Pause autopilot" : "Start autopilot"
     }
 
     private var accessibilityValue: String {
-        if isRunning { return "Step in progress" }
         if !hasContent { return "Unavailable — add a task description first" }
         return isLive ? "Active" : "Paused"
     }
 
     private var helpText: String {
-        if isRunning { return "Autopilot step running…" }
         if !hasContent { return "Add a task description to enable autopilot" }
         return isLive ? "Pause autopilot" : "Start autopilot"
     }
