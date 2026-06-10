@@ -91,26 +91,6 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         return coordinator
     }
 
-    /// Builds a coordinator over several live worktrees (their `TASK.md` files must already be
-    /// written via `writeWorktreeTask`). Used by restart-resume tests that stage a mix of worktrees.
-    private func makeMultiCoordinator(_ pairs: [(branch: String, path: String)]) -> WorkTaskCoordinator {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        taskManager.worktreeResolver = { pairs }
-        taskManager.setWatchedWorktrees(pairs.map(\.path))
-
-        let worktreeManager = WorktreeManager(projectPath: tempRoot)
-        worktreeManager.worktrees = pairs.map {
-            Worktree(branch: $0.branch, path: $0.path, isMain: false, headStatus: .attached)
-        }
-        let coordinator = WorkTaskCoordinator(
-            workTaskManager: taskManager,
-            terminalManager: TerminalManager(),
-            worktreeManager: worktreeManager
-        )
-        coordinator.workflowAgentLauncher = { _, _, _, _ in }
-        return coordinator
-    }
-
     // MARK: - Seed
 
     func testSeedWritesStartStatus() throws {
@@ -253,55 +233,42 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         XCTAssertTrue(coordinator.isAgentRunning(forWorktree: worktreeId), "a staged running action reads as running")
     }
 
-    // MARK: - Restart resume
+    // MARK: - First-sight auto-pause (open never auto-runs)
 
-    /// Restart-resume relaunches only `autopilot: true` worktrees sitting on a real, non-terminal
-    /// action. A paused (`false`), terminal, or backlog worktree stays put. A launch recorder captures
-    /// which worktrees actually reached the launch path — the observable proof of who resumed.
-    func testResumeRelaunchesOnlyAutopiloted() throws {
+    /// The first time the engine observes a worktree (e.g. it was just opened, or present at load),
+    /// a stale `autopilot: true` is flipped to `false` and nothing launches — opening a worktree must
+    /// never auto-run a workflow. The loop only (re)starts on an explicit play afterward.
+    func testFirstSightPausesStaleAutopilotAndLaunchesNothing() throws {
         try writeWorkflow()
-
-        // resumable: autopilot on, mid-loop on a real non-terminal action.
-        let resumePath = try writeWorktreeTask(branch: "resume", status: "test", autopilot: true)
-        // paused: autopilot off — must NOT resume.
-        let pausedPath = try writeWorktreeTask(branch: "paused", status: "test", autopilot: false)
-        // terminal: routeless action already ran — must NOT resume.
-        let terminalPath = try writeWorktreeTask(branch: "term", status: "review", autopilot: true)
-        // backlog marker — not a running loop — must NOT resume.
-        let backlogPath = try writeWorktreeTask(branch: "back", status: WorkTask.ReservedStatus.new, autopilot: true)
-
-        let coordinator = makeMultiCoordinator([
-            (branch: "resume", path: resumePath),
-            (branch: "paused", path: pausedPath),
-            (branch: "term", path: terminalPath),
-            (branch: "back", path: backlogPath),
-        ])
+        let branch = "stale"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
         coordinator.appProvider = { [dummyApp] in dummyApp }
-        var launchedBranches: [String] = []
-        coordinator.workflowAgentLauncher = { _, _, worktree, _ in launchedBranches.append(worktree.branch ?? "?") }
+        var launches = 0
+        coordinator.workflowAgentLauncher = { _, _, _, _ in launches += 1 }
 
-        coordinator.resumeWorkflowsOnStartup()
+        coordinator.handleTasksReloaded(branches: [branch])
 
-        XCTAssertEqual(launchedBranches, ["resume"],
-                       "only the autopilot:true mid-loop worktree reaches the resume launch path")
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false,
+                       "a stale autopilot:true is paused on first sight")
+        XCTAssertEqual(launches, 0, "opening a worktree launches no workflow action")
     }
 
-    /// Restart-resume runs once per window: the `didResumeWorkflows` one-shot guard means a second
-    /// call does nothing (the first already drove the resume launches).
-    func testResumeRunsOnce() throws {
+    /// A worktree the engine is already running (e.g. one just seeded on create, whose agent launched
+    /// directly) is exempt from the first-sight pause, so a fresh create still runs.
+    func testFirstSightExemptsAlreadyRunningWorktree() throws {
         try writeWorkflow()
-        let path = try writeWorktreeTask(branch: "once", status: "test", autopilot: true)
-        let coordinator = makeMultiCoordinator([(branch: "once", path: path)])
+        let branch = "running"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
         coordinator.appProvider = { [dummyApp] in dummyApp }
-        var launchCount = 0
-        coordinator.workflowAgentLauncher = { _, _, _, _ in launchCount += 1 }
+        coordinator.workflowAgentLauncher = { _, _, _, _ in }
+        coordinator.setRunningActionForTesting("test", branch: branch, worktreePath: worktreePath)
 
-        coordinator.resumeWorkflowsOnStartup()
-        XCTAssertTrue(coordinator.didResumeWorkflows, "resume marks the one-shot guard after running")
-        XCTAssertEqual(launchCount, 1, "the autopilot:true worktree relaunched once")
+        coordinator.handleTasksReloaded(branches: [branch])
 
-        coordinator.resumeWorkflowsOnStartup()
-        XCTAssertEqual(launchCount, 1, "a second resume call is a no-op (guard already set)")
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "a worktree already running is not paused on reload")
     }
 
     // MARK: - Agent-exit clears runningAction (stranded-worktree fix)
@@ -332,42 +299,6 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
             WorkTaskCoordinator.shouldClearLiveAgentState(exitingSurface: oldSurface, liveAgentSurface: nil),
             "no live surface means nothing to clear"
         )
-    }
-
-    /// End-to-end at the coordinator state level, exercising the exact guard the fix unblocks.
-    /// `relaunchCurrentAction` (the autopilot-flip / restart-resume path, reached here via
-    /// `resumeWorkflowsOnStartup`) skips a worktree whose `runningAction` already equals its `status`.
-    /// If an agent crashes BEFORE writing its next status, that stale `runningAction` would strand the
-    /// worktree forever. Clearing it on the live agent's exit lets the resume re-fire — observed here
-    /// via a launch recorder: the stranded coordinator never launches, the cleared one launches once.
-    /// We drive `runningAction` directly because the surface-exit notification needs a live Ghostty app.
-    func testRunningActionClearedAllowsResumeAfterExit() throws {
-        try writeWorkflow()
-        let branch = "exit-resume"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
-
-        // STRANDED case: runningAction still set to the current status (agent died before advancing).
-        // resumeWorkflowsOnStartup → relaunchCurrentAction's `runningAction != status` guard is FALSE,
-        // so nothing relaunches.
-        let stranded = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        stranded.appProvider = { [dummyApp] in dummyApp }
-        var strandedLaunches = 0
-        stranded.workflowAgentLauncher = { _, _, _, _ in strandedLaunches += 1 }
-        stranded.setRunningActionForTesting("test", branch: branch, worktreePath: worktreePath)
-        stranded.resumeWorkflowsOnStartup()
-        XCTAssertEqual(strandedLaunches, 0,
-                       "a stale runningAction == status blocks the resume relaunch (the stranded bug)")
-
-        // FIXED case: the live agent's exit cleared runningAction (the guarded handleChildExited
-        // branch). Now relaunchCurrentAction's guard passes and the resume reaches the launch path.
-        let resumed = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        resumed.appProvider = { [dummyApp] in dummyApp }
-        var resumedLaunches = 0
-        resumed.workflowAgentLauncher = { _, _, _, _ in resumedLaunches += 1 }
-        // runningAction left unset = the cleared state after the live agent exited.
-        resumed.resumeWorkflowsOnStartup()
-        XCTAssertEqual(resumedLaunches, 1,
-                       "clearing runningAction on the live agent's exit lets resume relaunch the action")
     }
 
     func testSameStatusAsRunningIsIgnored() throws {

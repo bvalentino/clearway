@@ -90,7 +90,8 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
 
 - Default `true` at creation **iff** the project has a valid `WORKFLOW.json` **and the task has content** (`WorkTask.hasContent` — a non-empty title or body). A manually-created worktree with a blank `TASK.md` seeds `autopilot: false` (paused, written explicitly — `nil` would read as on and launch anyway) and its toolbar button is **disabled** until the user gives it something to do. Legacy projects have no `autopilot` field.
 - Toolbar play/pause control: `AutopilotButton` (in `AutopilotButton.swift`), **hidden** unless `isWorkflowJSONProject`. Click writes `autopilot` via `WorkTaskManager.setAutopilot`.
-- Disable = **pause** (never interrupts a running agent — the running step finishes, nothing new launches). Enable = **resume** the current action (idempotent, `handleAutopilotFlip`). Restart (`resumeWorkflowsOnStartup` → `WorkflowLoopEngine.shouldResumeOnRestart`) auto-resumes only `autopilot: true` worktrees sitting on a real non-terminal action.
+- Disable = **pause** (never interrupts a running agent — the running step finishes, nothing new launches). Enable = **resume** the current action (idempotent, `handleAutopilotFlip`).
+- **Autopilot never auto-starts.** Opening a worktree (or having one open when the project loads) must not run a workflow on its own. The engine treats a persisted `autopilot: true` as a session-live flag that goes stale on restart: the **first time it observes a worktree** this session (`lastKnownAutopilot[branch] == nil`), `pauseStaleAutopilotOnFirstSight` flips it to `false` and launches nothing — unless the worktree is already running (a fresh create whose agent launched directly via `seedWorkflowStatus`, which is exempt). The loop only ever (re)starts on an explicit play (`handleAutopilotFlip` false→true) or a manual status pick. There is **no** startup auto-resume.
 
 ### Loop guard / manual kill
 

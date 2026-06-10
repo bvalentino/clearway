@@ -662,11 +662,6 @@ struct ContentView: View {
             worktreeManager.worktrees.first { $0.id == id }?.path
         }
         workTaskManager.setWatchedWorktrees(paths)
-
-        // Restart-resume: now that the worktree set is loaded and the task pool is merged (setWatched
-        // re-reads every worktree's TASK.md), relaunch auto-resumable WORKFLOW.json loops. Guarded to
-        // run once per window; a no-op for legacy projects and for paused/halted/terminal worktrees.
-        workTaskCoordinator.resumeWorkflowsOnStartup()
     }
 
     // MARK: - Refresh

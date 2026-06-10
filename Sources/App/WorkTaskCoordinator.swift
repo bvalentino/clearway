@@ -68,14 +68,9 @@ class WorkTaskCoordinator: ObservableObject {
     /// autopilot *flip* as a distinct trigger (mirroring how `runningAction` tracks `P`). An
     /// enable (false→true) while idle re-runs the advance, which idempotently launches the current
     /// action; a disable (true→false) just stops advancing (a running step finishes untouched).
-    /// `nil` until the first reload observes the worktree.
+    /// `nil` until the first reload observes the worktree — also the "first sight" signal the engine
+    /// uses to auto-pause a stale `autopilot: true` so opening a worktree never auto-runs.
     var lastKnownAutopilot: [String: Bool] = [:]
-
-    /// One-shot guard so restart-resume runs exactly once per window, even though its trigger
-    /// (`resumeWorkflowsOnStartup`, called from the same `syncWatchedWorktrees` path as the task
-    /// migration) fires from several lifecycle paths. Set the first time resume runs with a loaded
-    /// worktree set; thereafter the live watcher owns all advances.
-    var didResumeWorkflows = false
 
     /// Supplies the live `ghostty_app_t` so the watcher-driven engine can launch surfaces without
     /// the per-call `app:` argument the view passes elsewhere. Set by the view in `onAppear`

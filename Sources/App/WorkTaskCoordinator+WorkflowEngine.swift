@@ -28,6 +28,11 @@ extension WorkTaskCoordinator {
         refreshWorkflowJSONGate()
         guard isWorkflowJSONProject, let app = appProvider() else { return }
         for branch in branches {
+            // Auto-pause on first sight: a worktree the engine is observing for the first time this
+            // session (just opened, or present when the project loaded) must never auto-run from a
+            // stale `autopilot: true`. Pausing here is what makes "open a worktree" inert — the loop
+            // only ever (re)starts on an explicit play. Skips the rest for this branch when it paused.
+            if pauseStaleAutopilotOnFirstSight(forBranch: branch) { continue }
             let resumed = handleAutopilotFlip(forBranch: branch, app: app)
             // The resume already drove a launch decision; advancing again on the same reload would
             // re-evaluate the now-running action (a harmless ignore), so skip the redundant call.
@@ -36,35 +41,27 @@ extension WorkTaskCoordinator {
         }
     }
 
-    /// Rebuilds the watch-set on app/project startup: enumerates the project's live worktrees, reads
-    /// each one's persisted `TASK.md` (`status` + `autopilot`), and relaunches the matching action —
-    /// **only** for worktrees `WorkflowLoopEngine.shouldResumeOnRestart` deems resumable (autopilot on,
-    /// status on a real non-terminal action). A paused, halted, terminal, backlog, or unknown-slug
-    /// worktree stays put. No-op for projects without a valid `.clearway/WORKFLOW.json`.
+    /// The first time the engine observes a worktree this session, a persisted `autopilot: true` is
+    /// treated as **stale** and flipped to `false` — so opening a worktree (or having one open when
+    /// the project loads) never relaunches a workflow on its own. Autopilot is a session-live flag:
+    /// after an app restart nothing is actually running (in-memory engine state is empty), so the
+    /// loop must wait for an explicit play. Returns `true` when it paused (the caller then skips
+    /// advancing this branch).
     ///
-    /// Idempotent: `relaunchCurrentAction` skips a worktree whose action is already running, so a
-    /// double startup (or a reload firing right after) never double-launches. Reads the already-merged
-    /// task pool (the manager loads every worktree's `TASK.md`) rather than re-shelling `git worktree
-    /// list`, reusing existing plumbing while honoring the "enumerate worktrees" contract.
+    /// "First sight" = `lastKnownAutopilot[branch] == nil` (the flip tracker hasn't recorded it yet).
+    /// A worktree we're already running — e.g. one just seeded on creation, whose agent launched
+    /// directly via `seedWorkflowStatus` before this reload — is **exempt**, so a fresh create still
+    /// runs. Records the flip baseline as `false` so the follow-up reload isn't a second "first sight".
     @MainActor
-    func resumeWorkflowsOnStartup() {
-        // Run once per window, and only once the worktree set has loaded — an empty set means
-        // worktrees haven't arrived yet (the caller retries on the next lifecycle tick). Leaving the
-        // guard unset until then lets a later call with a real set do the work.
-        guard !didResumeWorkflows, !worktreeManager.worktrees.isEmpty else { return }
-        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
-              let app = appProvider() else { return }
-        didResumeWorkflows = true
-        for worktree in worktreeManager.worktrees {
-            guard let branch = worktree.branch,
-                  let task = workTaskManager.task(forWorktree: branch) else { continue }
-            // Seed the flip baseline so the first post-resume reload doesn't read a false→true edge.
-            if let autopilot = task.autopilot { lastKnownAutopilot[branch] = autopilot }
-            guard WorkflowLoopEngine.shouldResumeOnRestart(
-                status: task.status, autopilot: task.autopilot, definition: definition
-            ) else { continue }
-            relaunchCurrentAction(forBranch: branch, app: app)
-        }
+    private func pauseStaleAutopilotOnFirstSight(forBranch branch: String) -> Bool {
+        guard lastKnownAutopilot[branch] == nil,
+              let task = workTaskManager.task(forWorktree: branch),
+              task.autopilot == true else { return false }
+        // A freshly-seeded create launched its agent directly — don't pause an active step.
+        if let id = worktreeId(forBranch: branch), runningAction[id] != nil { return false }
+        lastKnownAutopilot[branch] = false
+        workTaskManager.setAutopilot(task, to: false)
+        return true
     }
 
     /// Reacts to an `autopilot` change since the last reload. Updates the last-known value and, on an
