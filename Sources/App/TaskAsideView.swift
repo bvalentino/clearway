@@ -53,7 +53,7 @@ struct TaskAsideView: View {
                     Spacer()
                     Picker(selection: Binding(
                         get: { task.status },
-                        set: { workTaskManager.setStatus(task, to: $0) }
+                        set: { workTaskCoordinator.setWorkflowStatus(task, to: $0) }
                     )) {
                         ForEach(allowedStatuses(for: task), id: \.self) { status in
                             Text(WorkTask.displayLabel(for: status)).tag(status)

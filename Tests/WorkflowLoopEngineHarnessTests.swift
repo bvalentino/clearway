@@ -465,6 +465,48 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         XCTAssertNil(launch, "a JSON project gets no legacy launch closure from completePendingLaunch")
     }
 
+    // MARK: - Manual status pick (picker)
+
+    /// An idle worktree (nothing running) launches whatever action the user picks — the relaxed idle
+    /// rule, so a manual jump doesn't halt as a "non-start first value".
+    func testManualPickOnIdleWorktreeLaunches() throws {
+        try writeWorkflow()
+        let branch = "manual"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        // No setRunningActionForTesting → runningAction is nil (idle).
+
+        let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+        XCTAssertEqual(result, .launched(slug: "test"),
+                       "an idle worktree launches the manually-picked action instead of halting")
+    }
+
+    /// A manual status pick clears a prior halt + error so the loop can recover, rather than being
+    /// ignored because `engineHalted` is still set.
+    func testManualStatusPickClearsHalt() throws {
+        try writeWorkflow()
+        let branch = "recover"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "review", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        // Halt: running `implement`, status wrote `review` (a real action but not reachable).
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        guard case .halted = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp) else {
+            return XCTFail("expected the setup to halt")
+        }
+        XCTAssertTrue(coordinator.engineHalted.contains(branch))
+        XCTAssertNotNil(coordinator.workTaskManager.task(forWorktree: branch)?.errorMessage)
+
+        guard let halted = coordinator.workTaskManager.task(forWorktree: branch) else {
+            return XCTFail("task missing after halt")
+        }
+        coordinator.setWorkflowStatus(halted, to: "test")
+
+        XCTAssertFalse(coordinator.engineHalted.contains(branch), "a manual status pick clears the halt")
+        let recovered = coordinator.workTaskManager.task(forWorktree: branch)
+        XCTAssertEqual(recovered?.status, "test", "the picked status is written")
+        XCTAssertNil(recovered?.errorMessage, "and the stale halt error is cleared")
+    }
+
     // MARK: - after_create hook is sourced from WORKFLOW.json
 
     /// A JSON-workflow project's after_create hook comes from `WORKFLOW.json`'s `hooks.after_create`,

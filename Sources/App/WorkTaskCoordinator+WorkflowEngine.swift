@@ -107,15 +107,33 @@ extension WorkTaskCoordinator {
     }
 
     /// The WORKFLOW.json action slugs in flow order, for the status picker — or `nil` for a legacy
-    /// project (which keeps its fixed `WORKFLOW.md` states). Manually selecting one writes `status`
-    /// like any other change; the watcher then feeds it through the same validation the agent's
-    /// writes go through (a non-legal-next value halts and surfaces, exactly as a stray agent write).
+    /// project (which keeps its fixed `WORKFLOW.md` states).
     @MainActor
     func workflowActionSlugs() -> [String]? {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
             return nil
         }
         return definition.orderedActionSlugs()
+    }
+
+    /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
+    /// intent, not an agent advance, so for a JSON project it **clears any halt + error first** so the
+    /// engine re-evaluates from the new value (rather than ignoring it because the loop was halted) and
+    /// the picked action isn't stranded behind a stale error. The watcher then drives it: the relaxed
+    /// idle rule launches the action (or the pause gate holds it when autopilot is off). A legacy
+    /// project just writes the status. No-op when the value is unchanged.
+    @MainActor
+    func setWorkflowStatus(_ task: WorkTask, to slug: String) {
+        guard task.status != slug else { return }
+        guard hasJSONWorkflow(), let branch = task.worktree else {
+            workTaskManager.setStatus(task, to: slug)
+            return
+        }
+        engineHalted.remove(branch)
+        var updated = task
+        updated.status = slug
+        updated.errorMessage = nil
+        workTaskManager.updateTask(updated)
     }
 
     /// Whether the loop engine has a step *actually running* for this worktree — a live agent

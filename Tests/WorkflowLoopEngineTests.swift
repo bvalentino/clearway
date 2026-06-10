@@ -52,11 +52,20 @@ final class WorkflowLoopEngineTests: XCTestCase {
                        "the seed the engine writes is the workflow's start slug")
     }
 
-    func testFirstWriteOfNonStartActionHalts() {
-        // `test` is a real action but not `start`; writing it before anything ran is illegal.
+    func testWriteOfAnyActionWhileIdleLaunchesIt() {
+        // Nothing running (idle/paused/manual pick): writing a non-start real action is NOT a
+        // hallucinated advance — there's no active step to validate against — so it launches that
+        // action (here `test`, whose next is `review`) rather than halting.
         let result = WorkflowLoopEngine.decideTransition(running: nil, written: "test", autopilot: true, definition: definition)
+        XCTAssertEqual(result, .launch(slug: "test", nextValue: "review"),
+                       "an idle worktree launches whatever real action is written (manual jump / resume)")
+    }
+
+    func testUnknownSlugWhileIdleStillHalts() {
+        // The relaxation only covers *real* actions: an unknown slug while idle still halts.
+        let result = WorkflowLoopEngine.decideTransition(running: nil, written: "frobnicate", autopilot: true, definition: definition)
         guard case .halt = result else {
-            return XCTFail("expected halt for a non-start first value, got \(result)")
+            return XCTFail("expected halt for an unknown slug while idle, got \(result)")
         }
     }
 

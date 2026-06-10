@@ -21,8 +21,8 @@ enum WorkflowLoopEngine {
         /// a backlog marker that isn't the engine's concern.
         case ignore
 
-        /// The written status can't be reached from the running action (illegal route, unknown
-        /// slug, or an illegal first value). The caller surfaces `reason` and stops the loop.
+        /// The written status can't be reached from the running action (an illegal route while a
+        /// step is running, or an unknown slug). The caller surfaces `reason` and stops the loop.
         case halt(reason: String)
     }
 
@@ -59,7 +59,8 @@ enum WorkflowLoopEngine {
 
     /// The autopilot-independent routing/validation decision. Pure — separated from the pause gate
     /// so `decideTransition` can layer autopilot on top while this stays the one place that knows
-    /// the graph rules (S == P, backlog markers, unknown slug, first-launch-is-start, legal routes).
+    /// the graph rules (S == P, backlog markers, unknown slug, idle-launches-any-action, and route
+    /// validation only while a step is running).
     private static func routeTransition(
         running: String?,
         written: String,
@@ -82,12 +83,13 @@ enum WorkflowLoopEngine {
             return .halt(reason: "Unknown action '\(written)' is not defined in WORKFLOW.json.")
         }
 
-        // 4. First launch after the seed (nothing running yet): only `start` is legal.
+        // 4. Nothing running: there's no active step to validate an advance against, so launch
+        //    whatever real action `written` names (step 3 already proved it resolves; step 2 peeled
+        //    off backlog markers). This covers the seed's `start`, a resume, and a **manual status
+        //    pick** — none is a hallucinated advance to guard against. Route validation (step 5)
+        //    applies only while a step is actively running, which is the case that matters.
         guard let running else {
-            if written == definition.start {
-                return launchTransition(for: written, definition: definition)
-            }
-            return .halt(reason: "Status '\(written)' is not the workflow's start action '\(definition.start)'.")
+            return launchTransition(for: written, definition: definition)
         }
 
         // 5. Advancing from a running action: S must be a legal route out of P.
