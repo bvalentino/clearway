@@ -113,6 +113,18 @@ extension WorkTaskCoordinator {
         return definition.orderedActionSlugs()
     }
 
+    /// Runs the worktree's **current** action once — the aside's per-state play button. Distinct from
+    /// the toolbar autopilot toggle (which governs the continuous loop): this is an explicit "run this
+    /// step now" that launches whatever action `status` names, regardless of `autopilot`, clearing any
+    /// halt first. Idempotent — `relaunchCurrentAction` skips a worktree whose action is already
+    /// running. No-op when the status isn't a real action or no Ghostty app is ready.
+    @MainActor
+    func playWorkflowAction(forBranch branch: String) {
+        guard let app = appProvider() else { return }
+        engineHalted.remove(branch)
+        relaunchCurrentAction(forBranch: branch, app: app)
+    }
+
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
     /// intent — the user may set **any** state — so it is never validated as a route. For a JSON
     /// project it:

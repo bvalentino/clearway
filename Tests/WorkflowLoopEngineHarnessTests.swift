@@ -412,6 +412,23 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "an idle worktree launches the manually-picked action instead of halting")
     }
 
+    /// The aside's per-state play button runs the current action even when autopilot is off (it's a
+    /// one-shot "run this step now", independent of the continuous loop).
+    func testPlayWorkflowActionRunsCurrentActionWhilePaused() throws {
+        try writeWorkflow()
+        let branch = "play"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: false)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.appProvider = { [dummyApp] in dummyApp }
+        var launched: [String] = []
+        coordinator.workflowAgentLauncher = { _, _, worktree, _ in launched.append(worktree.branch ?? "?") }
+
+        coordinator.playWorkflowAction(forBranch: branch)
+
+        XCTAssertEqual(launched, ["play"],
+                       "the per-state play runs the current action regardless of autopilot")
+    }
+
     /// A manual pick made **while a step is running** must not halt as "not a legal next" — the user
     /// can set any state. Clearing the running pointer makes the engine treat it as an idle launch of
     /// the picked action (no route validation).

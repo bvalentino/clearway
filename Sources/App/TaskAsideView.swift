@@ -63,14 +63,7 @@ struct TaskAsideView: View {
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
-                    let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
-                    let hasWorktree = workTaskCoordinator.worktreeForTask(task) != nil
-                    if hasStateCommand && hasWorktree {
-                        SendToTerminalButton(
-                            action: { sendStateCommandToTerminal(task) },
-                            disabled: terminalManager.activeSurfaceId == nil
-                        )
-                    }
+                    statusPlayButton(for: task)
                 }
 
                 // Agent metadata (show for tasks that have been worked on; never for placeholders)
@@ -79,6 +72,33 @@ struct TaskAsideView: View {
                 }
             }
             .padding(16)
+        }
+    }
+
+    /// The small play button beside the Status picker. For a JSON-workflow project it **runs the
+    /// current action** (`playWorkflowAction`) — a one-shot "run this step now", distinct from the
+    /// toolbar autopilot loop — shown only when the status sits on a real action, and disabled with no
+    /// content or while that action is already running. For a legacy project it keeps the WORKFLOW.md
+    /// state-command behavior (`SendToTerminalButton` → active terminal), gated on `hasStateCommand`.
+    @ViewBuilder
+    private func statusPlayButton(for task: WorkTask) -> some View {
+        if workTaskCoordinator.isWorkflowJSONProject {
+            let isAction = workTaskCoordinator.workflowActionSlugs()?.contains(task.status) == true
+            if let worktree = workTaskCoordinator.worktreeForTask(task), isAction {
+                SendToTerminalButton(
+                    action: { workTaskCoordinator.playWorkflowAction(forBranch: worktreeBranch) },
+                    disabled: !task.hasContent || workTaskCoordinator.isAgentRunning(forWorktree: worktree.id),
+                    help: "Run \(WorkTask.displayLabel(for: task.status))"
+                )
+            }
+        } else {
+            let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
+            if hasStateCommand, workTaskCoordinator.worktreeForTask(task) != nil {
+                SendToTerminalButton(
+                    action: { sendStateCommandToTerminal(task) },
+                    disabled: terminalManager.activeSurfaceId == nil
+                )
+            }
         }
     }
 
