@@ -48,6 +48,8 @@ A project is driven by **one of two engines, selected by file presence — never
 
 `WorkflowDefinition.hasJSONWorkflow(projectPath:)` is the gate: `true` only for a file that exists, decodes, and passes `validate()`. A malformed file reads as "no JSON workflow" and the project falls back to the legacy path. The new engine never reads `WORKFLOW.md`.
 
+Conversely, the **legacy launch paths are suppressed** when a valid `WORKFLOW.json` is present — `startTask` / `continueTask` / `completePendingLaunch` / `workflowAfterCreateHook` all gate on `hasJSONWorkflow()` and never run `launchClaudeCode`, the `WORKFLOW.md` prompt, or its hooks. In a JSON project, "start a task" just creates the worktree; the seed-on-creation chokepoint (`seedWorkflowStatus`) then owns launching the agent. This is what keeps the two engines from both firing on the same task.
+
 ### WORKFLOW.json model (`WorkflowDefinition.swift`)
 
 Decoded with `Codable` (snake_case JSON keys → camelCase Swift):

@@ -209,6 +209,26 @@ class WorkTaskCoordinator: ObservableObject {
         }
         updated.errorMessage = nil
 
+        // JSON-workflow projects: the agent-driven loop engine owns launching. Starting a task means
+        // "create the worktree"; the worktree-creation chokepoint seeds `status = start` and launches
+        // the JSON agent. The legacy WORKFLOW.md launch/hooks/`in_progress` write must never run here.
+        if hasJSONWorkflow() {
+            // Existing worktree → its loop was already seeded at creation; just focus it, don't relaunch.
+            if let branch = task.worktree,
+               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
+                return .reuse(wt)
+            }
+            // No live worktree yet → create it (reusing a prior branch link if present). `status` is
+            // left on its backlog marker; the seed advances it to `start`. `pendingLaunch` is still set
+            // so `completePendingLaunch` relocates TASK.md into the worktree — but it won't launch.
+            let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
+            let branch = task.worktree ?? workTaskManager.deriveBranchName(from: task.title, existingBranches: existingBranches)
+            updated.worktree = branch
+            workTaskManager.updateTask(updated)
+            pendingLaunch = (id: updated.id, branch: branch)
+            return .createWorktree(branch)
+        }
+
         // Branch-keyed lookup is intentional: it resolves the correct worktree even when HEAD
         // is temporarily detached (e.g. mid-rebase), because `branch` is stored separately.
         if let branch = task.worktree,
@@ -244,6 +264,10 @@ class WorkTaskCoordinator: ObservableObject {
                 || task.status == WorkTask.ReservedStatus.qa,
               let branch = task.worktree,
               let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
+
+        // JSON-workflow projects don't use the legacy continue/relaunch — the loop advances via the
+        // agent (or autopilot resume). Never run the WORKFLOW.md continuation here.
+        if hasJSONWorkflow() { return .ignored }
 
         if let config = workflowConfig, !config.isTrusted(forProject: workTaskManager.projectPath) {
             return .needsTrust(config)
@@ -283,6 +307,10 @@ class WorkTaskCoordinator: ObservableObject {
         if let path = worktree.path {
             workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path)
         }
+
+        // JSON-workflow projects: the loop engine launches the agent (seed → advance). Relocate the
+        // task file (above) but never run the legacy WORKFLOW.md launch — return no launch closure.
+        guard !hasJSONWorkflow() else { return nil }
 
         return { [weak self] in
             self?.launchClaudeCode(for: task, in: worktree, app: app)
@@ -349,9 +377,11 @@ class WorkTaskCoordinator: ObservableObject {
         }
     }
 
-    /// Returns the WORKFLOW.md after_create hook command if configured.
+    /// Returns the WORKFLOW.md after_create hook command if configured. Suppressed entirely for
+    /// JSON-workflow projects, which never use the legacy WORKFLOW.md path.
     func workflowAfterCreateHook() -> String? {
-        workflowConfig?.hooksAfterCreate
+        guard !hasJSONWorkflow() else { return nil }
+        return workflowConfig?.hooksAfterCreate
     }
 
     // MARK: - Agent Launch

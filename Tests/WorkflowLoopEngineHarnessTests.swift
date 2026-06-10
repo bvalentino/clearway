@@ -399,6 +399,44 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "killing an unknown branch leaves other worktrees untouched")
     }
 
+    // MARK: - Legacy WORKFLOW.md is suppressed for JSON projects
+
+    /// In a JSON-workflow project, starting a task whose worktree already exists must NOT run the
+    /// legacy WORKFLOW.md launch (its loop was seeded at creation). It returns `.reuse` and spawns no
+    /// agent surface — reaching here without touching the dummy app proves the legacy path is gated.
+    func testStartTaskDoesNotRunLegacyLaunchForJSONProject() throws {
+        try writeWorkflow()
+        let branch = "start-json"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.readyToStart)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        guard let task = coordinator.workTaskManager.task(forWorktree: branch) else {
+            return XCTFail("task missing")
+        }
+
+        let result = coordinator.startTask(task, app: dummyApp)
+        guard case .reuse = result else { return XCTFail("expected .reuse, got \(result)") }
+        XCTAssertTrue(coordinator.agentSurfaces.isEmpty,
+                      "a JSON project must not launch the legacy WORKFLOW.md agent on start")
+    }
+
+    /// `completePendingLaunch` still relocates the task file into the worktree (so the seed writes to
+    /// the right place) but hands back **no** launch closure for a JSON project — the loop engine, not
+    /// the legacy WORKFLOW.md launch, owns starting the agent.
+    func testCompletePendingLaunchYieldsNoLegacyLaunchForJSONProject() throws {
+        try writeWorkflow()
+        let branch = "pending-json"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.new)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        guard let task = coordinator.workTaskManager.task(forWorktree: branch) else {
+            return XCTFail("task missing")
+        }
+        coordinator.pendingLaunch = (id: task.id, branch: branch)
+        let worktree = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached)
+
+        let launch = coordinator.completePendingLaunch(branch: branch, worktree: worktree, app: dummyApp)
+        XCTAssertNil(launch, "a JSON project gets no legacy launch closure from completePendingLaunch")
+    }
+
     // MARK: - Reserved cap fields are decoded but not enforced
 
     /// `max_attempts` is a reserved, NOT-enforced field in v1 (manual kill is the loop-stopper). A
