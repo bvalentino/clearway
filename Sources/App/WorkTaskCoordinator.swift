@@ -108,15 +108,32 @@ class WorkTaskCoordinator: ObservableObject {
     /// `AutopilotButton`'s visibility gate. Reading this `@Published` flag (instead of calling
     /// `hasJSONWorkflow()` per `body`) both avoids a full load+validate filesystem parse on every
     /// render and makes the button react when WORKFLOW.json is added/removed. Refreshed from the
-    /// existing `.clearway/`-change reload path (`handleTasksReloaded`) plus once at init, so it is
-    /// correct before the first reload. Same gate semantics: true only for a valid JSON workflow.
+    /// manager's always-fired `onClearwayChanged` reload hook (which fires on a WORKFLOW.json
+    /// add/remove/edit even with zero task changes) plus once at init, so it is correct before the
+    /// first reload. Same gate semantics: true only for a valid JSON workflow.
     @Published private(set) var isWorkflowJSONProject: Bool = false
 
-    /// Recomputes the cached workflow-json gate from disk. Called from init and the reload hook;
-    /// the assignment is guarded so `objectWillChange` only fires when the value actually flips.
+    /// The parsed, validated `WORKFLOW.json`, cached alongside the gate so view-path reads
+    /// (`workflowActionSlugs()`, the aside's status picker / play button) don't re-load + decode the
+    /// file on every render — the gate's `nil`/non-`nil` and this cache are produced by the **single**
+    /// load in `refreshWorkflowJSONGate()`. `nil` for a legacy project (or a malformed file, matching
+    /// the gate). Refreshed in lockstep with the gate from `onClearwayChanged`, so it tracks a runtime
+    /// WORKFLOW.json edit. The **event-driven engine paths** (`advanceWorkflow`, `seedWorkflowStatus`,
+    /// `relaunchCurrentAction`, `playWorkflowAction`) deliberately keep loading **fresh from disk**:
+    /// they run on the `TASK.md` reload, which the always-fired `onClearwayChanged` refresh precedes
+    /// in the same `reload()` call, but loading fresh keeps the engine's correctness independent of
+    /// cache-refresh ordering — it must never act on a definition staler than the file on disk.
+    @Published private(set) var workflowDefinition: WorkflowDefinition?
+
+    /// Recomputes the cached workflow-json gate **and** definition cache from disk in a single
+    /// load+validate, so the two never disagree and the file is parsed once per refresh (not twice).
+    /// Called from init and the manager's `onClearwayChanged` hook; each assignment is guarded so
+    /// `objectWillChange` only fires when a value actually changes.
     func refreshWorkflowJSONGate() {
-        let value = hasJSONWorkflow()
+        let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath)
+        let value = definition != nil
         if value != isWorkflowJSONProject { isWorkflowJSONProject = value }
+        if definition != workflowDefinition { workflowDefinition = definition }
     }
 
     func setWorkflowConfig(_ config: WorkflowConfig?) { workflowConfig = config }
@@ -152,8 +169,17 @@ class WorkTaskCoordinator: ObservableObject {
             self?.handleTasksReloaded(branches: branches)
         }
 
+        // Refresh the cached gate + definition on *every* `.clearway/` change — fired unconditionally
+        // by the manager before its pool-changed guard, so a WORKFLOW.json add/remove/edit that
+        // touches no `TASK.md` still flips the gate (toolbar button visibility, aside JSON branch).
+        // Decoupled from `onTasksReloaded` (the engine advance) on purpose: a pure no-change reload
+        // refreshes the gate without driving a needless loop re-evaluation.
+        self.workTaskManager.onClearwayChanged = { [weak self] in
+            self?.refreshWorkflowJSONGate()
+        }
+
         // Seed the cached workflow-json gate so the toolbar button is correct before the first
-        // reload; subsequent `.clearway/` changes refresh it via `handleTasksReloaded`.
+        // reload; subsequent `.clearway/` changes refresh it via `onClearwayChanged`.
         refreshWorkflowJSONGate()
     }
 

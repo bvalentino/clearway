@@ -20,10 +20,11 @@ import SwiftUI
 /// enacts the intent — enable resumes the current action, disable pauses after the running step
 /// finishes. The view adds no second launch path.
 ///
-/// A **context-menu "Stop Agent"** item (shown only while a step is running) is the lone exception:
-/// it invokes the coordinator's `manualKill`, which pauses *and* terminates the running agent
-/// surface. This is the spec's manual kill — the one affordance that interrupts a running agent,
-/// kept distinct from the pause toggle that lets the in-flight step finish.
+/// A **context-menu "Stop Agent"** item (shown only while a step is running) is the lone *pause*
+/// exception: it invokes the coordinator's `manualKill`, which pauses *and* terminates the running
+/// agent surface — kept distinct from the pause toggle that lets the in-flight step finish. (A manual
+/// status pick in the aside also terminates a running agent, but it *steers* the loop rather than
+/// pausing it, so it isn't surfaced here.)
 struct AutopilotButton: View {
     let worktree: Worktree
 
@@ -69,9 +70,10 @@ struct AutopilotButton: View {
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(accessibilityValue)
             .contextMenu {
-                // Manual kill — the only affordance that interrupts a running agent (distinct from
-                // the pause toggle, which lets the running step finish). Shown only while an agent
-                // surface is live, since there is nothing to terminate otherwise.
+                // Manual kill — the pause-and-interrupt affordance (distinct from the pause toggle,
+                // which lets the running step finish; a manual status pick also interrupts, but steers
+                // rather than pauses). Shown only while an agent surface is live, since there is
+                // nothing to terminate otherwise.
                 if hasLiveAgent {
                     Button("Stop Agent", role: .destructive, action: manualKill)
                 }

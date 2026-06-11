@@ -438,6 +438,31 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                        "the picked action runs via the idle rule, with no route validation or halt")
     }
 
+    /// A manual pick made **while a step is running** supersedes the in-flight agent (clears the
+    /// running pointer so the watcher relaunches the picked action) but, unlike `manualKill`, must
+    /// **not** pause autopilot — the user is steering the loop, not stopping it. The surface
+    /// *termination* half needs a live Ghostty surface (so it's covered by `shouldTerminateOnManualKill`
+    /// elsewhere); here we assert the observable engine-state distinction from a kill: autopilot stays
+    /// on and the running pointer is cleared.
+    func testManualPickWhileRunningDoesNotPauseAutopilot() throws {
+        try writeWorkflow()
+        let branch = "steer"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+        guard let task = coordinator.workTaskManager.task(forWorktree: branch) else {
+            return XCTFail("task missing")
+        }
+
+        coordinator.setWorkflowStatus(task, to: "test")
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "a manual pick steers the loop — it never pauses autopilot like manualKill does")
+        XCTAssertNil(coordinator.runningAction[worktreeId],
+                     "the running pointer is cleared so the watcher relaunches the picked action idle")
+    }
+
     /// A manual status pick clears a prior halt + error so the loop can recover, rather than being
     /// ignored because `engineHalted` is still set.
     func testManualStatusPickClearsHalt() throws {
@@ -462,6 +487,80 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         let recovered = coordinator.workTaskManager.task(forWorktree: branch)
         XCTAssertEqual(recovered?.status, "test", "the picked status is written")
         XCTAssertNil(recovered?.errorMessage, "and the stale halt error is cleared")
+    }
+
+    // MARK: - Cached gate refreshes on WORKFLOW.json add/remove (no task change)
+
+    /// Removes `.clearway/WORKFLOW.json` from the project root.
+    private func removeWorkflow() throws {
+        let path = (tempRoot as NSString)
+            .appendingPathComponent(".clearway")
+            .appending("/WORKFLOW.json")
+        try FileManager.default.removeItem(atPath: path)
+    }
+
+    /// The cached `isWorkflowJSONProject` gate must flip when WORKFLOW.json is **added** at runtime
+    /// even with zero task changes — a WORKFLOW.json drop touches no `TASK.md`, so the engine-advance
+    /// hook (`onTasksReloaded`, pool-changed + worktree-linked only) would miss it. The manager fires
+    /// the decoupled, unconditional `onClearwayChanged` hook the coordinator wires to the gate refresh;
+    /// here we invoke that hook directly to prove the wiring (the real DispatchSource debounce makes a
+    /// watcher-timing test flaky, so we exercise the synchronous refresh path it drives).
+    func testGateFlipsWhenWorkflowJSONAddedWithoutTaskChange() throws {
+        // Start as a legacy project: no WORKFLOW.json, one worktree task already present.
+        let branch = "gate-add"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.inProgress)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        XCTAssertFalse(coordinator.isWorkflowJSONProject, "no WORKFLOW.json yet → gate off")
+        XCTAssertNil(coordinator.workflowDefinition, "no cached definition for a legacy project")
+
+        // Add WORKFLOW.json — no task file changes — then fire the always-on reload hook.
+        try writeWorkflow()
+        coordinator.workTaskManager.onClearwayChanged()
+
+        XCTAssertTrue(coordinator.isWorkflowJSONProject,
+                      "adding WORKFLOW.json flips the gate even with no task change")
+        XCTAssertNotNil(coordinator.workflowDefinition,
+                        "the definition cache is populated alongside the gate")
+    }
+
+    /// The mirror case: **removing** WORKFLOW.json at runtime flips the gate back off (and clears the
+    /// cached definition) on the always-fired reload hook, again with no task change.
+    func testGateFlipsWhenWorkflowJSONRemovedWithoutTaskChange() throws {
+        try writeWorkflow()
+        let branch = "gate-remove"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        XCTAssertTrue(coordinator.isWorkflowJSONProject, "WORKFLOW.json present → gate on")
+        XCTAssertNotNil(coordinator.workflowDefinition)
+
+        try removeWorkflow()
+        coordinator.workTaskManager.onClearwayChanged()
+
+        XCTAssertFalse(coordinator.isWorkflowJSONProject,
+                       "removing WORKFLOW.json flips the gate off with no task change")
+        XCTAssertNil(coordinator.workflowDefinition, "the definition cache is cleared with the gate")
+    }
+
+    /// Proves the manager actually *invokes* `onClearwayChanged` from `reload()` — unconditionally,
+    /// even when the task pool is unchanged (a no-op reload). This is the leg that makes the
+    /// watcher-driven gate refresh fire on a WORKFLOW.json change that touches no task.
+    func testReloadFiresClearwayChangedEvenWithNoPoolChange() throws {
+        try writeWorkflow()
+        let branch = "noop-reload"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
+        var fired = 0
+        taskManager.onClearwayChanged = { fired += 1 }
+
+        // setWatchedWorktrees calls reload(); the pool is identical across back-to-back reloads, so
+        // the second is a no-change reload — yet the hook still fires.
+        taskManager.setWatchedWorktrees([worktreePath])
+        let firstCount = fired
+        taskManager.setWatchedWorktrees([worktreePath])
+
+        XCTAssertGreaterThan(firstCount, 0, "onClearwayChanged fires on a reload")
+        XCTAssertGreaterThan(fired, firstCount, "and fires again on a no-change reload")
     }
 
     // MARK: - after_create hook is sourced from WORKFLOW.json

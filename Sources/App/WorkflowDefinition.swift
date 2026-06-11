@@ -35,13 +35,18 @@ struct WorkflowDefinition: Equatable, Decodable {
         let command: String
 
         /// Per-action timeout in milliseconds. Defaults to `Self.defaultTimeoutMs` when omitted.
+        /// **Reserved for a future launch guard and NOT enforced in v1** — the launch path never
+        /// consumes it (the manual kill is the only thing that bounds a step's runtime today).
+        /// Decoded and validated (a reserved part of the `WORKFLOW.json` format) but never acted on.
         let timeoutMs: Int
 
         /// Default agent command when `WORKFLOW.json` omits `agent.command`.
         static let defaultCommand = "claude"
 
         /// Default per-action timeout (10 minutes) when `WORKFLOW.json` omits `agent.timeout_ms`.
-        /// Generous because agent steps (implement / test / review) are long-running.
+        /// Generous because agent steps (implement / test / review) are long-running. **Reserved /
+        /// NOT enforced in v1** — like `timeoutMs` itself, this is decoded but the launch path never
+        /// reads it, so the default is carried for a future guard rather than applied today.
         static let defaultTimeoutMs = 600_000
 
         /// The defaults used when the entire `agent` object is omitted.
@@ -179,7 +184,7 @@ struct WorkflowDefinition: Equatable, Decodable {
     /// stable across calls — `routes` is an unordered map, so without this the "first" next value
     /// could differ run to run.
     func legalNext(from slug: String) -> [String] {
-        Array(actions[slug]?.routes.values ?? [String: String]().values).sorted()
+        actions[slug].map { $0.routes.values.sorted() } ?? []
     }
 
     /// All action slugs in **flow order** for display (e.g. the status picker): start at `start` and
@@ -225,6 +230,13 @@ extension WorkflowDefinition {
         /// `actions` is present but empty — a workflow with no actions can never run.
         case noActions
 
+        /// An action is keyed by a reserved backlog marker slug (`new` / `ready_to_start`). The
+        /// engine unconditionally ignores those values as pre-worktree markers
+        /// (`WorkflowLoopEngine.routeTransition`), so such an action could never launch — it would
+        /// be silently unreachable. Rejected at validation so the defect surfaces instead of a
+        /// loop that quietly stalls on a slug the engine refuses to act on.
+        case reservedActionSlug(slug: String)
+
         /// `start` does not resolve to any action in `actions`.
         case startTargetMissing(start: String)
 
@@ -268,6 +280,15 @@ extension WorkflowDefinition {
     /// found so the caller can surface a precise, actionable error.
     func validate() throws {
         guard !actions.isEmpty else { throw LoadError.noActions }
+
+        // Reserved backlog markers (`new` / `ready_to_start`) are unconditionally ignored by the
+        // engine, so an action keyed by one could never launch. Reject the key itself (sorted for a
+        // stable first-defect report); routes/`start`/`on_max_attempts` targeting such a slug are
+        // caught transitively below once the action can't exist.
+        let reservedSlugs: Set<String> = [WorkTask.ReservedStatus.new, WorkTask.ReservedStatus.readyToStart]
+        for slug in actions.keys.sorted() where reservedSlugs.contains(slug) {
+            throw LoadError.reservedActionSlug(slug: slug)
+        }
 
         guard actions[start] != nil else {
             throw LoadError.startTargetMissing(start: start)

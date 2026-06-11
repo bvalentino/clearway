@@ -23,9 +23,10 @@ extension WorkTaskCoordinator {
     /// the pure decision (any launch is demoted to ignore — the running step finishes untouched).
     @MainActor
     func handleTasksReloaded(branches: [String]) {
-        // Refresh the cached toolbar gate on every `.clearway/` reload — this path already fires on
-        // WORKFLOW.json adds/removes — *before* the gate guard, so a removal flips the cache too.
-        refreshWorkflowJSONGate()
+        // The cached gate + definition are refreshed by the manager's always-fired `onClearwayChanged`
+        // hook (wired in init), which runs *before* this engine advance on the same `reload()` — and
+        // crucially also fires on a WORKFLOW.json add/remove/edit that changes no task, which this
+        // pool-changed-only path would miss. So the gate is already current here; just read it.
         guard isWorkflowJSONProject, let app = appProvider() else { return }
         for branch in branches {
             // Auto-pause on first sight: a worktree the engine is observing for the first time this
@@ -104,13 +105,13 @@ extension WorkTaskCoordinator {
     }
 
     /// The WORKFLOW.json action slugs in flow order, for the status picker — or `nil` for a legacy
-    /// project (which keeps its fixed `WORKFLOW.md` states).
+    /// project (which keeps its fixed `WORKFLOW.md` states). Reads the **cached** definition (refreshed
+    /// in lockstep with the gate via `onClearwayChanged`), not a fresh disk load: this is a per-render
+    /// view path (`TaskAsideView` calls it twice per `body`), so a load+decode+validate here would be
+    /// repeated filesystem I/O on every render — the whole point of caching the definition.
     @MainActor
     func workflowActionSlugs() -> [String]? {
-        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
-            return nil
-        }
-        return definition.orderedActionSlugs()
+        workflowDefinition?.orderedActionSlugs()
     }
 
     /// Runs the worktree's **current** action manually — the aside's per-state play button. Sends the
@@ -136,6 +137,17 @@ extension WorkTaskCoordinator {
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
     /// intent — the user may set **any** state — so it is never validated as a route. For a JSON
     /// project it:
+    /// - **terminates the running agent surface, if one is live**, before writing the new status. A
+    ///   manual pick mid-step would otherwise leave a zombie: clearing `runningAction` makes the
+    ///   watcher launch the picked action (under autopilot), overwriting `agentSurfaces` — two agents
+    ///   then run in the same worktree, both editing `TASK.md`, and the superseded one's eventual write
+    ///   gets route-validated against the *new* running action and halts with a confusing error.
+    ///   Terminating reuses the manual-kill plumbing (`shouldTerminateOnManualKill` /
+    ///   `terminateSurface`) but, unlike `manualKill`, does **not** pause autopilot — the user is
+    ///   *steering* the loop, not stopping it. Order matters: terminate **before** the status write so
+    ///   the SIGHUP'd old agent is already superseded when the watcher reacts to the new status — and
+    ///   so `handleChildExited`'s `shouldClearLiveAgentState` guard sees the freshly-launched next
+    ///   action as the live surface (not the dying one) and leaves its `runningAction` intact.
     /// - **clears the running pointer** (`runningAction`) so the engine sees the worktree as *idle* on
     ///   the new state. The watcher's `advanceWorkflow` then takes the idle path (launch any real
     ///   action under autopilot, or hold under the pause gate) instead of route-validating a transition
@@ -149,6 +161,13 @@ extension WorkTaskCoordinator {
         guard hasJSONWorkflow(), let branch = task.worktree else {
             workTaskManager.setStatus(task, to: slug)
             return
+        }
+        // Supersede the in-flight agent first (no autopilot pause — this is steering, not stopping),
+        // so the dying surface can't race the watcher's relaunch into a two-agent / halt tangle.
+        if let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
+           shouldTerminateOnManualKill(forWorktree: worktree.id),
+           let surface = agentSurfaces[worktree.id] {
+            terminalManager.terminateSurface(surface, in: worktree.id)
         }
         engineHalted.remove(branch)
         if let id = worktreeId(forBranch: branch) { runningAction.removeValue(forKey: id) }
@@ -188,8 +207,10 @@ extension WorkTaskCoordinator {
     ///
     /// Because `handleChildExited` clears `runningAction` when the live surface exits (Phase 3), the
     /// termination tears down the engine's in-memory `P`, and the now-paused loop stays put. This is
-    /// the **only** path allowed to interrupt a running agent. No-op for a worktree with no task /
-    /// no live surface (nothing to kill — but autopilot is still paused if a task exists).
+    /// the **pause-and-interrupt** path: it stops the loop. (A manual status pick — `setWorkflowStatus`
+    /// — also terminates a running agent, but it *steers* the loop instead of pausing it.) No-op for a
+    /// worktree with no task / no live surface (nothing to kill — but autopilot is still paused if a
+    /// task exists).
     @MainActor
     func manualKill(forBranch branch: String) {
         guard let task = workTaskManager.task(forWorktree: branch) else { return }

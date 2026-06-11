@@ -139,6 +139,61 @@ final class WorkflowDefinitionTests: XCTestCase {
         }
     }
 
+    // MARK: - Reserved backlog-marker slugs
+
+    func testActionSluggedNewIsRejectedAsReserved() throws {
+        // An action keyed `new` would be silently unreachable — the engine ignores `new` as a
+        // backlog marker — so validation must reject the key with the specific reserved defect.
+        let json = """
+        {
+          "version": 1,
+          "start": "new",
+          "actions": {
+            "new": { "name": "New", "instructions": "Unreachable." }
+          }
+        }
+        """
+        let definition = try decode(json)
+        XCTAssertThrowsError(try definition.validate()) { error in
+            XCTAssertEqual(error as? WorkflowDefinition.LoadError, .reservedActionSlug(slug: "new"))
+        }
+    }
+
+    func testActionSluggedReadyToStartIsRejectedAsReserved() throws {
+        // Same defect for the other backlog marker. `start` points elsewhere here to prove the
+        // reserved-key check fires on the action key itself, not via the start pointer.
+        let json = """
+        {
+          "version": 1,
+          "start": "implement",
+          "actions": {
+            "implement": { "name": "Implement", "instructions": "Do it." },
+            "ready_to_start": { "name": "Ready", "instructions": "Unreachable." }
+          }
+        }
+        """
+        let definition = try decode(json)
+        XCTAssertThrowsError(try definition.validate()) { error in
+            XCTAssertEqual(error as? WorkflowDefinition.LoadError, .reservedActionSlug(slug: "ready_to_start"))
+        }
+    }
+
+    func testHasJSONWorkflowFalseWhenActionSluggedReserved() throws {
+        // A file defining a reserved-slug action decodes fine but fails validation, so the gate
+        // reads as "no JSON workflow" rather than enabling a loop with an unreachable action.
+        let json = """
+        {
+          "version": 1,
+          "start": "new",
+          "actions": {
+            "new": { "name": "New", "instructions": "Unreachable." }
+          }
+        }
+        """
+        let projectPath = try writeWorkflow(json)
+        XCTAssertFalse(WorkflowDefinition.hasJSONWorkflow(projectPath: projectPath))
+    }
+
     // MARK: - Dangling route target
 
     func testDanglingRouteTargetReportsSpecificDefect() throws {
