@@ -28,15 +28,19 @@ struct WorkflowEditorView: View {
     /// `newlyCreatedTaskId`). Bound into each card via `WorkflowActionCard.focus`.
     @FocusState private var focusedSlug: String?
 
+    /// Cached "a file exists on disk but the coordinator couldn't load+validate it." Recomputed at
+    /// discrete load/reconcile/save points — never per render — so a transient mid-delete disk state
+    /// can't briefly flash a stale "couldn't be read" warning right after the user removed the last
+    /// action. The empty state surfaces this so someone hand-fixing a malformed file knows it's there
+    /// (and that adding an action replaces it).
+    @State private var hasUnreadableFile = false
+
     private var workflowFilePath: String {
         (projectPath as NSString).appendingPathComponent(WorkflowDefinition.relativePath)
     }
 
-    /// A file exists on disk but the coordinator couldn't load+validate it. The empty state warns
-    /// rather than silently presenting "no actions", so a user hand-fixing a malformed file knows
-    /// it's there (and that adding an action will replace it).
-    private var hasUnreadableFile: Bool {
-        workTaskCoordinator.workflowDefinition == nil
+    private func refreshUnreadableFlag() {
+        hasUnreadableFile = workTaskCoordinator.workflowDefinition == nil
             && FileManager.default.fileExists(atPath: workflowFilePath)
     }
 
@@ -56,6 +60,7 @@ struct WorkflowEditorView: View {
             scheduleSave()
         }
         .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
+            refreshUnreadableFlag()
             // Reconcile external edits only when idle; a pending local save will win, and its own
             // write echoes back here (suppressed by the equality check in `reconcile`).
             guard pendingSave == nil else { return }
@@ -154,6 +159,7 @@ struct WorkflowEditorView: View {
             lastLoaded = nil
             model = WorkflowEditorModel()
         }
+        refreshUnreadableFlag()
     }
 
     /// Pulls an external edit into the editor. Skips the no-op case where the incoming value is the
@@ -173,8 +179,15 @@ struct WorkflowEditorView: View {
     }
 
     private func remove(slug: String) {
-        guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
-        model.remove(at: index)
+        // Resign focus before the row leaves the tree: a `@FocusState` still pointing at a removed
+        // card's slug, combined with mutating the `ForEach($model.actions)` binding from the row's
+        // own button, crashes SwiftUI. Clearing focus drops the dangling reference, and deferring
+        // the structural mutation one runloop tick lets the in-flight view update finish first.
+        if focusedSlug == slug { focusedSlug = nil }
+        DispatchQueue.main.async {
+            guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
+            model.remove(at: index)
+        }
     }
 
     private func move(from source: IndexSet, to destination: Int) {
@@ -199,6 +212,8 @@ struct WorkflowEditorView: View {
         guard !model.actions.isEmpty else {
             try? fileManager.removeItem(atPath: workflowFilePath)
             lastLoaded = nil
+            // The user emptied the editor — there's nothing unreadable, so never warn after this.
+            hasUnreadableFile = false
             return
         }
 
@@ -218,6 +233,8 @@ struct WorkflowEditorView: View {
             attributes: [.posixPermissions: 0o600]
         ) else { return }
         lastLoaded = definition
+        // We just wrote a valid file — clear any prior "unreadable" warning.
+        hasUnreadableFile = false
     }
 
     private func ensureClearwayDirectory() {
