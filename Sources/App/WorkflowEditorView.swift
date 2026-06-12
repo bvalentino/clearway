@@ -44,9 +44,13 @@ struct WorkflowEditorView: View {
     /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
 
-    /// Selected card's slug, driving the macOS-native `−` control (which removes the selection) and
-    /// the card's selection ring. `nil` = nothing selected, so `−` is disabled.
+    /// Selected card's slug — the target of the Delete key (`onDeleteCommand`) and the selection
+    /// ring. `nil` = nothing selected.
     @State private var selectedSlug: String?
+
+    /// Slugs whose instructions editor is expanded. Empty = every card collapsed to a name-only row
+    /// (the decluttered overview); a freshly-added card is expanded so its prompt is ready to type.
+    @State private var expandedSlugs: Set<String> = []
 
     /// Readable content-column width; long instructions stay legible. Shared by the header and the
     /// card list so they line up.
@@ -69,9 +73,10 @@ struct WorkflowEditorView: View {
             } else {
                 editorList
             }
-            controlStrip
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Shortcuts-style canvas: cards float as flat white tiles on the window's gray.
+        .background(Color(.windowBackgroundColor))
         .onAppear(perform: load)
         .onChange(of: model) { _ in
             // A programmatic load arms `isLoading`; consume that one change without saving. Real
@@ -130,8 +135,7 @@ struct WorkflowEditorView: View {
             Spacer()
             Text("No actions yet.")
                 .font(.title3.weight(.medium))
-            Text("Add an action with the + button below. Actions are the steps the agent runs for "
-                 + "each task.")
+            Text("Actions are the steps the agent runs for each task.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -142,6 +146,13 @@ struct WorkflowEditorView: View {
                     .foregroundStyle(.orange)
                     .padding(.top, 4)
             }
+            // The single most-likely action on an empty screen → prominent (accent) style.
+            Button(action: addAction) {
+                Label("Add Action", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 6)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,56 +163,46 @@ struct WorkflowEditorView: View {
 
     private var editorList: some View {
         List(selection: $selectedSlug) {
-            ForEach($model.actions) { $action in
+            ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
                 WorkflowActionCard(
-                    action: $action,
+                    action: $model.actions[index],
                     focus: $focusedSlug,
-                    isSelected: selectedSlug == action.slug
+                    stepNumber: index + 1,
+                    isSelected: selectedSlug == action.slug,
+                    isExpanded: expandedSlugs.contains(action.slug),
+                    onToggleExpanded: { toggleExpanded(action.slug) }
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                .contextMenu {
+                    Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+                }
             }
             .onMove(perform: move)
+
+            addActionRow
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Delete key / Edit ▸ Delete removes the selected card (only when the list, not a text field,
+        // holds focus — so editing instructions and deleting a step never collide).
+        .onDeleteCommand(perform: removeSelected)
         .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Add / remove control strip
-
-    /// The macOS-native add/remove affordance: symbol-only bordered buttons grouped at the
-    /// bottom-leading of the list (buttons HIG — "square buttons for view-level add/remove rows…
-    /// symbols only… beneath their associated view"). `+` appends and selects a new card; `−`
-    /// removes the selected one (disabled with no selection, routed through the same confirmation).
-    private var controlStrip: some View {
-        VStack(spacing: 0) {
-            Divider()
-                .frame(maxWidth: contentMaxWidth)
-                .frame(maxWidth: .infinity)
-            HStack(spacing: 6) {
-                Button(action: addAction) {
-                    Image(systemName: "plus").frame(width: 18, height: 18)
-                }
-                .help("Add action")
-                .accessibilityLabel("Add action")
-
-                Button { removeSelected() } label: {
-                    Image(systemName: "minus").frame(width: 18, height: 18)
-                }
-                .disabled(selectedSlug == nil)
-                .help("Remove selected action")
-                .accessibilityLabel("Remove action")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 8)
-            .frame(maxWidth: contentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity)
+    /// The Shortcuts-style "Add Action" affordance beneath the last card (no +/− strip, no library —
+    /// our actions are free-text, so adding just appends a blank step).
+    private var addActionRow: some View {
+        Button(action: addAction) {
+            Label("Add Action", systemImage: "plus")
         }
+        .buttonStyle(.borderless)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     // MARK: - Loading + reconciliation
@@ -216,11 +217,11 @@ struct WorkflowEditorView: View {
         if loaded != model { isLoading = true }
         lastLoaded = definition
         model = loaded
-        // Drop a selection that no longer resolves (external edit removed the card) so `−` can't act
-        // on a vanished slug while showing no visible selection.
-        if let slug = selectedSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
-            selectedSlug = nil
-        }
+        // Prune selection/expansion of slugs that no longer resolve (an external edit removed the
+        // card), so the Delete key can't act on a vanished slug and stale expand flags don't linger.
+        let liveSlugs = Set(loaded.actions.map { $0.slug })
+        if let slug = selectedSlug, !liveSlugs.contains(slug) { selectedSlug = nil }
+        expandedSlugs.formIntersection(liveSlugs)
         refreshUnreadableFlag()
     }
 
@@ -236,13 +237,18 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Select the new card so `−` targets it, and focus its name field once the row has rendered
-        // (one-shot create-focus).
+        // Expand and select the new card, then focus its name field once the row has rendered
+        // (one-shot create-focus) so its prompt is ready to type.
+        expandedSlugs.insert(added.slug)
         selectedSlug = added.slug
         DispatchQueue.main.async { focusedSlug = added.slug }
     }
 
-    /// The `−` control: removes the selected action (no-op when nothing is selected).
+    private func toggleExpanded(_ slug: String) {
+        if expandedSlugs.contains(slug) { expandedSlugs.remove(slug) } else { expandedSlugs.insert(slug) }
+    }
+
+    /// Delete key / Edit ▸ Delete: removes the selected action (no-op when nothing is selected).
     private func removeSelected() {
         guard let slug = selectedSlug else { return }
         requestRemove(slug: slug)
@@ -271,6 +277,7 @@ struct WorkflowEditorView: View {
         // since the array may have changed) to let the in-flight view update finish.
         if focusedSlug == slug { focusedSlug = nil }
         if selectedSlug == slug { selectedSlug = nil }
+        expandedSlugs.remove(slug)
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
             model.remove(at: index)
