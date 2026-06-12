@@ -22,7 +22,12 @@ struct WorkflowEditorView: View {
     /// `version` + per-action reserved fields). `nil` = no valid file yet (empty state / first add).
     @State private var lastLoaded: WorkflowDefinition?
     @State private var pendingSave: DispatchWorkItem?
-    /// Suppresses `scheduleSave` while the model is being (re)loaded programmatically.
+    /// One-shot guard that suppresses the save for a *programmatic* model load. `load()` arms it
+    /// only when the assignment will actually change `model` (and thus fire `onChange`); the
+    /// `onChange(of: model)` handler disarms it the moment it consumes that change, so opening the
+    /// section — or reconciling an external edit — never schedules a save. A real user edit always
+    /// arrives with this clear and saves normally. (Resetting it via `defer` in `load()` wouldn't
+    /// work: `onChange` fires on the *next* update pass, by which point the flag is already clear.)
     @State private var isLoading = false
     /// Slug of a freshly-added card to create-focus its name field (one-shot, like
     /// `newlyCreatedTaskId`). Bound into each card via `WorkflowActionCard.focus`.
@@ -60,7 +65,9 @@ struct WorkflowEditorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear(perform: load)
         .onChange(of: model) { _ in
-            guard !isLoading else { return }
+            // A programmatic load arms `isLoading`; consume that one change without saving. Real
+            // user edits arrive with the flag clear and schedule a save.
+            if isLoading { isLoading = false; return }
             scheduleSave()
         }
         .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
@@ -158,15 +165,15 @@ struct WorkflowEditorView: View {
     // MARK: - Loading + reconciliation
 
     private func load() {
-        isLoading = true
-        defer { isLoading = false }
-        if let definition = workTaskCoordinator.workflowDefinition {
-            lastLoaded = definition
-            model = WorkflowEditorModel(from: definition)
-        } else {
-            lastLoaded = nil
-            model = WorkflowEditorModel()
-        }
+        let definition = workTaskCoordinator.workflowDefinition
+        let loaded = definition.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
+        // Arm the load guard only when the assignment will actually change `model` (and so fire
+        // `onChange`). Arming it for a no-op assignment — e.g. (re)loading a no-file project whose
+        // model is already empty — would leave it stuck on and swallow the user's next real edit
+        // (notably the empty-state "Add action" that creates the file).
+        if loaded != model { isLoading = true }
+        lastLoaded = definition
+        model = loaded
         refreshUnreadableFlag()
     }
 
