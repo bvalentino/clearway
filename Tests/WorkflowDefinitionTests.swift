@@ -351,4 +351,93 @@ final class WorkflowDefinitionTests: XCTestCase {
         let projectPath = try writeWorkflow(json)
         XCTAssertFalse(WorkflowDefinition.hasJSONWorkflow(projectPath: projectPath))
     }
+
+    // MARK: - Encode round-trip
+
+    /// Encodes `def` and decodes the bytes back, so a passing assertion proves the encode path
+    /// is lossless against the existing decode path.
+    private func roundTrip(_ def: WorkflowDefinition) throws -> WorkflowDefinition {
+        try JSONDecoder().decode(WorkflowDefinition.self, from: def.encoded())
+    }
+
+    func testEncodeRoundTripSingleTerminalAction() throws {
+        let def = WorkflowDefinition(version: 1, start: "only", actions: [
+            "only": .init(name: "Only", instructions: "One and done.")
+        ])
+        XCTAssertEqual(try roundTrip(def), def)
+    }
+
+    func testEncodeRoundTripTwoActionChain() throws {
+        let def = WorkflowDefinition(version: 1, start: "implement", actions: [
+            "implement": .init(name: "Implement", instructions: "Do it.", routes: ["success": "test"]),
+            "test": .init(name: "Test", instructions: "Run tests.")
+        ])
+        XCTAssertEqual(try roundTrip(def), def)
+    }
+
+    func testEncodeRoundTripThreeActionChain() throws {
+        // The canonical implement → test → review (terminal) graph round-trips exactly.
+        let def = try decode(Self.validGraphJSON)
+        XCTAssertEqual(try roundTrip(def), def)
+    }
+
+    func testEncodeRoundTripPreservesAgentAndHooks() throws {
+        let def = WorkflowDefinition(
+            version: 1,
+            start: "only",
+            agent: .init(command: "codex", timeoutMs: 1234),
+            hooks: .init(afterCreate: "echo created", beforeRun: "echo running"),
+            actions: ["only": .init(name: "Only", instructions: "Go.")]
+        )
+        let back = try roundTrip(def)
+        XCTAssertEqual(back, def)
+        XCTAssertEqual(back.agent.command, "codex")
+        XCTAssertEqual(back.agent.timeoutMs, 1234)
+        XCTAssertEqual(back.hooks?.afterCreate, "echo created")
+        XCTAssertEqual(back.hooks?.beforeRun, "echo running")
+    }
+
+    func testEncodeEmitsSnakeCaseKeys() throws {
+        let def = WorkflowDefinition(
+            version: 1,
+            start: "test",
+            agent: .init(command: "claude", timeoutMs: 1234),
+            hooks: .init(afterCreate: "echo created", beforeRun: "echo running"),
+            actions: [
+                "test": .init(
+                    name: "Test", instructions: "Run tests.",
+                    routes: ["success": "fix"], maxAttempts: 3, onMaxAttempts: "fix"
+                ),
+                "fix": .init(name: "Fix", instructions: "Patch it.", routes: ["success": "test"])
+            ]
+        )
+        let json = try XCTUnwrap(String(bytes: def.encoded(), encoding: .utf8))
+        XCTAssertTrue(json.contains("timeout_ms"), "agent timeout uses snake_case")
+        XCTAssertTrue(json.contains("after_create"), "hooks use snake_case")
+        XCTAssertTrue(json.contains("before_run"), "hooks use snake_case")
+        XCTAssertTrue(json.contains("max_attempts"), "loop-guard keys use snake_case")
+        XCTAssertTrue(json.contains("on_max_attempts"), "loop-guard keys use snake_case")
+    }
+
+    func testEncodeOmitsRoutesKeyForTerminalAction() throws {
+        // A terminal action must not serialize a `routes` key, so it round-trips back to terminal.
+        let def = WorkflowDefinition(version: 1, start: "only", actions: [
+            "only": .init(name: "Only", instructions: "One and done.")
+        ])
+        let json = try XCTUnwrap(String(bytes: def.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("routes"), "terminal action omits the routes key")
+
+        let back = try roundTrip(def)
+        XCTAssertTrue(back.isTerminal("only"))
+    }
+
+    func testEncodeOmitsAgentWhenDefault() throws {
+        // A default agent is omitted (decode re-applies the same default), keeping new files minimal.
+        let def = WorkflowDefinition(version: 1, start: "only", actions: [
+            "only": .init(name: "Only", instructions: "Go.")
+        ])
+        let json = try XCTUnwrap(String(bytes: def.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("\"agent\""), "default agent is omitted from the encoded file")
+        XCTAssertEqual(try roundTrip(def), def)
+    }
 }
