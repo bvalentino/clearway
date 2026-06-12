@@ -4,6 +4,7 @@ import SwiftUI
 struct SendToTerminalButton: View {
     var action: () -> Void
     var disabled: Bool = false
+    var help: String = "Send to Terminal"
 
     var body: some View {
         Button { action() } label: {
@@ -14,7 +15,7 @@ struct SendToTerminalButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Send to Terminal")
+        .help(help)
         .disabled(disabled)
         .padding(.trailing, -10)
         .pointerCursorOnHover()

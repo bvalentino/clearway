@@ -211,9 +211,10 @@ struct WorkflowConfig: Equatable {
         if let attempt {
             vars["attempt"] = String(attempt)
         }
-        // Status raw values so hooks can update task files
-        for status in WorkTask.Status.allCases {
-            vars["status.\(status.rawValue)"] = status.rawValue
+        // Status slugs so hooks can update task files. The legacy WORKFLOW.md path uses the
+        // fixed set of states; the new WORKFLOW.json engine doesn't enumerate states.
+        for status in WorkTask.ReservedStatus.legacyOrdered {
+            vars["status.\(status)"] = status
         }
         return vars
     }
@@ -226,26 +227,26 @@ struct WorkflowConfig: Equatable {
         return renderTemplate(command, variables: escaped)
     }
 
-    func stateCommand(for status: WorkTask.Status) -> String? {
+    func stateCommand(for status: String) -> String? {
         switch status {
-        case .inProgress: return stateCommandInProgress
-        case .qa: return stateCommandQa
-        case .readyForReview: return stateCommandReadyForReview
-        case .done: return stateCommandDone
-        case .canceled: return stateCommandCanceled
-        case .new, .readyToStart: return nil
+        case WorkTask.ReservedStatus.inProgress: return stateCommandInProgress
+        case WorkTask.ReservedStatus.qa: return stateCommandQa
+        case WorkTask.ReservedStatus.readyForReview: return stateCommandReadyForReview
+        case WorkTask.ReservedStatus.done: return stateCommandDone
+        case WorkTask.ReservedStatus.canceled: return stateCommandCanceled
+        default: return nil
         }
     }
 
     /// Whether the play button should appear for this status. In-progress falls back
     /// to the WORKFLOW.md body when no explicit frontmatter command is defined.
-    func hasStateCommand(for status: WorkTask.Status) -> Bool {
+    func hasStateCommand(for status: String) -> Bool {
         if stateCommand(for: status) != nil { return true }
-        if status == .inProgress, !promptTemplate.isEmpty { return true }
+        if status == WorkTask.ReservedStatus.inProgress, !promptTemplate.isEmpty { return true }
         return false
     }
 
-    func renderStateCommand(for status: WorkTask.Status, task: WorkTask, taskPath: String?) -> String? {
+    func renderStateCommand(for status: String, task: WorkTask, taskPath: String?) -> String? {
         // State commands are pasted into whatever the active terminal is running
         // — usually an agent like Claude, not a shell — so values are interpolated
         // as-is without shell escaping. Callers that need shell-safe quoting should
@@ -254,7 +255,7 @@ struct WorkflowConfig: Equatable {
         if let cmd = stateCommand(for: status) {
             return renderTemplate(cmd, variables: variables)
         }
-        if status == .inProgress, !promptTemplate.isEmpty {
+        if status == WorkTask.ReservedStatus.inProgress, !promptTemplate.isEmpty {
             return renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
         }
         return nil

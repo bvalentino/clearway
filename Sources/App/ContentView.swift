@@ -155,7 +155,12 @@ struct ContentView: View {
             HookTerminalSheet(hook: hook)
         }
         .toolbar {
-            if selectedWorktree != nil {
+            if let worktree = selectedWorktree {
+                ToolbarItem(placement: .primaryAction) {
+                    // Self-gates on the project having a valid WORKFLOW.json; renders nothing for
+                    // legacy projects, so their toolbar is unchanged.
+                    AutopilotButton(worktree: worktree)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showRemoveConfirmation = true
@@ -279,6 +284,15 @@ struct ContentView: View {
 
             detailSelection = .worktree(wt)
 
+            // The launch step runs AFTER any after_create hook, so worktree setup (deps, codegen, …)
+            // finishes before the agent starts. Legacy projects fire `pending` (the WORKFLOW.md
+            // launch); JSON projects seed `status = start` — the engine's ONLY write to `status` —
+            // and the loop engine launches the agent. Only one is active per project; the other no-ops.
+            let launch = {
+                pending?()
+                workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
+            }
+
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
             let afterCreateCmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd)
@@ -291,11 +305,11 @@ struct ContentView: View {
                     hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: {
                         guard !continued else { return }
                         continued = true
-                        pending?()
+                        launch()
                     }, allowContinueOnFailure: true)
                 ))
             } else {
-                pending?()
+                launch()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
@@ -373,6 +387,10 @@ struct ContentView: View {
             // the command at runtime immediately skips the prompt screen on new tabs.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
+
+            // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
+            // can launch agent surfaces without the per-call app argument.
+            workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
@@ -583,7 +601,7 @@ struct ContentView: View {
             sidePanelTab = tab
         } else if let branch = worktree.branch,
                   let task = workTaskManager.task(forWorktree: branch),
-                  task.status == .inProgress {
+                  task.status == WorkTask.ReservedStatus.inProgress {
             sidePanelTab = .task
         } else if sidePanelTab == .task {
             sidePanelTab = .todos

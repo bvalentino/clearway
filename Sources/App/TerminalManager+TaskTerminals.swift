@@ -77,4 +77,22 @@ extension TerminalManager {
     func taskId(for surface: Ghostty.SurfaceView) -> UUID? {
         taskSurfaces.first(where: { $0.value === surface })?.key
     }
+
+    // MARK: - Agent surface teardown
+
+    /// Terminate a specific main-tab surface within a worktree by closing its tab.
+    ///
+    /// Used by the workflow engine's **manual kill** to stop a running agent: it locates the main
+    /// tab whose surface is `surface` and routes through the existing `closeMainTab` teardown
+    /// (which fires `onMainTabClosed` and SIGHUPs the surface via `closeSurface()`), so the kill
+    /// reuses the same ordering guarantees as a user-initiated tab close rather than a raw free.
+    /// No-op when the surface isn't a live main tab in the worktree (already gone).
+    @discardableResult
+    func terminateSurface(_ surface: Ghostty.SurfaceView, in worktreeId: String) -> Bool {
+        guard let tab = mainTabs(for: worktreeId).first(where: { $0.surface === surface }) else {
+            return false
+        }
+        closeMainTab(id: tab.id, in: worktreeId)
+        return true
+    }
 }

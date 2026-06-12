@@ -1,0 +1,137 @@
+import Foundation
+
+/// The agent-driven loop engine for `WORKFLOW.json` projects.
+///
+/// The heart of the feature is `decideTransition` — a **pure, side-effect-free** function that,
+/// given the action currently running (`P`), the `status` value just written to `TASK.md` (`S`),
+/// and the parsed `WorkflowDefinition`, decides what the engine should do next. Keeping it pure
+/// means the routing/validation contract is unit-testable without file watchers or Ghostty; the
+/// stateful launch plumbing lives in `WorkTaskCoordinator` and feeds its inputs through here.
+enum WorkflowLoopEngine {
+
+    /// The decision a `TASK.md` `status` change resolves to. The engine never guesses: a value it
+    /// can't legally reach from the running action `halt`s and surfaces rather than launching.
+    enum Transition: Equatable {
+        /// Launch the action `slug`. `nextValue` is the single legal next `status` value to inject
+        /// into the agent's prompt (the advance contract), or `nil` when `slug` is terminal — a
+        /// terminal action runs once and no advance is injected.
+        case launch(slug: String, nextValue: String?)
+
+        /// Nothing to do: the written status equals the running action (a mid-step body edit) or is
+        /// a backlog marker that isn't the engine's concern.
+        case ignore
+
+        /// The written status can't be reached from the running action (an illegal route while a
+        /// step is running, or an unknown slug). The caller surfaces `reason` and stops the loop.
+        case halt(reason: String)
+    }
+
+    /// Decides the engine's response to a `status` value written to `TASK.md`.
+    ///
+    /// - Parameters:
+    ///   - running: The action currently running in the worktree (`P`), or `nil` before the first
+    ///     launch (right after the `start` seed, or after a halt/restart with nothing running).
+    ///   - written: The `status` value just read from `TASK.md` (`S`).
+    ///   - autopilot: Whether the worktree's loop is live. `false` = paused: a step that resolves to
+    ///     a launch is suppressed (`.ignore`) — the running agent finishes, but the engine never
+    ///     advances. Halts and no-op ignores are unaffected (a paused loop still surfaces an illegal
+    ///     write). `nil` is treated as on (a JSON-workflow worktree seeds `true`; this guards the
+    ///     theoretical case of a missing flag rather than silently pausing). This is the single
+    ///     source of truth for the pause gate — the coordinator never re-decides it.
+    ///   - definition: The project's parsed, validated `WorkflowDefinition`.
+    /// - Returns: The `Transition` the caller should act on. Pure — no I/O, no mutation.
+    static func decideTransition(
+        running: String?,
+        written: String,
+        autopilot: Bool?,
+        definition: WorkflowDefinition
+    ) -> Transition {
+        let decision = routeTransition(running: running, written: written, definition: definition)
+        // Pause gate: a paused worktree (`autopilot == false`) never launches. A `.launch` is
+        // demoted to `.ignore` — the running step finishes, nothing new starts. `.ignore`/`.halt`
+        // pass through so a paused loop still no-ops on its own status and still surfaces an
+        // illegal write. `nil`/`true` autopilot launches normally.
+        if autopilot == false, case .launch = decision {
+            return .ignore
+        }
+        return decision
+    }
+
+    /// The autopilot-independent routing/validation decision. Pure — separated from the pause gate
+    /// so `decideTransition` can layer autopilot on top while this stays the one place that knows
+    /// the graph rules (S == P, backlog markers, unknown slug, idle-launches-any-action, and route
+    /// validation only while a step is running).
+    private static func routeTransition(
+        running: String?,
+        written: String,
+        definition: WorkflowDefinition
+    ) -> Transition {
+        // 1. S == P: the running action re-wrote its own status (or a mid-step body edit
+        //    re-triggered the watcher). Nothing advances.
+        if let running, written == running {
+            return .ignore
+        }
+
+        // 2. Backlog markers are pre-worktree and never the engine's concern.
+        if written == WorkTask.ReservedStatus.new || written == WorkTask.ReservedStatus.readyToStart {
+            return .ignore
+        }
+
+        // 3. S must resolve to a real action. A value matching no action is a typo/hallucination —
+        //    halt rather than guess.
+        guard definition.actions[written] != nil else {
+            return .halt(reason: "Unknown action '\(written)' is not defined in WORKFLOW.json.")
+        }
+
+        // 4. Nothing running: there's no active step to validate an advance against, so launch
+        //    whatever real action `written` names (step 3 already proved it resolves; step 2 peeled
+        //    off backlog markers). This covers the seed's `start`, a resume, and a **manual status
+        //    pick** — none is a hallucinated advance to guard against. Route validation (step 5)
+        //    applies only while a step is actively running, which is the case that matters.
+        guard let running else {
+            return launchTransition(for: written, definition: definition)
+        }
+
+        // 5. Advancing from a running action: S must be a legal route out of P.
+        if definition.legalNext(from: running).contains(written) {
+            return launchTransition(for: written, definition: definition)
+        }
+
+        return .halt(reason: "Status '\(written)' is not a legal next step from '\(running)'.")
+    }
+
+    /// Builds the `.launch` transition for `slug`, computing the single legal next value to inject
+    /// (or `nil` when terminal).
+    private static func launchTransition(for slug: String, definition: WorkflowDefinition) -> Transition {
+        .launch(slug: slug, nextValue: legalNextValue(from: slug, definition: definition))
+    }
+
+    /// The single `status` value to inject into `slug`'s prompt as the advance contract, or `nil`
+    /// when `slug` is terminal (routeless). v1 routing is action→action, so a non-terminal action
+    /// has exactly one legal next value; if multiple are present (a future branch) the deterministic
+    /// (sorted-first) one is taken so the contract stays single-valued. Shared by the pure decision
+    /// and the coordinator's resume path so both inject the identical value.
+    static func legalNextValue(from slug: String, definition: WorkflowDefinition) -> String? {
+        if definition.isTerminal(slug) { return nil }
+        return definition.legalNext(from: slug).first   // legalNext is already sorted (deterministic)
+    }
+
+    // MARK: - Prompt injection
+
+    /// Builds the agent prompt for an action launch: the action's `instructions` followed by the
+    /// **injection contract** when a next value exists. A terminal action (`nextValue == nil`) gets
+    /// no advance contract — it runs once and the loop ends.
+    ///
+    /// The contract tells the agent exactly which `status` value to write, and to write it last so
+    /// Clearway sees it only after the work is done. Routing authority stays in `WORKFLOW.json`: the
+    /// agent can only write the value Clearway handed it, validated by `decideTransition` before
+    /// the next launch.
+    static func buildPrompt(instructions: String, nextValue: String?) -> String {
+        guard let nextValue else { return instructions }
+        let contract = """
+        [Clearway] When finished, set `status:` in .clearway/TASK.md to: \(nextValue)
+        Write it last.
+        """
+        return "\(instructions)\n\n\(contract)"
+    }
+}

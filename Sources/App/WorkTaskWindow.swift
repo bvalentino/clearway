@@ -311,21 +311,21 @@ struct WorkTaskWindow: View {
     private var primaryActionButton: some View {
         if let task {
             switch task.status {
-            case .new:
+            case WorkTask.ReservedStatus.new:
                 Menu("Start Now") {
                     Button("Ready to Start") {
                         saveNow()
-                        workTaskManager.setStatus(task, to: .readyToStart)
+                        workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.readyToStart)
                     }
                 } primaryAction: {
                     saveAndPost(WorkTaskNotification.start)
                 }
                 .applyPrimaryActionStyle()
-            case .readyToStart:
+            case WorkTask.ReservedStatus.readyToStart:
                 Menu("Ready to Start") {
                     Button("Cancel Ready to Start") {
                         saveNow()
-                        workTaskManager.setStatus(task, to: .new)
+                        workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.new)
                     }
                 } primaryAction: {
                     saveAndPost(WorkTaskNotification.start)

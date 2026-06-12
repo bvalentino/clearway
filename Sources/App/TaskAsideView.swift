@@ -53,24 +53,17 @@ struct TaskAsideView: View {
                     Spacer()
                     Picker(selection: Binding(
                         get: { task.status },
-                        set: { workTaskManager.setStatus(task, to: $0) }
+                        set: { workTaskCoordinator.setWorkflowStatus(task, to: $0) }
                     )) {
                         ForEach(allowedStatuses(for: task), id: \.self) { status in
-                            Text(status.label).tag(status)
+                            Text(WorkTask.displayLabel(for: status)).tag(status)
                         }
                     } label: {
                         EmptyView()
                     }
                     .pickerStyle(.menu)
                     .fixedSize()
-                    let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
-                    let hasWorktree = workTaskCoordinator.worktreeForTask(task) != nil
-                    if hasStateCommand && hasWorktree {
-                        SendToTerminalButton(
-                            action: { sendStateCommandToTerminal(task) },
-                            disabled: terminalManager.activeSurfaceId == nil
-                        )
-                    }
+                    statusPlayButton(for: task)
                 }
 
                 // Agent metadata (show for tasks that have been worked on; never for placeholders)
@@ -79,6 +72,33 @@ struct TaskAsideView: View {
                 }
             }
             .padding(16)
+        }
+    }
+
+    /// The small play button beside the Status picker. For a JSON-workflow project it **runs the
+    /// current action by sending its prompt to the main terminal** (`playWorkflowAction`) — pasting
+    /// into the live terminal, or opening one if none. **Always enabled** (the action's prompt comes
+    /// from `WORKFLOW.json`, not the task, so there's always something to run); shown when the status
+    /// sits on a real action. For a legacy project it keeps the WORKFLOW.md state-command behavior
+    /// (`SendToTerminalButton` → active terminal), gated on `hasStateCommand`.
+    @ViewBuilder
+    private func statusPlayButton(for task: WorkTask) -> some View {
+        if workTaskCoordinator.isWorkflowJSONProject {
+            let isAction = workTaskCoordinator.workflowActionSlugs()?.contains(task.status) == true
+            if workTaskCoordinator.worktreeForTask(task) != nil, isAction {
+                SendToTerminalButton(
+                    action: { workTaskCoordinator.playWorkflowAction(forBranch: worktreeBranch) },
+                    help: "Run \(WorkTask.displayLabel(for: task.status)) in the terminal"
+                )
+            }
+        } else {
+            let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
+            if hasStateCommand, workTaskCoordinator.worktreeForTask(task) != nil {
+                SendToTerminalButton(
+                    action: { sendStateCommandToTerminal(task) },
+                    disabled: terminalManager.activeSurfaceId == nil
+                )
+            }
         }
     }
 
@@ -148,9 +168,21 @@ struct TaskAsideView: View {
         terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
-    /// `.new` and `.readyToStart` are reserved for Planning (pre-worktree). Once a worktree
-    /// exists, its task starts at `.inProgress` and can only move forward through these states.
-    private func allowedStatuses(for task: WorkTask) -> [WorkTask.Status] {
-        [.inProgress, .qa, .readyForReview, .done, .canceled]
+    /// The statuses the picker offers. A JSON-workflow project lists its `WORKFLOW.json` actions (in
+    /// flow order); the current status is always included so it stays selectable even if it's off-graph
+    /// (e.g. a halted/unknown value). A legacy `WORKFLOW.md` project keeps the fixed forward states:
+    /// `new`/`ready_to_start` are reserved for Planning (pre-worktree); once a worktree exists its task
+    /// starts at `in_progress` and moves forward through these.
+    private func allowedStatuses(for task: WorkTask) -> [String] {
+        if let actions = workTaskCoordinator.workflowActionSlugs() {
+            return actions.contains(task.status) ? actions : [task.status] + actions
+        }
+        return [
+            WorkTask.ReservedStatus.inProgress,
+            WorkTask.ReservedStatus.qa,
+            WorkTask.ReservedStatus.readyForReview,
+            WorkTask.ReservedStatus.done,
+            WorkTask.ReservedStatus.canceled,
+        ]
     }
 }
