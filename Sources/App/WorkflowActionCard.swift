@@ -19,6 +19,7 @@ struct WorkflowActionCard: View {
                 .foregroundStyle(.tertiary)
                 .padding(.top, 4)
                 .accessibilityLabel("Reorder action")
+                .help("Drag to reorder")
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Action name", text: $action.name)
@@ -45,11 +46,15 @@ struct WorkflowActionCard: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .padding(4)
+                    // Enlarge the pointer target toward the HIG 44×44pt button minimum (macOS
+                    // pointer precision lets a card affordance sit below the full touch size).
+                    .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Remove action")
+            // macOS surfaces a hover tooltip for icon-only buttons; spell out the unlabeled glyph.
+            .help("Remove action")
         }
         .padding(14)
         .background(.thickMaterial)

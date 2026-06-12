@@ -109,7 +109,9 @@ struct WorkflowEditorView: View {
                     .foregroundStyle(.orange)
                     .padding(.top, 4)
             }
+            // The single most-likely action on an empty screen → prominent (accent) style.
             addActionButton
+                .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .padding(.top, 6)
             Spacer()
