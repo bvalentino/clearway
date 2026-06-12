@@ -123,7 +123,13 @@ struct WorkflowEditorModel: Equatable {
     /// (no routes). `agent`/`hooks`/`version` are re-emitted from `base` (the last-loaded
     /// definition) so fields the editor never surfaces survive every write verbatim; a `nil` base
     /// (the empty-state first write) uses v1 defaults and omits `agent`/`hooks`.
+    ///
+    /// Per-action fields the editor doesn't surface (`maxAttempts` / `onMaxAttempts` — reserved in
+    /// v1) are likewise carried forward from `base` by matching frozen slug, so a hand-authored
+    /// loop guard isn't silently dropped on the first editor save. The editor owns only `name`,
+    /// `instructions`, and `routes`.
     func toDefinition(preserving base: WorkflowDefinition?) -> WorkflowDefinition {
+        let liveSlugs = Set(actions.map { $0.slug })
         var map: [String: WorkflowDefinition.Action] = [:]
         for (index, action) in actions.enumerated() {
             let routes: [String: String]
@@ -132,10 +138,16 @@ struct WorkflowEditorModel: Equatable {
             } else {
                 routes = [:]
             }
+            let preserved = base?.actions[action.slug]
+            // Drop a carried-forward escape pointer whose target the editor removed — keeping it
+            // would dangle and fail validate(); the editor's "every write is valid" guarantee wins.
+            let escape = preserved?.onMaxAttempts.flatMap { liveSlugs.contains($0) ? $0 : nil }
             map[action.slug] = WorkflowDefinition.Action(
                 name: action.name,
                 instructions: action.instructions,
-                routes: routes
+                routes: routes,
+                maxAttempts: preserved?.maxAttempts,
+                onMaxAttempts: escape
             )
         }
         return WorkflowDefinition(

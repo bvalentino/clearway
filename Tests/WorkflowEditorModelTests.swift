@@ -214,6 +214,41 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertNotNil(definition.actions["brand_new"])
     }
 
+    func testToDefinitionPreservesPerActionReservedFields() {
+        // A hand-authored loop guard (max_attempts / on_max_attempts) on an existing action must
+        // survive the editor's rebuild — the editor owns only name/instructions/routes.
+        let base = WorkflowDefinition(version: 1, start: "test", actions: [
+            "test": .init(
+                name: "Test", instructions: "Run tests.",
+                routes: ["success": "fix"], maxAttempts: 3, onMaxAttempts: "fix"
+            ),
+            "fix": .init(name: "Fix", instructions: "Patch it.", routes: ["success": "test"])
+        ])
+        let model = WorkflowEditorModel(from: base)
+        let definition = assertValid(model, preserving: base)
+        XCTAssertEqual(definition.actions["test"]?.maxAttempts, 3, "max_attempts is carried forward")
+        XCTAssertEqual(definition.actions["test"]?.onMaxAttempts, "fix", "on_max_attempts is carried forward")
+    }
+
+    func testToDefinitionDropsDanglingEscapePointerWhenTargetRemoved() {
+        // If the editor removes the action an on_max_attempts pointed at, the stale pointer is
+        // dropped rather than carried forward as a dangling reference that would fail validate().
+        let base = WorkflowDefinition(version: 1, start: "test", actions: [
+            "test": .init(
+                name: "Test", instructions: "Run.",
+                routes: ["success": "fix"], maxAttempts: 2, onMaxAttempts: "fix"
+            ),
+            "fix": .init(name: "Fix", instructions: "Patch.")
+        ])
+        var model = WorkflowEditorModel(from: base)
+        // Remove "fix" (the escape target). Its index is 1 in flow order.
+        model.remove(at: 1)
+
+        let definition = assertValid(model, preserving: base)
+        XCTAssertEqual(definition.actions["test"]?.maxAttempts, 2, "max_attempts still preserved")
+        XCTAssertNil(definition.actions["test"]?.onMaxAttempts, "dangling escape pointer is dropped")
+    }
+
     // MARK: - every-mutation-valid sweep
 
     func testEveryMutationStaysValid() {
