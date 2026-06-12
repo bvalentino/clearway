@@ -12,6 +12,9 @@ struct WorkflowActionCard: View {
     var focus: FocusState<String?>.Binding
     let onRemove: () -> Void
 
+    /// Drives the destructive (system-red) tint on the remove control while the pointer is over it.
+    @State private var isRemoveHovered = false
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "line.3.horizontal")
@@ -42,16 +45,20 @@ struct WorkflowActionCard: View {
                     .accessibilityLabel("Action instructions")
             }
 
-            Button(action: onRemove) {
+            // Destructive role: removing an action discards its instructions (data loss). HIG calls
+            // for a system-red appearance, surfaced on hover so the cue is clear without painting a
+            // persistent red glyph on every card.
+            Button(role: .destructive, action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isRemoveHovered ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                     // Enlarge the pointer target toward the HIG 44×44pt button minimum (macOS
                     // pointer precision lets a card affordance sit below the full touch size).
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { isRemoveHovered = $0 }
             .accessibilityLabel("Remove action")
             // macOS surfaces a hover tooltip for icon-only buttons; spell out the unlabeled glyph.
             .help("Remove action")
