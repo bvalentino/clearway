@@ -87,6 +87,7 @@
 		BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */; };
 		BFE1B15A576FC8B6B2C8424D /* PromptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */; };
 		C120017209D6A467A66102D5 /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7862270D9FA477C155E4EB09 /* Ghostty.Config.swift */; };
+		C44CD574B2902F0BCAFA9130 /* WorkflowActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F712DCC4FCEACD15C3E0E776 /* WorkflowActionCard.swift */; };
 		C588CA3DA4FDF7BA31F26057 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3B22C73F9FBE52FAFCEFDC /* Note.swift */; };
 		C5BEC93B9ABDAD4794884644 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AF79A9AC43E45BCC60D2C8C /* Ghostty.App.swift */; };
 		CAACE972B2B4C53CAEF632F3 /* PromptsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00CC5D8B585782655D8A81A /* PromptsView.swift */; };
@@ -216,6 +217,7 @@
 		EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTerminalTabStrip.swift; sourceTree = "<group>"; };
 		EF5D6B020A6E238AE1AE099E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F6AC6A1436F22549F83FB805 /* TerminalTabKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabKindTests.swift; sourceTree = "<group>"; };
+		F712DCC4FCEACD15C3E0E776 /* WorkflowActionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowActionCard.swift; sourceTree = "<group>"; };
 		F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinator.swift; sourceTree = "<group>"; };
 		F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyShellTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -328,6 +330,7 @@
 				6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */,
 				62E65C09069869291224DF1D /* TodosPanelView.swift */,
 				9EC9411B19B7913605A851B1 /* TodosView.swift */,
+				F712DCC4FCEACD15C3E0E776 /* WorkflowActionCard.swift */,
 				DE8B00CA361A6115A796C1D2 /* WorkflowConfig.swift */,
 				BF0D1CD2D79BEEEAAEFF6827 /* WorkflowDefinition.swift */,
 				C9505471B12BA23B7E6D1CE1 /* WorkflowEditorModel.swift */,
@@ -702,6 +705,7 @@
 				4F05B35AB55CF4803117305E /* WorkTaskListView.swift in Sources */,
 				E3FFB76D4901447D99D5DBDE /* WorkTaskManager.swift in Sources */,
 				E772C9D9941AAB1C3AC399DF /* WorkTaskWindow.swift in Sources */,
+				C44CD574B2902F0BCAFA9130 /* WorkflowActionCard.swift in Sources */,
 				B84FF825DE026FE70233715E /* WorkflowConfig.swift in Sources */,
 				E8EAF268017850EBA6E1A550 /* WorkflowDefinition.swift in Sources */,
 				4BDA97011EE03D1DA52B3ADD /* WorkflowEditorModel.swift in Sources */,
