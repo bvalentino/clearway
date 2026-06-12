@@ -1,19 +1,19 @@
 import SwiftUI
 
 /// A single action card in the Workflow editor: a drag-affordance glyph, an inline-editable name,
-/// an inline multi-line instructions editor, and a remove button.
+/// and an inline multi-line instructions editor.
 ///
-/// Binds to one `EditorAction` (so name/instructions edits flow straight into the editor model);
-/// removal is surfaced via a callback the parent wires to `WorkflowEditorModel.remove`. The card
-/// never sees the action's slug, routes, or position — order and linking are the model's job.
+/// Binds to one `EditorAction` (so name/instructions edits flow straight into the editor model).
+/// The card never sees the action's slug, routes, or position — order and linking are the model's
+/// job. Removal isn't a card concern either: it's driven by the parent's selection + `−` control
+/// (the macOS-native add/remove idiom), so the card only renders its selected state.
 struct WorkflowActionCard: View {
     @Binding var action: WorkflowEditorModel.EditorAction
     /// Slug-keyed focus shared with the parent, so a freshly-added card can create-focus its name.
     var focus: FocusState<String?>.Binding
-    let onRemove: () -> Void
-
-    /// Drives the destructive (system-red) tint on the remove control while the pointer is over it.
-    @State private var isRemoveHovered = false
+    /// Whether this card is the list's current selection — drawn as an accent ring so the `−`
+    /// control's target is unambiguous on these large cards.
+    let isSelected: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -44,27 +44,13 @@ struct WorkflowActionCard: View {
                     )
                     .accessibilityLabel("Action instructions")
             }
-
-            // Destructive role: removing an action discards its instructions (data loss). HIG calls
-            // for a system-red appearance, surfaced on hover so the cue is clear without painting a
-            // persistent red glyph on every card.
-            Button(role: .destructive, action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isRemoveHovered ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                    // Enlarge the pointer target toward the HIG 44×44pt button minimum (macOS
-                    // pointer precision lets a card affordance sit below the full touch size).
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { isRemoveHovered = $0 }
-            .accessibilityLabel("Remove action")
-            // macOS surfaces a hover tooltip for icon-only buttons; spell out the unlabeled glyph.
-            .help("Remove action")
         }
         .padding(14)
         .background(.thickMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2)
+        )
     }
 }

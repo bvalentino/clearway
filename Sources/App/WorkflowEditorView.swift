@@ -44,6 +44,10 @@ struct WorkflowEditorView: View {
     /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
 
+    /// Selected card's slug, driving the macOS-native `−` control (which removes the selection) and
+    /// the card's selection ring. `nil` = nothing selected, so `−` is disabled.
+    @State private var selectedSlug: String?
+
     /// Readable content-column width; long instructions stay legible. Shared by the header and the
     /// card list so they line up.
     private let contentMaxWidth: CGFloat = 680
@@ -61,10 +65,11 @@ struct WorkflowEditorView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if model.actions.isEmpty {
-                emptyState
+                emptyPlaceholder
             } else {
                 editorList
             }
+            controlStrip
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear(perform: load)
@@ -82,6 +87,12 @@ struct WorkflowEditorView: View {
             reconcile(with: newValue)
         }
         .onChange(of: projectPath) { _ in load() }
+        .onChange(of: focusedSlug) { newFocus in
+            // Editing a card selects it, so `−` targets the card you're working in. Clicking into a
+            // text field focuses it without tripping List row selection, so without this the `−`
+            // could stay disabled while the user is clearly engaged with a card.
+            if let newFocus { selectedSlug = newFocus }
+        }
         // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
         // this for uncommon, irreversible destructive actions). A destructive-styled button plus the
         // default Cancel; presenting the slug keeps the bound action stable across the dialog.
@@ -114,14 +125,16 @@ struct WorkflowEditorView: View {
 
     // MARK: - Empty state
 
-    private var emptyState: some View {
+    private var emptyPlaceholder: some View {
         VStack(spacing: 10) {
             Spacer()
             Text("No actions yet.")
                 .font(.title3.weight(.medium))
-            Text("Actions are the steps the agent runs for each task.")
+            Text("Add an action with the + button below. Actions are the steps the agent runs for "
+                 + "each task.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             if hasUnreadableFile {
                 Label("An existing WORKFLOW.json couldn’t be read. Adding an action replaces it.",
                       systemImage: "exclamationmark.triangle.fill")
@@ -129,11 +142,6 @@ struct WorkflowEditorView: View {
                     .foregroundStyle(.orange)
                     .padding(.top, 4)
             }
-            // The single most-likely action on an empty screen → prominent (accent) style.
-            addActionButton
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.top, 6)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -143,22 +151,18 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        List {
+        List(selection: $selectedSlug) {
             ForEach($model.actions) { $action in
                 WorkflowActionCard(
                     action: $action,
                     focus: $focusedSlug,
-                    onRemove: { requestRemove(slug: action.slug) }
+                    isSelected: selectedSlug == action.slug
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
             }
             .onMove(perform: move)
-
-            addActionRow
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -166,21 +170,37 @@ struct WorkflowEditorView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var addActionRow: some View {
-        HStack {
-            Spacer()
-            addActionButton
-                .buttonStyle(.borderless)
-            Spacer()
-        }
-        .padding(.vertical, 10)
-    }
+    // MARK: - Add / remove control strip
 
-    /// The "+ Add action" control, shared by the empty state and the list footer (each applies its
-    /// own style); keeps the label, symbol, and action defined once.
-    private var addActionButton: some View {
-        Button(action: addAction) {
-            Label("Add action", systemImage: "plus")
+    /// The macOS-native add/remove affordance: symbol-only bordered buttons grouped at the
+    /// bottom-leading of the list (buttons HIG — "square buttons for view-level add/remove rows…
+    /// symbols only… beneath their associated view"). `+` appends and selects a new card; `−`
+    /// removes the selected one (disabled with no selection, routed through the same confirmation).
+    private var controlStrip: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .frame(maxWidth: contentMaxWidth)
+                .frame(maxWidth: .infinity)
+            HStack(spacing: 6) {
+                Button(action: addAction) {
+                    Image(systemName: "plus").frame(width: 18, height: 18)
+                }
+                .help("Add action")
+                .accessibilityLabel("Add action")
+
+                Button { removeSelected() } label: {
+                    Image(systemName: "minus").frame(width: 18, height: 18)
+                }
+                .disabled(selectedSlug == nil)
+                .help("Remove selected action")
+                .accessibilityLabel("Remove action")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 8)
+            .frame(maxWidth: contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -196,6 +216,11 @@ struct WorkflowEditorView: View {
         if loaded != model { isLoading = true }
         lastLoaded = definition
         model = loaded
+        // Drop a selection that no longer resolves (external edit removed the card) so `−` can't act
+        // on a vanished slug while showing no visible selection.
+        if let slug = selectedSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
+            selectedSlug = nil
+        }
         refreshUnreadableFlag()
     }
 
@@ -211,13 +236,21 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Focus the new card's name field once the row has rendered (one-shot create-focus).
+        // Select the new card so `−` targets it, and focus its name field once the row has rendered
+        // (one-shot create-focus).
+        selectedSlug = added.slug
         DispatchQueue.main.async { focusedSlug = added.slug }
     }
 
-    /// Entry point for the card's remove button. Confirms first when the action has content (its
-    /// name or instructions would be lost and removal can't be undone); a blank, just-added card has
-    /// nothing to lose, so it's removed immediately without a prompt.
+    /// The `−` control: removes the selected action (no-op when nothing is selected).
+    private func removeSelected() {
+        guard let slug = selectedSlug else { return }
+        requestRemove(slug: slug)
+    }
+
+    /// Confirms first when the action has content (its name or instructions would be lost and
+    /// removal can't be undone); a blank, just-added card has nothing to lose, so it's removed
+    /// immediately without a prompt.
     private func requestRemove(slug: String) {
         guard let action = model.actions.first(where: { $0.slug == slug }) else { return }
         let isBlank = action.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -237,6 +270,7 @@ struct WorkflowEditorView: View {
         // first, then defer the structural mutation one runloop tick (re-finding the index by slug,
         // since the array may have changed) to let the in-flight view update finish.
         if focusedSlug == slug { focusedSlug = nil }
+        if selectedSlug == slug { selectedSlug = nil }
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
             model.remove(at: index)
