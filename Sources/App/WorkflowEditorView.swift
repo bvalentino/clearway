@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The **Workflow** section's detail pane: authors a project's `.clearway/WORKFLOW.json` as a
 /// vertical stack of reorderable action cards (or an empty-state prompt when there's no file).
@@ -47,6 +48,10 @@ struct WorkflowEditorView: View {
     /// Slugs whose instructions editor is expanded. Empty = every card collapsed to a name-only row
     /// (the decluttered overview); a freshly-added card is expanded so its prompt is ready to type.
     @State private var expandedSlugs: Set<String> = []
+
+    /// Slug of the card currently being dragged for reorder, tracked so the drop targets know what's
+    /// moving. `nil` when no reorder drag is in flight.
+    @State private var draggingSlug: String?
 
     /// Readable content-column width; long instructions stay legible. Shared by the header and the
     /// card list so they line up.
@@ -152,32 +157,33 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        List {
-            ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
-                WorkflowActionCard(
-                    action: $model.actions[index],
-                    focus: $focusedSlug,
-                    stepNumber: index + 1,
-                    isExpanded: expandedSlugs.contains(action.slug),
-                    onToggleExpanded: { toggleExpanded(action.slug) }
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-                .contextMenu {
-                    Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+        ScrollView {
+            VStack(spacing: 10) {
+                ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
+                    WorkflowActionCard(
+                        action: $model.actions[index],
+                        focus: $focusedSlug,
+                        stepNumber: index + 1,
+                        isExpanded: expandedSlugs.contains(action.slug),
+                        onToggleExpanded: { toggleExpanded(action.slug) },
+                        dragProvider: { beginDrag(action.slug) }
+                    )
+                    .onDrop(of: [.text], delegate: ActionDropDelegate(
+                        targetSlug: action.slug,
+                        draggingSlug: $draggingSlug,
+                        moveBefore: moveSlug
+                    ))
+                    .contextMenu {
+                        Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+                    }
                 }
+                addActionRow
             }
-            .onMove(perform: move)
-
-            addActionRow
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 8)
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(maxWidth: contentMaxWidth)
-        .frame(maxWidth: .infinity)
     }
 
     /// The Shortcuts-style "Add Action" affordance beneath the last card (no +/− strip, no library —
@@ -259,8 +265,21 @@ struct WorkflowEditorView: View {
         }
     }
 
-    private func move(from source: IndexSet, to destination: Int) {
-        model.move(from: source, to: destination)
+    /// Begins a reorder drag from a card's badge. The payload is the slug (carried as text); the drop
+    /// targets reorder by reading `draggingSlug`, so the item provider exists only to satisfy the API.
+    private func beginDrag(_ slug: String) -> NSItemProvider {
+        draggingSlug = slug
+        return NSItemProvider(object: slug as NSString)
+    }
+
+    /// Moves the dragged action to the dragged-over action's slot, mirroring `List.onMove` semantics
+    /// (insert after when moving down, before when moving up). Runs live as the pointer crosses cards.
+    private func moveSlug(_ from: String, _ to: String) {
+        guard let fromIndex = model.actions.firstIndex(where: { $0.slug == from }),
+              let toIndex = model.actions.firstIndex(where: { $0.slug == to }),
+              fromIndex != toIndex else { return }
+        let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
+        model.move(from: IndexSet(integer: fromIndex), to: destination)
     }
 
     // MARK: - Autosave
@@ -314,5 +333,29 @@ struct WorkflowEditorView: View {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+    }
+}
+
+// MARK: - Reorder drop delegate
+
+/// Reorders cards as a dragged badge passes over them. The move happens on `dropEntered` (live
+/// reordering), and `draggingSlug` is cleared on drop so a cancelled drag doesn't leave it stale.
+private struct ActionDropDelegate: DropDelegate {
+    let targetSlug: String
+    @Binding var draggingSlug: String?
+    let moveBefore: (String, String) -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let from = draggingSlug, from != targetSlug else { return }
+        moveBefore(from, targetSlug)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingSlug = nil
+        return true
     }
 }

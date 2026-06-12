@@ -17,6 +17,10 @@ struct WorkflowActionCard: View {
     /// Whether the instructions editor is revealed. Collapsed = name-only compact row.
     let isExpanded: Bool
     let onToggleExpanded: () -> Void
+    /// Reorder drag source, attached to the badge only. Keeping it off the card body means the
+    /// name/instructions fields sit under no drag recognizer and focus on the *first* click — a
+    /// whole-row drag (as `List.onMove` does) delays that click by ~1s while it disambiguates.
+    let dragProvider: () -> NSItemProvider
 
     /// Leading inset that aligns the expanded instructions under the name (badge width + spacing).
     private let contentInset: CGFloat = 36
@@ -25,6 +29,8 @@ struct WorkflowActionCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 stepBadge
+                    .onDrag(dragProvider)
+                    .help("Drag to reorder")
                 TextField("Action name", text: $action.name)
                     .textFieldStyle(.plain)
                     .font(.headline)
