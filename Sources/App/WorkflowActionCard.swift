@@ -14,8 +14,6 @@ struct WorkflowActionCard: View {
     var focus: FocusState<String?>.Binding
     /// 1-based position shown in the step badge; updates as cards reorder.
     let stepNumber: Int
-    /// Drawn as an accent ring so the Delete key / context menu target is unambiguous.
-    let isSelected: Bool
     /// Whether the instructions editor is revealed. Collapsed = name-only compact row.
     let isExpanded: Bool
     let onToggleExpanded: () -> Void
@@ -44,8 +42,7 @@ struct WorkflowActionCard: View {
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(isSelected ? Color.accentColor : Color(.separatorColor),
-                              lineWidth: isSelected ? 2 : 0.5)
+                .strokeBorder(Color(.separatorColor), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
     }

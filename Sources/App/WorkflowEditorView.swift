@@ -44,10 +44,6 @@ struct WorkflowEditorView: View {
     /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
 
-    /// Selected card's slug — the target of the Delete key (`onDeleteCommand`) and the selection
-    /// ring. `nil` = nothing selected.
-    @State private var selectedSlug: String?
-
     /// Slugs whose instructions editor is expanded. Empty = every card collapsed to a name-only row
     /// (the decluttered overview); a freshly-added card is expanded so its prompt is ready to type.
     @State private var expandedSlugs: Set<String> = []
@@ -92,12 +88,6 @@ struct WorkflowEditorView: View {
             reconcile(with: newValue)
         }
         .onChange(of: projectPath) { _ in load() }
-        .onChange(of: focusedSlug) { newFocus in
-            // Editing a card selects it, so `−` targets the card you're working in. Clicking into a
-            // text field focuses it without tripping List row selection, so without this the `−`
-            // could stay disabled while the user is clearly engaged with a card.
-            if let newFocus { selectedSlug = newFocus }
-        }
         // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
         // this for uncommon, irreversible destructive actions). A destructive-styled button plus the
         // default Cancel; presenting the slug keeps the bound action stable across the dialog.
@@ -162,13 +152,12 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        List(selection: $selectedSlug) {
+        List {
             ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
                 WorkflowActionCard(
                     action: $model.actions[index],
                     focus: $focusedSlug,
                     stepNumber: index + 1,
-                    isSelected: selectedSlug == action.slug,
                     isExpanded: expandedSlugs.contains(action.slug),
                     onToggleExpanded: { toggleExpanded(action.slug) }
                 )
@@ -187,9 +176,6 @@ struct WorkflowEditorView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        // Delete key / Edit ▸ Delete removes the selected card (only when the list, not a text field,
-        // holds focus — so editing instructions and deleting a step never collide).
-        .onDeleteCommand(perform: removeSelected)
         .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
@@ -217,11 +203,8 @@ struct WorkflowEditorView: View {
         if loaded != model { isLoading = true }
         lastLoaded = definition
         model = loaded
-        // Prune selection/expansion of slugs that no longer resolve (an external edit removed the
-        // card), so the Delete key can't act on a vanished slug and stale expand flags don't linger.
-        let liveSlugs = Set(loaded.actions.map { $0.slug })
-        if let slug = selectedSlug, !liveSlugs.contains(slug) { selectedSlug = nil }
-        expandedSlugs.formIntersection(liveSlugs)
+        // Prune expansion flags for slugs that no longer resolve (an external edit removed the card).
+        expandedSlugs.formIntersection(Set(loaded.actions.map { $0.slug }))
         refreshUnreadableFlag()
     }
 
@@ -237,21 +220,14 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Expand and select the new card, then focus its name field once the row has rendered
-        // (one-shot create-focus) so its prompt is ready to type.
+        // Expand the new card, then focus its name field once the row has rendered (one-shot
+        // create-focus) so its prompt is ready to type.
         expandedSlugs.insert(added.slug)
-        selectedSlug = added.slug
         DispatchQueue.main.async { focusedSlug = added.slug }
     }
 
     private func toggleExpanded(_ slug: String) {
         if expandedSlugs.contains(slug) { expandedSlugs.remove(slug) } else { expandedSlugs.insert(slug) }
-    }
-
-    /// Delete key / Edit ▸ Delete: removes the selected action (no-op when nothing is selected).
-    private func removeSelected() {
-        guard let slug = selectedSlug else { return }
-        requestRemove(slug: slug)
     }
 
     /// Confirms first when the action has content (its name or instructions would be lost and
@@ -276,7 +252,6 @@ struct WorkflowEditorView: View {
         // first, then defer the structural mutation one runloop tick (re-finding the index by slug,
         // since the array may have changed) to let the in-flight view update finish.
         if focusedSlug == slug { focusedSlug = nil }
-        if selectedSlug == slug { selectedSlug = nil }
         expandedSlugs.remove(slug)
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
