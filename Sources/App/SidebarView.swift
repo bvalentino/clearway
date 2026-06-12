@@ -72,6 +72,7 @@ struct SidebarView: View {
         List(selection: $sidebarSelection) {
             planningRow
             promptsRow
+            workflowRow
             defaultWorktreeSection
             ForEach(groupManager.groups) { group in
                 groupSection(group)
@@ -195,6 +196,11 @@ struct SidebarView: View {
     private var promptsRow: some View {
         Label("Prompts", systemImage: "text.quote")
             .tag(DetailSelection.prompts)
+    }
+
+    private var workflowRow: some View {
+        Label("Workflow", systemImage: "arrow.trianglehead.branch")
+            .tag(DetailSelection.workflow)
     }
 
     private var defaultWorktreeSection: some View {

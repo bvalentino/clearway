@@ -46,6 +46,7 @@
 		4BDA97011EE03D1DA52B3ADD /* WorkflowEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9505471B12BA23B7E6D1CE1 /* WorkflowEditorModel.swift */; };
 		4C1B01303EA21622302D3B3B /* WorktreeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42D5DF54D44C54CC6AD38D22 /* WorktreeGroup.swift */; };
 		4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D53B2248C692859A82CD26 /* GitResolverTests.swift */; };
+		4DA77E36EA8507BD933DBC73 /* WorkflowEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A348415668FA1864F0472086 /* WorkflowEditorView.swift */; };
 		4E938F1980F1BE1C0ED78829 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5D6B020A6E238AE1AE099E /* SettingsView.swift */; };
 		4F05B35AB55CF4803117305E /* WorkTaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */; };
 		580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867076303E561F4171EF4C92 /* PreviewCSS.swift */; };
@@ -174,6 +175,7 @@
 		9EC9411B19B7913605A851B1 /* TodosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosView.swift; sourceTree = "<group>"; };
 		A1A28DBBCFBC067478FD8795 /* Prompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prompt.swift; sourceTree = "<group>"; };
 		A289D16C8729AD679B9C0921 /* PromptListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptListView.swift; sourceTree = "<group>"; };
+		A348415668FA1864F0472086 /* WorkflowEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorView.swift; sourceTree = "<group>"; };
 		A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearwayApp.swift; sourceTree = "<group>"; };
 		A914B06E28671FA54FAF04B0 /* WorkflowLoopEngineHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngineHarnessTests.swift; sourceTree = "<group>"; };
 		AA925629DB815AC555414676 /* Todo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Todo.swift; sourceTree = "<group>"; };
@@ -329,6 +331,7 @@
 				DE8B00CA361A6115A796C1D2 /* WorkflowConfig.swift */,
 				BF0D1CD2D79BEEEAAEFF6827 /* WorkflowDefinition.swift */,
 				C9505471B12BA23B7E6D1CE1 /* WorkflowEditorModel.swift */,
+				A348415668FA1864F0472086 /* WorkflowEditorView.swift */,
 				D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */,
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
@@ -702,6 +705,7 @@
 				B84FF825DE026FE70233715E /* WorkflowConfig.swift in Sources */,
 				E8EAF268017850EBA6E1A550 /* WorkflowDefinition.swift in Sources */,
 				4BDA97011EE03D1DA52B3ADD /* WorkflowEditorModel.swift in Sources */,
+				4DA77E36EA8507BD933DBC73 /* WorkflowEditorView.swift in Sources */,
 				80D8530FF01D5366C39C1FCF /* WorkflowLoopEngine.swift in Sources */,
 				EBE18373B5AC1A72F2197FCF /* Worktree.swift in Sources */,
 				4C1B01303EA21622302D3B3B /* WorktreeGroup.swift in Sources */,
