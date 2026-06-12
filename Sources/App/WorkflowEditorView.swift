@@ -40,6 +40,10 @@ struct WorkflowEditorView: View {
     /// (and that adding an action replaces it).
     @State private var hasUnreadableFile = false
 
+    /// Slug of the action awaiting delete confirmation, or `nil` when no confirmation is showing.
+    /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
+    @State private var pendingRemovalSlug: String?
+
     /// Readable content-column width; long instructions stay legible. Shared by the header and the
     /// card list so they line up.
     private let contentMaxWidth: CGFloat = 680
@@ -78,6 +82,22 @@ struct WorkflowEditorView: View {
             reconcile(with: newValue)
         }
         .onChange(of: projectPath) { _ in load() }
+        // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
+        // this for uncommon, irreversible destructive actions). A destructive-styled button plus the
+        // default Cancel; presenting the slug keeps the bound action stable across the dialog.
+        .confirmationDialog(
+            "Remove this action?",
+            isPresented: Binding(
+                get: { pendingRemovalSlug != nil },
+                set: { if !$0 { pendingRemovalSlug = nil } }
+            ),
+            presenting: pendingRemovalSlug
+        ) { slug in
+            Button("Remove Action", role: .destructive) { remove(slug: slug) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Its instructions will be deleted. This can’t be undone.")
+        }
     }
 
     // MARK: - Header
@@ -128,7 +148,7 @@ struct WorkflowEditorView: View {
                 WorkflowActionCard(
                     action: $action,
                     focus: $focusedSlug,
-                    onRemove: { remove(slug: action.slug) }
+                    onRemove: { requestRemove(slug: action.slug) }
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -193,6 +213,20 @@ struct WorkflowEditorView: View {
         let added = model.add()
         // Focus the new card's name field once the row has rendered (one-shot create-focus).
         DispatchQueue.main.async { focusedSlug = added.slug }
+    }
+
+    /// Entry point for the card's remove button. Confirms first when the action has content (its
+    /// name or instructions would be lost and removal can't be undone); a blank, just-added card has
+    /// nothing to lose, so it's removed immediately without a prompt.
+    private func requestRemove(slug: String) {
+        guard let action = model.actions.first(where: { $0.slug == slug }) else { return }
+        let isBlank = action.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && action.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isBlank {
+            remove(slug: slug)
+        } else {
+            pendingRemovalSlug = slug
+        }
     }
 
     private func remove(slug: String) {
