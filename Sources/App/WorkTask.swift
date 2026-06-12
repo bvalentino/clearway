@@ -49,6 +49,11 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         static let new = "new"
         static let readyToStart = "ready_to_start"
 
+        /// The reserved backlog markers as a set. Single source of truth so the slug generator
+        /// (`WorkflowEditorModel.makeSlug`) and the validator (`WorkflowDefinition.validate`) can't
+        /// drift — a marker added here is honored by both without edits.
+        static let backlogMarkers: Set<String> = [new, readyToStart]
+
         // Legacy fixed middle/terminal states — used only by the legacy WORKFLOW.md path.
         static let inProgress = "in_progress"
         static let qa = "qa"

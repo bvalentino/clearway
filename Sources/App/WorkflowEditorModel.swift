@@ -78,7 +78,7 @@ struct WorkflowEditorModel: Equatable {
     /// dedup loop, so a name that slugifies to `new` becomes `new_2` rather than a value the engine
     /// would ignore as a pre-worktree marker (which would fail `validate()`).
     static func makeSlug(from name: String, existing: Set<String>) -> String {
-        let reserved: Set<String> = [WorkTask.ReservedStatus.new, WorkTask.ReservedStatus.readyToStart]
+        let reserved = WorkTask.ReservedStatus.backlogMarkers
         var base = slugify(name)
         if base.isEmpty { base = fallbackSlugBase }
         var candidate = base

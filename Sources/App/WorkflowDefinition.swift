@@ -68,11 +68,7 @@ struct WorkflowDefinition: Equatable, Codable {
             timeoutMs = try container.decodeIfPresent(Int.self, forKey: .timeoutMs) ?? Self.defaultTimeoutMs
         }
 
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(command, forKey: .command)
-            try container.encode(timeoutMs, forKey: .timeoutMs)
-        }
+        // `encode(to:)` is synthesized — it emits both keys exactly as a hand-written encoder would.
     }
 
     /// Optional shell hooks. Both fields are individually optional so a workflow can define
@@ -89,11 +85,8 @@ struct WorkflowDefinition: Equatable, Codable {
             case beforeRun = "before_run"
         }
 
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encodeIfPresent(afterCreate, forKey: .afterCreate)
-            try container.encodeIfPresent(beforeRun, forKey: .beforeRun)
-        }
+        // `encode(to:)` is synthesized — Swift omits nil optionals (`encodeIfPresent` semantics),
+        // matching what a hand-written encoder would produce.
     }
 
     /// A single action — a state `status` can sit on. Terminal when `routes` is empty/absent.
@@ -332,7 +325,7 @@ extension WorkflowDefinition {
         // engine, so an action keyed by one could never launch. Reject the key itself (sorted for a
         // stable first-defect report); routes/`start`/`on_max_attempts` targeting such a slug are
         // caught transitively below once the action can't exist.
-        let reservedSlugs: Set<String> = [WorkTask.ReservedStatus.new, WorkTask.ReservedStatus.readyToStart]
+        let reservedSlugs = WorkTask.ReservedStatus.backlogMarkers
         for slug in actions.keys.sorted() where reservedSlugs.contains(slug) {
             throw LoadError.reservedActionSlug(slug: slug)
         }

@@ -35,6 +35,10 @@ struct WorkflowEditorView: View {
     /// (and that adding an action replaces it).
     @State private var hasUnreadableFile = false
 
+    /// Readable content-column width; long instructions stay legible. Shared by the header and the
+    /// card list so they line up.
+    private let contentMaxWidth: CGFloat = 680
+
     private var workflowFilePath: String {
         (projectPath as NSString).appendingPathComponent(WorkflowDefinition.relativePath)
     }
@@ -77,7 +81,7 @@ struct WorkflowEditorView: View {
             .padding(.horizontal, 32)
             .padding(.top, 32)
             .padding(.bottom, 16)
-            .frame(maxWidth: 680, alignment: .leading)
+            .frame(maxWidth: contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
     }
 
@@ -98,11 +102,9 @@ struct WorkflowEditorView: View {
                     .foregroundStyle(.orange)
                     .padding(.top, 4)
             }
-            Button(action: addAction) {
-                Label("Add action", systemImage: "plus")
-            }
-            .controlSize(.large)
-            .padding(.top, 6)
+            addActionButton
+                .controlSize(.large)
+                .padding(.top, 6)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -131,20 +133,26 @@ struct WorkflowEditorView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .frame(maxWidth: 680)
+        .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
 
     private var addActionRow: some View {
         HStack {
             Spacer()
-            Button(action: addAction) {
-                Label("Add action", systemImage: "plus")
-            }
-            .buttonStyle(.borderless)
+            addActionButton
+                .buttonStyle(.borderless)
             Spacer()
         }
         .padding(.vertical, 10)
+    }
+
+    /// The "+ Add action" control, shared by the empty state and the list footer (each applies its
+    /// own style); keeps the label, symbol, and action defined once.
+    private var addActionButton: some View {
+        Button(action: addAction) {
+            Label("Add action", systemImage: "plus")
+        }
     }
 
     // MARK: - Loading + reconciliation
@@ -179,10 +187,12 @@ struct WorkflowEditorView: View {
     }
 
     private func remove(slug: String) {
-        // Resign focus before the row leaves the tree: a `@FocusState` still pointing at a removed
-        // card's slug, combined with mutating the `ForEach($model.actions)` binding from the row's
-        // own button, crashes SwiftUI. Clearing focus drops the dangling reference, and deferring
-        // the structural mutation one runloop tick lets the in-flight view update finish first.
+        // Two things crash SwiftUI here, both verified necessary by removing each and reproducing
+        // the crash: (1) a `@FocusState` still pointing at the removed card's slug, and (2) mutating
+        // the `ForEach($model.actions)` binding *synchronously from inside that row's own button*,
+        // which re-entrantly invalidates the collection the row was rendered from. So resign focus
+        // first, then defer the structural mutation one runloop tick (re-finding the index by slug,
+        // since the array may have changed) to let the in-flight view update finish.
         if focusedSlug == slug { focusedSlug = nil }
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
@@ -239,6 +249,11 @@ struct WorkflowEditorView: View {
 
     private func ensureClearwayDirectory() {
         let directory = (workflowFilePath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        // 0o700 matches how the rest of the app creates `.clearway/` (NotesManager, WorkTaskManager).
+        try? FileManager.default.createDirectory(
+            atPath: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
     }
 }
