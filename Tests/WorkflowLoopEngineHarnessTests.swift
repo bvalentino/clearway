@@ -463,6 +463,67 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                      "the running pointer is cleared so the watcher relaunches the picked action idle")
     }
 
+    // MARK: - Pause on agent death (exit without an advance)
+
+    /// The live agent exiting **without** having advanced `status` on disk (crash, Ctrl-C, the user
+    /// closing its terminal) must pause autopilot. Otherwise the worktree sits idle with autopilot on
+    /// and `status` still on the action that was running, and the engine's idle rule would respawn
+    /// the agent the user just killed on the very next reload. The surface/exit plumbing needs a live
+    /// Ghostty app; here we drive the decision `handleChildExited` delegates to.
+    func testAgentDeathMidStepPausesAutopilot() throws {
+        try writeWorkflow()
+        let branch = "death"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+
+        // The agent for "implement" died; disk status still reads "implement" (no advance written).
+        coordinator.pauseIfAgentDiedMidStep(worktreeId: worktreeId, clearedAction: "implement")
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false,
+                       "an agent dying mid-step pauses the loop — no respawn on the next reload")
+    }
+
+    /// The exempt case: the agent wrote its advance and exited **before** the watcher's debounced
+    /// reload landed — the in-memory pool still shows the old status, but disk has moved on. The
+    /// fresh disk read must recognize the normal advance and NOT pause (the pending reload launches
+    /// the next action as usual).
+    func testAgentExitAfterAdvanceDoesNotPause() throws {
+        try writeWorkflow()
+        let branch = "advance"
+        let id = UUID()
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true, id: id)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+        // Simulate the agent's final act: advance `status` on disk, with no reload yet — the
+        // in-memory pool is deliberately left stale on "implement".
+        var advanced = WorkTask(id: id, title: "Task", status: "test", worktree: branch)
+        advanced.autopilot = true
+        let taskMd = ((worktreePath as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        try advanced.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
+
+        coordinator.pauseIfAgentDiedMidStep(worktreeId: worktreeId, clearedAction: "implement")
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "an exit right after a written advance is a normal step end, not a death — no pause")
+    }
+
+    /// No cleared action (e.g. a manual pick already removed the running pointer before the
+    /// superseded agent's exit landed) means the exit can't be judged a mid-step death — no pause.
+    func testAgentExitWithNoClearedActionDoesNotPause() throws {
+        try writeWorkflow()
+        let branch = "superseded"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
+
+        coordinator.pauseIfAgentDiedMidStep(worktreeId: worktreeId, clearedAction: nil)
+
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
+                       "no running pointer was cleared — nothing to judge, autopilot is untouched")
+    }
+
     /// A manual status pick clears a prior halt + error so the loop can recover, rather than being
     /// ignored because `engineHalted` is still set.
     func testManualStatusPickClearsHalt() throws {

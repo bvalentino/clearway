@@ -197,6 +197,36 @@ extension WorkTaskCoordinator {
         agentSurfaces[worktreeId] != nil
     }
 
+    /// Pauses autopilot when the live agent **died mid-step** — exited without advancing `status`
+    /// (crash, Ctrl-C, the user closing its terminal/tab). Called from `handleChildExited` right
+    /// after it clears the live-agent state, with the `runningAction` slug it cleared.
+    ///
+    /// Why: clearing `runningAction` leaves the worktree *idle* with `status` still on the action
+    /// that was running. Under `autopilot: true`, the engine's idle rule launches any real action a
+    /// reload observes — so without this pause, the very next reload would respawn the agent the
+    /// user just killed (and a finished **terminal** action would re-run on every later reload).
+    /// Pausing keeps the design rule intact: the loop only ever (re)starts on an explicit play or a
+    /// manual status pick. Manual-kill semantics minus the terminate (the agent is already dead).
+    ///
+    /// "Died mid-step" is judged against a **fresh disk read** (`freshStatus`), not the in-memory
+    /// pool: an agent that wrote its advance and exited immediately may beat the watcher's debounced
+    /// reload, so the pool can still show the old status during a normal advance. Disk is
+    /// authoritative and race-free here — a process that has already exited can't write afterwards.
+    /// If disk status moved off the cleared action, the advance is in flight: don't pause, the
+    /// pending reload launches the next action as usual. No-op for legacy projects, a worktree
+    /// with no task, or a loop already paused.
+    @MainActor
+    func pauseIfAgentDiedMidStep(worktreeId: String, clearedAction: String?) {
+        guard let clearedAction,
+              hasJSONWorkflow(),
+              let branch = worktreeManager.worktrees.first(where: { $0.id == worktreeId })?.branch,
+              let task = workTaskManager.task(forWorktree: branch),
+              task.autopilot != false else { return }
+        let diskStatus = workTaskManager.freshStatus(forWorktree: branch) ?? task.status
+        guard diskStatus == clearedAction else { return }
+        workTaskManager.setAutopilot(task, to: false)
+    }
+
     /// **Manual kill** — the engine operation distinct from the autopilot *pause* (which never
     /// interrupts a running agent). It does two things, in order:
     ///

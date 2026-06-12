@@ -375,15 +375,17 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// Called by TerminalManager when a main tab is closed.
     ///
-    /// If the session observer is still registered, the agent's child hasn't exited yet
-    /// — closeMainTab's SIGHUP is async. Leave identity/observer/prompt-file in place so
-    /// handleChildExited can still attribute the upcoming exit.
+    /// If the surface is still the tracked **live agent** for a worktree, or its session observer
+    /// is still registered, the agent's child hasn't exited yet — closeMainTab's SIGHUP is async.
+    /// Leave ALL bookkeeping (live entry, identity, observer, prompt file) in place so
+    /// `handleChildExited` can still attribute the upcoming exit: it owns the teardown, and the
+    /// JSON loop engine's pause-on-death decision (`pauseIfAgentDiedMidStep`) hangs off that
+    /// attributed exit. Clearing the live entry here used to make the exit unattributable for
+    /// JSON agents (which register no session observer), stranding `runningAction` forever.
     func handleMainTabClosed(_ surface: Ghostty.SurfaceView) {
         let id = ObjectIdentifier(surface)
 
-        for (key, live) in agentSurfaces where live === surface {
-            agentSurfaces.removeValue(forKey: key)
-        }
+        guard !agentSurfaces.values.contains(where: { $0 === surface }) else { return }
 
         guard sessionObservers[id] == nil else { return }
 
@@ -529,7 +531,14 @@ class WorkTaskCoordinator: ObservableObject {
         // is already superseded here and this guard is false — leaving the freshly-set values intact.
         if Self.shouldClearLiveAgentState(exitingSurface: surface, liveAgentSurface: agentSurfaces[worktreeId]) {
             agentSurfaces.removeValue(forKey: worktreeId)
-            runningAction.removeValue(forKey: worktreeId)
+            let clearedAction = runningAction.removeValue(forKey: worktreeId)
+            // The live agent is gone. If it died WITHOUT advancing `status` (crash, Ctrl-C, the
+            // user closing its terminal), pause autopilot — otherwise the worktree is now *idle*
+            // with autopilot on and `status` still on the action that was running, and the
+            // engine's idle rule would relaunch that same action on the very next reload
+            // (respawning an agent the user just killed). A normal advance (status already moved
+            // on disk) is exempt — the pending reload launches the next action as usual.
+            pauseIfAgentDiedMidStep(worktreeId: worktreeId, clearedAction: clearedAction)
         }
 
         // Retire the observer for this specific surface. Each launch has its own observer,

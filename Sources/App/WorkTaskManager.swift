@@ -242,6 +242,20 @@ class WorkTaskManager: ObservableObject {
         updateTask(updated)
     }
 
+    /// Reads a worktree task's `status` **fresh from its `TASK.md` on disk**, bypassing the
+    /// in-memory pool — which lags disk by the watcher's debounce. Used by the engine's
+    /// pause-on-agent-death check (`pauseIfAgentDiedMidStep`) to distinguish "the agent died
+    /// mid-step" (disk status still equals the action that was running) from "the agent wrote its
+    /// advance and exited before the debounced reload landed" (disk status already moved on). The
+    /// read is race-free for that purpose: a process that has already exited can't write afterwards.
+    /// `nil` when the branch has no live worktree or its `TASK.md` doesn't parse.
+    func freshStatus(forWorktree branch: String) -> String? {
+        guard let path = worktreePath(forBranch: branch) else { return nil }
+        let taskMd = ((path as NSString).appendingPathComponent(".clearway") as NSString)
+            .appendingPathComponent("TASK.md")
+        return loadTask(atPath: taskMd, fallbackId: UUID(), requireFrontmatterID: false)?.status
+    }
+
     /// Writes the `autopilot` flag into the task's `.clearway/TASK.md` (the single field-write
     /// path the autopilot toolbar button drives). Clearway is the writer for this field; the
     /// loop engine's watcher then enacts the flip (enable → resume, disable → pause). Unlike
