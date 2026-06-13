@@ -199,7 +199,7 @@ struct WorkflowEditorView: View {
             ForEach(model.actions) { action in
                 // Plain selectable rows — no Button/tap gesture — so List keeps drag-to-reorder.
                 // Navigation is driven by selection (see onChange below).
-                WorkflowActionCard(name: action.name)
+                WorkflowActionCard(name: action.name, instructions: action.instructions)
                     .tag(action.slug)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)

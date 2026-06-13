@@ -6,16 +6,32 @@ import SwiftUI
 /// holds no text fields and `List` can host it without the first-click focus delay.
 struct WorkflowActionCard: View {
     let name: String
+    let instructions: String
 
     private let cornerRadius: CGFloat = 18
+
+    /// One-line excerpt of the instructions — newlines collapsed so the preview never starts blank.
+    private var preview: String {
+        instructions
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             reorderHandle
-            Text(name.isEmpty ? "Untitled" : name)
-                .font(.headline)
-                .foregroundStyle(name.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name.isEmpty ? "Untitled" : name)
+                    .font(.headline)
+                    .foregroundStyle(name.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                if !preview.isEmpty {
+                    Text(preview)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
