@@ -29,7 +29,7 @@ struct WorkflowActionCard: View {
                     Text(preview)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
             }
             Spacer(minLength: 8)
