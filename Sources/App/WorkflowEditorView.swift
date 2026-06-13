@@ -68,7 +68,6 @@ struct WorkflowEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
             if model.actions.isEmpty {
                 emptyPlaceholder
             } else {
@@ -109,18 +108,6 @@ struct WorkflowEditorView: View {
         } message: { _ in
             Text("Its instructions will be deleted. This can’t be undone.")
         }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        Text("Workflow")
-            .font(.largeTitle.weight(.bold))
-            .padding(.horizontal, 32)
-            .padding(.top, 32)
-            .padding(.bottom, 16)
-            .frame(maxWidth: contentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity)
     }
 
     // MARK: - Empty state
