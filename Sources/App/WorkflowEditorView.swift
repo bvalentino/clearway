@@ -193,16 +193,16 @@ struct WorkflowEditorView: View {
                     .tag(action.slug)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    // Leading/trailing insets give the reorder drop indicator's knob room inside the
-                    // List so it isn't clipped at the edge (and provide the cards' horizontal margin).
-                    .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
                     .contextMenu {
                         Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
                     }
             }
             .onMove(perform: move)
         }
-        .listStyle(.plain)
+        // .inset (not .plain) gives the table a built-in leading margin, so the reorder drop
+        // indicator's knob has room and isn't clipped at the edge.
+        .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .padding(.vertical, 12)
         .onChange(of: selectedSlug) { newValue in
