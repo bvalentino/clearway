@@ -445,11 +445,13 @@ private struct WorkflowActionDetailView: View {
             }
                 // Group the fields in a material card — the macOS box pattern (matches
                 // ProjectSettingsView's sections) rather than letting them float on the bare pane.
-                .padding(16)
+                // 20pt inner padding ≈ the system grouped-form inset (macOS has no fixed HIG value;
+                // it's the 8-point grid).
+                .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 32)
-                .padding(.top, 16)
+                .padding(.top, 20)
                 .padding(.bottom, 24)
                 .frame(maxWidth: contentMaxWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
