@@ -396,11 +396,13 @@ private struct WorkflowActionDetailView: View {
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
+            // Bordered-box treatment matching ProjectSettingsView's editors (the app's established
+            // input-box convention): textBackgroundColor fill, separator border, cornerRadius 6.
             content()
-                .padding(10)
-                .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .padding(8)
+                .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 6)
                         .strokeBorder(Color(.separatorColor), lineWidth: 1)
                 )
         }
