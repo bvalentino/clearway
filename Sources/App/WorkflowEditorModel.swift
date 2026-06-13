@@ -26,6 +26,13 @@ struct WorkflowEditorModel: Equatable {
         var instructions: String
 
         var id: String { slug }
+
+        /// Both a name and instructions are required. An incomplete action is never persisted and is
+        /// discarded when the user leaves its editor.
+        var isComplete: Bool {
+            !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     /// Actions in card order. Order *is* the v1 linear flow; `toDefinition` turns it into pointers.

@@ -106,9 +106,7 @@ struct WorkflowEditorView: View {
             .toolbar {
                 if editingSlug != nil {
                     ToolbarItem(placement: .navigation) {
-                        Button {
-                            editingSlug = nil
-                        } label: {
+                        Button(action: closeEditor) {
                             Image(systemName: "chevron.backward")
                         }
                         .help("Back to Workflow")
@@ -138,7 +136,6 @@ struct WorkflowEditorView: View {
         if let slug = editingSlug, let index = model.actions.firstIndex(where: { $0.slug == slug }) {
             WorkflowActionDetailView(
                 action: $model.actions[index],
-                stepNumber: index + 1,
                 contentMaxWidth: contentMaxWidth
             )
         } else {
@@ -271,6 +268,21 @@ struct WorkflowEditorView: View {
         editingSlug = added.slug
     }
 
+    /// Leaves the action editor. If the action is incomplete (missing a name or instructions), its
+    /// unsaved edits are discarded by reverting to the last persisted definition — a never-saved new
+    /// action vanishes, and an existing one edited to invalid restores its last valid version. This
+    /// is why an incomplete action can never be created or saved.
+    private func closeEditor() {
+        if let slug = editingSlug,
+           let action = model.actions.first(where: { $0.slug == slug }),
+           !action.isComplete {
+            let reverted = lastLoaded.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
+            if reverted != model { isLoading = true }
+            model = reverted
+        }
+        editingSlug = nil
+    }
+
     /// Confirms first when the action has content (its name or instructions would be lost and
     /// removal can't be undone); a blank, just-added card has nothing to lose, so it's removed
     /// immediately without a prompt.
@@ -324,6 +336,11 @@ struct WorkflowEditorView: View {
             return
         }
 
+        // Never persist while any action is incomplete (missing a name or instructions). The file
+        // keeps its last valid state until the required fields are filled, so a half-made action is
+        // never written to disk.
+        guard model.actions.allSatisfy(\.isComplete) else { return }
+
         let definition = model.toDefinition(preserving: lastLoaded)
         guard let data = try? definition.encoded() else { return }
 
@@ -363,7 +380,6 @@ struct WorkflowEditorView: View {
 /// action live in the window toolbar (the macOS-standard place), not in this content.
 private struct WorkflowActionDetailView: View {
     @Binding var action: WorkflowEditorModel.EditorAction
-    let stepNumber: Int
     let contentMaxWidth: CGFloat
 
     @FocusState private var nameFocused: Bool
@@ -371,21 +387,21 @@ private struct WorkflowActionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                field("Name") {
-                        TextField("Action name", text: $action.name)
-                            .textFieldStyle(.plain)
-                            .font(.body)
-                            .focused($nameFocused)
-                            .accessibilityLabel("Action name")
-                    }
-                    field("Instructions") {
-                        TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .font(.body)
-                            .lineLimit(6...40)
-                            .accessibilityLabel("Action instructions")
-                    }
+                field("Name", isMissing: isBlank(action.name)) {
+                    TextField("Action name", text: $action.name)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .focused($nameFocused)
+                        .accessibilityLabel("Action name")
                 }
+                field("Instructions", isMissing: isBlank(action.instructions)) {
+                    TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(6...40)
+                        .accessibilityLabel("Action instructions")
+                }
+            }
                 .padding(.horizontal, 32)
                 .padding(.top, 16)
                 .padding(.bottom, 24)
@@ -398,20 +414,38 @@ private struct WorkflowActionDetailView: View {
         }
     }
 
+    /// Trimmed-empty check for a required field.
+    private func isBlank(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     @ViewBuilder
-    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func field<Content: View>(
+        _ title: String,
+        isMissing: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if isMissing {
+                    Text("Required")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
             // Bordered-box treatment matching ProjectSettingsView's editors (the app's established
             // input-box convention): textBackgroundColor fill, separator border, cornerRadius 6.
+            // A missing required field gets a red border.
             content()
                 .padding(8)
                 .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color(.separatorColor), lineWidth: 1)
+                        .strokeBorder(isMissing ? Color.red.opacity(0.7) : Color(.separatorColor),
+                                      lineWidth: 1)
                 )
         }
     }
