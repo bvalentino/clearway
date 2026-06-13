@@ -11,7 +11,7 @@ struct WorkflowActionCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            reorderBadge
+            reorderHandle
             Text(name.isEmpty ? "Untitled" : name)
                 .font(.headline)
                 .foregroundStyle(name.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
@@ -30,14 +30,13 @@ struct WorkflowActionCard: View {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
-    /// Accent rounded-square badge with the reorder glyph — signals that rows can be dragged to
-    /// sort (the actual reorder is the List's row drag).
-    private var reorderBadge: some View {
+    /// Plain gray reorder grip — signals that rows can be dragged to sort (the actual reorder is the
+    /// List's row drag). The fixed width keeps the name's leading edge aligned across rows.
+    private var reorderHandle: some View {
         Image(systemName: "line.3.horizontal")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(.secondary)
             .frame(width: 26, height: 26)
-            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
             .accessibilityLabel("Drag to reorder")
     }
 }
