@@ -443,6 +443,11 @@ private struct WorkflowActionDetailView: View {
                         .accessibilityLabel("Action instructions")
                 }
             }
+                // Group the fields in a material card — the macOS box pattern (matches
+                // ProjectSettingsView's sections) rather than letting them float on the bare pane.
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 32)
                 .padding(.top, 16)
                 .padding(.bottom, 24)
