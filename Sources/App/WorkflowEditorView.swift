@@ -365,11 +365,11 @@ private struct WorkflowActionDetailView: View {
                             .accessibilityLabel("Action instructions")
                     }
 
+                    // Natural-width destructive button, leading-aligned (the VStack aligns leading)
+                    // — macOS prefers content buttons sized to their label, not full-width.
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete Action", systemImage: "trash")
-                            .frame(maxWidth: .infinity)
                     }
-                    .controlSize(.large)
                     .tint(.red)
                     .padding(.top, 8)
                 }
