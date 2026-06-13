@@ -8,7 +8,7 @@ import Foundation
 /// `on_max_attempts`, `after_create`, `before_run`); the Swift surface uses camelCase. Flow
 /// is defined by **pointers** (`start`, route values) into the slug-keyed `actions` map —
 /// order in the file is cosmetic, so the map is intentionally unordered.
-struct WorkflowDefinition: Equatable, Decodable {
+struct WorkflowDefinition: Equatable, Codable {
     /// Schema version. v1 is the only shape this type understands.
     let version: Int
 
@@ -30,7 +30,7 @@ struct WorkflowDefinition: Equatable, Decodable {
     // MARK: - Nested types
 
     /// Runtime knobs for the agent that runs each action.
-    struct AgentSettings: Equatable, Decodable {
+    struct AgentSettings: Equatable, Codable {
         /// The command to launch (e.g. `"claude"`). Defaults to `"claude"` when omitted.
         let command: String
 
@@ -71,7 +71,7 @@ struct WorkflowDefinition: Equatable, Decodable {
 
     /// Optional shell hooks. Both fields are individually optional so a workflow can define
     /// one without the other.
-    struct Hooks: Equatable, Decodable {
+    struct Hooks: Equatable, Codable {
         /// Shell command run after a worktree is created for the task.
         let afterCreate: String?
 
@@ -85,7 +85,7 @@ struct WorkflowDefinition: Equatable, Decodable {
     }
 
     /// A single action — a state `status` can sit on. Terminal when `routes` is empty/absent.
-    struct Action: Equatable, Decodable {
+    struct Action: Equatable, Codable {
         /// Editable display label. Cosmetic — pointers never target it.
         let name: String
 
@@ -137,6 +137,19 @@ struct WorkflowDefinition: Equatable, Decodable {
             maxAttempts = try container.decodeIfPresent(Int.self, forKey: .maxAttempts)
             onMaxAttempts = try container.decodeIfPresent(String.self, forKey: .onMaxAttempts)
         }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            try container.encode(instructions, forKey: .instructions)
+            // A terminal action has no routes — omit the key entirely so it round-trips back to
+            // terminal rather than serializing an empty `{}` that reads as "has routes".
+            if !routes.isEmpty {
+                try container.encode(routes, forKey: .routes)
+            }
+            try container.encodeIfPresent(maxAttempts, forKey: .maxAttempts)
+            try container.encodeIfPresent(onMaxAttempts, forKey: .onMaxAttempts)
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -169,6 +182,19 @@ struct WorkflowDefinition: Equatable, Decodable {
         agent = try container.decodeIfPresent(AgentSettings.self, forKey: .agent) ?? .default
         hooks = try container.decodeIfPresent(Hooks.self, forKey: .hooks)
         actions = try container.decode([String: Action].self, forKey: .actions)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encode(start, forKey: .start)
+        // Omit a default `agent` so freshly-created files stay minimal — decode re-applies the
+        // exact same defaults, so the round-trip is lossless. A customized agent is preserved.
+        if agent != .default {
+            try container.encode(agent, forKey: .agent)
+        }
+        try container.encodeIfPresent(hooks, forKey: .hooks)
+        try container.encode(actions, forKey: .actions)
     }
 
     // MARK: - Graph helpers
@@ -213,6 +239,14 @@ extension WorkflowDefinition {
     /// The well-known location of the workflow file, relative to a project root.
     /// Consolidated under `.clearway/` with `TASK.md` and the backlog.
     static let relativePath = ".clearway/WORKFLOW.json"
+
+    /// Encodes to pretty-printed JSON for `.clearway/WORKFLOW.json`. `sortedKeys` keeps diffs
+    /// deterministic, since JSONEncoder otherwise emits keys in hash order.
+    func encoded() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(self)
+    }
 
     /// A structured, typed description of why a `WORKFLOW.json` failed to load or validate.
     /// Surfaced so callers can report the *specific* defect rather than a generic failure.
@@ -285,7 +319,7 @@ extension WorkflowDefinition {
         // engine, so an action keyed by one could never launch. Reject the key itself (sorted for a
         // stable first-defect report); routes/`start`/`on_max_attempts` targeting such a slug are
         // caught transitively below once the action can't exist.
-        let reservedSlugs: Set<String> = [WorkTask.ReservedStatus.new, WorkTask.ReservedStatus.readyToStart]
+        let reservedSlugs = WorkTask.ReservedStatus.backlogMarkers
         for slug in actions.keys.sorted() where reservedSlugs.contains(slug) {
             throw LoadError.reservedActionSlug(slug: slug)
         }

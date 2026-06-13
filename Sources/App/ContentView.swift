@@ -18,6 +18,7 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 enum DetailSelection: Hashable {
     case planning
     case prompts
+    case workflow
     case settings
     case worktree(Worktree)
 
@@ -970,6 +971,8 @@ struct ContentView: View {
                 }
             } else if detailSelection == .settings {
                 ProjectSettingsView(projectPath: worktreeManager.projectPath)
+            } else if detailSelection == .workflow {
+                WorkflowEditorView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 if let promptId = selectedPromptId {
                     PromptDetailView(promptId: promptId, editorMode: $promptEditorMode, newlyCreatedPromptId: $newlyCreatedPromptId).id(promptId)
