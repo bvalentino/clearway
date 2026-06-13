@@ -76,6 +76,11 @@ struct WorkflowEditorView: View {
             // elevated rows — the macOS Settings look (gray pane, light rows).
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear(perform: load)
+            // Commit a complete just-created action if the view goes away before the user taps Back
+            // (e.g. switching sidebar sections). New actions are suppressed from autosave until
+            // commit, so without this their typed content would be lost — unlike an existing action's
+            // edits, which the debounced save persists on its own.
+            .onDisappear(perform: commitPendingNewAction)
             .onChange(of: model) { _ in
                 // A programmatic load arms `isLoading`; consume that one change without saving. Real
                 // user edits arrive with the flag clear and schedule a save.
@@ -351,6 +356,21 @@ struct WorkflowEditorView: View {
         editingSlug = nil
         newActionSlug = nil
         forceValidation = false
+    }
+
+    /// On-disappear commit for an in-progress new action. If it's complete, finalize its slug (the
+    /// same step `closeEditor` runs on Back) and flush the save synchronously, since the view is
+    /// leaving and the debounced save would otherwise be suppressed for a new action. An incomplete
+    /// draft is left to be dropped — it can't be persisted, and there's no way to confirm a discard
+    /// once the view is gone.
+    private func commitPendingNewAction() {
+        guard let slug = newActionSlug,
+              let action = model.actions.first(where: { $0.slug == slug }),
+              action.isComplete else { return }
+        model.finalizeSlug(of: slug)
+        newActionSlug = nil
+        pendingSave?.cancel()
+        performSave()
     }
 
     /// Drops the incomplete action's unsaved edits by reverting to the last persisted definition — a

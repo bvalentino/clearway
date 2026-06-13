@@ -22,7 +22,6 @@ struct WorkflowActionCard: View {
     static let cornerRadius: CGFloat = 18
     private var cornerRadius: CGFloat { Self.cornerRadius }
 
-    /// One-line excerpt of the instructions — newlines collapsed so the preview never starts blank.
     private var preview: String {
         instructions
             .replacingOccurrences(of: "\n", with: " ")
