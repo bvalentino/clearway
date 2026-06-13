@@ -186,10 +186,10 @@ struct WorkflowEditorView: View {
 
     private var editorList: some View {
         List(selection: $selectedSlug) {
-            ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
+            ForEach(model.actions) { action in
                 // Plain selectable rows — no Button/tap gesture — so List keeps drag-to-reorder.
                 // Navigation is driven by selection (see onChange below).
-                WorkflowActionCard(stepNumber: index + 1, name: action.name)
+                WorkflowActionCard(name: action.name)
                     .tag(action.slug)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
