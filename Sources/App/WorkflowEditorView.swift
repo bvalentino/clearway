@@ -358,7 +358,7 @@ private struct WorkflowActionDetailView: View {
                 field("Name") {
                         TextField("Action name", text: $action.name)
                             .textFieldStyle(.plain)
-                            .font(.title3.weight(.semibold))
+                            .font(.body)
                             .focused($nameFocused)
                             .accessibilityLabel("Action name")
                     }
