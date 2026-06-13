@@ -1,8 +1,9 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// The **Workflow** section's detail pane: authors a project's `.clearway/WORKFLOW.json` as a
-/// vertical stack of reorderable action cards (or an empty-state prompt when there's no file).
+/// reorderable list of action cards (or an empty-state prompt when there's no file). Tapping a card
+/// pushes an editing form (`WorkflowActionDetailView`) with a back button; the list itself holds no
+/// text fields, so editing is never inline.
 ///
 /// The user only ever sees ordered, named cards — slugs, the `start` pointer, and `routes` stay
 /// hidden. Top-to-bottom card order *is* the v1 linear flow; `WorkflowEditorModel.toDefinition`
@@ -30,9 +31,6 @@ struct WorkflowEditorView: View {
     /// arrives with this clear and saves normally. (Resetting it via `defer` in `load()` wouldn't
     /// work: `onChange` fires on the *next* update pass, by which point the flag is already clear.)
     @State private var isLoading = false
-    /// Slug of a freshly-added card to create-focus its name field (one-shot, like
-    /// `newlyCreatedTaskId`). Bound into each card via `WorkflowActionCard.focus`.
-    @FocusState private var focusedSlug: String?
 
     /// Cached "a file exists on disk but the coordinator couldn't load+validate it." Recomputed at
     /// discrete load/reconcile/save points — never per render — so a transient mid-delete disk state
@@ -45,16 +43,13 @@ struct WorkflowEditorView: View {
     /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
 
-    /// Slugs whose instructions editor is expanded. Empty = every card collapsed to a name-only row
-    /// (the decluttered overview); a freshly-added card is expanded so its prompt is ready to type.
-    @State private var expandedSlugs: Set<String> = []
+    /// Slug of the action whose editing form is open, or `nil` to show the list. Drives the in-pane
+    /// list ⇄ detail navigation (a plain state swap rather than a nested `NavigationStack`, which
+    /// would fight the app's existing window toolbar).
+    @State private var editingSlug: String?
 
-    /// Slug of the card currently being dragged for reorder, tracked so the drop targets know what's
-    /// moving. `nil` when no reorder drag is in flight.
-    @State private var draggingSlug: String?
-
-    /// Readable content-column width; long instructions stay legible. Shared by the header and the
-    /// card list so they line up.
+    /// Readable content-column width; long instructions stay legible. Shared by the list and the
+    /// detail form so they line up.
     private let contentMaxWidth: CGFloat = 680
 
     private var workflowFilePath: String {
@@ -67,44 +62,54 @@ struct WorkflowEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if model.actions.isEmpty {
-                emptyPlaceholder
-            } else {
-                editorList
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .onAppear(perform: load)
+            .onChange(of: model) { _ in
+                // A programmatic load arms `isLoading`; consume that one change without saving. Real
+                // user edits arrive with the flag clear and schedule a save.
+                if isLoading { isLoading = false; return }
+                scheduleSave()
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onAppear(perform: load)
-        .onChange(of: model) { _ in
-            // A programmatic load arms `isLoading`; consume that one change without saving. Real
-            // user edits arrive with the flag clear and schedule a save.
-            if isLoading { isLoading = false; return }
-            scheduleSave()
-        }
-        .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
-            refreshUnreadableFlag()
-            // Reconcile external edits only when idle; a pending local save will win, and its own
-            // write echoes back here (suppressed by the equality check in `reconcile`).
-            guard pendingSave == nil else { return }
-            reconcile(with: newValue)
-        }
-        .onChange(of: projectPath) { _ in load() }
-        // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
-        // this for uncommon, irreversible destructive actions). A destructive-styled button plus the
-        // default Cancel; presenting the slug keeps the bound action stable across the dialog.
-        .confirmationDialog(
-            "Remove this action?",
-            isPresented: Binding(
-                get: { pendingRemovalSlug != nil },
-                set: { if !$0 { pendingRemovalSlug = nil } }
-            ),
-            presenting: pendingRemovalSlug
-        ) { slug in
-            Button("Remove Action", role: .destructive) { remove(slug: slug) }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Its instructions will be deleted. This can’t be undone.")
+            .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
+                refreshUnreadableFlag()
+                // Reconcile external edits only when idle; a pending local save will win, and its own
+                // write echoes back here (suppressed by the equality check in `reconcile`).
+                guard pendingSave == nil else { return }
+                reconcile(with: newValue)
+            }
+            .onChange(of: projectPath) { _ in load() }
+            // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
+            // this for uncommon, irreversible destructive actions). A destructive-styled button plus
+            // the default Cancel; presenting the slug keeps the bound action stable across the dialog.
+            .confirmationDialog(
+                "Remove this action?",
+                isPresented: Binding(
+                    get: { pendingRemovalSlug != nil },
+                    set: { if !$0 { pendingRemovalSlug = nil } }
+                ),
+                presenting: pendingRemovalSlug
+            ) { slug in
+                Button("Remove Action", role: .destructive) { remove(slug: slug) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Its instructions will be deleted. This can’t be undone.")
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let slug = editingSlug, let index = model.actions.firstIndex(where: { $0.slug == slug }) {
+            WorkflowActionDetailView(
+                action: $model.actions[index],
+                stepNumber: index + 1,
+                contentMaxWidth: contentMaxWidth,
+                onBack: { editingSlug = nil }
+            )
+        } else if model.actions.isEmpty {
+            emptyPlaceholder
+        } else {
+            editorList
         }
     }
 
@@ -142,37 +147,35 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
-                    WorkflowActionCard(
-                        action: $model.actions[index],
-                        focus: $focusedSlug,
-                        stepNumber: index + 1,
-                        isExpanded: expandedSlugs.contains(action.slug),
-                        onToggleExpanded: { toggleExpanded(action.slug) },
-                        dragProvider: { beginDrag(action.slug) }
-                    )
-                    .onDrop(of: [.text], delegate: ActionDropDelegate(
-                        targetSlug: action.slug,
-                        draggingSlug: $draggingSlug,
-                        moveBefore: moveSlug
-                    ))
-                    .contextMenu {
-                        Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
-                    }
+        List {
+            ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
+                Button {
+                    editingSlug = action.slug
+                } label: {
+                    WorkflowActionCard(stepNumber: index + 1, name: action.name)
                 }
-                addActionRow
+                .buttonStyle(.plain)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                .contextMenu {
+                    Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+                }
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 8)
-            .frame(maxWidth: contentMaxWidth)
-            .frame(maxWidth: .infinity)
+            .onMove(perform: move)
+
+            addActionRow
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 
     /// The Shortcuts-style "Add Action" affordance beneath the last card (no +/− strip, no library —
-    /// our actions are free-text, so adding just appends a blank step).
+    /// our actions are free-text, so adding just appends a blank step and opens it).
     private var addActionRow: some View {
         Button(action: addAction) {
             Label("Add Action", systemImage: "plus")
@@ -194,8 +197,11 @@ struct WorkflowEditorView: View {
         if loaded != model { isLoading = true }
         lastLoaded = definition
         model = loaded
-        // Prune expansion flags for slugs that no longer resolve (an external edit removed the card).
-        expandedSlugs.formIntersection(Set(loaded.actions.map { $0.slug }))
+        // Drop an open editing target that no longer resolves (an external edit removed the card), so
+        // the detail form falls back to the list rather than binding a vanished action.
+        if let slug = editingSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
+            editingSlug = nil
+        }
         refreshUnreadableFlag()
     }
 
@@ -211,14 +217,9 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Expand the new card, then focus its name field once the row has rendered (one-shot
-        // create-focus) so its prompt is ready to type.
-        expandedSlugs.insert(added.slug)
-        DispatchQueue.main.async { focusedSlug = added.slug }
-    }
-
-    private func toggleExpanded(_ slug: String) {
-        if expandedSlugs.contains(slug) { expandedSlugs.remove(slug) } else { expandedSlugs.insert(slug) }
+        // Open the new action's form immediately (it auto-focuses its name field) so the user can
+        // start typing — the create-focus affordance, now via navigation.
+        editingSlug = added.slug
     }
 
     /// Confirms first when the action has content (its name or instructions would be lost and
@@ -236,35 +237,19 @@ struct WorkflowEditorView: View {
     }
 
     private func remove(slug: String) {
-        // Two things crash SwiftUI here, both verified necessary by removing each and reproducing
-        // the crash: (1) a `@FocusState` still pointing at the removed card's slug, and (2) mutating
-        // the `ForEach($model.actions)` binding *synchronously from inside that row's own button*,
-        // which re-entrantly invalidates the collection the row was rendered from. So resign focus
-        // first, then defer the structural mutation one runloop tick (re-finding the index by slug,
-        // since the array may have changed) to let the in-flight view update finish.
-        if focusedSlug == slug { focusedSlug = nil }
-        expandedSlugs.remove(slug)
+        // If the removed action's form is open, pop back to the list first so its binding doesn't
+        // dangle. Then defer the structural mutation one runloop tick (re-finding the index by slug,
+        // since the array may have changed) to let the in-flight view update finish before the
+        // collection the row was rendered from is mutated.
+        if editingSlug == slug { editingSlug = nil }
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
             model.remove(at: index)
         }
     }
 
-    /// Begins a reorder drag from a card's badge. The payload is the slug (carried as text); the drop
-    /// targets reorder by reading `draggingSlug`, so the item provider exists only to satisfy the API.
-    private func beginDrag(_ slug: String) -> NSItemProvider {
-        draggingSlug = slug
-        return NSItemProvider(object: slug as NSString)
-    }
-
-    /// Moves the dragged action to the dragged-over action's slot, mirroring `List.onMove` semantics
-    /// (insert after when moving down, before when moving up). Runs live as the pointer crosses cards.
-    private func moveSlug(_ from: String, _ to: String) {
-        guard let fromIndex = model.actions.firstIndex(where: { $0.slug == from }),
-              let toIndex = model.actions.firstIndex(where: { $0.slug == to }),
-              fromIndex != toIndex else { return }
-        let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
-        model.move(from: IndexSet(integer: fromIndex), to: destination)
+    private func move(from source: IndexSet, to destination: Int) {
+        model.move(from: source, to: destination)
     }
 
     // MARK: - Autosave
@@ -321,26 +306,78 @@ struct WorkflowEditorView: View {
     }
 }
 
-// MARK: - Reorder drop delegate
+// MARK: - Action detail form
 
-/// Reorders cards as a dragged badge passes over them. The move happens on `dropEntered` (live
-/// reordering), and `draggingSlug` is cleared on drop so a cancelled drag doesn't leave it stale.
-private struct ActionDropDelegate: DropDelegate {
-    let targetSlug: String
-    @Binding var draggingSlug: String?
-    let moveBefore: (String, String) -> Void
+/// The editing form pushed when a card is tapped: a back button, the action's name, and its
+/// multi-line instructions. Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text
+/// fields focus on the first click, matching `ProjectSettingsView`'s bordered-field styling.
+private struct WorkflowActionDetailView: View {
+    @Binding var action: WorkflowEditorModel.EditorAction
+    let stepNumber: Int
+    let contentMaxWidth: CGFloat
+    let onBack: () -> Void
 
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            backBar
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    field("Name") {
+                        TextField("Action name", text: $action.name)
+                            .textFieldStyle(.plain)
+                            .font(.title3.weight(.semibold))
+                            .focused($nameFocused)
+                            .accessibilityLabel("Action name")
+                    }
+                    field("Instructions") {
+                        TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .font(.body)
+                            .lineLimit(6...40)
+                            .accessibilityLabel("Action instructions")
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 24)
+                .frame(maxWidth: contentMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        // A blank, just-created action lands with its name field focused so the user can type at once.
+        .onAppear {
+            if action.name.isEmpty && action.instructions.isEmpty { nameFocused = true }
+        }
     }
 
-    func dropEntered(info: DropInfo) {
-        guard let from = draggingSlug, from != targetSlug else { return }
-        moveBefore(from, targetSlug)
+    private var backBar: some View {
+        HStack(spacing: 0) {
+            Button(action: onBack) {
+                Label("Workflow", systemImage: "chevron.backward")
+            }
+            .buttonStyle(.borderless)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .frame(maxWidth: contentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
-    func performDrop(info: DropInfo) -> Bool {
-        draggingSlug = nil
-        return true
+    @ViewBuilder
+    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+                .padding(10)
+                .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color(.separatorColor), lineWidth: 1)
+                )
+        }
     }
 }

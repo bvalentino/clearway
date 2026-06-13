@@ -1,56 +1,32 @@
 import SwiftUI
 
-/// A single action card in the Workflow editor, styled after Apple's Shortcuts actions: a leading
-/// step badge, an inline-editable name, and a disclosure chevron that expands the multi-line
-/// instructions editor.
-///
-/// Binds to one `EditorAction`; the card never sees the slug, routes, or position — order/linking
-/// are the model's job. Selection, expansion, and removal are parent-owned (passed in), so the card
-/// only renders state and forwards the disclosure toggle. Reordering is the List's row drag, grabbed
-/// from the non-interactive badge/padding (no separate handle, matching Shortcuts).
+/// A single action row in the Workflow list, styled after Apple's Shortcuts actions: a leading
+/// accent step badge, the action name, and a navigation chevron. Display-only — tapping the row
+/// (handled by the parent) pushes the editing form. Editing no longer happens inline, so the row
+/// holds no text fields and `List` can host it without the first-click focus delay.
 struct WorkflowActionCard: View {
-    @Binding var action: WorkflowEditorModel.EditorAction
-    /// Slug-keyed focus shared with the parent, so a freshly-added card can create-focus its name.
-    var focus: FocusState<String?>.Binding
-    /// 1-based position shown in the step badge; updates as cards reorder.
     let stepNumber: Int
-    /// Whether the instructions editor is revealed. Collapsed = name-only compact row.
-    let isExpanded: Bool
-    let onToggleExpanded: () -> Void
-    /// Reorder drag source, attached to the badge only. Keeping it off the card body means the
-    /// name/instructions fields sit under no drag recognizer and focus on the *first* click — a
-    /// whole-row drag (as `List.onMove` does) delays that click by ~1s while it disambiguates.
-    let dragProvider: () -> NSItemProvider
+    let name: String
 
-    /// Leading inset that aligns the expanded instructions under the name (badge width + spacing).
-    private let contentInset: CGFloat = 36
+    private let cornerRadius: CGFloat = 18
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                stepBadge
-                    .onDrag(dragProvider)
-                    .help("Drag to reorder")
-                TextField("Action name", text: $action.name)
-                    .textFieldStyle(.plain)
-                    .font(.headline)
-                    .focused(focus, equals: action.slug)
-                    .accessibilityLabel("Action name")
-                Spacer(minLength: 8)
-                disclosure
-            }
-            if isExpanded {
-                instructionsEditor
-                    .padding(.leading, contentInset)
-            }
+        HStack(spacing: 12) {
+            stepBadge
+            Text(name.isEmpty ? "Untitled" : name)
+                .font(.headline)
+                .foregroundStyle(name.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
-        .padding(12)
-        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color(.separatorColor), lineWidth: 0.5)
-        )
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: cornerRadius))
         .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     /// Accent rounded-square badge with the step number — Shortcuts' per-action glyph, generalized
@@ -63,34 +39,5 @@ struct WorkflowActionCard: View {
             .frame(width: 26, height: 26)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 6))
             .accessibilityLabel("Step \(stepNumber)")
-    }
-
-    private var disclosure: some View {
-        Button(action: onToggleExpanded) {
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(isExpanded ? "Hide instructions" : "Show instructions")
-        .accessibilityLabel(isExpanded ? "Hide instructions" : "Show instructions")
-    }
-
-    private var instructionsEditor: some View {
-        TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.body)
-            .lineLimit(3...12)
-            .padding(8)
-            .background(Color(.textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color(.separatorColor), lineWidth: 1)
-            )
-            .accessibilityLabel("Action instructions")
     }
 }
