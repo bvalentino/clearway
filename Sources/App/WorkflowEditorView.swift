@@ -202,6 +202,7 @@ struct WorkflowEditorView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .padding(12)
         .onChange(of: selectedSlug) { newValue in
             // Open the clicked row's editor, then clear the selection so its highlight doesn't linger
             // and the same row can be reopened. A reorder drag doesn't set selection, so it never
