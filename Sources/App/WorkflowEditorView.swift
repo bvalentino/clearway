@@ -54,6 +54,13 @@ struct WorkflowEditorView: View {
     /// both (click selects → open; drag reorders).
     @State private var selectedSlug: String?
 
+    /// Slug of the incomplete action whose discard the user is confirming on back, or `nil`.
+    @State private var pendingDiscardSlug: String?
+
+    /// Reveals the editor's "Required" indicators regardless of which fields were touched — set when
+    /// the user chooses "Keep Editing" on the discard prompt, so they can see what's missing.
+    @State private var forceValidation = false
+
     /// Readable content-column width; long instructions stay legible. Shared by the list and the
     /// detail form so they line up.
     private let contentMaxWidth: CGFloat = 680
@@ -101,6 +108,26 @@ struct WorkflowEditorView: View {
             } message: { _ in
                 Text("Its instructions will be deleted. This can’t be undone.")
             }
+            // Leaving an incomplete action the user typed into: confirm rather than dropping it
+            // silently. "Keep Editing" returns and reveals which fields are still required.
+            .confirmationDialog(
+                "Discard this action?",
+                isPresented: Binding(
+                    get: { pendingDiscardSlug != nil },
+                    set: { if !$0 { pendingDiscardSlug = nil } }
+                )
+            ) {
+                Button("Discard Action", role: .destructive) {
+                    pendingDiscardSlug = nil
+                    discardEditedAction()
+                }
+                Button("Keep Editing", role: .cancel) {
+                    pendingDiscardSlug = nil
+                    forceValidation = true
+                }
+            } message: {
+                Text("It’s missing a name or instructions, so it can’t be saved.")
+            }
             // Per macOS HIG, navigation (Back) belongs in the toolbar's leading area as the standard
             // symbol with no text label — not a button floating in the content.
             .toolbar {
@@ -136,7 +163,8 @@ struct WorkflowEditorView: View {
         if let slug = editingSlug, let index = model.actions.firstIndex(where: { $0.slug == slug }) {
             WorkflowActionDetailView(
                 action: $model.actions[index],
-                contentMaxWidth: contentMaxWidth
+                contentMaxWidth: contentMaxWidth,
+                forceValidation: forceValidation
             )
         } else {
             listOrEmpty
@@ -268,19 +296,36 @@ struct WorkflowEditorView: View {
         editingSlug = added.slug
     }
 
-    /// Leaves the action editor. If the action is incomplete (missing a name or instructions), its
-    /// unsaved edits are discarded by reverting to the last persisted definition — a never-saved new
-    /// action vanishes, and an existing one edited to invalid restores its last valid version. This
-    /// is why an incomplete action can never be created or saved.
+    /// Back button. A complete action just closes. An incomplete one can't be saved, so: if the user
+    /// typed something, confirm the discard (so their input isn't dropped silently); if it's an
+    /// untouched empty draft, discard it without a prompt.
     private func closeEditor() {
-        if let slug = editingSlug,
-           let action = model.actions.first(where: { $0.slug == slug }),
-           !action.isComplete {
-            let reverted = lastLoaded.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
-            if reverted != model { isLoading = true }
-            model = reverted
+        guard let slug = editingSlug,
+              let action = model.actions.first(where: { $0.slug == slug }) else {
+            leaveEditor()
+            return
         }
+        if action.isComplete {
+            leaveEditor()
+        } else if action.name.isEmpty && action.instructions.isEmpty {
+            discardEditedAction()
+        } else {
+            pendingDiscardSlug = slug
+        }
+    }
+
+    private func leaveEditor() {
         editingSlug = nil
+        forceValidation = false
+    }
+
+    /// Drops the incomplete action's unsaved edits by reverting to the last persisted definition — a
+    /// never-saved new action vanishes; an existing one restores its last valid version — then leaves.
+    private func discardEditedAction() {
+        let reverted = lastLoaded.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
+        if reverted != model { isLoading = true }
+        model = reverted
+        leaveEditor()
     }
 
     /// Confirms first when the action has content (its name or instructions would be lost and
@@ -381,6 +426,9 @@ struct WorkflowEditorView: View {
 private struct WorkflowActionDetailView: View {
     @Binding var action: WorkflowEditorModel.EditorAction
     let contentMaxWidth: CGFloat
+    /// Forces the "Required" indicators on regardless of which fields were touched (set when the user
+    /// chooses "Keep Editing" on the discard prompt, so the missing fields are revealed).
+    let forceValidation: Bool
 
     @FocusState private var nameFocused: Bool
     /// "Required" is shown only after a field has been edited and left empty — never on a pristine
@@ -391,14 +439,14 @@ private struct WorkflowActionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                field("Name", isMissing: nameEdited && isBlank(action.name)) {
+                field("Name", isMissing: (nameEdited || forceValidation) && isBlank(action.name)) {
                     TextField("Action name", text: $action.name)
                         .textFieldStyle(.plain)
                         .font(.body)
                         .focused($nameFocused)
                         .accessibilityLabel("Action name")
                 }
-                field("Instructions", isMissing: instructionsEdited && isBlank(action.instructions)) {
+                field("Instructions", isMissing: (instructionsEdited || forceValidation) && isBlank(action.instructions)) {
                     TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.body)
