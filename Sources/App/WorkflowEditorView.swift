@@ -1,68 +1,41 @@
 import SwiftUI
 
-/// The **Workflow** section's detail pane: authors a project's `.clearway/WORKFLOW.json` as a
-/// reorderable list of action cards (or an empty-state prompt when there's no file). Tapping a card
-/// pushes an editing form (`WorkflowActionDetailView`) with a back button; the list itself holds no
-/// text fields, so editing is never inline.
-///
-/// The user only ever sees ordered, named cards — slugs, the `start` pointer, and `routes` stay
-/// hidden. Top-to-bottom card order *is* the v1 linear flow; `WorkflowEditorModel.toDefinition`
+/// The Workflow section's detail pane: authors `.clearway/WORKFLOW.json` as a reorderable list of
+/// action cards. Top-to-bottom card order is the v1 linear flow; `WorkflowEditorModel.toDefinition`
 /// turns it into pointers on save.
-///
-/// Persistence mirrors the proven `ProjectSettingsView` pattern: a debounced autosave, a
-/// skip-on-own-write guard (`pendingSave`), and reconciliation from the coordinator's already-live
-/// `workflowDefinition` cache (no second file watcher). The writer always preserves `agent`/`hooks`
-/// and per-action reserved fields via `toDefinition(preserving:)`, so the editor only ever rewrites
-/// the bits it surfaces.
 struct WorkflowEditorView: View {
     let projectPath: String
 
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
     @State private var model = WorkflowEditorModel()
-    /// The last definition loaded from disk — the base every save preserves (`agent`/`hooks`/
-    /// `version` + per-action reserved fields). `nil` = no valid file yet (empty state / first add).
+    /// Last definition loaded from disk; the base each save preserves. `nil` = no valid file yet.
     @State private var lastLoaded: WorkflowDefinition?
     @State private var pendingSave: DispatchWorkItem?
-    /// One-shot guard that suppresses the save for a *programmatic* model load. `load()` arms it
-    /// only when the assignment will actually change `model` (and thus fire `onChange`); the
-    /// `onChange(of: model)` handler disarms it the moment it consumes that change, so opening the
-    /// section — or reconciling an external edit — never schedules a save. A real user edit always
-    /// arrives with this clear and saves normally. (Resetting it via `defer` in `load()` wouldn't
-    /// work: `onChange` fires on the *next* update pass, by which point the flag is already clear.)
+    /// Suppresses the autosave that a *programmatic* model load would otherwise trigger, so opening
+    /// the section or reconciling an external edit never writes back. Armed by `load()` only when the
+    /// load actually changes `model`; the `onChange(of: model)` handler clears it.
     @State private var isLoading = false
 
-    /// Slug of the action awaiting delete confirmation, or `nil` when no confirmation is showing.
-    /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
 
-    /// Slug of the action whose editing form is open, or `nil` to show the list. Drives the in-pane
-    /// list ⇄ detail navigation (a plain state swap rather than a nested `NavigationStack`, which
-    /// would fight the app's existing window toolbar).
+    /// Slug of the action whose form is open; `nil` shows the list.
     @State private var editingSlug: String?
 
-    /// Whether the list is in edit mode (toggled by the toolbar's Edit/Done button), mirroring the
-    /// iOS Settings pattern. macOS has no system `EditMode`/`EditButton`, so we manage the flag
-    /// ourselves. It's the hinge that resolves the tap-vs-drag conflict: a `List` row can't have both
-    /// a tap-to-open handler and `onMove` (any tap disables the reorder drag), so the two never
-    /// coexist — **normal mode** rows are tappable (open) with no `onMove`; **edit mode** rows carry
-    /// `onMove` + a delete control and aren't tappable.
+    /// List edit mode (the toolbar's Edit/Done). A `List` row can't carry both a tap-to-open handler
+    /// and `onMove` — any tap disables the drag — so the two modes never coexist: normal rows tap to
+    /// open, edit rows reorder and delete.
     @State private var isEditing = false
 
-    /// Slug of the incomplete action whose discard the user is confirming on back, or `nil`.
     @State private var pendingDiscardSlug: String?
 
-    /// Reveals the editor's "Required" indicators regardless of which fields were touched — set when
-    /// the user chooses "Keep Editing" on the discard prompt, so they can see what's missing.
+    /// Forces the "Required" indicators on after the user picks "Keep Editing".
     @State private var forceValidation = false
 
-    /// Slug of an action still being created (added via `+` but not yet committed). Its slug is a
-    /// placeholder until commit; while set, nothing is persisted, so the file isn't written with the
-    /// placeholder slug or an unfinished action.
+    /// An action added via `+` but not yet committed. Its slug is a placeholder, so nothing persists
+    /// while this is set.
     @State private var newActionSlug: String?
 
-    /// Readable content-column width; long instructions stay legible. Shared by the list and the
-    /// detail form so they line up.
     private let contentMaxWidth: CGFloat = 680
 
     private var workflowFilePath: String {
@@ -72,36 +45,25 @@ struct WorkflowEditorView: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            // Grouped-pane gray behind the cards, so the frosted card surfaces read as lighter,
-            // elevated rows — the macOS Settings look (gray pane, light rows).
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear(perform: load)
-            // Commit a complete just-created action if the view goes away before the user taps Back
-            // (e.g. switching sidebar sections). New actions are suppressed from autosave until
-            // commit, so without this their typed content would be lost — unlike an existing action's
-            // edits, which the debounced save persists on its own.
+            // A new action is suppressed from autosave until committed; commit it here so switching
+            // away (e.g. another sidebar section) before Back doesn't drop its typed content.
             .onDisappear(perform: commitPendingNewAction)
             .onChange(of: model) { _ in
-                // A programmatic load arms `isLoading`; consume that one change without saving. Real
-                // user edits arrive with the flag clear and schedule a save.
                 if isLoading { isLoading = false; return }
                 scheduleSave()
             }
             .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
-                // Reconcile external edits only when idle; a pending local save will win, and its own
-                // write echoes back here (suppressed by the equality check in `reconcile`).
+                // A pending local save wins; its own write echoes back here and is dropped by reconcile.
                 guard pendingSave == nil else { return }
                 reconcile(with: newValue)
             }
             .onChange(of: projectPath) { _ in isEditing = false; load() }
-            // Leave edit mode when the last action is deleted — the Edit/Done and + buttons both hide
-            // on an empty list, so staying in edit mode would strand the user with no way out.
+            // An empty list hides both Edit/Done and +, so leaving edit mode on would strand the user.
             .onChange(of: model.actions.isEmpty) { empty in
                 if empty { isEditing = false }
             }
-            // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
-            // this for uncommon, irreversible destructive actions). A destructive-styled button plus
-            // the default Cancel; presenting the slug keeps the bound action stable across the dialog.
             .confirmationDialog(
                 "Remove this action?",
                 isPresented: Binding(
@@ -115,8 +77,6 @@ struct WorkflowEditorView: View {
             } message: { _ in
                 Text("Its instructions will be deleted. This can’t be undone.")
             }
-            // Leaving an incomplete action the user typed into: confirm rather than dropping it
-            // silently. "Keep Editing" returns and reveals which fields are still required.
             .confirmationDialog(
                 "Discard this action?",
                 isPresented: Binding(
@@ -135,8 +95,6 @@ struct WorkflowEditorView: View {
             } message: {
                 Text("It’s missing a name or instructions, so it can’t be saved.")
             }
-            // Per macOS HIG, navigation (Back) belongs in the toolbar's leading area as the standard
-            // symbol with no text label — not a button floating in the content.
             .toolbar {
                 if editingSlug != nil {
                     ToolbarItem(placement: .navigation) {
@@ -146,7 +104,6 @@ struct WorkflowEditorView: View {
                         .help("Back to Workflow")
                         .accessibilityLabel("Back")
                     }
-                    // Secondary/destructive actions live in a More menu, not as a prominent button.
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Button(role: .destructive) {
@@ -162,8 +119,6 @@ struct WorkflowEditorView: View {
                         .accessibilityLabel("More")
                     }
                 } else if !model.actions.isEmpty {
-                    // List view: an Edit/Done toggle reveals the delete + reorder controls, mirroring
-                    // iOS Settings. Only meaningful when there are actions to edit.
                     ToolbarItem(placement: .primaryAction) {
                         Button(isEditing ? "Done" : "Edit") {
                             isEditing.toggle()
@@ -183,9 +138,6 @@ struct WorkflowEditorView: View {
             )
         } else {
             listOrEmpty
-                // Floating "+" matching the Prompts section's add affordance (PromptsView), for
-                // app-wide consistency. Shown on the list/empty state, but hidden in edit mode —
-                // adding is a normal-mode action (mirrors iOS hiding the add row while editing).
                 .overlay(alignment: .bottomTrailing) {
                     if !isEditing { addButton }
                 }
@@ -221,10 +173,7 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        // Two row variants, switched by `isEditing`, so a row never has both a tap-to-open handler
-        // and `onMove` (which would disable the reorder drag). Normal rows are tappable and carry no
-        // `onMove`; edit rows are non-tappable, carry `onMove` (drag-to-reorder), and show a delete
-        // control. The branch lives inside one `List` so the container/styling stay constant.
+        // Two row variants so a row never carries both tap-to-open and `onMove` (see `isEditing`).
         List {
             if isEditing {
                 ForEach(model.actions) { action in
@@ -237,8 +186,7 @@ struct WorkflowEditorView: View {
                 }
             }
         }
-        // .inset (not .plain) gives the table a built-in leading margin, so the reorder drop
-        // indicator's knob has room and isn't clipped at the edge.
+        // .inset keeps the reorder drop indicator's knob from clipping at the leading edge.
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .padding(.vertical, 12)
@@ -246,8 +194,6 @@ struct WorkflowEditorView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// A normal-mode row: a `Button` (safe here — no `onMove` in normal mode) so the card darkens
-    /// while the click is held, matching macOS Settings. Opens on click; chevron affordance.
     private func normalRow(for action: WorkflowEditorModel.EditorAction) -> some View {
         Button { editingSlug = action.slug } label: {
             WorkflowActionCard(name: action.name, instructions: action.instructions)
@@ -262,8 +208,6 @@ struct WorkflowEditorView: View {
         }
     }
 
-    /// An edit-mode row: a leading red delete control + a trailing drag handle, no tap-to-open. The
-    /// row is draggable via the enclosing `ForEach`'s `onMove`.
     private func editRow(for action: WorkflowEditorModel.EditorAction) -> some View {
         WorkflowActionCard(
             name: action.name,
@@ -276,8 +220,6 @@ struct WorkflowEditorView: View {
             .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
     }
 
-    /// Floating circular add button, mirroring `PromptsView`'s `createButton` so the two sections
-    /// share one add affordance. Appends a blank step and opens its editor.
     private var addButton: some View {
         Button(action: addAction) {
             Image(systemName: "plus")
@@ -298,23 +240,16 @@ struct WorkflowEditorView: View {
     private func load() {
         let definition = workTaskCoordinator.workflowDefinition
         let loaded = definition.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
-        // Arm the load guard only when the assignment will actually change `model` (and so fire
-        // `onChange`). Arming it for a no-op assignment — e.g. (re)loading a no-file project whose
-        // model is already empty — would leave it stuck on and swallow the user's next real edit
-        // (notably the empty-state "Add action" that creates the file).
+        // Arm the guard only on a real change; arming it for a no-op load would swallow the next edit.
         if loaded != model { isLoading = true }
         lastLoaded = definition
         model = loaded
-        // Drop an open editing target that no longer resolves (an external edit removed the card), so
-        // the detail form falls back to the list rather than binding a vanished action.
         if let slug = editingSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
             editingSlug = nil
         }
     }
 
-    /// Pulls an external edit into the editor. Skips the no-op case where the incoming value is the
-    /// one we just wrote (our save round-trips back through the coordinator), so the user's cursor
-    /// and in-memory state aren't disturbed by their own writes.
+    /// Pulls an external edit in, skipping the echo of our own save.
     private func reconcile(with newValue: WorkflowDefinition?) {
         guard newValue != lastLoaded else { return }
         load()
@@ -324,16 +259,12 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Track it as the in-progress new action: its slug is a placeholder (the name was empty at
-        // creation) and is finalized from the name on commit. Open its form immediately (auto-focuses
-        // the name field) so the user can start typing.
         newActionSlug = added.slug
         editingSlug = added.slug
     }
 
-    /// Back button. A complete action just closes. An incomplete one can't be saved, so: if the user
-    /// typed something, confirm the discard (so their input isn't dropped silently); if it's an
-    /// untouched empty draft, discard it without a prompt.
+    /// Back: commit a complete action (deriving a new action's slug from its name), discard an
+    /// untouched blank one, or confirm before discarding a partially-typed one.
     private func closeEditor() {
         guard let slug = editingSlug,
               let action = model.actions.first(where: { $0.slug == slug }) else {
@@ -341,8 +272,6 @@ struct WorkflowEditorView: View {
             return
         }
         if action.isComplete {
-            // Commit. A brand-new action gets its slug derived from the name now (it was a
-            // placeholder until the user named it); existing actions keep their frozen slug.
             if slug == newActionSlug { model.finalizeSlug(of: slug) }
             leaveEditor()
         } else if action.name.isEmpty && action.instructions.isEmpty {
@@ -358,11 +287,8 @@ struct WorkflowEditorView: View {
         forceValidation = false
     }
 
-    /// On-disappear commit for an in-progress new action. If it's complete, finalize its slug (the
-    /// same step `closeEditor` runs on Back) and flush the save synchronously, since the view is
-    /// leaving and the debounced save would otherwise be suppressed for a new action. An incomplete
-    /// draft is left to be dropped — it can't be persisted, and there's no way to confirm a discard
-    /// once the view is gone.
+    /// Commits a complete new action when the view leaves before Back. Flushes synchronously because
+    /// the debounced save is suppressed while `newActionSlug` is set; an incomplete draft is dropped.
     private func commitPendingNewAction() {
         guard let slug = newActionSlug,
               let action = model.actions.first(where: { $0.slug == slug }),
@@ -373,8 +299,7 @@ struct WorkflowEditorView: View {
         performSave()
     }
 
-    /// Drops the incomplete action's unsaved edits by reverting to the last persisted definition — a
-    /// never-saved new action vanishes; an existing one restores its last valid version — then leaves.
+    /// Reverts the open action's unsaved edits by reloading the last persisted definition, then leaves.
     private func discardEditedAction() {
         let reverted = lastLoaded.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
         if reverted != model { isLoading = true }
@@ -382,9 +307,7 @@ struct WorkflowEditorView: View {
         leaveEditor()
     }
 
-    /// Confirms first when the action has content (its name or instructions would be lost and
-    /// removal can't be undone); a blank, just-added card has nothing to lose, so it's removed
-    /// immediately without a prompt.
+    /// Confirms before removing an action with content; a blank card is removed straight away.
     private func requestRemove(slug: String) {
         guard let action = model.actions.first(where: { $0.slug == slug }) else { return }
         let isBlank = action.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -397,10 +320,8 @@ struct WorkflowEditorView: View {
     }
 
     private func remove(slug: String) {
-        // If the removed action's form is open, pop back to the list first so its binding doesn't
-        // dangle. Then defer the structural mutation one runloop tick (re-finding the index by slug,
-        // since the array may have changed) to let the in-flight view update finish before the
-        // collection the row was rendered from is mutated.
+        // Pop the form first so its binding doesn't dangle, then defer the mutation a tick (re-finding
+        // the index by slug) so the List finishes its current update before the array changes.
         if editingSlug == slug { editingSlug = nil }
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
@@ -408,7 +329,6 @@ struct WorkflowEditorView: View {
         }
     }
 
-    /// `onMove` handler for edit-mode drag-to-reorder. Routes relink through the tested `model.move`.
     private func move(from source: IndexSet, to destination: Int) {
         model.move(from: source, to: destination)
     }
@@ -424,22 +344,18 @@ struct WorkflowEditorView: View {
 
     private func performSave() {
         defer { pendingSave = nil }
-        // Don't persist while a new action is mid-creation — its slug is still a placeholder, to be
-        // finalized from the name on commit. The file is written once, with the final slug.
+        // A new action's slug is still a placeholder — wait for the commit to write the final slug.
         guard newActionSlug == nil else { return }
         let fileManager = FileManager.default
 
-        // No actions left → remove the file so the project returns to the empty state rather than
-        // holding an invalid (action-less) workflow that would fail `validate()`.
+        // No actions → remove the file; an action-less workflow would fail validate().
         guard !model.actions.isEmpty else {
             try? fileManager.removeItem(atPath: workflowFilePath)
             lastLoaded = nil
             return
         }
 
-        // Never persist while any action is incomplete (missing a name or instructions). The file
-        // keeps its last valid state until the required fields are filled, so a half-made action is
-        // never written to disk.
+        // Don't write a half-made action; keep the last valid file until the required fields are filled.
         guard model.actions.allSatisfy(\.isComplete) else { return }
 
         let definition = model.toDefinition(preserving: lastLoaded)
@@ -462,7 +378,6 @@ struct WorkflowEditorView: View {
 
     private func ensureClearwayDirectory() {
         let directory = (workflowFilePath as NSString).deletingLastPathComponent
-        // 0o700 matches how the rest of the app creates `.clearway/` (NotesManager, WorkTaskManager).
         try? FileManager.default.createDirectory(
             atPath: directory,
             withIntermediateDirectories: true,
@@ -473,20 +388,16 @@ struct WorkflowEditorView: View {
 
 // MARK: - Action detail form
 
-/// The editing form shown when a card is tapped: the action's name and its multi-line instructions.
-/// Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text fields focus on the first
-/// click, matching `ProjectSettingsView`'s bordered-field styling. Back navigation and the Delete
-/// action live in the window toolbar (the macOS-standard place), not in this content.
+/// The editing form for one action: its name and multi-line instructions. Back navigation and Delete
+/// live in the window toolbar, not in this content.
 private struct WorkflowActionDetailView: View {
     @Binding var action: WorkflowEditorModel.EditorAction
     let contentMaxWidth: CGFloat
-    /// Forces the "Required" indicators on regardless of which fields were touched (set when the user
-    /// chooses "Keep Editing" on the discard prompt, so the missing fields are revealed).
+    /// Forces the "Required" indicators on regardless of which fields were touched.
     let forceValidation: Bool
 
     @FocusState private var nameFocused: Bool
-    /// "Required" is shown only after a field has been edited and left empty — never on a pristine
-    /// form — so a freshly added action doesn't open pre-flagged as invalid.
+    /// "Required" shows only after a field is edited and left empty, so a fresh action isn't pre-flagged.
     @State private var nameEdited = false
     @State private var instructionsEdited = false
 
@@ -501,8 +412,7 @@ private struct WorkflowActionDetailView: View {
                         .accessibilityLabel("Action name")
                 }
                 field("Instructions", isMissing: (instructionsEdited || forceValidation) && isBlank(action.instructions)) {
-                    // TextEditor (not TextField) so Return inserts a line break — instructions are
-                    // multi-paragraph prompts. scrollContentBackground(.hidden) lets the field box show.
+                    // TextEditor (not TextField) so Return inserts a line break.
                     TextEditor(text: $action.instructions)
                         .font(.body)
                         .scrollContentBackground(.hidden)
@@ -510,10 +420,6 @@ private struct WorkflowActionDetailView: View {
                         .accessibilityLabel("Action instructions")
                 }
             }
-                // Group the fields in a material card — the macOS box pattern (matches
-                // ProjectSettingsView's sections) rather than letting them float on the bare pane.
-                // 20pt inner padding ≈ the system grouped-form inset (macOS has no fixed HIG value;
-                // it's the 8-point grid).
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -525,13 +431,11 @@ private struct WorkflowActionDetailView: View {
         }
         .onChange(of: action.name) { _ in nameEdited = true }
         .onChange(of: action.instructions) { _ in instructionsEdited = true }
-        // A blank, just-created action lands with its name field focused so the user can type at once.
         .onAppear {
             if action.name.isEmpty && action.instructions.isEmpty { nameFocused = true }
         }
     }
 
-    /// Trimmed-empty check for a required field.
     private func isBlank(_ text: String) -> Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -553,9 +457,6 @@ private struct WorkflowActionDetailView: View {
                         .foregroundStyle(.red)
                 }
             }
-            // Bordered-box treatment matching ProjectSettingsView's editors (the app's established
-            // input-box convention): textBackgroundColor fill, separator border, cornerRadius 6.
-            // A missing required field gets a red border.
             content()
                 .padding(8)
                 .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))

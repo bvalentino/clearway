@@ -67,8 +67,6 @@ struct WorkflowDefinition: Equatable, Codable {
             command = try container.decodeIfPresent(String.self, forKey: .command) ?? Self.defaultCommand
             timeoutMs = try container.decodeIfPresent(Int.self, forKey: .timeoutMs) ?? Self.defaultTimeoutMs
         }
-
-        // `encode(to:)` is synthesized — it emits both keys exactly as a hand-written encoder would.
     }
 
     /// Optional shell hooks. Both fields are individually optional so a workflow can define
@@ -84,9 +82,6 @@ struct WorkflowDefinition: Equatable, Codable {
             case afterCreate = "after_create"
             case beforeRun = "before_run"
         }
-
-        // `encode(to:)` is synthesized — Swift omits nil optionals (`encodeIfPresent` semantics),
-        // matching what a hand-written encoder would produce.
     }
 
     /// A single action — a state `status` can sit on. Terminal when `routes` is empty/absent.
@@ -245,10 +240,8 @@ extension WorkflowDefinition {
     /// Consolidated under `.clearway/` with `TASK.md` and the backlog.
     static let relativePath = ".clearway/WORKFLOW.json"
 
-    /// Encodes to pretty-printed, stable-key JSON for writing to `.clearway/WORKFLOW.json`.
-    /// `sortedKeys` keeps diffs deterministic (JSONEncoder can't emit a custom key order — without
-    /// `sortedKeys` it uses non-deterministic hash order). The authoring UI and tests share this one
-    /// encoder config so on-disk output never drifts between call sites.
+    /// Encodes to pretty-printed JSON for `.clearway/WORKFLOW.json`. `sortedKeys` keeps diffs
+    /// deterministic, since JSONEncoder otherwise emits keys in hash order.
     func encoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

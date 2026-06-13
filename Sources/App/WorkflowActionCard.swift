@@ -1,24 +1,16 @@
 import SwiftUI
 
-/// A single action row in the Workflow list, styled after Apple's Shortcuts/Settings actions.
-///
-/// Two appearances, switched by `isEditing` (mirroring iOS Settings):
-/// - **Normal:** name + instructions excerpt, with a trailing chevron signalling "tap to open."
-/// - **Editing:** a leading red delete control + a trailing reorder grip; no chevron. Tapping the
-///   delete control calls `onDelete`; the actual drag-to-reorder is the enclosing `List`'s `onMove`,
-///   so the grip is an affordance, not its own gesture.
-///
-/// Display-only — opening and reordering are handled by the parent, so the card holds no navigation
-/// state and `List` can host it cleanly.
+/// A single action row in the Workflow list. Display-only: opening and reordering are the parent's
+/// job, so the card holds no navigation state. In edit mode it shows a delete control and a reorder
+/// grip (the drag itself is the enclosing `List`'s `onMove`); otherwise a tap-to-open chevron.
 struct WorkflowActionCard: View {
     let name: String
     let instructions: String
-    /// Edit-mode appearance: show the delete control and reorder grip instead of the chevron.
     var isEditing: Bool = false
     /// Invoked when the leading delete control is tapped (edit mode only).
     var onDelete: (() -> Void)?
 
-    /// Shared so the row's press style can clip its highlight to the same shape.
+    /// Shared so the row's press style clips its highlight to the same shape.
     static let cornerRadius: CGFloat = 18
     private var cornerRadius: CGFloat { Self.cornerRadius }
 
@@ -50,14 +42,11 @@ struct WorkflowActionCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // A frosted material as the elevated card surface — reads lighter than the gray pane behind
-        // it (set on the editor), the way macOS Settings rows sit above their grouped background.
-        // Material adapts to light/dark automatically, so the elevation reads correctly in both.
+        // Frosted material reads lighter than the editor's gray pane behind it, so the card elevates.
         .background(.thickMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
-    /// Red minus control (edit mode), matching the iOS Settings delete affordance.
     private var deleteControl: some View {
         Button { onDelete?() } label: {
             Image(systemName: "minus.circle.fill")
@@ -69,8 +58,6 @@ struct WorkflowActionCard: View {
         .accessibilityLabel("Delete action")
     }
 
-    /// Trailing accessory: a reorder grip in edit mode (the row is dragged via the List's `onMove`),
-    /// otherwise a navigation chevron signalling the row opens on tap.
     @ViewBuilder
     private var trailingAccessory: some View {
         if isEditing {
@@ -86,9 +73,8 @@ struct WorkflowActionCard: View {
     }
 }
 
-/// Button style for a tappable action row: strips the default button chrome and darkens the card
-/// while the click is held (a translucent fill from the foreground color, so it darkens in light
-/// mode and lightens in dark mode — the macOS Settings press behavior). Clipped to the card's shape.
+/// Button style for a tappable action row: a translucent foreground-color fill while pressed, so the
+/// card darkens in light mode and lightens in dark mode. Clipped to the card's shape.
 struct PressableCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
