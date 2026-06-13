@@ -75,8 +75,6 @@ struct WorkflowEditorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // Shortcuts-style canvas: cards float as flat white tiles on the window's gray.
-        .background(Color(.windowBackgroundColor))
         .onAppear(perform: load)
         .onChange(of: model) { _ in
             // A programmatic load arms `isLoading`; consume that one change without saving. Real
