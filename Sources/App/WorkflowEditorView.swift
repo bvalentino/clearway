@@ -41,11 +41,13 @@ struct WorkflowEditorView: View {
     /// would fight the app's existing window toolbar).
     @State private var editingSlug: String?
 
-    /// Transient list selection — set on click, immediately consumed to open the editor, then
-    /// cleared. Lives only so navigation is selection-driven: a `Button`/tap gesture on a row would
-    /// swallow the press and disable `List`'s drag-to-reorder, whereas plain selectable rows keep
-    /// both (click selects → open; drag reorders).
-    @State private var selectedSlug: String?
+    /// Whether the list is in edit mode (toggled by the toolbar's Edit/Done button), mirroring the
+    /// iOS Settings pattern. macOS has no system `EditMode`/`EditButton`, so we manage the flag
+    /// ourselves. It's the hinge that resolves the tap-vs-drag conflict: a `List` row can't have both
+    /// a tap-to-open handler and `onMove` (any tap disables the reorder drag), so the two never
+    /// coexist — **normal mode** rows are tappable (open) with no `onMove`; **edit mode** rows carry
+    /// `onMove` + a delete control and aren't tappable.
+    @State private var isEditing = false
 
     /// Slug of the incomplete action whose discard the user is confirming on back, or `nil`.
     @State private var pendingDiscardSlug: String?
@@ -70,6 +72,9 @@ struct WorkflowEditorView: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // Grouped-pane gray behind the cards, so the frosted card surfaces read as lighter,
+            // elevated rows — the macOS Settings look (gray pane, light rows).
+            .background(Color(nsColor: .windowBackgroundColor))
             .onAppear(perform: load)
             .onChange(of: model) { _ in
                 // A programmatic load arms `isLoading`; consume that one change without saving. Real
@@ -83,7 +88,12 @@ struct WorkflowEditorView: View {
                 guard pendingSave == nil else { return }
                 reconcile(with: newValue)
             }
-            .onChange(of: projectPath) { _ in load() }
+            .onChange(of: projectPath) { _ in isEditing = false; load() }
+            // Leave edit mode when the last action is deleted — the Edit/Done and + buttons both hide
+            // on an empty list, so staying in edit mode would strand the user with no way out.
+            .onChange(of: model.actions.isEmpty) { empty in
+                if empty { isEditing = false }
+            }
             // Confirm before discarding an action with content — removal is non-undoable (HIG reserves
             // this for uncommon, irreversible destructive actions). A destructive-styled button plus
             // the default Cancel; presenting the slug keeps the bound action stable across the dialog.
@@ -146,6 +156,14 @@ struct WorkflowEditorView: View {
                         .help("More")
                         .accessibilityLabel("More")
                     }
+                } else if !model.actions.isEmpty {
+                    // List view: an Edit/Done toggle reveals the delete + reorder controls, mirroring
+                    // iOS Settings. Only meaningful when there are actions to edit.
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(isEditing ? "Done" : "Edit") {
+                            isEditing.toggle()
+                        }
+                    }
                 }
             }
     }
@@ -161,8 +179,11 @@ struct WorkflowEditorView: View {
         } else {
             listOrEmpty
                 // Floating "+" matching the Prompts section's add affordance (PromptsView), for
-                // app-wide consistency. Shown on the list/empty state, not the editing form.
-                .overlay(alignment: .bottomTrailing) { addButton }
+                // app-wide consistency. Shown on the list/empty state, but hidden in edit mode —
+                // adding is a normal-mode action (mirrors iOS hiding the add row while editing).
+                .overlay(alignment: .bottomTrailing) {
+                    if !isEditing { addButton }
+                }
         }
     }
 
@@ -195,36 +216,59 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        List(selection: $selectedSlug) {
-            ForEach(model.actions) { action in
-                // Plain selectable rows — no Button/tap gesture — so List keeps drag-to-reorder.
-                // Navigation is driven by selection (see onChange below).
-                WorkflowActionCard(name: action.name, instructions: action.instructions)
-                    .tag(action.slug)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-                    .contextMenu {
-                        Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
-                    }
+        // Two row variants, switched by `isEditing`, so a row never has both a tap-to-open handler
+        // and `onMove` (which would disable the reorder drag). Normal rows are tappable and carry no
+        // `onMove`; edit rows are non-tappable, carry `onMove` (drag-to-reorder), and show a delete
+        // control. The branch lives inside one `List` so the container/styling stay constant.
+        List {
+            if isEditing {
+                ForEach(model.actions) { action in
+                    editRow(for: action)
+                }
+                .onMove(perform: move)
+            } else {
+                ForEach(model.actions) { action in
+                    normalRow(for: action)
+                }
             }
-            .onMove(perform: move)
         }
         // .inset (not .plain) gives the table a built-in leading margin, so the reorder drop
         // indicator's knob has room and isn't clipped at the edge.
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .padding(.vertical, 12)
-        .onChange(of: selectedSlug) { newValue in
-            // Open the clicked row's editor, then clear the selection so its highlight doesn't linger
-            // and the same row can be reopened. A reorder drag doesn't set selection, so it never
-            // navigates.
-            guard let slug = newValue else { return }
-            editingSlug = slug
-            selectedSlug = nil
-        }
         .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
+    }
+
+    /// A normal-mode row: a `Button` (safe here — no `onMove` in normal mode) so the card darkens
+    /// while the click is held, matching macOS Settings. Opens on click; chevron affordance.
+    private func normalRow(for action: WorkflowEditorModel.EditorAction) -> some View {
+        Button { editingSlug = action.slug } label: {
+            WorkflowActionCard(name: action.name, instructions: action.instructions)
+        }
+        .buttonStyle(PressableCardButtonStyle())
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+        .contextMenu {
+            Button("Edit") { editingSlug = action.slug }
+            Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+        }
+    }
+
+    /// An edit-mode row: a leading red delete control + a trailing drag handle, no tap-to-open. The
+    /// row is draggable via the enclosing `ForEach`'s `onMove`.
+    private func editRow(for action: WorkflowEditorModel.EditorAction) -> some View {
+        WorkflowActionCard(
+            name: action.name,
+            instructions: action.instructions,
+            isEditing: true,
+            onDelete: { requestRemove(slug: action.slug) }
+        )
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
     }
 
     /// Floating circular add button, mirroring `PromptsView`'s `createButton` so the two sections
@@ -344,6 +388,7 @@ struct WorkflowEditorView: View {
         }
     }
 
+    /// `onMove` handler for edit-mode drag-to-reorder. Routes relink through the tested `model.move`.
     private func move(from source: IndexSet, to destination: Int) {
         model.move(from: source, to: destination)
     }
