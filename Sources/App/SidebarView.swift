@@ -199,7 +199,7 @@ struct SidebarView: View {
     }
 
     private var workflowRow: some View {
-        Label("Workflow", systemImage: "arrow.trianglehead.branch")
+        Label("Workflow", systemImage: "flowchart")
             .tag(DetailSelection.workflow)
     }
 
