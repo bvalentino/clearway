@@ -125,6 +125,7 @@ struct WorkflowEditorView: View {
                         } label: {
                             Image(systemName: "ellipsis")
                         }
+                        .menuIndicator(.hidden)
                         .help("More")
                         .accessibilityLabel("More")
                     }
