@@ -193,7 +193,9 @@ struct WorkflowEditorView: View {
                     .tag(action.slug)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                    // Leading/trailing insets give the reorder drop indicator's knob room inside the
+                    // List so it isn't clipped at the edge (and provide the cards' horizontal margin).
+                    .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
                     .contextMenu {
                         Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
                     }
@@ -202,7 +204,7 @@ struct WorkflowEditorView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .padding(12)
+        .padding(.vertical, 12)
         .onChange(of: selectedSlug) { newValue in
             // Open the clicked row's editor, then clear the selection so its highlight doesn't linger
             // and the same row can be reopened. A reorder drag doesn't set selection, so it never
