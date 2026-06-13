@@ -54,6 +54,11 @@ struct WorkflowEditorView: View {
     /// the user chooses "Keep Editing" on the discard prompt, so they can see what's missing.
     @State private var forceValidation = false
 
+    /// Slug of an action still being created (added via `+` but not yet committed). Its slug is a
+    /// placeholder until commit; while set, nothing is persisted, so the file isn't written with the
+    /// placeholder slug or an unfinished action.
+    @State private var newActionSlug: String?
+
     /// Readable content-column width; long instructions stay legible. Shared by the list and the
     /// detail form so they line up.
     private let contentMaxWidth: CGFloat = 680
@@ -270,8 +275,10 @@ struct WorkflowEditorView: View {
 
     private func addAction() {
         let added = model.add()
-        // Open the new action's form immediately (it auto-focuses its name field) so the user can
-        // start typing — the create-focus affordance, now via navigation.
+        // Track it as the in-progress new action: its slug is a placeholder (the name was empty at
+        // creation) and is finalized from the name on commit. Open its form immediately (auto-focuses
+        // the name field) so the user can start typing.
+        newActionSlug = added.slug
         editingSlug = added.slug
     }
 
@@ -285,6 +292,9 @@ struct WorkflowEditorView: View {
             return
         }
         if action.isComplete {
+            // Commit. A brand-new action gets its slug derived from the name now (it was a
+            // placeholder until the user named it); existing actions keep their frozen slug.
+            if slug == newActionSlug { model.finalizeSlug(of: slug) }
             leaveEditor()
         } else if action.name.isEmpty && action.instructions.isEmpty {
             discardEditedAction()
@@ -295,6 +305,7 @@ struct WorkflowEditorView: View {
 
     private func leaveEditor() {
         editingSlug = nil
+        newActionSlug = nil
         forceValidation = false
     }
 
@@ -348,6 +359,9 @@ struct WorkflowEditorView: View {
 
     private func performSave() {
         defer { pendingSave = nil }
+        // Don't persist while a new action is mid-creation — its slug is still a placeholder, to be
+        // finalized from the name on commit. The file is written once, with the final slug.
+        guard newActionSlug == nil else { return }
         let fileManager = FileManager.default
 
         // No actions left → remove the file so the project returns to the empty state rather than

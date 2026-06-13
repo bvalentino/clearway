@@ -246,7 +246,8 @@ extension WorkflowDefinition {
     static let relativePath = ".clearway/WORKFLOW.json"
 
     /// Encodes to pretty-printed, stable-key JSON for writing to `.clearway/WORKFLOW.json`.
-    /// `sortedKeys` keeps diffs deterministic; the authoring UI and tests share this single
+    /// `sortedKeys` keeps diffs deterministic (JSONEncoder can't emit a custom key order — without
+    /// `sortedKeys` it uses non-deterministic hash order). The authoring UI and tests share this one
     /// encoder config so on-disk output never drifts between call sites.
     func encoded() throws -> Data {
         let encoder = JSONEncoder()

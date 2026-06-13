@@ -17,11 +17,14 @@ import SwiftUI
 ///   add/remove/move can't leave a dangling pointer.
 struct WorkflowEditorModel: Equatable {
 
-    /// A single action card. `slug` is frozen at creation; `name`/`instructions` are user-editable.
+    /// A single action card. `slug` is frozen once the action is persisted; `name`/`instructions`
+    /// are user-editable.
     struct EditorAction: Equatable, Identifiable {
-        /// Frozen slug — the engine's stable pointer target. Assigned once at creation and never
-        /// recomputed, so renames stay cosmetic.
-        let slug: String
+        /// The engine's stable pointer target. Frozen after the action is first persisted, so renames
+        /// stay cosmetic and live runs keep resolving. The one exception is a brand-new action, whose
+        /// slug is re-derived from its name once on creation-commit (`finalizeSlug(of:)`) — before it
+        /// has ever been persisted or referenced, so changing it then is safe.
+        fileprivate(set) var slug: String
         var name: String
         var instructions: String
 
@@ -121,6 +124,17 @@ struct WorkflowEditorModel: Equatable {
     /// `toDefinition`. Signature matches SwiftUI's `onMove`.
     mutating func move(from source: IndexSet, to destination: Int) {
         actions.move(fromOffsets: source, toOffset: destination)
+    }
+
+    /// Re-derives a brand-new action's slug from its current name, deduped against the others. Call
+    /// once on creation-commit: a new action is created with a placeholder slug (its name is still
+    /// empty at the moment `+` is tapped), so this turns "Sample" into `sample` instead of leaving
+    /// the `action` fallback. Only safe before the action has been persisted/referenced — afterwards
+    /// slugs stay frozen.
+    mutating func finalizeSlug(of slug: String) {
+        guard let index = actions.firstIndex(where: { $0.slug == slug }) else { return }
+        let others = Set(actions.enumerated().compactMap { $0.offset == index ? nil : $0.element.slug })
+        actions[index].slug = Self.makeSlug(from: actions[index].name, existing: others)
     }
 
     // MARK: - Serialization

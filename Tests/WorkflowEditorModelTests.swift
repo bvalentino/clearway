@@ -179,6 +179,41 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertEqual(definition.actions["test"]?.name, "Completely Different Name")
     }
 
+    // MARK: - finalizeSlug (creation-commit)
+
+    func testFinalizeSlugDerivesFromName() {
+        var model = WorkflowEditorModel()
+        let added = model.add() // empty name → placeholder fallback slug
+        XCTAssertEqual(added.slug, "action")
+
+        model.actions[0].name = "Sample"
+        model.finalizeSlug(of: added.slug)
+        XCTAssertEqual(model.actions[0].slug, "sample", "slug is re-derived from the name on commit")
+    }
+
+    func testFinalizeSlugDedupsAgainstOtherActions() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Test") // slug "test"
+        let new = model.add()    // placeholder "action"
+        model.actions[1].name = "Test"
+        model.finalizeSlug(of: new.slug)
+        XCTAssertEqual(model.actions[1].slug, "test_2", "finalized slug dedups against existing slugs")
+    }
+
+    func testFinalizeSlugRewiresRoutesAndValidates() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement")
+        let new = model.add() // placeholder "action", becomes the terminal
+        model.actions[1].name = "Review"
+        model.finalizeSlug(of: new.slug)
+
+        let definition = assertValid(model)
+        // The predecessor's success route follows the finalized slug, not the placeholder.
+        XCTAssertEqual(definition.actions["implement"]?.routes, ["success": "review"])
+        XCTAssertNil(definition.actions["action"], "the placeholder slug is gone")
+        XCTAssertTrue(definition.isTerminal("review"))
+    }
+
     func testSlugsSurviveRoundTripThroughDisk() throws {
         let definition = WorkflowDefinition(version: 1, start: "implement", actions: [
             "implement": .init(name: "Implement", instructions: "Do it.", routes: ["success": "test"]),
