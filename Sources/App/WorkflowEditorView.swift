@@ -101,6 +101,21 @@ struct WorkflowEditorView: View {
             } message: { _ in
                 Text("Its instructions will be deleted. This can’t be undone.")
             }
+            // Per macOS HIG, navigation (Back) belongs in the toolbar's leading area as the standard
+            // symbol with no text label — not a button floating in the content.
+            .toolbar {
+                if editingSlug != nil {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            editingSlug = nil
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .help("Back to Workflow")
+                        .accessibilityLabel("Back")
+                    }
+                }
+            }
     }
 
     @ViewBuilder
@@ -110,7 +125,6 @@ struct WorkflowEditorView: View {
                 action: $model.actions[index],
                 stepNumber: index + 1,
                 contentMaxWidth: contentMaxWidth,
-                onBack: { editingSlug = nil },
                 onDelete: { requestRemove(slug: slug) }
             )
         } else if model.actions.isEmpty {
@@ -321,24 +335,22 @@ struct WorkflowEditorView: View {
 
 // MARK: - Action detail form
 
-/// The editing form pushed when a card is tapped: a back button, the action's name, and its
-/// multi-line instructions. Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text
-/// fields focus on the first click, matching `ProjectSettingsView`'s bordered-field styling.
+/// The editing form shown when a card is tapped: the action's name, its multi-line instructions,
+/// and a delete button. Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text fields
+/// focus on the first click, matching `ProjectSettingsView`'s bordered-field styling. Back navigation
+/// lives in the window toolbar (the macOS-standard place), not in this content.
 private struct WorkflowActionDetailView: View {
     @Binding var action: WorkflowEditorModel.EditorAction
     let stepNumber: Int
     let contentMaxWidth: CGFloat
-    let onBack: () -> Void
     let onDelete: () -> Void
 
     @FocusState private var nameFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            backBar
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    field("Name") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                field("Name") {
                         TextField("Action name", text: $action.name)
                             .textFieldStyle(.plain)
                             .font(.title3.weight(.semibold))
@@ -362,29 +374,15 @@ private struct WorkflowActionDetailView: View {
                     .padding(.top, 8)
                 }
                 .padding(.horizontal, 32)
+                .padding(.top, 16)
                 .padding(.bottom, 24)
                 .frame(maxWidth: contentMaxWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
-            }
         }
         // A blank, just-created action lands with its name field focused so the user can type at once.
         .onAppear {
             if action.name.isEmpty && action.instructions.isEmpty { nameFocused = true }
         }
-    }
-
-    private var backBar: some View {
-        HStack(spacing: 0) {
-            Button(action: onBack) {
-                Label("Workflow", systemImage: "chevron.backward")
-            }
-            .buttonStyle(.borderless)
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: contentMaxWidth, alignment: .leading)
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
