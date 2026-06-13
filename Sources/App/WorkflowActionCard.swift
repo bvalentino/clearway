@@ -24,7 +24,9 @@ struct WorkflowActionCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: cornerRadius))
+        // System hierarchical fill: a translucent gray from the foreground color, so the card reads
+        // darker than the pane in light mode and lighter than it in dark mode (an elevated surface).
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: cornerRadius))
         .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
