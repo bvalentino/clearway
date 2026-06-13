@@ -48,6 +48,12 @@ struct WorkflowEditorView: View {
     /// would fight the app's existing window toolbar).
     @State private var editingSlug: String?
 
+    /// Transient list selection — set on click, immediately consumed to open the editor, then
+    /// cleared. Lives only so navigation is selection-driven: a `Button`/tap gesture on a row would
+    /// swallow the press and disable `List`'s drag-to-reorder, whereas plain selectable rows keep
+    /// both (click selects → open; drag reorders).
+    @State private var selectedSlug: String?
+
     /// Readable content-column width; long instructions stay legible. Shared by the list and the
     /// detail form so they line up.
     private let contentMaxWidth: CGFloat = 680
@@ -148,16 +154,12 @@ struct WorkflowEditorView: View {
     // MARK: - Editor list
 
     private var editorList: some View {
-        List {
+        List(selection: $selectedSlug) {
             ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
-                // A tap gesture (not a Button) opens the editor: a Button fills the row and swallows
-                // the mouse press, so List's drag-to-reorder (.onMove) could never start. The tap
-                // fires on click-without-drag; a drag instead initiates the reorder.
+                // Plain selectable rows — no Button/tap gesture — so List keeps drag-to-reorder.
+                // Navigation is driven by selection (see onChange below).
                 WorkflowActionCard(stepNumber: index + 1, name: action.name)
-                    .contentShape(Rectangle())
-                    .onTapGesture { editingSlug = action.slug }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint("Opens the action editor")
+                    .tag(action.slug)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
@@ -173,6 +175,14 @@ struct WorkflowEditorView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .onChange(of: selectedSlug) { newValue in
+            // Open the clicked row's editor, then clear the selection so its highlight doesn't linger
+            // and the same row can be reopened. A reorder drag doesn't set selection, so it never
+            // navigates.
+            guard let slug = newValue else { return }
+            editingSlug = slug
+            selectedSlug = nil
+        }
         .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
