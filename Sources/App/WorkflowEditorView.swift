@@ -104,7 +104,8 @@ struct WorkflowEditorView: View {
                 action: $model.actions[index],
                 stepNumber: index + 1,
                 contentMaxWidth: contentMaxWidth,
-                onBack: { editingSlug = nil }
+                onBack: { editingSlug = nil },
+                onDelete: { requestRemove(slug: slug) }
             )
         } else if model.actions.isEmpty {
             emptyPlaceholder
@@ -316,6 +317,7 @@ private struct WorkflowActionDetailView: View {
     let stepNumber: Int
     let contentMaxWidth: CGFloat
     let onBack: () -> Void
+    let onDelete: () -> Void
 
     @FocusState private var nameFocused: Bool
 
@@ -338,6 +340,14 @@ private struct WorkflowActionDetailView: View {
                             .lineLimit(6...40)
                             .accessibilityLabel("Action instructions")
                     }
+
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Delete Action", systemImage: "trash")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                    .tint(.red)
+                    .padding(.top, 8)
                 }
                 .padding(.horizontal, 32)
                 .padding(.bottom, 24)
