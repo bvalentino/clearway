@@ -354,8 +354,6 @@ final class WorkflowDefinitionTests: XCTestCase {
 
     // MARK: - Encode round-trip
 
-    /// Encodes `def` and decodes the bytes back, so a passing assertion proves the encode path
-    /// is lossless against the existing decode path.
     private func roundTrip(_ def: WorkflowDefinition) throws -> WorkflowDefinition {
         try JSONDecoder().decode(WorkflowDefinition.self, from: def.encoded())
     }
@@ -376,7 +374,6 @@ final class WorkflowDefinitionTests: XCTestCase {
     }
 
     func testEncodeRoundTripThreeActionChain() throws {
-        // The canonical implement → test → review (terminal) graph round-trips exactly.
         let def = try decode(Self.validGraphJSON)
         XCTAssertEqual(try roundTrip(def), def)
     }
@@ -420,7 +417,6 @@ final class WorkflowDefinitionTests: XCTestCase {
     }
 
     func testEncodeOmitsRoutesKeyForTerminalAction() throws {
-        // A terminal action must not serialize a `routes` key, so it round-trips back to terminal.
         let def = WorkflowDefinition(version: 1, start: "only", actions: [
             "only": .init(name: "Only", instructions: "One and done.")
         ])
@@ -432,7 +428,6 @@ final class WorkflowDefinitionTests: XCTestCase {
     }
 
     func testEncodeOmitsAgentWhenDefault() throws {
-        // A default agent is omitted (decode re-applies the same default), keeping new files minimal.
         let def = WorkflowDefinition(version: 1, start: "only", actions: [
             "only": .init(name: "Only", instructions: "Go.")
         ])

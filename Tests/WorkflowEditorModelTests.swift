@@ -1,17 +1,13 @@
 import XCTest
 @testable import Clearway
 
-/// Unit tests for `WorkflowEditorModel` — the correctness-critical, UI-free core. Slug generation
-/// (sanitize / dedup / reserved-avoidance / freeze-under-rename) and linear-chain route relinking
-/// (add / remove / move) are exercised here, and **every mutation's `toDefinition` output is
-/// asserted to pass `WorkflowDefinition.validate()`** so a relinking bug can never ship a file the
-/// engine would reject or, worse, silently mis-route.
+/// Unit tests for `WorkflowEditorModel`: slug generation and linear-chain route relinking. Every
+/// mutation's `toDefinition` output is asserted `validate()`-clean.
 final class WorkflowEditorModelTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Asserts a model serializes to a `validate()`-clean definition and returns it for further
-    /// structural assertions. Centralizes the "every mutation stays valid" guarantee.
+    /// Asserts the model serializes to a `validate()`-clean definition; returns it for further checks.
     @discardableResult
     private func assertValid(
         _ model: WorkflowEditorModel,
@@ -34,9 +30,7 @@ final class WorkflowEditorModelTests: XCTestCase {
     }
 
     func testSlugifyDropsNonASCIIAndTrimsToEmptyForAllSymbols() {
-        // Non-ASCII letters are treated as separators → collapsed/trimmed away.
         XCTAssertEqual(WorkflowEditorModel.slugify("café"), "caf")
-        // An all-symbol name slugifies to empty (the generator substitutes the fallback).
         XCTAssertEqual(WorkflowEditorModel.slugify("!!!"), "")
         XCTAssertEqual(WorkflowEditorModel.slugify("   "), "")
     }
@@ -49,8 +43,6 @@ final class WorkflowEditorModelTests: XCTestCase {
     }
 
     func testMakeSlugAvoidsReservedBacklogMarkers() {
-        // A name slugifying to a reserved marker must be suffixed — the engine ignores `new` /
-        // `ready_to_start`, so an action keyed by one would be unreachable and fail validate().
         XCTAssertEqual(WorkflowEditorModel.makeSlug(from: "New", existing: []), "new_2")
         XCTAssertEqual(WorkflowEditorModel.makeSlug(from: "Ready To Start", existing: []), "ready_to_start_2")
     }
@@ -88,7 +80,6 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertEqual(definition.start, slugs[0])
         XCTAssertEqual(definition.actions[slugs[0]]?.routes, ["success": slugs[1]])
         XCTAssertEqual(definition.actions[slugs[1]]?.routes, ["success": slugs[2]])
-        // Last card is terminal.
         XCTAssertEqual(definition.actions[slugs[2]]?.routes, [:])
         XCTAssertTrue(definition.isTerminal(slugs[2]))
     }
@@ -106,8 +97,8 @@ final class WorkflowEditorModelTests: XCTestCase {
     func testAddAppendsAndRelinksFormerTerminal() {
         var model = WorkflowEditorModel()
         let first = model.add(name: "First")
-        let second = model.add(name: "Second") // was terminal
-        let third = model.add(name: "Third")    // new terminal
+        let second = model.add(name: "Second")
+        let third = model.add(name: "Third")
 
         let definition = assertValid(model)
         XCTAssertEqual(definition.actions[first.slug]?.routes, ["success": second.slug])
@@ -123,11 +114,10 @@ final class WorkflowEditorModelTests: XCTestCase {
         model.add(name: "B")
         let c = model.add(name: "C")
 
-        model.remove(at: 1) // drop B
+        model.remove(at: 1)
 
         let definition = assertValid(model)
         XCTAssertEqual(definition.actions.count, 2)
-        // A now points straight at C — no dangling pointer to the removed B.
         XCTAssertEqual(definition.actions[a.slug]?.routes, ["success": c.slug])
         XCTAssertTrue(definition.isTerminal(c.slug))
     }
@@ -137,7 +127,7 @@ final class WorkflowEditorModelTests: XCTestCase {
         let a = model.add(name: "A")
         model.add(name: "B")
 
-        model.remove(at: 1) // drop the terminal B
+        model.remove(at: 1)
 
         let definition = assertValid(model)
         XCTAssertEqual(definition.start, a.slug)
@@ -152,7 +142,6 @@ final class WorkflowEditorModelTests: XCTestCase {
         let b = model.add(name: "B")
         let c = model.add(name: "C")
 
-        // Move C to the front → [C, A, B].
         model.move(from: IndexSet(integer: 2), to: 0)
         XCTAssertEqual(model.actions.map { $0.slug }, [c.slug, a.slug, b.slug])
 
@@ -170,7 +159,6 @@ final class WorkflowEditorModelTests: XCTestCase {
         let original = model.add(name: "Test")
         XCTAssertEqual(original.slug, "test")
 
-        // Rename in place — the slug must not be recomputed.
         model.actions[0].name = "Completely Different Name"
         XCTAssertEqual(model.actions[0].slug, "test", "rename is cosmetic; slug is frozen")
 
@@ -183,7 +171,7 @@ final class WorkflowEditorModelTests: XCTestCase {
 
     func testFinalizeSlugDerivesFromName() {
         var model = WorkflowEditorModel()
-        let added = model.add() // empty name → placeholder fallback slug
+        let added = model.add()
         XCTAssertEqual(added.slug, "action")
 
         model.actions[0].name = "Sample"
@@ -193,8 +181,8 @@ final class WorkflowEditorModelTests: XCTestCase {
 
     func testFinalizeSlugDedupsAgainstOtherActions() {
         var model = WorkflowEditorModel()
-        model.add(name: "Test") // slug "test"
-        let new = model.add()    // placeholder "action"
+        model.add(name: "Test")
+        let new = model.add()
         model.actions[1].name = "Test"
         model.finalizeSlug(of: new.slug)
         XCTAssertEqual(model.actions[1].slug, "test_2", "finalized slug dedups against existing slugs")
@@ -203,12 +191,11 @@ final class WorkflowEditorModelTests: XCTestCase {
     func testFinalizeSlugRewiresRoutesAndValidates() {
         var model = WorkflowEditorModel()
         model.add(name: "Implement")
-        let new = model.add() // placeholder "action", becomes the terminal
+        let new = model.add()
         model.actions[1].name = "Review"
         model.finalizeSlug(of: new.slug)
 
         let definition = assertValid(model)
-        // The predecessor's success route follows the finalized slug, not the placeholder.
         XCTAssertEqual(definition.actions["implement"]?.routes, ["success": "review"])
         XCTAssertNil(definition.actions["action"], "the placeholder slug is gone")
         XCTAssertTrue(definition.isTerminal("review"))
@@ -219,7 +206,6 @@ final class WorkflowEditorModelTests: XCTestCase {
             "implement": .init(name: "Implement", instructions: "Do it.", routes: ["success": "test"]),
             "test": .init(name: "Test", instructions: "Run tests.")
         ])
-        // Load → edit model → write back; the linear def must reconstruct identically.
         let model = WorkflowEditorModel(from: definition)
         let rebuilt = model.toDefinition(preserving: definition)
         XCTAssertEqual(rebuilt, definition, "a linear def round-trips through the editor unchanged")
@@ -244,14 +230,11 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertEqual(definition.hooks?.afterCreate, "echo created")
         XCTAssertEqual(definition.hooks?.beforeRun, "echo running")
         XCTAssertEqual(definition.version, 1)
-        // ...but the actions are fully replaced by the editor's list.
         XCTAssertNil(definition.actions["old"])
         XCTAssertNotNil(definition.actions["brand_new"])
     }
 
     func testToDefinitionPreservesPerActionReservedFields() {
-        // A hand-authored loop guard (max_attempts / on_max_attempts) on an existing action must
-        // survive the editor's rebuild — the editor owns only name/instructions/routes.
         let base = WorkflowDefinition(version: 1, start: "test", actions: [
             "test": .init(
                 name: "Test", instructions: "Run tests.",
@@ -266,8 +249,6 @@ final class WorkflowEditorModelTests: XCTestCase {
     }
 
     func testToDefinitionDropsDanglingEscapePointerWhenTargetRemoved() {
-        // If the editor removes the action an on_max_attempts pointed at, the stale pointer is
-        // dropped rather than carried forward as a dangling reference that would fail validate().
         let base = WorkflowDefinition(version: 1, start: "test", actions: [
             "test": .init(
                 name: "Test", instructions: "Run.",
@@ -276,7 +257,6 @@ final class WorkflowEditorModelTests: XCTestCase {
             "fix": .init(name: "Fix", instructions: "Patch.")
         ])
         var model = WorkflowEditorModel(from: base)
-        // Remove "fix" (the escape target). Its index is 1 in flow order.
         model.remove(at: 1)
 
         let definition = assertValid(model, preserving: base)
@@ -291,9 +271,9 @@ final class WorkflowEditorModelTests: XCTestCase {
         model.add(name: "One"); assertValid(model)
         model.add(name: "Two"); assertValid(model)
         model.add(name: "Three"); assertValid(model)
-        model.move(from: IndexSet(integer: 0), to: 3); assertValid(model) // [Two, Three, One]
-        model.remove(at: 1); assertValid(model)                            // drop middle
-        model.remove(at: 0); assertValid(model)                            // drop to single
+        model.move(from: IndexSet(integer: 0), to: 3); assertValid(model)
+        model.remove(at: 1); assertValid(model)
+        model.remove(at: 0); assertValid(model)
         XCTAssertEqual(model.actions.count, 1)
     }
 
