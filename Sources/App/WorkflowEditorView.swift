@@ -127,7 +127,17 @@ struct WorkflowEditorView: View {
                 contentMaxWidth: contentMaxWidth,
                 onDelete: { requestRemove(slug: slug) }
             )
-        } else if model.actions.isEmpty {
+        } else {
+            listOrEmpty
+                // Floating "+" matching the Prompts section's add affordance (PromptsView), for
+                // app-wide consistency. Shown on the list/empty state, not the editing form.
+                .overlay(alignment: .bottomTrailing) { addButton }
+        }
+    }
+
+    @ViewBuilder
+    private var listOrEmpty: some View {
+        if model.actions.isEmpty {
             emptyPlaceholder
         } else {
             editorList
@@ -152,13 +162,6 @@ struct WorkflowEditorView: View {
                     .foregroundStyle(.orange)
                     .padding(.top, 4)
             }
-            // The single most-likely action on an empty screen → prominent (accent) style.
-            Button(action: addAction) {
-                Label("Add Action", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .padding(.top, 6)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -182,10 +185,6 @@ struct WorkflowEditorView: View {
                     }
             }
             .onMove(perform: move)
-
-            addActionRow
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -201,15 +200,21 @@ struct WorkflowEditorView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The Shortcuts-style "Add Action" affordance beneath the last card (no +/− strip, no library —
-    /// our actions are free-text, so adding just appends a blank step and opens it).
-    private var addActionRow: some View {
+    /// Floating circular add button, mirroring `PromptsView`'s `createButton` so the two sections
+    /// share one add affordance. Appends a blank step and opens its editor.
+    private var addButton: some View {
         Button(action: addAction) {
-            Label("Add Action", systemImage: "plus")
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
-        .buttonStyle(.borderless)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .center)
+        .buttonStyle(.plain)
+        .padding(12)
+        .help("Add action")
+        .accessibilityLabel("Add action")
     }
 
     // MARK: - Loading + reconciliation
