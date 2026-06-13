@@ -150,18 +150,20 @@ struct WorkflowEditorView: View {
     private var editorList: some View {
         List {
             ForEach(Array(zip(model.actions.indices, model.actions)), id: \.1.id) { index, action in
-                Button {
-                    editingSlug = action.slug
-                } label: {
-                    WorkflowActionCard(stepNumber: index + 1, name: action.name)
-                }
-                .buttonStyle(.plain)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-                .contextMenu {
-                    Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
-                }
+                // A tap gesture (not a Button) opens the editor: a Button fills the row and swallows
+                // the mouse press, so List's drag-to-reorder (.onMove) could never start. The tap
+                // fires on click-without-drag; a drag instead initiates the reorder.
+                WorkflowActionCard(stepNumber: index + 1, name: action.name)
+                    .contentShape(Rectangle())
+                    .onTapGesture { editingSlug = action.slug }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Opens the action editor")
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                    .contextMenu {
+                        Button("Delete", role: .destructive) { requestRemove(slug: action.slug) }
+                    }
             }
             .onMove(perform: move)
 
