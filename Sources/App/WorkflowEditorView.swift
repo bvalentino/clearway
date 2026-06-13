@@ -32,13 +32,6 @@ struct WorkflowEditorView: View {
     /// work: `onChange` fires on the *next* update pass, by which point the flag is already clear.)
     @State private var isLoading = false
 
-    /// Cached "a file exists on disk but the coordinator couldn't load+validate it." Recomputed at
-    /// discrete load/reconcile/save points — never per render — so a transient mid-delete disk state
-    /// can't briefly flash a stale "couldn't be read" warning right after the user removed the last
-    /// action. The empty state surfaces this so someone hand-fixing a malformed file knows it's there
-    /// (and that adding an action replaces it).
-    @State private var hasUnreadableFile = false
-
     /// Slug of the action awaiting delete confirmation, or `nil` when no confirmation is showing.
     /// Only set for a card with content — removing a blank card skips the prompt (see `requestRemove`).
     @State private var pendingRemovalSlug: String?
@@ -69,11 +62,6 @@ struct WorkflowEditorView: View {
         (projectPath as NSString).appendingPathComponent(WorkflowDefinition.relativePath)
     }
 
-    private func refreshUnreadableFlag() {
-        hasUnreadableFile = workTaskCoordinator.workflowDefinition == nil
-            && FileManager.default.fileExists(atPath: workflowFilePath)
-    }
-
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -85,7 +73,6 @@ struct WorkflowEditorView: View {
                 scheduleSave()
             }
             .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
-                refreshUnreadableFlag()
                 // Reconcile external edits only when idle; a pending local save will win, and its own
                 // write echoes back here (suppressed by the equality check in `reconcile`).
                 guard pendingSave == nil else { return }
@@ -194,13 +181,6 @@ struct WorkflowEditorView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            if hasUnreadableFile {
-                Label("An existing WORKFLOW.json couldn’t be read. Adding an action replaces it.",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(.top, 4)
-            }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -276,7 +256,6 @@ struct WorkflowEditorView: View {
         if let slug = editingSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
             editingSlug = nil
         }
-        refreshUnreadableFlag()
     }
 
     /// Pulls an external edit into the editor. Skips the no-op case where the incoming value is the
@@ -376,8 +355,6 @@ struct WorkflowEditorView: View {
         guard !model.actions.isEmpty else {
             try? fileManager.removeItem(atPath: workflowFilePath)
             lastLoaded = nil
-            // The user emptied the editor — there's nothing unreadable, so never warn after this.
-            hasUnreadableFile = false
             return
         }
 
@@ -402,8 +379,6 @@ struct WorkflowEditorView: View {
             attributes: [.posixPermissions: 0o600]
         ) else { return }
         lastLoaded = definition
-        // We just wrote a valid file — clear any prior "unreadable" warning.
-        hasUnreadableFile = false
     }
 
     private func ensureClearwayDirectory() {
