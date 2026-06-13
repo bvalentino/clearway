@@ -436,10 +436,12 @@ private struct WorkflowActionDetailView: View {
                         .accessibilityLabel("Action name")
                 }
                 field("Instructions", isMissing: (instructionsEdited || forceValidation) && isBlank(action.instructions)) {
-                    TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
-                        .textFieldStyle(.plain)
+                    // TextEditor (not TextField) so Return inserts a line break — instructions are
+                    // multi-paragraph prompts. scrollContentBackground(.hidden) lets the field box show.
+                    TextEditor(text: $action.instructions)
                         .font(.body)
-                        .lineLimit(6...40)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 160)
                         .accessibilityLabel("Action instructions")
                 }
             }
