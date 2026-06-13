@@ -21,7 +21,7 @@ struct WorkflowActionCard: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
-        .padding(14)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         // System hierarchical fill: a translucent gray from the foreground color, so the card reads
         // darker than the pane in light mode and lighter than it in dark mode (an elevated surface).
