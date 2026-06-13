@@ -114,6 +114,20 @@ struct WorkflowEditorView: View {
                         .help("Back to Workflow")
                         .accessibilityLabel("Back")
                     }
+                    // Secondary/destructive actions live in a More menu, not as a prominent button.
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button(role: .destructive) {
+                                if let slug = editingSlug { requestRemove(slug: slug) }
+                            } label: {
+                                Label("Delete Action", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+                        .help("More")
+                        .accessibilityLabel("More")
+                    }
                 }
             }
     }
@@ -124,8 +138,7 @@ struct WorkflowEditorView: View {
             WorkflowActionDetailView(
                 action: $model.actions[index],
                 stepNumber: index + 1,
-                contentMaxWidth: contentMaxWidth,
-                onDelete: { requestRemove(slug: slug) }
+                contentMaxWidth: contentMaxWidth
             )
         } else {
             listOrEmpty
@@ -340,15 +353,14 @@ struct WorkflowEditorView: View {
 
 // MARK: - Action detail form
 
-/// The editing form shown when a card is tapped: the action's name, its multi-line instructions,
-/// and a delete button. Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text fields
-/// focus on the first click, matching `ProjectSettingsView`'s bordered-field styling. Back navigation
-/// lives in the window toolbar (the macOS-standard place), not in this content.
+/// The editing form shown when a card is tapped: the action's name and its multi-line instructions.
+/// Built from a `ScrollView`/`VStack` (not `Form`/`List`) so its text fields focus on the first
+/// click, matching `ProjectSettingsView`'s bordered-field styling. Back navigation and the Delete
+/// action live in the window toolbar (the macOS-standard place), not in this content.
 private struct WorkflowActionDetailView: View {
     @Binding var action: WorkflowEditorModel.EditorAction
     let stepNumber: Int
     let contentMaxWidth: CGFloat
-    let onDelete: () -> Void
 
     @FocusState private var nameFocused: Bool
 
@@ -369,14 +381,6 @@ private struct WorkflowActionDetailView: View {
                             .lineLimit(6...40)
                             .accessibilityLabel("Action instructions")
                     }
-
-                    // Natural-width destructive button, leading-aligned (the VStack aligns leading)
-                    // — macOS prefers content buttons sized to their label, not full-width.
-                    Button(role: .destructive, action: onDelete) {
-                        Label("Delete Action", systemImage: "trash")
-                    }
-                    .tint(.red)
-                    .padding(.top, 8)
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 16)
