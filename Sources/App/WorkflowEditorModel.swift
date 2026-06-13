@@ -2,20 +2,15 @@
 // stays UI-free.
 import SwiftUI
 
-/// An ordered, editor-facing view of a `WORKFLOW.json` action list. The on-disk `WorkflowDefinition`
-/// is an unordered slug-keyed map wired by route pointers; this holds the actions in card order
-/// (top-to-bottom == the v1 linear flow) and owns all route rewiring, so the UI never sees a slug,
-/// a `start` pointer, or a `routes` map.
-///
-/// Two invariants uphold the engine's "pointers target frozen slugs, `name` is cosmetic" contract:
-/// slugs freeze at creation (a rename touches only `name`), and `toDefinition` is the only place
-/// routes are computed — always from current card order — so add/remove/move can't dangle a pointer.
+/// An ordered, editor-facing view of a `WORKFLOW.json` action list: the actions in card order
+/// (top-to-bottom == the v1 linear flow), with all route rewiring owned here so the UI never sees a
+/// slug or pointer. Slugs freeze at creation, and `toDefinition` is the only place routes are computed
+/// (from current order), so add/remove/move can't dangle a pointer.
 struct WorkflowEditorModel: Equatable {
 
     struct EditorAction: Equatable, Identifiable {
-        /// The engine's stable pointer target, frozen after the action is first persisted so renames
-        /// stay cosmetic. The exception: a brand-new action's placeholder slug is re-derived from its
-        /// name once on creation-commit (`finalizeSlug(of:)`), before it has been referenced.
+        /// The engine's stable pointer target, frozen so renames stay cosmetic. A new action's
+        /// placeholder slug is re-derived from its name once on commit (`finalizeSlug(of:)`).
         fileprivate(set) var slug: String
         var name: String
         var instructions: String
@@ -69,9 +64,8 @@ struct WorkflowEditorModel: Equatable {
         return result
     }
 
-    /// A frozen slug from `name`: unique against `existing`, with an `action` fallback for an empty
-    /// name. Collisions and reserved backlog markers (`new` / `ready_to_start`) get a numeric suffix —
-    /// the engine ignores those markers, so an action keyed by one would fail `validate()`.
+    /// A unique slug from `name`: an `action` fallback for an empty name, a numeric suffix for a
+    /// collision or a reserved backlog marker (which the engine ignores, so it would fail `validate()`).
     static func makeSlug(from name: String, existing: Set<String>) -> String {
         let reserved = WorkTask.ReservedStatus.backlogMarkers
         var base = slugify(name)
@@ -108,9 +102,8 @@ struct WorkflowEditorModel: Equatable {
         actions.move(fromOffsets: source, toOffset: destination)
     }
 
-    /// Re-derives a new action's slug from its current name (deduped). Called once on creation-commit,
-    /// since the name is empty when `+` is tapped. Only safe before the action has been referenced —
-    /// afterwards slugs stay frozen.
+    /// Re-derives a new action's slug from its name (deduped). Called once on commit, since the name
+    /// is empty when `+` is tapped; only safe before the slug has been referenced.
     mutating func finalizeSlug(of slug: String) {
         guard let index = actions.firstIndex(where: { $0.slug == slug }) else { return }
         let others = Set(actions.enumerated().compactMap { $0.offset == index ? nil : $0.element.slug })
@@ -120,10 +113,9 @@ struct WorkflowEditorModel: Equatable {
     // MARK: - Serialization
 
     /// Rebuilds a `WorkflowDefinition` from card order: `start` is the first slug, each non-last card
-    /// routes `success` to the next, the last is terminal. `version`/`agent`/`hooks` and per-action
-    /// reserved fields (`maxAttempts` / `onMaxAttempts`) are carried forward from `base` so fields the
-    /// editor never surfaces survive a write; a `nil` base uses v1 defaults. The editor owns only
-    /// `name`, `instructions`, and `routes`.
+    /// routes `success` to the next, the last is terminal. Fields the editor doesn't surface
+    /// (`version`/`agent`/`hooks`, per-action `maxAttempts`/`onMaxAttempts`) carry forward from `base`;
+    /// a `nil` base uses v1 defaults.
     func toDefinition(preserving base: WorkflowDefinition?) -> WorkflowDefinition {
         let liveSlugs = Set(actions.map { $0.slug })
         var map: [String: WorkflowDefinition.Action] = [:]

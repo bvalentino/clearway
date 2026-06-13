@@ -12,19 +12,16 @@ struct WorkflowEditorView: View {
     /// Last definition loaded from disk; the base each save preserves. `nil` = no valid file yet.
     @State private var lastLoaded: WorkflowDefinition?
     @State private var pendingSave: DispatchWorkItem?
-    /// Suppresses the autosave that a *programmatic* model load would otherwise trigger, so opening
-    /// the section or reconciling an external edit never writes back. Armed by `load()` only when the
-    /// load actually changes `model`; the `onChange(of: model)` handler clears it.
-    @State private var isLoading = false
+    /// Set when a programmatic load changes `model`, so its `onChange` doesn't write the load back.
+    @State private var suppressNextSave = false
 
     @State private var pendingRemovalSlug: String?
 
     /// Slug of the action whose form is open; `nil` shows the list.
     @State private var editingSlug: String?
 
-    /// List edit mode (the toolbar's Edit/Done). A `List` row can't carry both a tap-to-open handler
-    /// and `onMove` — any tap disables the drag — so the two modes never coexist: normal rows tap to
-    /// open, edit rows reorder and delete.
+    /// List edit mode. A `List` row can't have both a tap-to-open handler and `onMove`, so normal-mode
+    /// rows tap to open and edit-mode rows reorder/delete.
     @State private var isEditing = false
 
     @State private var pendingDiscardSlug: String?
@@ -32,8 +29,7 @@ struct WorkflowEditorView: View {
     /// Forces the "Required" indicators on after the user picks "Keep Editing".
     @State private var forceValidation = false
 
-    /// An action added via `+` but not yet committed. Its slug is a placeholder, so nothing persists
-    /// while this is set.
+    /// An action added but not yet committed; its placeholder slug means nothing persists while set.
     @State private var newActionSlug: String?
 
     private let contentMaxWidth: CGFloat = 680
@@ -47,11 +43,10 @@ struct WorkflowEditorView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear(perform: load)
-            // A new action is suppressed from autosave until committed; commit it here so switching
-            // away (e.g. another sidebar section) before Back doesn't drop its typed content.
+            // Commit a new action on the way out, so leaving before Back doesn't drop its content.
             .onDisappear(perform: commitPendingNewAction)
             .onChange(of: model) { _ in
-                if isLoading { isLoading = false; return }
+                if suppressNextSave { suppressNextSave = false; return }
                 scheduleSave()
             }
             .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
@@ -240,8 +235,8 @@ struct WorkflowEditorView: View {
     private func load() {
         let definition = workTaskCoordinator.workflowDefinition
         let loaded = definition.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
-        // Arm the guard only on a real change; arming it for a no-op load would swallow the next edit.
-        if loaded != model { isLoading = true }
+        // Suppress only a real change; a no-op load would otherwise swallow the next edit.
+        if loaded != model { suppressNextSave = true }
         lastLoaded = definition
         model = loaded
         if let slug = editingSlug, !loaded.actions.contains(where: { $0.slug == slug }) {
@@ -302,7 +297,7 @@ struct WorkflowEditorView: View {
     /// Reverts the open action's unsaved edits by reloading the last persisted definition, then leaves.
     private func discardEditedAction() {
         let reverted = lastLoaded.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
-        if reverted != model { isLoading = true }
+        if reverted != model { suppressNextSave = true }
         model = reverted
         leaveEditor()
     }
@@ -320,8 +315,8 @@ struct WorkflowEditorView: View {
     }
 
     private func remove(slug: String) {
-        // Pop the form first so its binding doesn't dangle, then defer the mutation a tick (re-finding
-        // the index by slug) so the List finishes its current update before the array changes.
+        // Pop the form so its binding doesn't dangle, then defer the mutation a tick so the List
+        // finishes its current update before the array changes.
         if editingSlug == slug { editingSlug = nil }
         DispatchQueue.main.async {
             guard let index = model.actions.firstIndex(where: { $0.slug == slug }) else { return }
