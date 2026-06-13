@@ -383,18 +383,22 @@ private struct WorkflowActionDetailView: View {
     let contentMaxWidth: CGFloat
 
     @FocusState private var nameFocused: Bool
+    /// "Required" is shown only after a field has been edited and left empty — never on a pristine
+    /// form — so a freshly added action doesn't open pre-flagged as invalid.
+    @State private var nameEdited = false
+    @State private var instructionsEdited = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                field("Name", isMissing: isBlank(action.name)) {
+                field("Name", isMissing: nameEdited && isBlank(action.name)) {
                     TextField("Action name", text: $action.name)
                         .textFieldStyle(.plain)
                         .font(.body)
                         .focused($nameFocused)
                         .accessibilityLabel("Action name")
                 }
-                field("Instructions", isMissing: isBlank(action.instructions)) {
+                field("Instructions", isMissing: instructionsEdited && isBlank(action.instructions)) {
                     TextField("Instructions for this step", text: $action.instructions, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.body)
@@ -408,6 +412,8 @@ private struct WorkflowActionDetailView: View {
                 .frame(maxWidth: contentMaxWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
         }
+        .onChange(of: action.name) { _ in nameEdited = true }
+        .onChange(of: action.instructions) { _ in instructionsEdited = true }
         // A blank, just-created action lands with its name field focused so the user can type at once.
         .onAppear {
             if action.name.isEmpty && action.instructions.isEmpty { nameFocused = true }
