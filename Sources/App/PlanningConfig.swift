@@ -1,85 +1,27 @@
-import CryptoKit
 import Foundation
 
-/// Parsed WORKFLOW.md configuration from the project root.
-///
-/// The file uses YAML frontmatter for hooks/agent settings and a markdown
-/// body as the prompt template (Mustache-style `{{ var }}` interpolation).
-struct WorkflowConfig: Equatable {
-    var hooksAfterCreate: String?
-    var hooksBeforeRun: String?
+/// Parsed PLANNING.md configuration: YAML frontmatter (agent command) plus a
+/// markdown body used as the planning prompt template (`{{ var }}` interpolation).
+struct PlanningConfig: Equatable {
     var agentCommand: String?
-    var agentTimeoutMs: Int?
-    var stateCommandInProgress: String?
-    var stateCommandQa: String?
-    var stateCommandReadyForReview: String?
-    var stateCommandDone: String?
-    var stateCommandCanceled: String?
     var promptTemplate: String
-
-    /// Whether this config has any executable content that needs trust approval.
-    /// The prompt template is included because the in-progress play button pastes
-    /// it into the active terminal, so body changes must require re-approval.
-    var hasExecutableConfig: Bool {
-        hooksAfterCreate != nil || hooksBeforeRun != nil || agentCommand != nil
-            || stateCommandInProgress != nil || stateCommandQa != nil
-            || stateCommandReadyForReview != nil || stateCommandDone != nil
-            || stateCommandCanceled != nil
-            || !promptTemplate.isEmpty
-    }
-
-    /// A deterministic fingerprint of the hooks content for trust verification.
-    /// Changes when any hook command, agent command, state command, or prompt
-    /// template body changes.
-    var hooksFingerprint: String {
-        let content = [hooksAfterCreate, hooksBeforeRun, agentCommand,
-                       stateCommandInProgress, stateCommandQa,
-                       stateCommandReadyForReview, stateCommandDone,
-                       stateCommandCanceled,
-                       promptTemplate.isEmpty ? nil : promptTemplate]
-            .compactMap { $0 }
-            .joined(separator: "\n---\n")
-        let digest = SHA256.hash(data: Data(content.utf8))
-        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
-    }
-
-    // MARK: - Trust
-
-    /// Whether the hooks in this config have been approved by the user for the given project.
-    func isTrusted(forProject projectPath: String) -> Bool {
-        guard hasExecutableConfig else { return true }
-        let key = trustKey(forProject: projectPath)
-        return UserDefaults.standard.string(forKey: key) == hooksFingerprint
-    }
-
-    /// Mark the current hooks as trusted for the given project.
-    func markTrusted(forProject projectPath: String) {
-        let key = trustKey(forProject: projectPath)
-        UserDefaults.standard.set(hooksFingerprint, forKey: key)
-    }
-
-    private func trustKey(forProject projectPath: String) -> String {
-        let hash = SHA256.hash(data: Data(projectPath.utf8))
-        let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "clearway.workflow.trusted.\(hex)"
-    }
 
     // MARK: - Loading
 
-    /// Loads a workflow-style markdown file from the project root. Returns nil if the file doesn't exist.
-    static func load(projectPath: String, fileName: String = "WORKFLOW.md") -> WorkflowConfig? {
+    /// Loads a planning-style markdown file from the project root. Returns nil if the file doesn't exist.
+    static func load(projectPath: String, fileName: String = "PLANNING.md") -> PlanningConfig? {
         let path = (projectPath as NSString).appendingPathComponent(fileName)
         guard let data = FileManager.default.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else { return nil }
         return parse(from: content)
     }
 
-    /// Parses WORKFLOW.md content into a WorkflowConfig.
-    static func parse(from content: String) -> WorkflowConfig? {
+    /// Parses PLANNING.md content into a PlanningConfig.
+    static func parse(from content: String) -> PlanningConfig? {
         let lines = content.components(separatedBy: "\n")
         guard lines.first == "---" else {
             // No frontmatter — entire content is the template
-            return WorkflowConfig(promptTemplate: content)
+            return PlanningConfig(promptTemplate: content)
         }
 
         // Find closing ---
@@ -104,16 +46,8 @@ struct WorkflowConfig: Equatable {
             ? lines[bodyStart...].joined(separator: "\n")
             : ""
 
-        return WorkflowConfig(
-            hooksAfterCreate: frontmatter["hooks.after_create"],
-            hooksBeforeRun: frontmatter["hooks.before_run"],
+        return PlanningConfig(
             agentCommand: frontmatter["agent.command"],
-            agentTimeoutMs: frontmatter["agent.timeout_ms"].flatMap { Int($0) },
-            stateCommandInProgress: frontmatter["state_commands.in_progress"],
-            stateCommandQa: frontmatter["state_commands.qa"],
-            stateCommandReadyForReview: frontmatter["state_commands.ready_for_review"],
-            stateCommandDone: frontmatter["state_commands.done"],
-            stateCommandCanceled: frontmatter["state_commands.canceled"],
             promptTemplate: body
         )
     }
@@ -158,7 +92,7 @@ struct WorkflowConfig: Equatable {
             if indent == 0 {
                 // Top-level key
                 if rawValue.isEmpty {
-                    // This is a parent (e.g., "hooks:")
+                    // This is a parent (e.g., "agent:")
                     currentParent = key
                 } else if rawValue == "|" {
                     // Multi-line block at top level
@@ -197,8 +131,9 @@ struct WorkflowConfig: Equatable {
 
     // MARK: - Variable Interpolation
 
-    /// Variables available for hook and prompt interpolation.
-    static func taskVariables(task: WorkTask, taskPath: String?, attempt: Int?) -> [String: String] {
+    /// Variables available for planning-prompt interpolation. Planning has no status slugs —
+    /// it runs before a worktree's loop exists.
+    private static func taskVariables(task: WorkTask, taskPath: String?, attempt: Int?) -> [String: String] {
         var vars: [String: String] = [
             "task.title": task.title,
             "task.body": task.body,
@@ -211,54 +146,7 @@ struct WorkflowConfig: Equatable {
         if let attempt {
             vars["attempt"] = String(attempt)
         }
-        // Status slugs so hooks can update task files. The legacy WORKFLOW.md path uses the
-        // fixed set of states; the new WORKFLOW.json engine doesn't enumerate states.
-        for status in WorkTask.ReservedStatus.legacyOrdered {
-            vars["status.\(status)"] = status
-        }
         return vars
-    }
-
-    /// Interpolates `{{ var }}` placeholders in a hook command with task variables.
-    /// All values are shell-escaped to prevent injection via crafted task titles or bodies.
-    func renderHookCommand(_ command: String, task: WorkTask, taskPath: String?) -> String {
-        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
-        let escaped = variables.mapValues { shellEscape($0) }
-        return renderTemplate(command, variables: escaped)
-    }
-
-    func stateCommand(for status: String) -> String? {
-        switch status {
-        case WorkTask.ReservedStatus.inProgress: return stateCommandInProgress
-        case WorkTask.ReservedStatus.qa: return stateCommandQa
-        case WorkTask.ReservedStatus.readyForReview: return stateCommandReadyForReview
-        case WorkTask.ReservedStatus.done: return stateCommandDone
-        case WorkTask.ReservedStatus.canceled: return stateCommandCanceled
-        default: return nil
-        }
-    }
-
-    /// Whether the play button should appear for this status. In-progress falls back
-    /// to the WORKFLOW.md body when no explicit frontmatter command is defined.
-    func hasStateCommand(for status: String) -> Bool {
-        if stateCommand(for: status) != nil { return true }
-        if status == WorkTask.ReservedStatus.inProgress, !promptTemplate.isEmpty { return true }
-        return false
-    }
-
-    func renderStateCommand(for status: String, task: WorkTask, taskPath: String?) -> String? {
-        // State commands are pasted into whatever the active terminal is running
-        // — usually an agent like Claude, not a shell — so values are interpolated
-        // as-is without shell escaping. Callers that need shell-safe quoting should
-        // write it explicitly in WORKFLOW.md, e.g. `--title "{{ task.title }}"`.
-        let variables = Self.taskVariables(task: task, taskPath: taskPath, attempt: task.attempt)
-        if let cmd = stateCommand(for: status) {
-            return renderTemplate(cmd, variables: variables)
-        }
-        if status == WorkTask.ReservedStatus.inProgress, !promptTemplate.isEmpty {
-            return renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
-        }
-        return nil
     }
 
     // MARK: - Prompt Rendering

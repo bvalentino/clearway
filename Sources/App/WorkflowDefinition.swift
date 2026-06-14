@@ -2,7 +2,7 @@ import Foundation
 
 /// A parsed `WORKFLOW.json` (read from `.clearway/WORKFLOW.json`). The action graph plus
 /// the runtime knobs the loop needs. When this exists and is valid, it is the complete
-/// source of truth and the legacy `WORKFLOW.md` (`WorkflowConfig`) is ignored for the project.
+/// source of truth for the project's task-driving engine.
 ///
 /// The model is decoded from JSON with snake_case keys (`timeout_ms`, `max_attempts`,
 /// `on_max_attempts`, `after_create`, `before_run`); the Swift surface uses camelCase. Flow

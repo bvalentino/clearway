@@ -123,7 +123,7 @@ struct ProjectContentView: View {
                 terminalManager.onMainTabClosed = { [weak workTaskCoordinator] surface in
                     workTaskCoordinator?.handleMainTabClosed(surface)
                 }
-                // Start watching WORKFLOW.md for live config reload
+                // Start watching PLANNING.md for live config reload
                 workTaskCoordinator.startWatching()
                 promptManager.startWatching()
             }

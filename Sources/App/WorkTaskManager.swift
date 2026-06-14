@@ -31,7 +31,7 @@ class WorkTaskManager: ObservableObject {
     /// Persisted per-project key so `migrateCentralTasks()` runs **once per project**, not once per
     /// launch. Re-running every launch would also risk re-archiving a task that legitimately becomes
     /// terminal (done/canceled) while still central after the initial migration. Keyed by a hash of
-    /// the project path (mirrors `WorkflowConfig`'s trust flag).
+    /// the project path.
     private var migrationDoneKey: String {
         let hash = SHA256.hash(data: Data(projectPath.utf8))
         let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()

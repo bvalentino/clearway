@@ -378,10 +378,10 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
                       "a JSON project must not launch the legacy WORKFLOW.md agent on start")
     }
 
-    /// `completePendingLaunch` still relocates the task file into the worktree (so the seed writes to
-    /// the right place) but hands back **no** launch closure for a JSON project — the loop engine, not
-    /// the legacy WORKFLOW.md launch, owns starting the agent.
-    func testCompletePendingLaunchYieldsNoLegacyLaunchForJSONProject() throws {
+    /// `completePendingLaunch` relocates the task file into the worktree (so the seed writes to the
+    /// right place) and consumes the pending launch, but spawns **no** agent — the loop engine's seed,
+    /// not `completePendingLaunch`, owns starting the agent.
+    func testCompletePendingLaunchSpawnsNoAgentForJSONProject() throws {
         try writeWorkflow()
         let branch = "pending-json"
         let worktreePath = try writeWorktreeTask(branch: branch, status: WorkTask.ReservedStatus.new)
@@ -392,8 +392,11 @@ final class WorkflowLoopEngineHarnessTests: XCTestCase {
         coordinator.pendingLaunch = (id: task.id, branch: branch)
         let worktree = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached)
 
-        let launch = coordinator.completePendingLaunch(branch: branch, worktree: worktree, app: dummyApp)
-        XCTAssertNil(launch, "a JSON project gets no legacy launch closure from completePendingLaunch")
+        coordinator.completePendingLaunch(branch: branch, worktree: worktree)
+
+        XCTAssertNil(coordinator.pendingLaunch, "completePendingLaunch consumes the pending launch")
+        XCTAssertTrue(coordinator.agentSurfaces.isEmpty,
+                      "completePendingLaunch spawns no agent — the loop engine's seed owns that")
     }
 
     // MARK: - Manual status pick (picker)
