@@ -35,6 +35,19 @@ enum SidePanelTab: String, CaseIterable {
     case prompts = "Prompts"
 }
 
+/// Resolves which side panel tab to show when a worktree is opened.
+///
+/// Precedence: a stored per-worktree tab wins; otherwise a JSON-workflow project
+/// defaults to `.task`; otherwise the legacy `in_progress` status selects `.task`;
+/// otherwise the current tab is kept (demoting `.task` to `.todos`).
+func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
+                         taskStatus: String?, current: SidePanelTab) -> SidePanelTab {
+    if let stored, let tab = SidePanelTab(rawValue: stored) { return tab }
+    if isWorkflowJSONProject { return .task }
+    if taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
+    return current == .task ? .todos : current
+}
+
 /// Tracks the lifecycle of an after-create hook: blocking the main terminal,
 /// running in background, or inactive.
 enum AfterCreateHookState {
