@@ -11,7 +11,6 @@ struct WorkTaskIdentifier: Codable, Hashable {
 /// with the latest WorkTask data to avoid race conditions with the receiver's manager.
 enum WorkTaskNotification {
     static let start = Notification.Name("startWorkTask")
-    static let `continue` = Notification.Name("continueWorkTask")
     static let openWorktree = Notification.Name("openWorkTaskWorktree")
 
     /// Posted when the planning terminal is opened for a task so the inline editor

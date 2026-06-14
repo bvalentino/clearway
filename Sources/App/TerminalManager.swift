@@ -426,8 +426,7 @@ class TerminalManager: ObservableObject {
     ///
     /// Keeps the tab id and position so the tab strip and focus-routing needn't special-case
     /// the transition. `.loginShell` spawns pattern 1 (login shell); `.prompt` builds a
-    /// `/bin/sh -c …` pipe that feeds the prompt into the agent command (same recipe as
-    /// `WorkTaskCoordinator.runAgent`, inlined to avoid refactoring that hot path). No-op
+    /// `/bin/sh -c …` pipe that feeds the prompt into the agent command. No-op
     /// (returns nil) if the target tab isn't a launcher.
     @discardableResult
     func promoteLauncher(
@@ -465,10 +464,10 @@ class TerminalManager: ObservableObject {
         return newSurface
     }
 
-    /// Build the `/bin/sh -c` pipe command used by the prompt launcher. Mirrors
-    /// `WorkTaskCoordinator.runAgent`: export resolved login-shell PATH, then
-    /// `cat $promptFile | $agentCmd` with positional args to avoid shell injection.
-    /// The prompt file is removed after the agent consumes it so temp dir doesn't accumulate.
+    /// Build the `/bin/sh -c` pipe command used by the prompt launcher: export resolved
+    /// login-shell PATH, then `cat $promptFile | $agentCmd` with positional args to avoid
+    /// shell injection. The prompt file is removed after the agent consumes it so temp dir
+    /// doesn't accumulate.
     private func buildPromptPipeCommand(agentCommand: String, prompt: String) -> String {
         let tempDir = NSTemporaryDirectory()
         let launchId = UUID().uuidString
