@@ -65,7 +65,7 @@ struct TaskAsideView: View {
     /// JSON-workflow project, so non-JSON projects show no status UI at all.
     private func workflowActionCards(for task: WorkTask, definition: WorkflowDefinition) -> some View {
         VStack(spacing: 8) {
-            ForEach(definition.actionProgress(currentStatus: task.status), id: \.slug) { progress in
+            ForEach(definition.actionProgress(currentStatus: task.status, completed: task.completed == true), id: \.slug) { progress in
                 if let action = definition.actions[progress.slug] {
                     WorkflowSidebarActionCard(
                         name: action.name,

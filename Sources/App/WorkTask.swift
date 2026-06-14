@@ -30,6 +30,14 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// mirroring how `worktree`/`hidden` are emitted only when meaningful.
     var autopilot: Bool?
 
+    /// Whether the `WORKFLOW.json` loop has genuinely finished — set to `true` by the agent of a
+    /// **terminal** action via the completion injection contract, persisted to `TASK.md`. Modeled
+    /// exactly like `autopilot`: an optional Bool serialized only when set, so legacy / non-JSON
+    /// task files never gain the field. This is the **deliberate** completion signal that separates
+    /// a genuine finish from the terminal agent crashing — the engine reacts by pausing autopilot
+    /// and launching nothing further. Cleared (back to `nil`) when the loop is re-driven.
+    var completed: Bool?
+
     /// Whether the task carries any author-provided content for an agent to act on — a non-empty
     /// title or body. A freshly-created manual worktree's shadow task (empty title *and* body) has
     /// none, so the workflow loop must not auto-run an agent against its blank `TASK.md`, and the
@@ -133,6 +141,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // Emit autopilot only when set — a legacy (non-JSON-workflow) task has no autopilot, so
         // its file stays byte-for-byte identical. Present means the JSON engine owns this worktree.
         if let autopilot { lines.append("autopilot: \(autopilot)") }
+        // Emit completed only when set, mirroring autopilot — a never-completed or non-JSON task
+        // omits the line entirely, so clearing completion (write `nil`) restores that exact shape.
+        if let completed { lines.append("completed: \(completed)") }
         return lines.joined(separator: "\n")
     }
 
@@ -223,6 +234,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // Autopilot is tri-state: an absent line is `nil` (legacy / not applicable), so back-compat
         // files without the field parse cleanly; `true`/`false` map to the explicit flag.
         task.autopilot = fields["autopilot"].map { $0 == "true" }
+        // Completed is tri-state like autopilot: an absent line is `nil` (never completed / not
+        // applicable), so back-compat files without the field parse cleanly.
+        task.completed = fields["completed"].map { $0 == "true" }
         return task
     }
 

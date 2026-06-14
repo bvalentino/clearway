@@ -24,6 +24,12 @@ enum WorkflowLoopEngine {
         /// The written status can't be reached from the running action (an illegal route while a
         /// step is running, or an unknown slug). The caller surfaces `reason` and stops the loop.
         case halt(reason: String)
+
+        /// A terminal action's agent signaled a deliberate finish (`completed: true` on a routeless
+        /// action). The caller ends the loop — pauses autopilot, launches nothing. Honored only when
+        /// `written` is terminal; a stray `completed` elsewhere falls through to normal routing, so a
+        /// misbehaving agent can't end the loop early.
+        case complete(slug: String)
     }
 
     /// Decides the engine's response to a `status` value written to `TASK.md`.
@@ -38,19 +44,23 @@ enum WorkflowLoopEngine {
     ///     write). `nil` is treated as on (a JSON-workflow worktree seeds `true`; this guards the
     ///     theoretical case of a missing flag rather than silently pausing). This is the single
     ///     source of truth for the pause gate — the coordinator never re-decides it.
+    ///   - completed: The task's `completed` flag — `true` only when a terminal action's agent
+    ///     deliberately signaled it is done. Defaults to `nil` (the common routing case); when set,
+    ///     it resolves to `.complete` on a terminal action ahead of any routing.
     ///   - definition: The project's parsed, validated `WorkflowDefinition`.
     /// - Returns: The `Transition` the caller should act on. Pure — no I/O, no mutation.
     static func decideTransition(
         running: String?,
         written: String,
         autopilot: Bool?,
+        completed: Bool? = nil,
         definition: WorkflowDefinition
     ) -> Transition {
-        let decision = routeTransition(running: running, written: written, definition: definition)
+        let decision = routeTransition(running: running, written: written, completed: completed, definition: definition)
         // Pause gate: a paused worktree (`autopilot == false`) never launches. A `.launch` is
-        // demoted to `.ignore` — the running step finishes, nothing new starts. `.ignore`/`.halt`
-        // pass through so a paused loop still no-ops on its own status and still surfaces an
-        // illegal write. `nil`/`true` autopilot launches normally.
+        // demoted to `.ignore` — the running step finishes, nothing new starts. `.ignore`/`.halt`/
+        // `.complete` pass through so a paused loop still no-ops on its own status, still surfaces an
+        // illegal write, and still ends on a completed terminal action. `nil`/`true` launches normally.
         if autopilot == false, case .launch = decision {
             return .ignore
         }
@@ -64,8 +74,17 @@ enum WorkflowLoopEngine {
     private static func routeTransition(
         running: String?,
         written: String,
+        completed: Bool?,
         definition: WorkflowDefinition
     ) -> Transition {
+        // 0. Completion: a terminal action's agent wrote `completed: true` — the deliberate finish
+        //    signal. End the loop ahead of any routing (the S == P step would otherwise ignore the
+        //    terminal action re-writing its own status). Honored only on a terminal action; a stray
+        //    `completed` on a non-terminal action falls through and routes normally.
+        if completed == true, definition.isTerminal(written) {
+            return .complete(slug: written)
+        }
+
         // 1. S == P: the running action re-wrote its own status (or a mid-step body edit
         //    re-triggered the watcher). Nothing advances.
         if let running, written == running {
@@ -118,20 +137,28 @@ enum WorkflowLoopEngine {
 
     // MARK: - Prompt injection
 
-    /// Builds the agent prompt for an action launch: the action's `instructions` followed by the
-    /// **injection contract** when a next value exists. A terminal action (`nextValue == nil`) gets
-    /// no advance contract — it runs once and the loop ends.
+    /// Builds the agent prompt for an action launch: the action's `instructions` followed by an
+    /// **injection contract**. A non-terminal action (`nextValue != nil`) gets the **advance**
+    /// contract — the next `status` value to write. A **terminal** action (`nextValue == nil`) gets
+    /// the **completion** contract instead — write `completed: true` — the deliberate signal the
+    /// engine reacts to by ending the loop. Either way the agent is told to write it *last*, so
+    /// Clearway sees the signal only after the work is done.
     ///
-    /// The contract tells the agent exactly which `status` value to write, and to write it last so
-    /// Clearway sees it only after the work is done. Routing authority stays in `WORKFLOW.json`: the
-    /// agent can only write the value Clearway handed it, validated by `decideTransition` before
-    /// the next launch.
+    /// Routing authority stays in `WORKFLOW.json`: a non-terminal agent can only write the value
+    /// Clearway handed it (validated by `decideTransition`); a terminal agent only signals it is done.
     static func buildPrompt(instructions: String, nextValue: String?) -> String {
-        guard let nextValue else { return instructions }
-        let contract = """
-        [Clearway] When finished, set `status:` in .clearway/TASK.md to: \(nextValue)
-        Write it last.
-        """
+        let contract: String
+        if let nextValue {
+            contract = """
+            [Clearway] When finished, set `status:` in .clearway/TASK.md to: \(nextValue)
+            Write it last.
+            """
+        } else {
+            contract = """
+            [Clearway] When finished, set `completed: true` in .clearway/TASK.md
+            Write it last.
+            """
+        }
         return "\(instructions)\n\n\(contract)"
     }
 }
