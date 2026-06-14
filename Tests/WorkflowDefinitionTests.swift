@@ -320,6 +320,50 @@ final class WorkflowDefinitionTests: XCTestCase {
         XCTAssertNoThrow(try definition.validate())
     }
 
+    // MARK: - Action progress derivation
+
+    func testActionProgressLinearFlowCurrentInMiddle() throws {
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "test"), [
+            .init(slug: "implement", state: .completed),
+            .init(slug: "test", state: .current),
+            .init(slug: "review", state: .next),
+        ])
+    }
+
+    func testActionProgressCurrentAtStart() throws {
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "implement"), [
+            .init(slug: "implement", state: .current),
+            .init(slug: "test", state: .next),
+            .init(slug: "review", state: .upcoming),
+        ])
+    }
+
+    func testActionProgressCurrentAtTerminalHasNoNext() throws {
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "review"), [
+            .init(slug: "implement", state: .completed),
+            .init(slug: "test", state: .completed),
+            .init(slug: "review", state: .current),
+        ])
+    }
+
+    func testActionProgressUnknownStatusMarksAllUpcoming() throws {
+        // A halted/unknown status resolves to no action: nothing is current or completed, so every
+        // slug falls through to upcoming and the view can defer to the error surface.
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "halted-gibberish"), [
+            .init(slug: "implement", state: .upcoming),
+            .init(slug: "test", state: .upcoming),
+            .init(slug: "review", state: .upcoming),
+        ])
+    }
+
     // MARK: - Load-path error surfacing
 
     func testHasJSONWorkflowFalseWhenFileAbsent() {

@@ -114,26 +114,6 @@ extension WorkTaskCoordinator {
         workflowDefinition?.orderedActionSlugs()
     }
 
-    /// Runs the worktree's **current** action manually — the aside's per-state play button. Sends the
-    /// action's prompt (instructions + injection contract) to the worktree's **main terminal**, the
-    /// legacy "send to terminal" model: `activate` opens the main terminal if none exists (and makes it
-    /// active), then `sendToActiveMainTab` pastes the prompt into the live surface (where an agent like
-    /// Claude picks it up) or drops it into the launcher draft. This is a manual paste, distinct from
-    /// the toolbar autopilot loop (which spawns dedicated agent surfaces) — it never touches engine
-    /// state. Always available; no-op only when the status isn't a real action or Ghostty isn't ready.
-    @MainActor
-    func playWorkflowAction(forBranch branch: String) {
-        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
-              let app = appProvider(),
-              let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
-              let task = workTaskManager.task(forWorktree: branch),
-              let action = definition.actions[task.status] else { return }
-        let nextValue = WorkflowLoopEngine.legalNextValue(from: task.status, definition: definition)
-        let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
-        terminalManager.activate(worktree, app: app, projectPath: workTaskManager.projectPath)
-        terminalManager.sendToActiveMainTab(prompt, asCommand: false)
-    }
-
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
     /// intent — the user may set **any** state — so it is never validated as a route. For a JSON
     /// project it:
@@ -175,6 +155,49 @@ extension WorkTaskCoordinator {
         updated.status = slug
         updated.errorMessage = nil
         workTaskManager.updateTask(updated)
+    }
+
+    /// A sidebar action card's **Set as current** — steer `status` to `slug` without launching it,
+    /// taking manual control of the loop. Unlike `setWorkflowStatus` (which steers *without* pausing),
+    /// this pauses autopilot: manual per-card control and the autopilot loop are mutually exclusive,
+    /// and the user re-enables the loop via the toolbar button. The pause is **unconditional** — it
+    /// fires even when `slug` already equals the current status (a no-op status write that
+    /// `setWorkflowStatus` skips), so clicking a card always hands control over.
+    ///
+    /// The freshly-paused task is re-read before the status write so it preserves `autopilot:false`
+    /// rather than restoring it from the now-stale captured `task`.
+    @MainActor
+    func setWorkflowActionCurrent(_ task: WorkTask, to slug: String) {
+        workTaskManager.setAutopilot(task, to: false)
+        let paused = task.worktree.flatMap { workTaskManager.task(forWorktree: $0) } ?? task
+        setWorkflowStatus(paused, to: slug)
+    }
+
+    /// A sidebar action card's **Run** — set `slug` as current (pausing autopilot), then deliver its
+    /// prompt to a terminal in the manual-paste model. `inNewTerminal` opens a fresh launcher tab and
+    /// fills its draft; otherwise it pastes into the worktree's existing main terminal (opening one if
+    /// needed). Neither spawns the autonomous agent surface autopilot uses.
+    ///
+    /// Engine state is steered **first** so the status write supersedes any live agent before the
+    /// paste lands (no running-agent-vs-paste race), and so the pool reflects the new current action
+    /// even when no Ghostty app is available to take the paste (the test harness).
+    @MainActor
+    func runWorkflowAction(forBranch branch: String, slug: String, inNewTerminal: Bool) {
+        guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
+              let action = definition.actions[slug],
+              let task = workTaskManager.task(forWorktree: branch) else { return }
+        setWorkflowActionCurrent(task, to: slug)
+
+        guard let app = appProvider(),
+              let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+        let nextValue = WorkflowLoopEngine.legalNextValue(from: slug, definition: definition)
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
+        if inNewTerminal {
+            terminalManager.appendLauncherTab(for: worktree, app: app, projectPath: workTaskManager.projectPath)
+        } else {
+            terminalManager.activate(worktree, app: app, projectPath: workTaskManager.projectPath)
+        }
+        terminalManager.sendToActiveMainTab(prompt, asCommand: false)
     }
 
     /// Whether the loop engine has a step *actually running* for this worktree — a live agent

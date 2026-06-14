@@ -107,7 +107,7 @@ class WorkTaskCoordinator: ObservableObject {
     /// load in `refreshWorkflowJSONGate()`. `nil` for a legacy project (or a malformed file, matching
     /// the gate). Refreshed in lockstep with the gate from `onClearwayChanged`, so it tracks a runtime
     /// WORKFLOW.json edit. The **event-driven engine paths** (`advanceWorkflow`, `seedWorkflowStatus`,
-    /// `relaunchCurrentAction`, `playWorkflowAction`) deliberately keep loading **fresh from disk**:
+    /// `relaunchCurrentAction`, `runWorkflowAction`) deliberately keep loading **fresh from disk**:
     /// they run on the `TASK.md` reload, which the always-fired `onClearwayChanged` refresh precedes
     /// in the same `reload()` call, but loading fresh keeps the engine's correctness independent of
     /// cache-refresh ordering — it must never act on a definition staler than the file on disk.

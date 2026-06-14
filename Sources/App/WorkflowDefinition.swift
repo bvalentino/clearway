@@ -213,6 +213,46 @@ struct WorkflowDefinition: Equatable, Codable {
         actions[slug].map { $0.routes.values.sorted() } ?? []
     }
 
+    /// One action's place in the worktree's journey through the flow, derived from the current
+    /// `status` — never stored. `next` is the route target of the current action, not merely the
+    /// slug after it in flow order; the two coincide in v1's linear flow but diverge once routing does.
+    enum ActionProgressState: Equatable {
+        case completed
+        case current
+        case next
+        case upcoming
+    }
+
+    /// A slug paired with its derived progress state, for the sidebar's action-card list.
+    struct ActionProgress: Equatable {
+        let slug: String
+        let state: ActionProgressState
+    }
+
+    /// Maps each action (in `orderedActionSlugs()` order) to its progress state for `currentStatus`:
+    /// the slug equal to `currentStatus` is `current`, slugs before it in flow order are `completed`,
+    /// the current action's route target is `next`, and the rest are `upcoming`. When `currentStatus`
+    /// names no known action (halted/unknown), nothing is `current` or `completed` — every slug is
+    /// `upcoming` and the view falls back to the error surface.
+    func actionProgress(currentStatus: String) -> [ActionProgress] {
+        let ordered = orderedActionSlugs()
+        let currentIndex = ordered.firstIndex(of: currentStatus)
+        let nextSlug = legalNext(from: currentStatus).first
+        return ordered.enumerated().map { index, slug in
+            let state: ActionProgressState
+            if slug == currentStatus {
+                state = .current
+            } else if let currentIndex, index < currentIndex {
+                state = .completed
+            } else if slug == nextSlug {
+                state = .next
+            } else {
+                state = .upcoming
+            }
+            return ActionProgress(slug: slug, state: state)
+        }
+    }
+
     /// All action slugs in **flow order** for display (e.g. the status picker): start at `start` and
     /// follow the single v1 route (deterministic via the sorted `legalNext`) until a terminal action
     /// or a cycle, then append any actions the walk didn't reach (branches/islands), sorted for a
