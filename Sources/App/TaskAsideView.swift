@@ -5,12 +5,10 @@ import SwiftUI
 struct TaskAsideView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
-    @EnvironmentObject private var terminalManager: TerminalManager
     @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
     let projectPath: String
-    var onRequestTrust: ((@escaping () -> Void) -> Void)?
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
@@ -79,8 +77,7 @@ struct TaskAsideView: View {
     /// current action by sending its prompt to the main terminal** (`playWorkflowAction`) — pasting
     /// into the live terminal, or opening one if none. **Always enabled** (the action's prompt comes
     /// from `WORKFLOW.json`, not the task, so there's always something to run); shown when the status
-    /// sits on a real action. For a legacy project it keeps the WORKFLOW.md state-command behavior
-    /// (`SendToTerminalButton` → active terminal), gated on `hasStateCommand`.
+    /// sits on a real action. Non-JSON projects have no play button.
     @ViewBuilder
     private func statusPlayButton(for task: WorkTask) -> some View {
         if workTaskCoordinator.isWorkflowJSONProject {
@@ -89,14 +86,6 @@ struct TaskAsideView: View {
                 SendToTerminalButton(
                     action: { workTaskCoordinator.playWorkflowAction(forBranch: worktreeBranch) },
                     help: "Run \(WorkTask.displayLabel(for: task.status)) in the terminal"
-                )
-            }
-        } else {
-            let hasStateCommand = workTaskCoordinator.workflowConfig?.hasStateCommand(for: task.status) == true
-            if hasStateCommand, workTaskCoordinator.worktreeForTask(task) != nil {
-                SendToTerminalButton(
-                    action: { sendStateCommandToTerminal(task) },
-                    disabled: terminalManager.activeSurfaceId == nil
                 )
             }
         }
@@ -144,28 +133,6 @@ struct TaskAsideView: View {
 
     private func openTaskWindow(_ task: WorkTask) {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
-    }
-
-    private func sendStateCommandToTerminal(_ task: WorkTask) {
-        guard let config = workTaskCoordinator.workflowConfig,
-              config.hasStateCommand(for: task.status) else { return }
-        if !config.isTrusted(forProject: projectPath) {
-            // Bind the retry to the pane that was active when the user clicked.
-            // If they switch worktrees before approving trust, drop the action
-            // rather than paste into the wrong terminal.
-            let expectedPaneId = terminalManager.activeSurfaceId
-            onRequestTrust?({
-                guard terminalManager.activeSurfaceId == expectedPaneId else { return }
-                sendStateCommandToTerminal(task)
-            })
-            return
-        }
-        guard let rendered = config.renderStateCommand(
-            for: task.status,
-            task: task,
-            taskPath: workTaskManager.filePath(for: task)
-        ) else { return }
-        terminalManager.sendToActiveMainTab(rendered, asCommand: false)
     }
 
     /// The statuses the picker offers. A JSON-workflow project lists its `WORKFLOW.json` actions (in

@@ -1,8 +1,7 @@
 @preconcurrency import Dispatch
 import Foundation
 
-/// Generic Claude Code session-file watching + path helpers, shared by
-/// ClaudeActivityMonitor and AgentSessionObserver.
+/// Generic Claude Code session-file watching + path helpers, used by ClaudeActivityMonitor.
 enum ClaudeSessionFiles {
     private static let claudeDir: String = {
         (NSHomeDirectory() as NSString).appendingPathComponent(".claude")

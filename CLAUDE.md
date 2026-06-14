@@ -39,16 +39,13 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
 - **Sources/App/** — SwiftUI app entry point + task/worktree/workflow logic
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 
-## Workflow engines
+## Workflow engine
 
-A project is driven by **one of two engines, selected by file presence — never both:**
+A project's tasks are driven by the **agent-driven loop engine** (`WorkflowDefinition` + `WorkflowLoopEngine`), active when a valid `.clearway/WORKFLOW.json` (in the project root's `.clearway/`) is present. This is the only task-driving engine — the legacy `WORKFLOW.md` (`WorkflowConfig`) path has been fully retired.
 
-- A valid `.clearway/WORKFLOW.json` (project root's `.clearway/`) → the new **agent-driven loop engine** owns the project.
-- Absent (or malformed JSON) → the **legacy `WORKFLOW.md`** (`WorkflowConfig`) manual path, unchanged.
+`WorkflowDefinition.hasJSONWorkflow(projectPath:)` is the gate: `true` only for a file that exists, decodes, and passes `validate()`. A malformed or absent file reads as "no JSON workflow."
 
-`WorkflowDefinition.hasJSONWorkflow(projectPath:)` is the gate: `true` only for a file that exists, decodes, and passes `validate()`. A malformed file reads as "no JSON workflow" and the project falls back to the legacy path. The new engine never reads `WORKFLOW.md`.
-
-Conversely, the **legacy launch paths are suppressed** when a valid `WORKFLOW.json` is present — `startTask` / `continueTask` / `completePendingLaunch` / `workflowAfterCreateHook` all gate on `hasJSONWorkflow()` and never run `launchClaudeCode`, the `WORKFLOW.md` prompt, or its hooks. In a JSON project, "start a task" just creates the worktree; the seed-on-creation chokepoint (`seedWorkflowStatus`) then owns launching the agent. This is what keeps the two engines from both firing on the same task.
+Agent spawning happens **only** through this engine. Starting a task (`startTask`) creates — or focuses — the worktree, and `completePendingLaunch` relocates its `TASK.md` into it; neither launches an agent. In a JSON project the seed-on-creation chokepoint (`seedWorkflowStatus`) then writes `status = start` and launches the agent. A project **without** a valid `WORKFLOW.json` gets the worktree and nothing else — the user drives the terminal and status by hand.
 
 ### WORKFLOW.json model (`WorkflowDefinition.swift`)
 
@@ -67,7 +64,7 @@ Decoded with `Codable` (snake_case JSON keys → camelCase Swift):
 
 - `new` / `ready_to_start` — backlog markers (pre-worktree), not the engine's concern.
 - The **middle** is any action slug from `WORKFLOW.json`.
-- Legacy fixed states (`in_progress` / `qa` / `ready_for_review` / `done` / `canceled`) exist in `ReservedStatus` too but are used **only by the legacy `WORKFLOW.md` path**.
+- Legacy fixed states (`in_progress` / `qa` / `ready_for_review` / `done` / `canceled`) still exist in `ReservedStatus` and back the **non-JSON status picker** (the manual status menu a project without `WORKFLOW.json` shows) plus display labels and badge colors — no engine drives them.
 
 Loop end-states are **derived, not stored**: **done** = status sits on a routeless (terminal) action; **paused** = `autopilot: false`; **halted** = the agent wrote an illegal/unknown slug (surfaces an `errorMessage`).
 
@@ -84,11 +81,11 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
   Write it last.
   ```
   A **terminal** action (`nextValue == nil`) gets **no** advance contract — it runs once and the loop ends.
-- **No trust gate.** Unlike the legacy `WORKFLOW.md` path (`WorkflowConfig`, fingerprint + approval), `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches `agent.command` directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its `agent.command` and `hooks.after_create` with no approval step (mitigated by: the hook runs in a visible sheet, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
+- **No trust gate.** `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches `agent.command` directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its `agent.command` and `hooks.after_create` with no approval step (mitigated by: the hook runs in a visible sheet, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
 
 ### Autopilot (`WorkTask.autopilot: Bool?`)
 
-- Default `true` at creation **iff** the project has a valid `WORKFLOW.json` **and the task has content** (`WorkTask.hasContent` — a non-empty title or body). A manually-created worktree with a blank `TASK.md` seeds `autopilot: false` (paused, written explicitly — `nil` would read as on and launch anyway) and its toolbar button is **disabled** until the user gives it something to do. Legacy projects have no `autopilot` field.
+- Default `true` at creation **iff** the project has a valid `WORKFLOW.json` **and the task has content** (`WorkTask.hasContent` — a non-empty title or body). A manually-created worktree with a blank `TASK.md` seeds `autopilot: false` (paused, written explicitly — `nil` would read as on and launch anyway) and its toolbar button is **disabled** until the user gives it something to do. Non-JSON projects have no `autopilot` field.
 - Toolbar play/pause control: `AutopilotButton` (in `AutopilotButton.swift`), **hidden** unless `isWorkflowJSONProject`. Click writes `autopilot` via `WorkTaskManager.setAutopilot`.
 - Disable = **pause** (never interrupts a running agent — the running step finishes, nothing new launches). Enable = **resume** the current action (idempotent, `handleAutopilotFlip`).
 - **Agent death pauses.** If the live agent exits **without having advanced `status` on disk** (crash, Ctrl-C, the user closing its terminal), `handleChildExited` → `pauseIfAgentDiedMidStep` writes `autopilot = false` — otherwise the worktree would sit idle with autopilot on and the engine's idle rule would respawn the same action on the next reload. "Died vs. advanced" is judged against a **fresh disk read** (`WorkTaskManager.freshStatus`), since a normal advance's exit can beat the debounced reload; disk is race-free (a dead process can't write afterwards). `handleMainTabClosed` leaves a still-live agent's bookkeeping in place so the exit stays attributable to `handleChildExited`.

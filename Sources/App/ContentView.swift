@@ -74,8 +74,6 @@ struct ContentView: View {
     @State private var newlyCreatedPromptId: String?
     @State private var promptEditorMode: TaskEditorMode = .preview
     @State private var sidePanelTab: SidePanelTab = .todos
-    @State private var showTrustConfirmation = false
-    @State private var pendingTrustAction: (() -> Void)?
     @State private var tabCloseQueue: [TabCloseRequest] = []
     @State private var previousDetailSelection: DetailSelection?
     @State private var columnWidthTracker = ColumnWidthTracker()
@@ -200,19 +198,6 @@ struct ContentView: View {
             Text("This will delete the worktree and its working directory, including any uncommitted changes and untracked files.")
         }
         .confirmationDialog(
-            "Trust WORKFLOW.md hooks?",
-            isPresented: $showTrustConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Trust & Continue") {
-                workTaskCoordinator.approveTrust()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pendingTrustAction?(); pendingTrustAction = nil }
-            }
-            Button("Cancel", role: .cancel) { pendingTrustAction = nil }
-        } message: {
-            Text("This project's WORKFLOW.md configures hooks that will run shell commands. Review the file before approving.")
-        }
-        .confirmationDialog(
             tabCloseDialogTitle,
             isPresented: tabCloseIsPresented,
             presenting: tabCloseQueue.first
@@ -275,9 +260,7 @@ struct ContentView: View {
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
 
-            let pending = ghosttyApp.app.flatMap { app in
-                workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt, app: app)
-            }
+            workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt)
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
@@ -285,12 +268,11 @@ struct ContentView: View {
 
             detailSelection = .worktree(wt)
 
-            // The launch step runs AFTER any after_create hook, so worktree setup (deps, codegen, …)
-            // finishes before the agent starts. Legacy projects fire `pending` (the WORKFLOW.md
-            // launch); JSON projects seed `status = start` — the engine's ONLY write to `status` —
-            // and the loop engine launches the agent. Only one is active per project; the other no-ops.
+            // The seed runs AFTER any after_create hook, so worktree setup (deps, codegen, …) finishes
+            // before the agent starts. `completePendingLaunch` relocated TASK.md into the worktree; a
+            // JSON project's seed writes `status = start` — the engine's ONLY write to `status` — and
+            // the loop engine launches the agent. A non-JSON project no-ops.
             let launch = {
-                pending?()
                 workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
             }
 
@@ -416,7 +398,6 @@ struct ContentView: View {
             if taskWindowObservers.isEmpty {
                 let actions: [(Notification.Name, (WorkTask) -> Void)] = [
                     (WorkTaskNotification.start, startWorkTask),
-                    (WorkTaskNotification.continue, continueWorkTask),
                     (WorkTaskNotification.openWorktree, openTaskWorktree),
                 ]
                 let projectPath = worktreeManager.projectPath
@@ -705,30 +686,15 @@ struct ContentView: View {
 
     private func startWorkTask(_ task: WorkTask) {
         guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.startTask(task, app: app)) { startWorkTask(task) }
+        handleStartResult(workTaskCoordinator.startTask(task, app: app))
     }
 
-    private func continueWorkTask(_ task: WorkTask) {
-        guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.continueTask(task, app: app)) { continueWorkTask(task) }
-    }
-
-    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult, retryAction: (() -> Void)? = nil) {
-        guard let app = ghosttyApp.app else { return }
+    private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {
         switch result {
         case .reuse(let wt):
             selectedTaskId = nil; detailSelection = .worktree(wt)
         case .createWorktree(let branch):
             selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
-        case .beforeRunHook(let hookCmd, let wt, let onSuccess):
-            selectedTaskId = nil
-            let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(hookCmd))
-            hookSheet = HookSheet(title: "Before run", command: hookCmd, surface: surface, onContinue: {
-                onSuccess(); self.detailSelection = .worktree(wt)
-            })
-        case .needsTrust:
-            pendingTrustAction = retryAction
-            showTrustConfirmation = true
         case .ignored: break
         }
     }
@@ -940,11 +906,7 @@ struct ContentView: View {
                                     if let branch = selectedWorktree?.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            projectPath: worktreeManager.projectPath,
-                                            onRequestTrust: { retry in
-                                                pendingTrustAction = retry
-                                                showTrustConfirmation = true
-                                            }
+                                            projectPath: worktreeManager.projectPath
                                         )
                                     }
                                 case .todos:
