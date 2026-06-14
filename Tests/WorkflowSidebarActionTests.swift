@@ -8,74 +8,7 @@ import GhosttyKit
 /// so the harness builds a real `TerminalManager` with no app and asserts the observable pool state;
 /// paste delivery is left to the manual checklist.
 @MainActor
-final class WorkflowSidebarActionTests: XCTestCase {
-
-    private var tempRoot: String!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-sidebar-action-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
-
-    // MARK: - Fixture builders
-
-    private static let workflowJSON = """
-    {
-      "version": 1,
-      "start": "implement",
-      "actions": {
-        "implement": { "name": "Implement", "instructions": "Implement.", "routes": { "success": "test" } },
-        "test": { "name": "Test", "instructions": "Test.", "routes": { "success": "review" } },
-        "review": { "name": "Review", "instructions": "Review." }
-      }
-    }
-    """
-
-    private func writeWorkflow() throws {
-        let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
-        let path = (clearway as NSString).appendingPathComponent("WORKFLOW.json")
-        try Self.workflowJSON.write(toFile: path, atomically: true, encoding: .utf8)
-    }
-
-    @discardableResult
-    private func writeWorktreeTask(branch: String, status: String, autopilot: Bool? = nil) throws -> String {
-        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
-        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
-        let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-        var task = WorkTask(id: UUID(), title: "Task", status: status, worktree: branch)
-        task.autopilot = autopilot
-        try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
-        return worktreePath
-    }
-
-    private func makeCoordinator(branch: String, worktreePath: String) -> WorkTaskCoordinator {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
-        taskManager.setWatchedWorktrees([worktreePath])
-
-        let worktreeManager = WorktreeManager(projectPath: tempRoot)
-        worktreeManager.worktrees = [
-            Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached),
-        ]
-        let coordinator = WorkTaskCoordinator(
-            workTaskManager: taskManager,
-            terminalManager: TerminalManager(),
-            worktreeManager: worktreeManager
-        )
-        coordinator.workflowAgentLauncher = { _, _, _, _ in }
-        return coordinator
-    }
+final class WorkflowSidebarActionTests: WorkflowHarnessTestCase {
 
     // MARK: - Set as current
 
@@ -144,5 +77,54 @@ final class WorkflowSidebarActionTests: XCTestCase {
         let updated = coordinator.workTaskManager.task(forWorktree: branch)
         XCTAssertEqual(updated?.status, "review", "running an action in a new terminal sets it as current")
         XCTAssertEqual(updated?.autopilot, false, "running an action pauses autopilot")
+    }
+
+    // MARK: - Countdown the card consumes
+
+    /// The aside resolves the worktree's pending countdown by branch (the card then renders it only on
+    /// the matching `.current` action). No countdown scheduled → nothing to surface.
+    func testWorkflowCountdownNilWhenNoneScheduled() throws {
+        try writeWorkflow()
+        let branch = "no-countdown"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+
+        XCTAssertNil(coordinator.workflowCountdown(forBranch: branch),
+                     "no scheduled countdown means the card shows none")
+    }
+
+    /// Once an agent-driven hand-off schedules a countdown, the aside exposes it for the imminent
+    /// action's slug — the data the current card turns into its depleting ring + Pause.
+    func testWorkflowCountdownExposedForScheduledBranch() throws {
+        try writeWorkflow()
+        let branch = "has-countdown"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        coordinator.workflowCountdownScheduler = { _ in }
+
+        XCTAssertEqual(coordinator.advanceWorkflow(forBranch: branch, app: dummyApp, gracePeriod: true),
+                       .deferred(slug: "test"))
+
+        XCTAssertEqual(coordinator.workflowCountdown(forBranch: branch)?.slug, "test",
+                       "the pending countdown is exposed for the imminent action's card")
+    }
+
+    /// The card's Pause closure routes to `pauseFromCountdown`, which cancels the countdown and pauses
+    /// autopilot — identical to pressing the toolbar pause at that instant.
+    func testPauseFromCountdownCancelsAndPauses() throws {
+        try writeWorkflow()
+        let branch = "card-pause"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        coordinator.workflowCountdownScheduler = { _ in }
+        _ = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp, gracePeriod: true)
+
+        coordinator.pauseFromCountdown(forBranch: branch)
+
+        XCTAssertNil(coordinator.workflowCountdown(forBranch: branch), "Pause cancels the countdown")
+        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false,
+                       "Pause pauses autopilot via the existing pause path")
     }
 }

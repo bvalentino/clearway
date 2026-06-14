@@ -10,11 +10,25 @@ struct WorkflowSidebarActionCard: View {
     let name: String
     let instructions: String
     let state: WorkflowDefinition.ActionProgressState
+    var countdown: Countdown?
     let onSetCurrent: () -> Void
     let onRunInCurrentTerminal: () -> Void
     let onRunInNewTerminal: () -> Void
 
+    /// A pending auto-run countdown to surface on this card: the deadline the ring animates against
+    /// and the Pause action that cancels the imminent launch. Only honored on the `.current` card —
+    /// by countdown time the agent has already written the next status, so the imminent action is
+    /// `current`.
+    struct Countdown {
+        let deadline: Date
+        let onPause: () -> Void
+    }
+
     private static let cornerRadius: CGFloat = 12
+
+    /// The countdown to render, or `nil` unless one is pending on the current step. By countdown time
+    /// the agent has already written the next status, so only the `.current` card honors it.
+    private var activeCountdown: Countdown? { state == .current ? countdown : nil }
 
     /// Instructions flattened to a single line for the 1–2 line preview, matching the editor card.
     private var preview: String {
@@ -25,7 +39,11 @@ struct WorkflowSidebarActionCard: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            stateGlyph
+            if let activeCountdown {
+                CountdownRing(deadline: activeCountdown.deadline)
+            } else {
+                stateGlyph
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(name.isEmpty ? "Untitled" : name)
                     .font(.headline)
@@ -39,7 +57,11 @@ struct WorkflowSidebarActionCard: View {
                 }
             }
             Spacer(minLength: 8)
-            moreMenu
+            if let activeCountdown {
+                pauseButton(onPause: activeCountdown.onPause)
+            } else {
+                moreMenu
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -50,6 +72,21 @@ struct WorkflowSidebarActionCard: View {
         )
         // Completed steps recede; the rest stay at full strength.
         .opacity(state == .completed ? 0.6 : 1)
+    }
+
+    /// Borderless Pause — cancels the imminent auto-launch and pauses autopilot (the existing pause
+    /// path). The card's only countdown control: no "run now" / skip, per spec.
+    private func pauseButton(onPause: @escaping () -> Void) -> some View {
+        Button(action: onPause) {
+            Image(systemName: "pause.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help("Pause autopilot")
+        .accessibilityLabel("Pause autopilot")
     }
 
     @ViewBuilder
@@ -102,5 +139,28 @@ struct WorkflowSidebarActionCard: View {
         .fixedSize()
         .help("Action options")
         .accessibilityLabel("Action options")
+    }
+}
+
+/// A determinate ring that depletes clockwise over the grace window, occupying the current card's
+/// glyph slot during a countdown. Animates off `TimelineView`'s shared clock — no per-second
+/// republish from the engine — and shares the card's accent tint and circular glyph language.
+private struct CountdownRing: View {
+    let deadline: Date
+
+    private static let duration = WorkTaskCoordinator.countdownDuration
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let remaining = max(0, deadline.timeIntervalSince(context.date))
+            let fraction = min(1, max(0, remaining / Self.duration))
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: 16, height: 16)
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityLabel("Auto-running soon")
     }
 }

@@ -71,6 +71,7 @@ struct TaskAsideView: View {
                         name: action.name,
                         instructions: action.instructions,
                         state: progress.state,
+                        countdown: countdown(for: progress.slug),
                         onSetCurrent: {
                             workTaskCoordinator.setWorkflowActionCurrent(task, to: progress.slug)
                         },
@@ -87,6 +88,18 @@ struct TaskAsideView: View {
                     )
                 }
             }
+        }
+    }
+
+    /// The countdown descriptor for an action card, or `nil` unless this exact action has a pending
+    /// auto-run countdown. By countdown time the agent already wrote the new status, so the imminent
+    /// action is the `.current` card; the card itself only honors a countdown in that state. Pause
+    /// reuses the coordinator's `pauseFromCountdown` (cancel + existing autopilot-pause).
+    private func countdown(for slug: String) -> WorkflowSidebarActionCard.Countdown? {
+        guard let pending = workTaskCoordinator.workflowCountdown(forBranch: worktreeBranch),
+              pending.slug == slug else { return nil }
+        return WorkflowSidebarActionCard.Countdown(deadline: pending.deadline) {
+            workTaskCoordinator.pauseFromCountdown(forBranch: worktreeBranch)
         }
     }
 
