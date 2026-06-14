@@ -43,25 +43,10 @@ struct TaskAsideView: View {
                     )
                 }
 
-                Divider()
-
-                HStack {
-                    Text("Status")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Picker(selection: Binding(
-                        get: { task.status },
-                        set: { workTaskCoordinator.setWorkflowStatus(task, to: $0) }
-                    )) {
-                        ForEach(allowedStatuses(for: task), id: \.self) { status in
-                            Text(WorkTask.displayLabel(for: status)).tag(status)
-                        }
-                    } label: {
-                        EmptyView()
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                    statusPlayButton(for: task)
+                if workTaskCoordinator.isWorkflowJSONProject,
+                   let definition = workTaskCoordinator.workflowDefinition {
+                    Divider()
+                    workflowActionCards(for: task, definition: definition)
                 }
 
                 // Agent metadata (show for tasks that have been worked on; never for placeholders)
@@ -73,20 +58,34 @@ struct TaskAsideView: View {
         }
     }
 
-    /// The small play button beside the Status picker. For a JSON-workflow project it **runs the
-    /// current action by sending its prompt to the main terminal** (`playWorkflowAction`) — pasting
-    /// into the live terminal, or opening one if none. **Always enabled** (the action's prompt comes
-    /// from `WORKFLOW.json`, not the task, so there's always something to run); shown when the status
-    /// sits on a real action. Non-JSON projects have no play button.
-    @ViewBuilder
-    private func statusPlayButton(for task: WorkTask) -> some View {
-        if workTaskCoordinator.isWorkflowJSONProject {
-            let isAction = workTaskCoordinator.workflowActionSlugs()?.contains(task.status) == true
-            if workTaskCoordinator.worktreeForTask(task) != nil, isAction {
-                SendToTerminalButton(
-                    action: { workTaskCoordinator.playWorkflowAction(forBranch: worktreeBranch) },
-                    help: "Run \(WorkTask.displayLabel(for: task.status)) in the terminal"
-                )
+    /// The worktree's journey through `WORKFLOW.json`: one card per action in flow order, each showing
+    /// its derived progress (completed / current / next / upcoming) and a "more" menu that steers or
+    /// runs that step. All three menu items pause autopilot — manual per-card control and the loop are
+    /// mutually exclusive. Replaces the old single Status picker + play button; shown only for a valid
+    /// JSON-workflow project, so non-JSON projects show no status UI at all.
+    private func workflowActionCards(for task: WorkTask, definition: WorkflowDefinition) -> some View {
+        VStack(spacing: 8) {
+            ForEach(definition.actionProgress(currentStatus: task.status), id: \.slug) { progress in
+                if let action = definition.actions[progress.slug] {
+                    WorkflowSidebarActionCard(
+                        name: action.name,
+                        instructions: action.instructions,
+                        state: progress.state,
+                        onSetCurrent: {
+                            workTaskCoordinator.setWorkflowActionCurrent(task, to: progress.slug)
+                        },
+                        onRunInCurrentTerminal: {
+                            workTaskCoordinator.runWorkflowAction(
+                                forBranch: worktreeBranch, slug: progress.slug, inNewTerminal: false
+                            )
+                        },
+                        onRunInNewTerminal: {
+                            workTaskCoordinator.runWorkflowAction(
+                                forBranch: worktreeBranch, slug: progress.slug, inNewTerminal: true
+                            )
+                        }
+                    )
+                }
             }
         }
     }
@@ -133,23 +132,5 @@ struct TaskAsideView: View {
 
     private func openTaskWindow(_ task: WorkTask) {
         openWindow(value: WorkTaskIdentifier(projectPath: projectPath, taskId: task.id))
-    }
-
-    /// The statuses the picker offers. A JSON-workflow project lists its `WORKFLOW.json` actions (in
-    /// flow order); the current status is always included so it stays selectable even if it's off-graph
-    /// (e.g. a halted/unknown value). A legacy `WORKFLOW.md` project keeps the fixed forward states:
-    /// `new`/`ready_to_start` are reserved for Planning (pre-worktree); once a worktree exists its task
-    /// starts at `in_progress` and moves forward through these.
-    private func allowedStatuses(for task: WorkTask) -> [String] {
-        if let actions = workTaskCoordinator.workflowActionSlugs() {
-            return actions.contains(task.status) ? actions : [task.status] + actions
-        }
-        return [
-            WorkTask.ReservedStatus.inProgress,
-            WorkTask.ReservedStatus.qa,
-            WorkTask.ReservedStatus.readyForReview,
-            WorkTask.ReservedStatus.done,
-            WorkTask.ReservedStatus.canceled,
-        ]
     }
 }
