@@ -264,6 +264,72 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertNil(definition.actions["test"]?.onMaxAttempts, "dangling escape pointer is dropped")
     }
 
+    // MARK: - planning
+
+    func testInitFromDefinitionReadsPlanningInstructions() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan the task."),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(model.planning, "Plan the task.")
+    }
+
+    func testInitFromDefinitionWithoutPlanningLeavesPlanningNil() {
+        let base = WorkflowDefinition(version: 1, start: "only", actions: [
+            "only": .init(name: "Only", instructions: "Go.")
+        ])
+        XCTAssertNil(WorkflowEditorModel(from: base).planning)
+    }
+
+    func testToDefinitionCarriesPlanningAlongsideActions() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.planning = "Plan it."
+
+        let definition = assertValid(model)
+        XCTAssertEqual(definition.planning?.instructions, "Plan it.")
+        XCTAssertNotNil(definition.actions["implement"], "planning does not disturb actions")
+    }
+
+    func testToDefinitionEmitsPlanningOnlyDefinitionWhenNoActions() throws {
+        // Planning present, zero actions: toDefinition produces a planning-only definition that
+        // round-trips (it can't validate — noActions — but it must encode/decode cleanly).
+        var model = WorkflowEditorModel()
+        model.planning = "Plan it."
+
+        let definition = model.toDefinition(preserving: nil)
+        XCTAssertTrue(definition.actions.isEmpty)
+        XCTAssertEqual(definition.planning?.instructions, "Plan it.")
+
+        let back = try JSONDecoder().decode(WorkflowDefinition.self, from: definition.encoded())
+        XCTAssertEqual(back.planning?.instructions, "Plan it.")
+        XCTAssertTrue(back.actions.isEmpty)
+    }
+
+    func testToDefinitionWithoutPlanningOmitsPlanning() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        XCTAssertNil(assertValid(model).planning)
+    }
+
+    func testRemovingAllActionsKeepsPlanningInDefinition() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it."),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.remove(at: 0)
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertTrue(definition.actions.isEmpty, "all actions removed")
+        XCTAssertEqual(definition.planning?.instructions, "Plan it.", "planning survives removing every action")
+    }
+
     // MARK: - every-mutation-valid sweep
 
     func testEveryMutationStaysValid() {

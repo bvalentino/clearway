@@ -9,7 +9,9 @@ struct WorkflowEditorView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
     @State private var model = WorkflowEditorModel()
-    /// Last definition loaded from disk; the base each save preserves. `nil` = no valid file yet.
+    /// Last definition loaded from disk; the base each save preserves. Sourced from the coordinator's
+    /// **raw** (non-validated) cache, never the validated `workflowDefinition` — which is `nil` for a
+    /// planning-only file and would cause the next save to drop `planning`. `nil` = no file yet.
     @State private var lastLoaded: WorkflowDefinition?
     @State private var pendingSave: DispatchWorkItem?
     /// Set when a programmatic load changes `model`, so its `onChange` doesn't write the load back.
@@ -32,6 +34,13 @@ struct WorkflowEditorView: View {
     /// An action added but not yet committed; its placeholder slug means nothing persists while set.
     @State private var newActionSlug: String?
 
+    /// Whether the pinned planning instruction's detail editor is open.
+    @State private var editingPlanning = false
+
+    /// A planning instruction just added (still blank); like `newActionSlug`, it suppresses the save
+    /// until commit so a placeholder empty `planning` object is never written.
+    @State private var planningIsNew = false
+
     private let contentMaxWidth: CGFloat = 680
 
     private var workflowFilePath: String {
@@ -43,18 +52,21 @@ struct WorkflowEditorView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear(perform: load)
-            // Commit a new action on the way out, so leaving before Back doesn't drop its content.
-            .onDisappear(perform: commitPendingNewAction)
+            // Commit a new action / planning on the way out, so leaving before Back keeps the content.
+            .onDisappear {
+                commitPendingNewAction()
+                if editingPlanning { closePlanningEditor() }
+            }
             .onChange(of: model) { _ in
                 if suppressNextSave { suppressNextSave = false; return }
                 scheduleSave()
             }
-            .onChange(of: workTaskCoordinator.workflowDefinition) { newValue in
+            .onChange(of: workTaskCoordinator.rawWorkflowDefinition) { newValue in
                 // A pending local save wins; its own write echoes back here and is dropped by reconcile.
                 guard pendingSave == nil else { return }
                 reconcile(with: newValue)
             }
-            .onChange(of: projectPath) { _ in isEditing = false; load() }
+            .onChange(of: projectPath) { _ in isEditing = false; editingPlanning = false; load() }
             // An empty list hides both Edit/Done and +, so leaving edit mode on would strand the user.
             .onChange(of: model.actions.isEmpty) { empty in
                 if empty { isEditing = false }
@@ -113,6 +125,26 @@ struct WorkflowEditorView: View {
                         .help("More")
                         .accessibilityLabel("More")
                     }
+                } else if editingPlanning {
+                    ToolbarItem(placement: .navigation) {
+                        Button(action: closePlanningEditor) {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .help("Back to Workflow")
+                        .accessibilityLabel("Back")
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button(role: .destructive, action: removePlanning) {
+                                Label("Remove Planning", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+                        .menuIndicator(.hidden)
+                        .help("More")
+                        .accessibilityLabel("More")
+                    }
                 } else if !model.actions.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
                         Button(isEditing ? "Done" : "Edit") {
@@ -131,12 +163,78 @@ struct WorkflowEditorView: View {
                 contentMaxWidth: contentMaxWidth,
                 forceValidation: forceValidation
             )
+        } else if editingPlanning {
+            WorkflowPlanningDetailView(instructions: planningTextBinding, contentMaxWidth: contentMaxWidth)
         } else {
-            listOrEmpty
-                .overlay(alignment: .bottomTrailing) {
-                    if !isEditing { addButton }
-                }
+            VStack(spacing: 0) {
+                planningEntry
+                listOrEmpty
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !isEditing { addButton }
+            }
         }
+    }
+
+    /// A two-way binding to the planning text, mapping the optional model field to the detail editor's
+    /// non-optional `TextEditor` binding.
+    private var planningTextBinding: Binding<String> {
+        Binding(get: { model.planning ?? "" }, set: { model.planning = $0 })
+    }
+
+    // MARK: - Pinned planning entry
+
+    /// The pinned "Planning" row above the actions list: a card matching the action rows when an
+    /// instruction exists, or an add affordance when none does. Outside the `List`, so it is never
+    /// drag-reorderable. A divider separates it from the actions below.
+    private var planningEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Planning")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let instructions = model.planning {
+                Button { openPlanningEditor() } label: {
+                    WorkflowActionCard(name: "Planning", instructions: instructions)
+                }
+                .buttonStyle(PressableCardButtonStyle())
+            } else {
+                Button(action: addPlanning) {
+                    planningPlaceholderCard
+                }
+                .buttonStyle(PressableCardButtonStyle())
+            }
+
+            Divider()
+                .padding(.top, 6)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var planningPlaceholderCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "plus.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add planning instruction")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Text("Runs when you tap Plan, before the worktree exists.")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: WorkflowActionCard.cornerRadius))
+        .contentShape(RoundedRectangle(cornerRadius: WorkflowActionCard.cornerRadius))
     }
 
     @ViewBuilder
@@ -233,7 +331,7 @@ struct WorkflowEditorView: View {
     // MARK: - Loading + reconciliation
 
     private func load() {
-        let definition = workTaskCoordinator.workflowDefinition
+        let definition = workTaskCoordinator.rawWorkflowDefinition
         let loaded = definition.map(WorkflowEditorModel.init(from:)) ?? WorkflowEditorModel()
         // Suppress only a real change; a no-op load would otherwise swallow the next edit.
         if loaded != model { suppressNextSave = true }
@@ -256,6 +354,43 @@ struct WorkflowEditorView: View {
         let added = model.add()
         newActionSlug = added.slug
         editingSlug = added.slug
+    }
+
+    // MARK: - Planning mutations
+
+    private func addPlanning() {
+        model.planning = ""
+        planningIsNew = true
+        editingPlanning = true
+    }
+
+    private func openPlanningEditor() {
+        planningIsNew = false
+        editingPlanning = true
+    }
+
+    /// Back from the planning editor: a blank instruction is treated as "no planning" (so a newly
+    /// added blank entry is discarded and a cleared one is removed), then the write is flushed since
+    /// a new planning's saves were suppressed while editing.
+    private func closePlanningEditor() {
+        if model.planning?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            model.planning = nil
+        }
+        finishPlanningEdit()
+    }
+
+    private func removePlanning() {
+        model.planning = nil
+        finishPlanningEdit()
+    }
+
+    /// Exits the planning editor and flushes the write, since a new planning's saves were suppressed
+    /// while editing.
+    private func finishPlanningEdit() {
+        planningIsNew = false
+        editingPlanning = false
+        pendingSave?.cancel()
+        performSave()
     }
 
     /// Back: commit a complete action (deriving a new action's slug from its name), discard an
@@ -340,11 +475,14 @@ struct WorkflowEditorView: View {
     private func performSave() {
         defer { pendingSave = nil }
         // A new action's slug is still a placeholder — wait for the commit to write the final slug.
-        guard newActionSlug == nil else { return }
+        // A freshly added (still blank) planning is likewise held until commit.
+        guard newActionSlug == nil, !planningIsNew else { return }
         let fileManager = FileManager.default
 
-        // No actions → remove the file; an action-less workflow would fail validate().
-        guard !model.actions.isEmpty else {
+        // Remove the file only when it would hold neither actions nor a planning instruction — now
+        // that the file can exist solely to carry planning, an empty action list alone no longer
+        // means "delete it".
+        guard !model.actions.isEmpty || model.planning != nil else {
             try? fileManager.removeItem(atPath: workflowFilePath)
             lastLoaded = nil
             return
@@ -378,6 +516,47 @@ struct WorkflowEditorView: View {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+    }
+}
+
+// MARK: - Planning detail form
+
+/// The editing form for the pinned planning instruction: a single multi-line instructions field.
+/// Unlike an action, planning has no name, slug, or routes. Back navigation and Remove live in the
+/// window toolbar.
+private struct WorkflowPlanningDetailView: View {
+    @Binding var instructions: String
+    let contentMaxWidth: CGFloat
+
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Instructions")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                // TextEditor (not TextField) so Return inserts a line break.
+                TextEditor(text: $instructions)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 200)
+                    .focused($focused)
+                    .padding(8)
+                    .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color(.separatorColor), lineWidth: 1)
+                    )
+                    .accessibilityLabel("Planning instructions")
+                Text("Runs when you tap Plan, before the worktree exists. "
+                    + "Use {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+                .workflowDetailFormContainer(maxWidth: contentMaxWidth)
+        }
+        .onAppear { if instructions.isEmpty { focused = true } }
     }
 }
 
@@ -415,14 +594,7 @@ private struct WorkflowActionDetailView: View {
                         .accessibilityLabel("Action instructions")
                 }
             }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 32)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
-                .frame(maxWidth: contentMaxWidth, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                .workflowDetailFormContainer(maxWidth: contentMaxWidth)
         }
         .onChange(of: action.name) { _ in nameEdited = true }
         .onChange(of: action.instructions) { _ in instructionsEdited = true }
@@ -461,5 +633,21 @@ private struct WorkflowActionDetailView: View {
                                       lineWidth: 1)
                 )
         }
+    }
+}
+
+private extension View {
+    /// Shared chrome for the editor's detail forms (planning + action): a material card with content
+    /// padding, centered to the editor's max content width.
+    func workflowDetailFormContainer(maxWidth: CGFloat) -> some View {
+        self
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 24)
+            .frame(maxWidth: maxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
     }
 }

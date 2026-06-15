@@ -134,7 +134,7 @@ struct WorkTaskListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button(action: planTask) {
-                    if workTaskCoordinator.planningConfig != nil {
+                    if workTaskCoordinator.planningInstructions != nil {
                         Text("Plan")
                     } else {
                         Image(systemName: "rectangle.bottomhalf.inset.filled")
@@ -259,10 +259,10 @@ struct WorkTaskListView: View {
             return
         }
 
-        if let planningConfig = workTaskCoordinator.planningConfig {
+        if let instructions = workTaskCoordinator.planningInstructions {
             let taskPath = workTaskManager.filePath(for: task)
-            let prompt = planningConfig.renderPrompt(task: task, taskPath: taskPath, attempt: task.attempt)
-            let agentCmd = planningConfig.agentCommand ?? "claude"
+            let prompt = PlanningConfig.renderPlanningPrompt(instructions: instructions, task: task, taskPath: taskPath)
+            let agentCmd = workTaskCoordinator.planningAgentCommand
 
             // Write prompt to temp file to handle long prompts safely
             let tempDir = NSTemporaryDirectory()
@@ -276,7 +276,7 @@ struct WorkTaskListView: View {
             planLogger.debug("plan command: \(command, privacy: .public)")
             terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
         } else {
-            // No PLANNING.md — open terminal with Main Terminal command
+            // No planning instruction — open terminal with the Main Terminal command
             let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
             if !command.isEmpty {
                 terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)

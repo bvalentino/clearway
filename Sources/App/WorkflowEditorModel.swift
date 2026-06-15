@@ -28,14 +28,20 @@ struct WorkflowEditorModel: Equatable {
     /// `move`; `name`/`instructions` are safe to mutate in place since the slug is frozen.
     var actions: [EditorAction]
 
+    /// The pinned planning instruction, edited above the action list. `nil` = no planning entry;
+    /// non-`nil` (even empty) = a `planning` object is persisted. Outside the action graph — it has
+    /// no slug and never participates in routing.
+    var planning: String?
+
     /// The single routing outcome v1 uses.
     static let successOutcome = "success"
 
     /// Fallback slug body for an empty / all-symbol name (`action`, `action_2`, …).
     static let fallbackSlugBase = "action"
 
-    init(actions: [EditorAction] = []) {
+    init(actions: [EditorAction] = [], planning: String? = nil) {
         self.actions = actions
+        self.planning = planning
     }
 
     /// Builds the editor list in flow order (start → … → terminal, then any unreached islands).
@@ -44,6 +50,7 @@ struct WorkflowEditorModel: Equatable {
             guard let action = definition.actions[slug] else { return nil }
             return EditorAction(slug: slug, name: action.name, instructions: action.instructions)
         }
+        self.planning = definition.planning?.instructions
     }
 
     // MARK: - Slug generation
@@ -113,9 +120,9 @@ struct WorkflowEditorModel: Equatable {
     // MARK: - Serialization
 
     /// Rebuilds a `WorkflowDefinition` from card order: `start` is the first slug, each non-last card
-    /// routes `success` to the next, the last is terminal. Fields the editor doesn't surface
-    /// (`version`/`agent`/`hooks`, per-action `maxAttempts`/`onMaxAttempts`) carry forward from `base`;
-    /// a `nil` base uses v1 defaults.
+    /// routes `success` to the next, the last is terminal. The editor owns `planning` (carried from
+    /// the model, not `base`). Fields the editor doesn't surface (`version`/`agent`/`hooks`, per-action
+    /// `maxAttempts`/`onMaxAttempts`) carry forward from `base`; a `nil` base uses v1 defaults.
     func toDefinition(preserving base: WorkflowDefinition?) -> WorkflowDefinition {
         let liveSlugs = Set(actions.map { $0.slug })
         var map: [String: WorkflowDefinition.Action] = [:]
@@ -143,6 +150,7 @@ struct WorkflowEditorModel: Equatable {
             start: actions.first?.slug ?? "",
             agent: base?.agent ?? .default,
             hooks: base?.hooks,
+            planning: planning.map { WorkflowDefinition.Planning(instructions: $0) },
             actions: map
         )
     }
