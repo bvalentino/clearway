@@ -234,14 +234,20 @@ struct WorkflowDefinition: Equatable, Codable {
     /// the current action's route target is `next`, and the rest are `upcoming`. When `currentStatus`
     /// names no known action (halted/unknown), nothing is `current` or `completed` — every slug is
     /// `upcoming` and the view falls back to the error surface.
-    func actionProgress(currentStatus: String) -> [ActionProgress] {
+    ///
+    /// When `completed` is `true` and `currentStatus` sits on a **terminal** action — the finished
+    /// loop — that action reads as `completed` rather than `current`, so the whole flow shows done.
+    /// Guarded on `isTerminal` to match where the engine honors completion: a stray `completed` on a
+    /// non-terminal action stays `current`, mirroring the engine ignoring it.
+    func actionProgress(currentStatus: String, completed: Bool = false) -> [ActionProgress] {
         let ordered = orderedActionSlugs()
         let currentIndex = ordered.firstIndex(of: currentStatus)
         let nextSlug = legalNext(from: currentStatus).first
+        let currentIsDone = completed && isTerminal(currentStatus)
         return ordered.enumerated().map { index, slug in
             let state: ActionProgressState
             if slug == currentStatus {
-                state = .current
+                state = currentIsDone ? .completed : .current
             } else if let currentIndex, index < currentIndex {
                 state = .completed
             } else if slug == nextSlug {

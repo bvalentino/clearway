@@ -113,6 +113,35 @@ final class WorkflowLoopEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - Completion
+
+    func testCompletedOnTerminalActionResolvesToComplete() {
+        // The terminal action `review` is running and its agent wrote `completed: true`. S == P would
+        // normally ignore, but completion is decided ahead of routing → `.complete`.
+        let result = WorkflowLoopEngine.decideTransition(
+            running: "review", written: "review", autopilot: true, completed: true, definition: definition)
+        XCTAssertEqual(result, .complete(slug: "review"),
+                       "a completed terminal action resolves to .complete, not .ignore")
+    }
+
+    func testCompletedOnNonTerminalActionRoutesNormally() {
+        // `completed: true` on a non-terminal action is a misbehaving agent — it does NOT end the
+        // loop; routing proceeds (here an idle launch of `implement`).
+        let result = WorkflowLoopEngine.decideTransition(
+            running: nil, written: "implement", autopilot: true, completed: true, definition: definition)
+        XCTAssertEqual(result, .launch(slug: "implement", nextValue: "test"),
+                       "completion on a non-terminal action falls through to normal routing")
+    }
+
+    func testCompletedPassesThroughPauseGate() {
+        // The pause gate only demotes `.launch`; a completed terminal action still ends the loop even
+        // when autopilot is already off.
+        let result = WorkflowLoopEngine.decideTransition(
+            running: "review", written: "review", autopilot: false, completed: true, definition: definition)
+        XCTAssertEqual(result, .complete(slug: "review"),
+                       "completion is unaffected by the pause gate")
+    }
+
     // MARK: - Idempotent double-fire
 
     func testTerminalActionRunsOnceThenEnds() {
@@ -225,9 +254,21 @@ final class WorkflowLoopEngineTests: XCTestCase {
         """)
     }
 
-    func testBuildPromptTerminalAppendsNoContract() {
+    func testBuildPromptTerminalAppendsCompletionContract() {
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Review the diff.", nextValue: nil)
-        XCTAssertEqual(prompt, "Review the diff.",
-                       "a terminal action gets its instructions verbatim with no advance contract")
+        XCTAssertEqual(prompt, """
+        Review the diff.
+
+        [Clearway] When finished, set `completed: true` in .clearway/TASK.md
+        Write it last.
+        """, "a terminal action gets a completion contract, not an advance/status contract")
+    }
+
+    /// The terminal completion contract must not also inject a `status:` advance — a terminal action
+    /// has no next action, so directing the agent to write `status` would be incoherent.
+    func testBuildPromptTerminalCarriesNoAdvanceContract() {
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Review the diff.", nextValue: nil)
+        XCTAssertFalse(prompt.contains("set `status:`"),
+                       "a terminal action gets no advance/status contract")
     }
 }

@@ -110,6 +110,49 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertNil(WorkTask.parse(from: legacySerialized, id: legacy.id, createdAt: Date())?.autopilot)
     }
 
+    /// The `completed` flag is tri-state and round-trips through serialize → parse, modeled exactly
+    /// like `autopilot`:
+    ///   - present `true`  → emits `completed: true`, parses back to `true`
+    ///   - present `false` → emits `completed: false`, parses back to `false`
+    ///   - absent (`nil`)  → emits no line (back-compat / legacy), parses back to `nil`
+    func testCompletedRoundTrips() throws {
+        // Present true.
+        var done = WorkTask(id: UUID(), title: "Done", status: "review", worktree: "feature/x")
+        done.completed = true
+        let doneSerialized = done.serialized()
+        XCTAssertTrue(doneSerialized.contains("completed: true"), "completed:true must serialize")
+        XCTAssertEqual(WorkTask.parse(from: doneSerialized, id: done.id, createdAt: Date())?.completed, true)
+
+        // Present false.
+        var notDone = WorkTask(id: UUID(), title: "Not done", status: "review", worktree: "feature/y")
+        notDone.completed = false
+        let notDoneSerialized = notDone.serialized()
+        XCTAssertTrue(notDoneSerialized.contains("completed: false"), "completed:false must serialize")
+        XCTAssertEqual(WorkTask.parse(from: notDoneSerialized, id: notDone.id, createdAt: Date())?.completed, false)
+
+        // Absent — a legacy task never gains the field and parses back to nil.
+        let legacy = WorkTask(id: UUID(), title: "Legacy", status: WorkTask.ReservedStatus.new, worktree: nil)
+        let legacySerialized = legacy.serialized()
+        XCTAssertFalse(legacySerialized.contains("completed"), "an absent completed must not emit a line")
+        XCTAssertNil(WorkTask.parse(from: legacySerialized, id: legacy.id, createdAt: Date())?.completed)
+    }
+
+    /// A back-compat file written before the `completed` field existed must parse cleanly to a
+    /// `nil` completed — its absence is "never completed", not "completed: false".
+    func testFileWithoutCompletedFieldParsesToNil() throws {
+        let legacy = """
+        ---
+        id: \(UUID().uuidString)
+        title: "No completed"
+        status: review
+        worktree: "feature/legacy"
+        autopilot: true
+        ---
+        """
+        XCTAssertNil(WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())?.completed,
+                     "a file without the field parses to nil, not false")
+    }
+
     /// A back-compat file written before the `autopilot` field existed must parse cleanly to a
     /// `nil` autopilot — its absence is "not applicable", not "off".
     func testFileWithoutAutopilotFieldParsesToNil() throws {

@@ -352,6 +352,30 @@ final class WorkflowDefinitionTests: XCTestCase {
         ])
     }
 
+    func testActionProgressCompletedTerminalReadsAllDone() throws {
+        // A finished loop: status sits on the terminal `review` and `completed: true`. The terminal
+        // action reads `completed` instead of `current`, so the whole flow shows done.
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "review", completed: true), [
+            .init(slug: "implement", state: .completed),
+            .init(slug: "test", state: .completed),
+            .init(slug: "review", state: .completed),
+        ])
+    }
+
+    func testActionProgressCompletedOnNonTerminalStaysCurrent() throws {
+        // A stray `completed: true` on a non-terminal action is not honored by the engine, so the
+        // view doesn't honor it either — the action stays `current`.
+        let definition = try decode(Self.validGraphJSON)
+
+        XCTAssertEqual(definition.actionProgress(currentStatus: "test", completed: true), [
+            .init(slug: "implement", state: .completed),
+            .init(slug: "test", state: .current),
+            .init(slug: "review", state: .next),
+        ])
+    }
+
     func testActionProgressUnknownStatusMarksAllUpcoming() throws {
         // A halted/unknown status resolves to no action: nothing is current or completed, so every
         // slug falls through to upcoming and the view can defer to the error surface.

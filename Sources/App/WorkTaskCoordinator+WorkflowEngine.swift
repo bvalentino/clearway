@@ -84,6 +84,20 @@ extension WorkTaskCoordinator {
         // its current step keeps running and the normal advance handles the next status write.
         let isIdle = worktreeId(forBranch: branch).map { agentSurfaces[$0] == nil } ?? true
         guard previous == false, task.autopilot == true, isIdle else { return false }
+
+        // Re-enabling a **completed** task reopens it rather than resuming: clear `completed` and
+        // re-pause (correct the button's optimistic enable back to `false`), launching nothing. The
+        // loop is reopened/resumable and idle — the idle-launch rule would otherwise immediately
+        // re-run the terminal action, so the user must steer it with a manual pick.
+        if task.completed == true {
+            var reopened = task
+            reopened.completed = nil
+            reopened.autopilot = false
+            workTaskManager.updateTask(reopened)
+            lastKnownAutopilot[branch] = false
+            return true
+        }
+
         relaunchCurrentAction(forBranch: branch, app: app)
         return true
     }
@@ -132,16 +146,22 @@ extension WorkTaskCoordinator {
     ///   the new state. The watcher's `advanceWorkflow` then takes the idle path (launch any real
     ///   action under autopilot, or hold under the pause gate) instead of route-validating a transition
     ///   from the previously-running action — which is what produced "X is not a legal next from Y".
-    /// - **clears any halt + error** so a halted loop recovers from the pick.
+    /// - **clears any halt + error, and any `completed` flag** so a halted or completed loop reopens
+    ///   from the pick.
     ///
-    /// A legacy project just writes the status. No-op when the value is unchanged.
+    /// A legacy project just writes the status. For a JSON project the status write may be a no-op
+    /// (the picked slug already equals the current state) yet still has reopening to do — clearing
+    /// `completed`, the halt, and the error — so the no-op short-circuit fires only when there is
+    /// genuinely nothing to change. This is what lets `setWorkflowActionCurrent` reopen the *current*
+    /// terminal action of a completed task.
     @MainActor
     func setWorkflowStatus(_ task: WorkTask, to slug: String) {
-        guard task.status != slug else { return }
         guard hasJSONWorkflow(), let branch = task.worktree else {
             workTaskManager.setStatus(task, to: slug)
             return
         }
+        let hasReopenWork = task.completed != nil || task.errorMessage != nil || engineHalted.contains(branch)
+        guard task.status != slug || hasReopenWork else { return }
         // Supersede the in-flight agent first (no autopilot pause — this is steering, not stopping),
         // so the dying surface can't race the watcher's relaunch into a two-agent / halt tangle.
         if let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
@@ -154,6 +174,8 @@ extension WorkTaskCoordinator {
         var updated = task
         updated.status = slug
         updated.errorMessage = nil
+        // Clear completion so a completed loop reopens (writes `nil` — omits the line — never `false`).
+        updated.completed = nil
         workTaskManager.updateTask(updated)
     }
 
@@ -293,6 +315,7 @@ extension WorkTaskCoordinator {
         case launched(slug: String)
         case ignored
         case ended(slug: String)
+        case completed(slug: String)
         case halted(reason: String)
     }
 
@@ -330,9 +353,10 @@ extension WorkTaskCoordinator {
         }
     }
 
-    /// Feeds a worktree's current `TASK.md` `status` through the pure transition decision and acts on
-    /// the result: launches the next action, ends on a terminal action, halts (surfacing the error)
-    /// on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid
+    /// Feeds a worktree's current `TASK.md` `status` (and `completed` flag) through the pure transition
+    /// decision and acts on the result: launches the next action, ends on a terminal action, completes
+    /// (pausing autopilot) when a terminal action signaled `completed: true`, halts (surfacing the
+    /// error) on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid
     /// `.clearway/WORKFLOW.json`; legacy projects never reach here.
     @discardableResult
     @MainActor
@@ -349,6 +373,7 @@ extension WorkTaskCoordinator {
             running: runningAction[worktree.id],
             written: task.status,
             autopilot: task.autopilot,
+            completed: task.completed,
             definition: definition
         )
 
@@ -365,6 +390,12 @@ extension WorkTaskCoordinator {
 
         case .launch(let slug, let nextValue):
             return performLaunch(slug: slug, nextValue: nextValue, in: worktree, definition: definition, app: app)
+
+        // A terminal action's agent signaled a deliberate finish. End the loop: pause autopilot and
+        // launch nothing, so the idle rule never respawns the terminal action on any later reload.
+        case .complete(let slug):
+            workTaskManager.setAutopilot(task, to: false)
+            return .completed(slug: slug)
         }
     }
 
