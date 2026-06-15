@@ -189,10 +189,7 @@ struct WorkflowEditorView: View {
     /// drag-reorderable. A divider separates it from the actions below.
     private var planningEntry: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Planning")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            sectionHeader("Planning")
 
             if let instructions = model.planning {
                 Button { openPlanningEditor() } label: {
@@ -242,8 +239,29 @@ struct WorkflowEditorView: View {
         if model.actions.isEmpty {
             emptyPlaceholder
         } else {
-            editorList
+            VStack(spacing: 0) {
+                actionsHeader
+                editorList
+            }
         }
+    }
+
+    /// Lives only in the populated branch, so it's hidden in the empty state. Carries the section
+    /// padding the planning header gets from its enclosing `VStack`.
+    private var actionsHeader: some View {
+        sectionHeader("Worktree Actions")
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Shared label styling for the "Planning" and "Worktree Actions" headers, so the two read as a pair.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Empty state
@@ -282,7 +300,9 @@ struct WorkflowEditorView: View {
         // .inset keeps the reorder drop indicator's knob from clipping at the leading edge.
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
-        .padding(.vertical, 12)
+        // Top 4 (+ the first row's 5pt inset) matches the 8pt the planning header has to its card.
+        .padding(.top, 4)
+        .padding(.bottom, 12)
         .frame(maxWidth: contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
