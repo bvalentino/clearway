@@ -63,4 +63,48 @@ final class WorkTaskCoordinatorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: centralFile),
                        "removing the worktree must not write the task back to the central store")
     }
+
+    // MARK: - Raw workflow definition cache (planning)
+
+    /// Writes `.clearway/WORKFLOW.json` with the given JSON and returns a coordinator scoped to it.
+    private func makeCoordinator(workflowJSON: String) throws -> WorkTaskCoordinator {
+        let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
+        let path = (clearway as NSString).appendingPathComponent("WORKFLOW.json")
+        try workflowJSON.write(toFile: path, atomically: true, encoding: .utf8)
+
+        return WorkTaskCoordinator(
+            workTaskManager: WorkTaskManager(projectPath: tempRoot),
+            terminalManager: TerminalManager(),
+            worktreeManager: WorktreeManager(projectPath: tempRoot)
+        )
+    }
+
+    /// A planning-only file decodes into the raw cache but fails validation, so the validated cache
+    /// and the JSON-workflow gate both stay off — planning works without enabling autopilot.
+    func testRawCacheHoldsPlanningWithoutEnablingGate() throws {
+        let coordinator = try makeCoordinator(workflowJSON: """
+        { "planning": { "instructions": "Plan it." } }
+        """)
+
+        XCTAssertFalse(coordinator.isWorkflowJSONProject, "a planning-only file keeps the JSON gate off")
+        XCTAssertNil(coordinator.workflowDefinition, "the validated cache stays nil for a planning-only file")
+        XCTAssertEqual(coordinator.rawWorkflowDefinition?.planning?.instructions, "Plan it.",
+                       "the raw cache exposes the planning instructions")
+    }
+
+    /// A valid workflow populates both caches and enables the gate.
+    func testRawAndValidatedCacheBothPresentForRealWorkflow() throws {
+        let coordinator = try makeCoordinator(workflowJSON: """
+        {
+          "version": 1,
+          "start": "implement",
+          "actions": { "implement": { "name": "Implement", "instructions": "Do it." } }
+        }
+        """)
+
+        XCTAssertTrue(coordinator.isWorkflowJSONProject)
+        XCTAssertNotNil(coordinator.workflowDefinition, "a valid workflow populates the validated cache")
+        XCTAssertNotNil(coordinator.rawWorkflowDefinition, "a valid workflow also populates the raw cache")
+    }
 }

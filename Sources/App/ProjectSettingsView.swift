@@ -2,53 +2,16 @@ import SwiftUI
 
 struct ProjectSettingsView: View {
     let projectPath: String
-    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @State private var hooks: ProjectHooks
-
-    @State private var planningText = ""
-    @State private var planningStatus: WorkflowStatus = .empty
-    @State private var pendingPlanningSave: DispatchWorkItem?
-    @State private var isLoadingPlanning = false
-
-    private enum WorkflowStatus: Equatable {
-        case empty
-        case loaded
-        case saved
-        case invalid
-    }
 
     init(projectPath: String) {
         self.projectPath = projectPath
         self._hooks = State(initialValue: ProjectHooks.load(for: projectPath))
     }
 
-    private var planningFilePath: String {
-        (projectPath as NSString).appendingPathComponent("PLANNING.md")
-    }
-
-    private static let planningFooter = """
-        Defines how agents plan tasks. YAML frontmatter configures the agent command. \
-        The markdown body is the prompt template. \
-        Variables: {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}.
-        """
-
-    private static let planningTemplate = """
-        ---
-        agent:
-          command: claude
-        ---
-
-        Read the task at {{ task.path }} and create an implementation plan.
-
-        Research the codebase to understand the architecture, then append a \
-        detailed implementation plan to the task file.
-        """
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // MARK: - Hooks
-
                 SettingsSection("Hooks") {
                     SettingsRow("After Worktree Create") {
                         TextField("Command", text: $hooks.afterCreate)
@@ -61,133 +24,13 @@ struct ProjectSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                 }
-
-                // MARK: - PLANNING.md
-
-                SettingsSection("PLANNING.md", footer: Self.planningFooter, trailing: { planningTrailing }) {
-                    MarkdownEditorView(text: $planningText)
-                        .background(Color(.textBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color(.separatorColor), lineWidth: 1)
-                        )
-                        .frame(minHeight: 350)
-                        .padding(4)
-                }
             }
             .padding(32)
             .frame(maxWidth: 680)
             .frame(maxWidth: .infinity)
         }
-        .onAppear {
-            loadPlanningFile()
-        }
         .onChange(of: hooks.afterCreate) { _ in hooks.save(for: projectPath) }
         .onChange(of: hooks.beforeRemove) { _ in hooks.save(for: projectPath) }
-        .onChange(of: planningText) { _ in
-            guard !isLoadingPlanning else { return }
-            schedulePlanningSave()
-        }
-        .onChange(of: workTaskCoordinator.planningConfig) { _ in
-            guard pendingPlanningSave == nil else { return }
-            loadPlanningFile()
-        }
-    }
-
-    // MARK: - Trailing Content
-
-    @ViewBuilder
-    private var planningTrailing: some View {
-        HStack(spacing: 8) {
-            if planningStatus == .empty {
-                Button("Use Template") { applyPlanningTemplate() }
-                    .buttonStyle(.link)
-                    .font(.caption)
-            }
-            statusBadge(for: planningStatus)
-        }
-    }
-
-    // MARK: - Status Badge
-
-    @ViewBuilder
-    private func statusBadge(for status: WorkflowStatus) -> some View {
-        switch status {
-        case .empty:
-            Label("No file", systemImage: "doc")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .loaded:
-            EmptyView()
-        case .saved:
-            Label("Saved", systemImage: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
-        case .invalid:
-            Label("Invalid YAML", systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
-        }
-    }
-
-    // MARK: - Template
-
-    private func applyPlanningTemplate() {
-        planningText = Self.planningTemplate
-    }
-
-    // MARK: - PLANNING.md File I/O
-
-    private func loadPlanningFile() {
-        let fm = FileManager.default
-        guard let data = fm.contents(atPath: planningFilePath),
-              let content = String(data: data, encoding: .utf8) else {
-            if planningText.isEmpty {
-                planningStatus = .empty
-            }
-            return
-        }
-        isLoadingPlanning = true
-        defer { isLoadingPlanning = false }
-        if content != planningText {
-            planningText = content
-        }
-        planningStatus = .loaded
-    }
-
-    private func schedulePlanningSave() {
-        pendingPlanningSave?.cancel()
-        let work = DispatchWorkItem {
-            performPlanningSave()
-        }
-        pendingPlanningSave = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func performPlanningSave() {
-        defer { pendingPlanningSave = nil }
-
-        let fm = FileManager.default
-        if planningText.isEmpty {
-            try? fm.removeItem(atPath: planningFilePath)
-            planningStatus = fm.fileExists(atPath: planningFilePath) ? .loaded : .empty
-            return
-        }
-
-        if let existing = fm.contents(atPath: planningFilePath),
-           existing == planningText.data(using: .utf8) {
-            return
-        }
-
-        let isValid = PlanningConfig.parse(from: planningText) != nil
-
-        guard let data = planningText.data(using: .utf8) else { return }
-        guard fm.createFile(atPath: planningFilePath, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            return
-        }
-
-        planningStatus = isValid ? .saved : .invalid
     }
 }
 

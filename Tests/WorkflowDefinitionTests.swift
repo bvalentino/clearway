@@ -388,6 +388,92 @@ final class WorkflowDefinitionTests: XCTestCase {
         ])
     }
 
+    // MARK: - Planning object
+
+    func testPlanningDecodesAndCoexistsWithActions() throws {
+        let json = """
+        {
+          "version": 1,
+          "start": "implement",
+          "planning": { "instructions": "Plan the task described in TASK.md." },
+          "actions": {
+            "implement": { "name": "Implement", "instructions": "Do it." }
+          }
+        }
+        """
+        let definition = try decode(json)
+        XCTAssertEqual(definition.planning?.instructions, "Plan the task described in TASK.md.")
+        XCTAssertEqual(definition.actions.count, 1, "planning does not disturb actions")
+        XCTAssertEqual(try roundTrip(definition), definition, "planning round-trips alongside actions")
+    }
+
+    func testPlanningOmittedFromEncodeWhenNil() throws {
+        let def = try decode(Self.validGraphJSON)
+        XCTAssertNil(def.planning)
+        let json = try XCTUnwrap(String(bytes: def.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("planning"), "nil planning is omitted from the encoded file")
+    }
+
+    func testPlanningOnlyFileDecodesWithDefaults() throws {
+        // A minimal hand-authored planning-only file must decode: version/start/actions default
+        // to 1/""/[:] when absent.
+        let definition = try decode("""
+        { "planning": { "instructions": "Plan it." } }
+        """)
+        XCTAssertEqual(definition.version, 1)
+        XCTAssertEqual(definition.start, "")
+        XCTAssertTrue(definition.actions.isEmpty)
+        XCTAssertEqual(definition.planning?.instructions, "Plan it.")
+    }
+
+    func testPlanningOnlyFileStillFailsValidation() throws {
+        // Decode tolerates a planning-only file, but validate() still throws noActions so the
+        // autopilot/JSON-workflow gate stays off (AC #7).
+        let definition = try decode("""
+        { "planning": { "instructions": "Plan it." } }
+        """)
+        XCTAssertThrowsError(try definition.validate()) { error in
+            XCTAssertEqual(error as? WorkflowDefinition.LoadError, .noActions)
+        }
+    }
+
+    func testPlanningRoundTripsViaModelInitializer() throws {
+        let def = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it."),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        let back = try roundTrip(def)
+        XCTAssertEqual(back, def)
+        XCTAssertEqual(back.planning?.instructions, "Plan it.")
+        XCTAssertEqual(back.actions["implement"]?.name, "Implement")
+    }
+
+    // MARK: - Raw (non-validating) load
+
+    func testLoadRawDecodesPlanningOnlyFileWithoutValidation() throws {
+        // A planning-only file (zero actions) fails load()/validate() with noActions, but loadRaw
+        // decodes it so the planning instructions and top-level agent stay reachable.
+        let projectPath = try writeWorkflow("""
+        { "planning": { "instructions": "Plan it." }, "agent": { "command": "codex" } }
+        """)
+        XCTAssertFalse(WorkflowDefinition.hasJSONWorkflow(projectPath: projectPath),
+                       "a planning-only file does not enable the JSON-workflow gate")
+        let raw = try WorkflowDefinition.loadRaw(projectPath: projectPath)
+        XCTAssertEqual(raw.planning?.instructions, "Plan it.")
+        XCTAssertEqual(raw.agent.command, "codex")
+        XCTAssertTrue(raw.actions.isEmpty)
+    }
+
+    func testLoadRawThrowsFileNotFoundWhenAbsent() {
+        XCTAssertThrowsError(try WorkflowDefinition.loadRaw(projectPath: tempRoot)) { error in
+            guard case .fileNotFound = error as? WorkflowDefinition.LoadError else {
+                return XCTFail("expected .fileNotFound, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Load-path error surfacing
 
     func testHasJSONWorkflowFalseWhenFileAbsent() {

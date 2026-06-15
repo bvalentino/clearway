@@ -100,20 +100,12 @@ class WorkTaskCoordinator: ObservableObject {
     static let countdownDuration: TimeInterval = 3
 
     // MARK: - Dependencies
-    //
-    // Watcher state (isWatching, planningWatcherSource, pendingPlanningReload, etc.) and
-    // workTaskManager are internal, not private, because the PLANNING.md file-watching
-    // methods live in `WorkTaskCoordinator+ConfigWatching.swift` — a cross-file extension
-    // cannot reach private members. Only that extension should mutate them.
 
     let workTaskManager: WorkTaskManager
     // Internal (not private) so the `WorkTaskCoordinator+WorkflowEngine.swift` extension can launch
     // surfaces and resolve worktrees for the JSON loop engine.
     let terminalManager: TerminalManager
     let worktreeManager: WorktreeManager
-
-    /// Live-reloaded planning config — watched for changes on disk.
-    @Published private(set) var planningConfig: PlanningConfig?
 
     /// Cached, reactive answer to "does this project have a valid `.clearway/WORKFLOW.json`?" — the
     /// `AutopilotButton`'s visibility gate. Reading this `@Published` flag (instead of calling
@@ -136,23 +128,40 @@ class WorkTaskCoordinator: ObservableObject {
     /// cache-refresh ordering — it must never act on a definition staler than the file on disk.
     @Published private(set) var workflowDefinition: WorkflowDefinition?
 
-    /// Recomputes the cached workflow-json gate **and** definition cache from disk in a single
-    /// load+validate, so the two never disagree and the file is parsed once per refresh (not twice).
-    /// Called from init and the manager's `onClearwayChanged` hook; each assignment is guarded so
-    /// `objectWillChange` only fires when a value actually changes.
+    /// The **non-validated** decode of `WORKFLOW.json`, cached alongside the gate. Unlike
+    /// `workflowDefinition` (nil for a planning-only file, since `validate()` throws `noActions`),
+    /// this is populated whenever the file merely decodes — so the planning instructions and the
+    /// top-level `agent.command` stay reachable for the manual Plan step and the editor's
+    /// preserving-base even when there are no actions. Refreshed in lockstep with the gate, riding
+    /// `onClearwayChanged`. `nil` only when the file is absent or undecodable.
+    @Published private(set) var rawWorkflowDefinition: WorkflowDefinition?
+
+    /// Recomputes the cached workflow-json gate **and** both definition caches from disk in a single
+    /// raw decode (validated in-memory), so the file is parsed once per refresh. Called from init and
+    /// the manager's `onClearwayChanged` hook; each assignment is guarded so `objectWillChange` only
+    /// fires when a value actually changes.
     func refreshWorkflowJSONGate() {
-        let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath)
-        let value = definition != nil
+        let raw = try? WorkflowDefinition.loadRaw(projectPath: workTaskManager.projectPath)
+        let validated: WorkflowDefinition? = raw.flatMap { (try? $0.validate()) != nil ? $0 : nil }
+        let value = validated != nil
         if value != isWorkflowJSONProject { isWorkflowJSONProject = value }
-        if definition != workflowDefinition { workflowDefinition = definition }
+        if validated != workflowDefinition { workflowDefinition = validated }
+        if raw != rawWorkflowDefinition { rawWorkflowDefinition = raw }
     }
 
-    func setPlanningConfig(_ config: PlanningConfig?) { planningConfig = config }
+    /// The planning instruction template from `WORKFLOW.json`'s `planning` object, or `nil` when
+    /// none is set. Read from the non-validated raw cache so a planning-only file (no actions) still
+    /// surfaces planning. Drives the Plan button's label and its rendered prompt.
+    var planningInstructions: String? {
+        rawWorkflowDefinition?.planning?.instructions
+    }
 
-    var isWatching = false
-    var planningWatcherSource: DispatchSourceFileSystemObject?
-    var planningDirectoryWatcherSource: DispatchSourceFileSystemObject?
-    var pendingPlanningReload: DispatchWorkItem?
+    /// The agent command the manual Plan step launches — `WORKFLOW.json`'s top-level `agent.command`
+    /// (default `"claude"`), reused rather than a planning-specific command.
+    var planningAgentCommand: String {
+        rawWorkflowDefinition?.agent.command ?? WorkflowDefinition.AgentSettings.defaultCommand
+    }
+
     private var exitObserver: Any?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
@@ -191,9 +200,6 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     nonisolated deinit {
-        pendingPlanningReload?.cancel()
-        planningWatcherSource?.cancel()
-        planningDirectoryWatcherSource?.cancel()
         if let observer = exitObserver {
             NotificationCenter.default.removeObserver(observer)
         }

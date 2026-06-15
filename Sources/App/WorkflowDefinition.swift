@@ -23,11 +23,23 @@ struct WorkflowDefinition: Equatable, Codable {
     /// Optional shell hooks run around worktree creation / action launch. Absent = no hooks.
     let hooks: Hooks?
 
+    /// The manual, pre-worktree planning step. Lives outside the action graph — it has no slug,
+    /// no `start`/route participation, and is excluded from `validate()`. A file may hold only a
+    /// `planning` object (zero actions) for planning purposes without enabling the autopilot gate.
+    let planning: Planning?
+
     /// The action graph, keyed by **slug**. Order is cosmetic; pointers target slugs, never
     /// `name`, so renaming an action's display label never breaks the graph.
     let actions: [String: Action]
 
     // MARK: - Nested types
+
+    /// The planning instruction, stored as a dedicated object (rather than a bare string) so
+    /// future planning-specific knobs can be added without a format migration. v1 holds only
+    /// `instructions` — the prompt rendered against the selected task's `{{ task.* }}` data.
+    struct Planning: Equatable, Codable {
+        let instructions: String
+    }
 
     /// Runtime knobs for the agent that runs each action.
     struct AgentSettings: Equatable, Codable {
@@ -157,6 +169,7 @@ struct WorkflowDefinition: Equatable, Codable {
         case start
         case agent
         case hooks
+        case planning
         case actions
     }
 
@@ -165,23 +178,28 @@ struct WorkflowDefinition: Equatable, Codable {
         start: String,
         agent: AgentSettings = .default,
         hooks: Hooks? = nil,
+        planning: Planning? = nil,
         actions: [String: Action]
     ) {
         self.version = version
         self.start = start
         self.agent = agent
         self.hooks = hooks
+        self.planning = planning
         self.actions = actions
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        version = try container.decode(Int.self, forKey: .version)
-        start = try container.decode(String.self, forKey: .start)
+        // version/start/actions default to 1/""/[:] so a planning-only file (no action graph)
+        // decodes. validate() still rejects empty actions, keeping the autopilot gate off.
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
         // An omitted `agent` object falls back entirely to defaults.
         agent = try container.decodeIfPresent(AgentSettings.self, forKey: .agent) ?? .default
         hooks = try container.decodeIfPresent(Hooks.self, forKey: .hooks)
-        actions = try container.decode([String: Action].self, forKey: .actions)
+        planning = try container.decodeIfPresent(Planning.self, forKey: .planning)
+        actions = try container.decodeIfPresent([String: Action].self, forKey: .actions) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -194,6 +212,7 @@ struct WorkflowDefinition: Equatable, Codable {
             try container.encode(agent, forKey: .agent)
         }
         try container.encodeIfPresent(hooks, forKey: .hooks)
+        try container.encodeIfPresent(planning, forKey: .planning)
         try container.encode(actions, forKey: .actions)
     }
 
@@ -327,9 +346,11 @@ extension WorkflowDefinition {
         case onMaxAttemptsTargetMissing(action: String, target: String)
     }
 
-    /// Loads and validates `.clearway/WORKFLOW.json` for a project. Throws a typed `LoadError`
-    /// describing the specific defect (missing file, bad JSON, dangling pointer, …).
-    static func load(projectPath: String) throws -> WorkflowDefinition {
+    /// Decodes `.clearway/WORKFLOW.json` **without** validating the action graph. The planning path
+    /// and the editor's preserving-base need the `planning` object and top-level `agent.command`
+    /// from a file that may legitimately hold zero actions (planning-only) — a file `load()` would
+    /// reject with `noActions`. Throws the same file/JSON `LoadError`s as `load()`, minus validation.
+    static func loadRaw(projectPath: String) throws -> WorkflowDefinition {
         let path = (projectPath as NSString).appendingPathComponent(relativePath)
         guard FileManager.default.fileExists(atPath: path) else {
             throw LoadError.fileNotFound(path: path)
@@ -337,12 +358,17 @@ extension WorkflowDefinition {
         guard let data = FileManager.default.contents(atPath: path) else {
             throw LoadError.unreadable(reason: "could not read file at \(path)")
         }
-        let definition: WorkflowDefinition
         do {
-            definition = try JSONDecoder().decode(WorkflowDefinition.self, from: data)
+            return try JSONDecoder().decode(WorkflowDefinition.self, from: data)
         } catch {
             throw LoadError.malformedJSON(reason: String(describing: error))
         }
+    }
+
+    /// Loads and validates `.clearway/WORKFLOW.json` for a project. Throws a typed `LoadError`
+    /// describing the specific defect (missing file, bad JSON, dangling pointer, …).
+    static func load(projectPath: String) throws -> WorkflowDefinition {
+        let definition = try loadRaw(projectPath: projectPath)
         try definition.validate()
         return definition
     }
