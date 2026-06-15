@@ -76,6 +76,29 @@ class WorkTaskCoordinator: ObservableObject {
     /// observe that a launch was reached without a live Ghostty app (mirrors `appProvider`).
     var workflowAgentLauncher: (@MainActor (_ prompt: String, _ command: String, _ worktree: Worktree, _ app: ghostty_app_t) -> Void)?
 
+    /// A pending auto-run countdown: the action about to auto-launch and the deadline the card
+    /// animates against. Keyed by worktree id (its path), matching `runningAction`. `@Published` so
+    /// the `.current` action card reactively shows/hides the depleting-ring affordance. A grace-period
+    /// advance (the mid-loop hand-off) schedules one instead of launching immediately; pausing or
+    /// steering within the window cancels it. Internal (like `runningAction`) so the
+    /// `+WorkflowEngine` extension mutates it; the view reads via `workflowCountdown(forBranch:)`.
+    @Published var workflowCountdowns: [String: WorkflowCountdown] = [:]
+
+    /// Cancellation handles for the scheduled fire, keyed by worktree id. Production-only — the
+    /// `DispatchWorkItem` that fires `fireCountdown` after `countdownDuration`. Tests override
+    /// `workflowCountdownScheduler` and so populate no entry here; their cancellation is just the
+    /// `workflowCountdowns` state clear. Internal so the `+WorkflowEngine` extension reaches it.
+    var countdownWorkItems: [String: DispatchWorkItem] = [:]
+
+    /// Test seam for the grace-period countdown's scheduling. `nil` in production → a real cancellable
+    /// `DispatchWorkItem` fires after `countdownDuration`. Harness tests override it to capture the fire
+    /// closure and invoke it synchronously (mirrors `workflowAgentLauncher`/`appProvider`).
+    var workflowCountdownScheduler: (@MainActor (_ fire: @escaping @MainActor () -> Void) -> Void)?
+
+    /// The grace period between observing an agent-driven status advance and launching the next
+    /// action's agent — the window the card surfaces so the user can pause an imminent auto-run.
+    static let countdownDuration: TimeInterval = 3
+
     // MARK: - Dependencies
     //
     // Watcher state (isWatching, planningWatcherSource, pendingPlanningReload, etc.) and
@@ -248,11 +271,12 @@ class WorkTaskCoordinator: ObservableObject {
         }
         agentSurfaceIdentities.removeValue(forKey: worktree.id)
 
-        // Drop the loop engine's in-memory state for this worktree (P + halt + last-known autopilot)
-        // so a later worktree reusing the path/branch starts clean.
+        // Drop the loop engine's in-memory state for this worktree (P + halt + last-known autopilot +
+        // any pending countdown) so a later worktree reusing the path/branch starts clean.
         runningAction.removeValue(forKey: worktree.id)
         engineHalted.remove(branch)
         lastKnownAutopilot.removeValue(forKey: branch)
+        cancelCountdown(forWorktree: worktree.id)
     }
 
     /// Whether the given surface is an agent surface (should not be auto-restarted).

@@ -1,6 +1,14 @@
 import Foundation
 import GhosttyKit
 
+/// A pending auto-run countdown for a worktree: the action about to launch and the deadline the card
+/// animates against. The cancellation handle lives separately on the coordinator (`countdownWorkItems`);
+/// this carries only what the view renders, so it stays a value type the `@Published` map can diff.
+struct WorkflowCountdown: Equatable {
+    let slug: String
+    let deadline: Date
+}
+
 /// The `WORKFLOW.json` agent-driven loop engine, factored out of `WorkTaskCoordinator` to keep that
 /// file focused on the legacy agent lifecycle. Mirrors the `+ConfigWatching` extension split: the
 /// engine's in-memory state (`runningAction`, `engineHalted`, `lastKnownAutopilot`) and the surface-
@@ -38,7 +46,9 @@ extension WorkTaskCoordinator {
             // The resume already drove a launch decision; advancing again on the same reload would
             // re-evaluate the now-running action (a harmless ignore), so skip the redundant call.
             guard !resumed else { continue }
-            advanceWorkflow(forBranch: branch, app: app)
+            // The watch path is the agent-driven hand-off seam: a launch here is the mid-loop
+            // transition that gets the visible, interruptible grace period (seed/resume stay immediate).
+            advanceWorkflow(forBranch: branch, app: app, gracePeriod: true)
         }
     }
 
@@ -79,6 +89,13 @@ extension WorkTaskCoordinator {
         let previous = lastKnownAutopilot[branch]
         if let current = task.autopilot { lastKnownAutopilot[branch] = current }
 
+        // A pause (true→false) cancels any armed hand-off countdown — the central chokepoint every
+        // pause path reaches via the autopilot write's reload, including the toolbar button, which
+        // (unlike the card's Pause and the manual kill) has no synchronous cancel of its own.
+        if previous == true, task.autopilot == false, let id = worktreeId(forBranch: branch) {
+            cancelCountdown(forWorktree: id)
+        }
+
         // Resume only on a genuine false→true transition of an idle worktree. `previous == true` or
         // `nil` (first sight) is not an enable; a worktree with a live agent surface isn't idle, so
         // its current step keeps running and the normal advance handles the next status write.
@@ -106,6 +123,13 @@ extension WorkTaskCoordinator {
     @MainActor
     private func worktreeId(forBranch branch: String) -> String? {
         worktreeManager.worktrees.first(where: { $0.branch == branch })?.id
+    }
+
+    /// The pending auto-run countdown for a branch's worktree, or `nil` when none is scheduled — the
+    /// read-only window the task aside's current card uses to render its depleting ring + Pause.
+    @MainActor
+    func workflowCountdown(forBranch branch: String) -> WorkflowCountdown? {
+        worktreeId(forBranch: branch).flatMap { workflowCountdowns[$0] }
     }
 
     // MARK: - WORKFLOW.json Loop Engine
@@ -170,7 +194,12 @@ extension WorkTaskCoordinator {
             terminalManager.terminateSurface(surface, in: worktree.id)
         }
         engineHalted.remove(branch)
-        if let id = worktreeId(forBranch: branch) { runningAction.removeValue(forKey: id) }
+        if let id = worktreeId(forBranch: branch) {
+            runningAction.removeValue(forKey: id)
+            // Steering supersedes any imminent auto-launch: drop its countdown so the card stops
+            // counting down to an action the user just overrode.
+            cancelCountdown(forWorktree: id)
+        }
         var updated = task
         updated.status = slug
         updated.errorMessage = nil
@@ -190,6 +219,9 @@ extension WorkTaskCoordinator {
     /// rather than restoring it from the now-stale captured `task`.
     @MainActor
     func setWorkflowActionCurrent(_ task: WorkTask, to slug: String) {
+        // Cancel here too: when `slug` already equals the current status, `setWorkflowStatus`
+        // early-returns without cancelling, but taking manual control must still stop the countdown.
+        if let id = task.worktree.flatMap(worktreeId(forBranch:)) { cancelCountdown(forWorktree: id) }
         workTaskManager.setAutopilot(task, to: false)
         let paused = task.worktree.flatMap { workTaskManager.task(forWorktree: $0) } ?? task
         setWorkflowStatus(paused, to: slug)
@@ -292,8 +324,10 @@ extension WorkTaskCoordinator {
         // 1. Pause first so a race between the SIGHUP and the next reload can't auto-advance.
         workTaskManager.setAutopilot(task, to: false)
         // 2. Terminate the live agent surface for this worktree, if one is running.
-        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
-              shouldTerminateOnManualKill(forWorktree: worktree.id),
+        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+        // Drop any pending auto-launch countdown — stopping the loop must also stop its next launch.
+        cancelCountdown(forWorktree: worktree.id)
+        guard shouldTerminateOnManualKill(forWorktree: worktree.id),
               let surface = agentSurfaces[worktree.id] else { return }
         terminalManager.terminateSurface(surface, in: worktree.id)
     }
@@ -317,6 +351,10 @@ extension WorkTaskCoordinator {
         case ended(slug: String)
         case completed(slug: String)
         case halted(reason: String)
+        /// A grace-period advance scheduled a countdown for `slug` instead of launching it now. The
+        /// launch happens when the countdown fires (re-running the advance immediately), unless a
+        /// pause/steer cancels it first.
+        case deferred(slug: String)
     }
 
     /// Seeds a freshly created worktree's `TASK.md` with the workflow's `start` slug — the engine's
@@ -358,9 +396,15 @@ extension WorkTaskCoordinator {
     /// (pausing autopilot) when a terminal action signaled `completed: true`, halts (surfacing the
     /// error) on an illegal/unknown value, or ignores a no-op. Gated end-to-end on a valid
     /// `.clearway/WORKFLOW.json`; legacy projects never reach here.
+    ///
+    /// `gracePeriod` makes a launch *deferred*: the watch path (`handleTasksReloaded`) passes `true`
+    /// so an agent-driven mid-loop hand-off schedules a visible, interruptible countdown instead of
+    /// launching immediately, returning `.deferred`. The seed, the countdown's own fire, and the
+    /// resume path keep the default `false` (immediate launch). The pure decision is unchanged — the
+    /// grace lives entirely in this launch plumbing.
     @discardableResult
     @MainActor
-    func advanceWorkflow(forBranch branch: String, app: ghostty_app_t) -> WorkflowAdvanceResult {
+    func advanceWorkflow(forBranch branch: String, app: ghostty_app_t, gracePeriod: Bool = false) -> WorkflowAdvanceResult {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath) else {
             return .ignored
         }
@@ -384,11 +428,17 @@ extension WorkTaskCoordinator {
         case .halt(let reason):
             engineHalted.insert(branch)
             runningAction.removeValue(forKey: worktree.id)
+            // A halt leaves the normal advance path — drop any countdown armed by a prior legal
+            // advance so the card stops counting down to a launch the halted loop won't perform.
+            cancelCountdown(forWorktree: worktree.id)
             task.errorMessage = reason
             workTaskManager.updateTask(task)
             return .halted(reason: reason)
 
         case .launch(let slug, let nextValue):
+            if gracePeriod {
+                return scheduleCountdown(slug: slug, branch: branch, worktreeId: worktree.id)
+            }
             return performLaunch(slug: slug, nextValue: nextValue, in: worktree, definition: definition, app: app)
 
         // A terminal action's agent signaled a deliberate finish. End the loop: pause autopilot and
@@ -397,6 +447,66 @@ extension WorkTaskCoordinator {
             workTaskManager.setAutopilot(task, to: false)
             return .completed(slug: slug)
         }
+    }
+
+    /// Schedules the grace-period countdown for an imminent auto-launch and returns `.deferred`. The
+    /// fire (after `countdownDuration`) re-runs the **immediate** `advanceWorkflow`, so the autopilot
+    /// pause gate is re-read at fire time and the actual launch reuses the normal path. Idempotent per
+    /// worktree+slug: a repeated watch reload for the same pending action keeps the original deadline
+    /// rather than resetting it; a different slug replaces a stale countdown.
+    @MainActor
+    private func scheduleCountdown(slug: String, branch: String, worktreeId: String) -> WorkflowAdvanceResult {
+        if workflowCountdowns[worktreeId]?.slug == slug { return .deferred(slug: slug) }
+        cancelCountdown(forWorktree: worktreeId)
+
+        workflowCountdowns[worktreeId] = WorkflowCountdown(
+            slug: slug,
+            deadline: Date().addingTimeInterval(Self.countdownDuration)
+        )
+        let fire: @MainActor () -> Void = { [weak self] in
+            self?.fireCountdown(forBranch: branch, worktreeId: worktreeId)
+        }
+        if let scheduler = workflowCountdownScheduler {
+            scheduler(fire)
+        } else {
+            let work = DispatchWorkItem { fire() }
+            countdownWorkItems[worktreeId] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.countdownDuration, execute: work)
+        }
+        return .deferred(slug: slug)
+    }
+
+    /// The countdown elapsed: clear its state and re-run the **immediate** advance, which performs the
+    /// launch the countdown was gating (or, if a pause/steer slipped in, is suppressed by the pause
+    /// gate / superseded by the new running pointer). No-op if Ghostty isn't ready.
+    @MainActor
+    func fireCountdown(forBranch branch: String, worktreeId: String) {
+        workflowCountdowns.removeValue(forKey: worktreeId)
+        countdownWorkItems.removeValue(forKey: worktreeId)
+        guard let app = appProvider() else { return }
+        advanceWorkflow(forBranch: branch, app: app)
+    }
+
+    /// Cancels a pending countdown for a worktree — stops the scheduled fire and clears the card's
+    /// countdown state. Safe to call when none is pending. Used by the pause control and by manual
+    /// steer/kill so a hand-off in its grace window doesn't fire after the user takes control.
+    @MainActor
+    func cancelCountdown(forWorktree worktreeId: String) {
+        countdownWorkItems.removeValue(forKey: worktreeId)?.cancel()
+        workflowCountdowns.removeValue(forKey: worktreeId)
+    }
+
+    /// The countdown card's **Pause** — cancel the imminent auto-launch and pause autopilot, reusing
+    /// the existing pause path (`setAutopilot(false)`). Functionally identical to pressing the toolbar
+    /// pause at that instant: the pending action does not launch, and future launches are suppressed
+    /// until the user resumes. No-op for a branch with no task / no live worktree.
+    @MainActor
+    func pauseFromCountdown(forBranch branch: String) {
+        if let id = worktreeId(forBranch: branch) {
+            cancelCountdown(forWorktree: id)
+        }
+        guard let task = workTaskManager.task(forWorktree: branch) else { return }
+        workTaskManager.setAutopilot(task, to: false)
     }
 
     /// Re-launches the action a worktree currently sits on — the autopilot **resume** path. Unlike
