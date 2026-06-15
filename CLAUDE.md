@@ -75,12 +75,16 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
 - **Seed.** On worktree creation in a JSON project, `seedWorkflowStatus` writes `status = start` (the engine's **only** write to `status` — the agent owns all advances) and defaults `autopilot = true`.
 - **Watch.** On a `.clearway/TASK.md` reload (`handleTasksReloaded`), `advanceWorkflow` feeds the change through `decideTransition`: `S == P` or a backlog marker → ignore; **while a step is running** (`P != nil`), `S` must be a legal route out of `P` or it halts; **while idle** (`P == nil` — after the seed, after a step's agent exits, or a manual status pick) any real action launches (no route validation — there's no active step to validate against); an unknown slug always halts + surfaces `errorMessage`. Route validation is thus enforced only mid-step, where a hallucinated advance actually needs guarding.
 - **Manual status pick.** The task aside's status picker lists the `WORKFLOW.json` actions (`workflowActionSlugs()`, flow-ordered — reading the coordinator's **cached** definition, not a per-render disk load) and writes via `setWorkflowStatus`. A human pick may set **any** state and is **never route-validated**: it **terminates a live agent surface first** (steering, not stopping — autopilot is *not* paused, unlike `manualKill`; otherwise the superseded agent and the relaunched one would both run and the zombie's eventual status write would halt the loop), clears the running pointer (`runningAction`) so the watcher's `advanceWorkflow` takes the *idle* path (launch under autopilot / hold under pause) instead of validating a transition from the running action, and clears any halt + error so a halted loop recovers. This is why the picker never produces a "not a legal next" halt.
-- **Launch.** `WorkflowLoopEngine.buildPrompt(instructions:nextValue:)` appends the injection contract:
+- **Launch.** `WorkflowLoopEngine.buildPrompt(instructions:nextValue:)` **prepends** a labeled `Context:` block — closed by a trailing `---` thematic break, and leading with the label (never a `---` fence) so it can't be mistaken for the task's own YAML frontmatter — to the action's own `instructions` (which land last, for highest-recency emphasis):
   ```
-  [Clearway] When finished, set `status:` in .clearway/TASK.md to: <next>
-  Write it last.
+  Context:
+  - The task in progress is .clearway/TASK.md.
+  - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
+  - When done, write `status: <next>` as the last thing you do.
+
+  ---
   ```
-  A **terminal** action (`nextValue == nil`) gets **no** advance contract — it runs once and the loop ends.
+  A **terminal** action (`nextValue == nil`) gets the same preamble but with `write `completed: true`` instead of the `status:` advance — it runs once and the loop ends.
 - **No trust gate.** `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches `agent.command` directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its `agent.command` and `hooks.after_create` with no approval step (mitigated by: the hook runs in a visible sheet, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
 
 ### Autopilot (`WorkTask.autopilot: Bool?`)
