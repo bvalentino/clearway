@@ -244,31 +244,83 @@ final class WorkflowLoopEngineTests: XCTestCase {
 
     // MARK: - Prompt injection
 
-    func testBuildPromptAppendsAdvanceContract() {
+    func testBuildPromptPrependsAdvancePreamble() {
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Do the work.", nextValue: "review")
         XCTAssertEqual(prompt, """
-        Do the work.
+        Context:
+        - The task in progress is .clearway/TASK.md.
+        - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
+        - When done, write `status: review` as the last thing you do.
 
-        [Clearway] When finished, set `status:` in .clearway/TASK.md to: review
-        Write it last.
+        ---
+
+        Do the work.
         """)
     }
 
-    func testBuildPromptTerminalAppendsCompletionContract() {
+    func testBuildPromptTerminalPrependsCompletionPreamble() {
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Review the diff.", nextValue: nil)
         XCTAssertEqual(prompt, """
-        Review the diff.
+        Context:
+        - The task in progress is .clearway/TASK.md.
+        - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
+        - When done, write `completed: true` as the last thing you do.
 
-        [Clearway] When finished, set `completed: true` in .clearway/TASK.md
-        Write it last.
-        """, "a terminal action gets a completion contract, not an advance/status contract")
+        ---
+
+        Review the diff.
+        """, "a terminal action gets a completion preamble, not an advance/status one")
     }
 
-    /// The terminal completion contract must not also inject a `status:` advance — a terminal action
+    /// The terminal completion preamble must not also inject a `status:` advance — a terminal action
     /// has no next action, so directing the agent to write `status` would be incoherent.
     func testBuildPromptTerminalCarriesNoAdvanceContract() {
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Review the diff.", nextValue: nil)
-        XCTAssertFalse(prompt.contains("set `status:`"),
+        XCTAssertFalse(prompt.contains("status:"),
                        "a terminal action gets no advance/status contract")
+    }
+
+    /// The preamble leads the prompt; the action's own instructions are the final content so the work
+    /// gets the highest-recency emphasis.
+    func testBuildPromptPlacesInstructionsLast() {
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Do the work.", nextValue: "review")
+        XCTAssertTrue(prompt.hasSuffix("Do the work."),
+                      "the action's instructions must be the final content in the prompt")
+        XCTAssertTrue(prompt.hasPrefix("Context:"),
+                      "the preamble must lead the prompt")
+    }
+
+    /// The preamble↔instructions boundary is an explicitly delimited, labeled block — not a bare
+    /// blank-line separation — so neither can be misread as part of the other.
+    func testBuildPromptDelimitsPreambleBlock() {
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Do the work.", nextValue: "review")
+        XCTAssertTrue(prompt.contains("""
+        - When done, write `status: review` as the last thing you do.
+
+        ---
+
+        Do the work.
+        """), "the preamble must be fenced and the instructions sit outside it")
+    }
+
+    /// An action whose instructions carry no TASK.md pointer or frontmatter caveat of their own still
+    /// gets both from the engine-owned preamble.
+    func testBuildPromptSuppliesContextForBareCommandInstructions() {
+        let prompt = WorkflowLoopEngine.buildPrompt(instructions: "/agent-skills:build", nextValue: "review")
+        XCTAssertTrue(prompt.contains(".clearway/TASK.md"),
+                      "the preamble points the agent at the task file")
+        XCTAssertTrue(prompt.contains("YAML frontmatter of the task is internal data"),
+                      "the preamble carries the frontmatter caveat")
+        XCTAssertTrue(prompt.hasSuffix("/agent-skills:build"),
+                      "the bare command instructions remain the final content")
+    }
+
+    /// The dropped `Write it last.` standalone line must not return; the "last thing" guard is folded
+    /// into the status/completion bullet instead.
+    func testBuildPromptHasNoStandaloneWriteItLastLine() {
+        let advance = WorkflowLoopEngine.buildPrompt(instructions: "Do the work.", nextValue: "review")
+        let terminal = WorkflowLoopEngine.buildPrompt(instructions: "Review the diff.", nextValue: nil)
+        XCTAssertFalse(advance.contains("Write it last."))
+        XCTAssertFalse(terminal.contains("Write it last."))
     }
 }

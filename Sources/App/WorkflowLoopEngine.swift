@@ -137,28 +137,34 @@ enum WorkflowLoopEngine {
 
     // MARK: - Prompt injection
 
-    /// Builds the agent prompt for an action launch: the action's `instructions` followed by an
-    /// **injection contract**. A non-terminal action (`nextValue != nil`) gets the **advance**
-    /// contract — the next `status` value to write. A **terminal** action (`nextValue == nil`) gets
-    /// the **completion** contract instead — write `completed: true` — the deliberate signal the
-    /// engine reacts to by ending the loop. Either way the agent is told to write it *last*, so
-    /// Clearway sees the signal only after the work is done.
+    /// Builds the agent prompt for an action launch: a **Clearway context preamble** prepended to the
+    /// action's own `instructions`, which land last so the actual work gets the highest-recency
+    /// emphasis. The preamble is an explicitly delimited, labeled block — a `Context:` label closed by
+    /// a `---` thematic break — so the agent can tell unambiguously where the context ends and its task
+    /// begins. It leads with the label, never a `---` fence, so the block can't be mistaken for the
+    /// YAML frontmatter the prompt is delivered as — the very construct fact #2 tells the agent to
+    /// ignore.
+    ///
+    /// It carries exactly three facts the engine owns, not the action author: where the task lives
+    /// (`.clearway/TASK.md`), that the TASK.md YAML frontmatter is Clearway's bookkeeping rather than
+    /// agent instructions, and the status/completion signal to write *as the last thing done*. The
+    /// signal varies by action: a non-terminal action (`nextValue != nil`) gets the **advance**
+    /// contract — the next `status` value; a **terminal** action (`nextValue == nil`) gets the
+    /// **completion** contract — `completed: true` — the deliberate finish signal the engine ends the
+    /// loop on.
     ///
     /// Routing authority stays in `WORKFLOW.json`: a non-terminal agent can only write the value
     /// Clearway handed it (validated by `decideTransition`); a terminal agent only signals it is done.
     static func buildPrompt(instructions: String, nextValue: String?) -> String {
-        let contract: String
-        if let nextValue {
-            contract = """
-            [Clearway] When finished, set `status:` in .clearway/TASK.md to: \(nextValue)
-            Write it last.
-            """
-        } else {
-            contract = """
-            [Clearway] When finished, set `completed: true` in .clearway/TASK.md
-            Write it last.
-            """
-        }
-        return "\(instructions)\n\n\(contract)"
+        let signal = nextValue.map { "write `status: \($0)`" } ?? "write `completed: true`"
+        let preamble = """
+        Context:
+        - The task in progress is .clearway/TASK.md.
+        - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
+        - When done, \(signal) as the last thing you do.
+
+        ---
+        """
+        return "\(preamble)\n\n\(instructions)"
     }
 }
