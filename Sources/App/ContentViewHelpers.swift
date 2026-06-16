@@ -28,6 +28,18 @@ func hookShellCommand(_ cmd: String) -> String {
     return wrapped
 }
 
+/// Wraps a hook command with a failure banner for `sendPaste` into the persistent
+/// secondary login shell.
+///
+/// Unlike `hookShellCommand`, it adds no `/bin/sh -c` and no `export PATH=` —
+/// `pane.secondary` is already a login shell that has the user's PATH. The `cmd`
+/// runs in a subshell, so a multi-line hook keeps running past its first line. On a
+/// non-zero exit it prints the red `[hook failed]` banner; the trailing `; true`
+/// forces a clean status so the shell returns to a usable prompt.
+func hookBannerCommand(_ cmd: String) -> String {
+    "(\(cmd)); s=$?; [ $s -ne 0 ] && printf '\\n\\033[31m[hook failed: exit %d]\\033[0m\\n' \"$s\"; true"
+}
+
 enum SidePanelTab: String, CaseIterable {
     case task = "Task"
     case todos = "Todos"
@@ -46,27 +58,6 @@ func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
     if isWorkflowJSONProject { return .task }
     if taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
     return current == .task ? .todos : current
-}
-
-/// Tracks the lifecycle of an after-create hook: blocking the main terminal,
-/// running in background, or inactive.
-enum AfterCreateHookState {
-    case none
-    case blocking(InlineHook)
-    case background(InlineHook)
-    case failed(InlineHook)
-
-    var inlineHook: InlineHook? {
-        switch self {
-        case .none: return nil
-        case .blocking(let hook), .background(let hook), .failed(let hook): return hook
-        }
-    }
-
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
 }
 
 /// Tracks the content column's live width without triggering SwiftUI view updates.

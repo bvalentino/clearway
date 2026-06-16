@@ -56,6 +56,7 @@
 		5D43934B5DF65154C540BDBE /* WorkTaskCoordinator+WorkflowEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C8AA92A771207842664E33 /* WorkTaskCoordinator+WorkflowEngine.swift */; };
 		63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E372333888BC8E073569810 /* PromptManagerTests.swift */; };
 		641841E20D13715149CA3EEF /* Ghostty.Shell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733E42F6C068BE314FAD921E /* Ghostty.Shell.swift */; };
+		66FE5E1F55E5B2B849C30E1F /* HookCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1693136218CD9E73AC17EC4 /* HookCommandTests.swift */; };
 		67A43FD9534AACCAAB6808E3 /* WorkflowCountdownHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0CA7FF12D101F9B3EBE1D12 /* WorkflowCountdownHarnessTests.swift */; };
 		69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */; };
 		6BCAAC12F36D33EC251CB587 /* ClaudeSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5EA9088599AFDEA76C47EB6 /* ClaudeSessionFiles.swift */; };
@@ -207,6 +208,7 @@
 		C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		C9505471B12BA23B7E6D1CE1 /* WorkflowEditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorModel.swift; sourceTree = "<group>"; };
 		CF064EDBE730B518F29471B7 /* TerminalTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTab.swift; sourceTree = "<group>"; };
+		D1693136218CD9E73AC17EC4 /* HookCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookCommandTests.swift; sourceTree = "<group>"; };
 		D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesManager.swift; sourceTree = "<group>"; };
 		D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerTests.swift; sourceTree = "<group>"; };
 		D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngine.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 			children = (
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
 				87D53B2248C692859A82CD26 /* GitResolverTests.swift */,
+				D1693136218CD9E73AC17EC4 /* HookCommandTests.swift */,
 				1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */,
 				E33001A8BB991B5707FB5AD4 /* ProjectHooksTests.swift */,
 				2E372333888BC8E073569810 /* PromptManagerTests.swift */,
@@ -736,6 +739,7 @@
 			files = (
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
 				4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */,
+				66FE5E1F55E5B2B849C30E1F /* HookCommandTests.swift in Sources */,
 				4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */,
 				2BF186BD2AAC70BBA557891C /* ProjectHooksTests.swift in Sources */,
 				63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */,

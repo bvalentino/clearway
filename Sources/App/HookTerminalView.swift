@@ -1,13 +1,7 @@
 import GhosttyKit
 import SwiftUI
 
-/// State for an after-create hook running inline in the secondary terminal slot.
-struct InlineHook {
-    let worktreeId: String
-    let hook: HookSheet
-}
-
-/// Identifiable state for presenting a hook terminal (sheet or inline).
+/// Identifiable state for presenting a hook terminal sheet.
 struct HookSheet: Identifiable {
     let id = UUID()
     let title: String
@@ -15,11 +9,8 @@ struct HookSheet: Identifiable {
     let surface: Ghostty.SurfaceView
     /// Called when the hook succeeds (auto) or the user clicks "Run in Background".
     let onContinue: () -> Void
-    /// Called when the user clicks "Force remove" after a before-remove hook fails. Nil for after-create hooks.
+    /// Called when the user clicks "Force remove" after a before-remove hook fails.
     var onForce: (() -> Void)?
-    /// When true, "Run in Background" remains available even after the hook fails (e.g. after-create hooks).
-    /// When false (default), failure hides the button so the hook acts as a blocking gate.
-    var allowContinueOnFailure: Bool = false
 }
 
 /// Shared view that runs a hook command in a terminal.
@@ -29,24 +20,20 @@ struct HookTerminalView: View {
     let hook: HookSheet
     @ObservedObject private var surface: Ghostty.SurfaceView
     let onDismiss: () -> Void
-    let showHeader: Bool
 
     @State private var failed = false
     @State private var completed = false
 
-    init(hook: HookSheet, onDismiss: @escaping () -> Void, showHeader: Bool = true) {
+    init(hook: HookSheet, onDismiss: @escaping () -> Void) {
         self.hook = hook
         self._surface = ObservedObject(wrappedValue: hook.surface)
         self.onDismiss = onDismiss
-        self.showHeader = showHeader
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if showHeader {
-                header
-                Divider()
-            }
+            header
+            Divider()
             TerminalSurface(surfaceView: surface)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited, object: surface)) { notification in
@@ -107,7 +94,7 @@ struct HookTerminalView: View {
                     }
                 }
             }
-            if !failed || hook.allowContinueOnFailure {
+            if !failed {
                 Button("Run in Background") {
                     guard !completed else { return }
                     completed = true
