@@ -67,6 +67,25 @@ final class TerminalManagerTests: XCTestCase {
                        "unwired provider must default to the opt-in-safe `false` path")
     }
 
+    // MARK: - runHookInSecondary visibility
+
+    /// Running an after_create hook must force the secondary panel visible even when
+    /// "open secondary on start" is off — otherwise the hook would run (and possibly
+    /// fail) in a panel the user can't see. `setInitialPanelVisibility` stands in for
+    /// the provider-driven default `pane(for:)` seeds before the hook reveal.
+    func test_runHookInSecondary_forcesSecondaryVisible_overridingOpenOnStartOff() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+
+        manager.openSecondaryOnStartProvider = { false }
+        manager.setInitialPanelVisibility(for: wt.id, worktree: wt)
+        XCTAssertFalse(manager.isSecondaryVisible(for: wt.id), "precondition: secondary starts hidden")
+
+        manager.revealSecondaryForHook(for: wt.id)
+        XCTAssertTrue(manager.isSecondaryVisible(for: wt.id),
+                      "the hook reveal must win over the open-on-start-off default")
+    }
+
     // MARK: - LauncherPromotion.command
 
     func test_launcherPromotion_command_pattern_matches() {

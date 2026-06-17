@@ -15,10 +15,18 @@ extension TerminalManager {
     /// startup race (mirrors `HookTerminalView.onAppear`).
     func runHookInSecondary(for worktree: Worktree, app: ghostty_app_t, command: String, projectPath: String?) {
         let pane = pane(for: worktree, app: app, projectPath: projectPath)
-        secondaryVisible[worktree.id] = true
+        revealSecondaryForHook(for: worktree.id)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             pane.secondary.sendPaste(command)
         }
+    }
+
+    /// Force the secondary panel visible for a post-create hook, overriding the
+    /// open-on-start default `pane(for:)` just seeded. Split out from
+    /// `runHookInSecondary` (whose surface work needs a live `ghostty_app_t`) so the
+    /// visibility contract is unit-testable on its own.
+    func revealSecondaryForHook(for worktreeId: String) {
+        secondaryVisible[worktreeId] = true
     }
 
     // MARK: - Panel Visibility

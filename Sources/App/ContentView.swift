@@ -274,7 +274,7 @@ struct ContentView: View {
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
             if let cmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
                 terminalManager.runHookInSecondary(
-                    for: wt, app: app, command: hookBannerCommand(cmd), projectPath: worktreeManager.projectPath
+                    for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
             }
         }
