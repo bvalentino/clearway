@@ -48,27 +48,6 @@ func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
     return current == .task ? .todos : current
 }
 
-/// Tracks the lifecycle of an after-create hook: blocking the main terminal,
-/// running in background, or inactive.
-enum AfterCreateHookState {
-    case none
-    case blocking(InlineHook)
-    case background(InlineHook)
-    case failed(InlineHook)
-
-    var inlineHook: InlineHook? {
-        switch self {
-        case .none: return nil
-        case .blocking(let hook), .background(let hook), .failed(let hook): return hook
-        }
-    }
-
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
-}
-
 /// Tracks the content column's live width without triggering SwiftUI view updates.
 ///
 /// This is intentionally a bare reference class, not `@Observable`, `ObservableObject`,

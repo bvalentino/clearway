@@ -1,6 +1,34 @@
 import AppKit
+import GhosttyKit
 
 extension TerminalManager {
+    // MARK: - Secondary Hook Run
+
+    /// Run a post-create hook inside the worktree's persistent secondary login shell,
+    /// forcing the secondary panel visible.
+    ///
+    /// Reuses `pane.secondary` (never discarded or respawned) instead of a throwaway
+    /// surface, so the hook's output survives to a live, usable prompt. The command is
+    /// fed via `sendPaste` — it echoes on the prompt line, an accepted cosmetic tradeoff,
+    /// and preserves multi-line hooks (a single `sendCommand` would drop everything after
+    /// the first newline). The send is deferred a tick to clear the cold-pane login-shell
+    /// startup race (mirrors `HookTerminalView.onAppear`).
+    func runHookInSecondary(for worktree: Worktree, app: ghostty_app_t, command: String, projectPath: String?) {
+        let pane = pane(for: worktree, app: app, projectPath: projectPath)
+        revealSecondaryForHook(for: worktree.id)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            pane.secondary.sendPaste(command)
+        }
+    }
+
+    /// Force the secondary panel visible for a post-create hook, overriding the
+    /// open-on-start default `pane(for:)` just seeded. Split out from
+    /// `runHookInSecondary` (whose surface work needs a live `ghostty_app_t`) so the
+    /// visibility contract is unit-testable on its own.
+    func revealSecondaryForHook(for worktreeId: String) {
+        secondaryVisible[worktreeId] = true
+    }
+
     // MARK: - Panel Visibility
 
     func isAsideVisible(for worktreeId: String?) -> Bool {

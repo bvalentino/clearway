@@ -62,7 +62,6 @@ struct ContentView: View {
     @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
-    @State private var afterCreateHookState: AfterCreateHookState = .none
     @State private var selectedTaskId: UUID?
     /// One-shot: id of a task just created via an explicit "New Task" action. The matching
     /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
@@ -236,11 +235,6 @@ struct ContentView: View {
             }
             guard let wt = new?.worktree, let app = ghosttyApp.app, wt.id != old?.worktree?.id else { return }
             terminalManager.activate(wt, app: app, projectPath: worktreeManager.projectPath)
-            if case .blocking(let inline) = afterCreateHookState, inline.worktreeId == wt.id {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    inline.hook.surface.window?.makeFirstResponder(inline.hook.surface)
-                }
-            }
             // Selecting a worktree shows its terminal but no longer steals focus —
             // focus stays on the sidebar so ↑/↓ keeps moving the selection (Notes.app
             // model). Click the terminal (or Ctrl+1) to focus it.
@@ -268,39 +262,21 @@ struct ContentView: View {
 
             detailSelection = .worktree(wt)
 
-            // The seed runs AFTER any after_create hook, so worktree setup (deps, codegen, …) finishes
-            // before the agent starts. `completePendingLaunch` relocated TASK.md into the worktree; a
-            // JSON project's seed writes `status = start` — the engine's ONLY write to `status` — and
-            // the loop engine launches the agent. A non-JSON project no-ops.
-            let launch = {
-                workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
-            }
+            // The agent launches immediately, decoupled from the after_create hook: it never waits
+            // for the hook and a failing hook can't block it. `completePendingLaunch` relocated
+            // TASK.md into the worktree; a JSON project's seed writes `status = start` — the engine's
+            // ONLY write to `status` — and the loop engine launches the agent. A non-JSON project no-ops.
+            workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
 
+            // The hook runs in parallel in the secondary terminal, reusing the persistent login
+            // shell so its output survives to a usable prompt (no blocking modal, no respawn).
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
-            let afterCreateCmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd)
-
-            if let cmd = afterCreateCmd, let app = ghosttyApp.app {
-                let surface = Ghostty.SurfaceView(app, workingDirectory: wt.path, command: hookShellCommand(cmd))
-                var continued = false
-                afterCreateHookState = .blocking(InlineHook(
-                    worktreeId: wt.id,
-                    hook: HookSheet(title: "After create", command: cmd, surface: surface, onContinue: {
-                        guard !continued else { return }
-                        continued = true
-                        launch()
-                    }, allowContinueOnFailure: true)
-                ))
-            } else {
-                launch()
+            if let cmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
+                terminalManager.runHookInSecondary(
+                    for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
+                )
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .ghosttyChildExited)) { notification in
-            guard let surface = notification.object as? Ghostty.SurfaceView,
-                  let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32,
-                  let inline = afterCreateHookState.inlineHook,
-                  inline.hook.surface === surface else { return }
-            if exitCode == 0 { inline.hook.onContinue(); finishAfterCreateHook() } else { afterCreateHookState = .failed(inline) }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
@@ -319,9 +295,6 @@ struct ContentView: View {
                 worktreeManager.prunePRStatuses(keeping: currentIds)
             }
             tabCloseQueue.removeAll { req in !terminalManager.mainTabs(for: req.worktreeId).contains { $0.id == req.tabId } }
-            if let hookWt = afterCreateHookState.inlineHook?.worktreeId, !newWorktrees.contains(where: { $0.id == hookWt }) {
-                afterCreateHookState = .none
-            }
             guard let selected = selectedWorktree else { return }
             let refreshed = newWorktrees.first(where: { $0.id == selected.id })
             // Update selection to the refreshed instance so its hash matches
@@ -713,20 +686,6 @@ struct ContentView: View {
         if let wt = workTaskCoordinator.worktreeForTask(task) { detailSelection = .worktree(wt) }
     }
 
-    private func finishAfterCreateHook() { afterCreateHookState = .none }
-
-    private func dismissAfterCreateOverlay() {
-        guard case .blocking(let inline) = afterCreateHookState else { return }
-        afterCreateHookState = .background(inline)
-        inline.hook.onContinue()
-    }
-
-    private var blockingHook: InlineHook? {
-        guard case .blocking(let inline) = afterCreateHookState,
-              selectedWorktree?.id == inline.worktreeId else { return nil }
-        return inline
-    }
-
     // MARK: - Content Column (middle)
 
     @ViewBuilder
@@ -847,17 +806,8 @@ struct ContentView: View {
                                     )
                                 }
                             }
-                            .overlay {
-                                if let inline = blockingHook {
-                                    afterCreateBlockingOverlay(hook: inline.hook)
-                                }
-                            }
 
-                            if let inline = afterCreateHookState.inlineHook, selectedWorktree?.id == inline.worktreeId {
-                                Divider()
-                                HookTerminalView(hook: inline.hook, onDismiss: finishAfterCreateHook, showHeader: afterCreateHookState.isFailed)
-                                    .frame(height: terminalManager.secondaryHeight(for: selectedWorktree?.id))
-                            } else if secondaryVisible {
+                            if secondaryVisible {
                                 VStack(spacing: 0) {
                                     Divider()
                                     Capsule()
@@ -1017,22 +967,5 @@ struct ContentView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func afterCreateBlockingOverlay(hook: HookSheet) -> some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-            VStack(spacing: 16) {
-                Text("Running After Create Hook").font(.title3.bold())
-                Text(hook.command)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                Button("Run in Background") { dismissAfterCreateOverlay() }.buttonStyle(.bordered)
-            }
-            .padding(32)
-        }
     }
 }
