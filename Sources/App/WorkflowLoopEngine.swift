@@ -156,7 +156,8 @@ enum WorkflowLoopEngine {
     /// Routing authority stays in `WORKFLOW.json`: a non-terminal agent can only write the value
     /// Clearway handed it (validated by `decideTransition`); a terminal agent only signals it is done.
     static func buildPrompt(instructions: String, nextValue: String?) -> String {
-        let signal = nextValue.map { "write `status: \($0)`" } ?? "write `completed: true`"
+        let signal = nextValue.map { "set the `status:` field in the task's frontmatter to `\($0)`" }
+            ?? "set `completed: true` in the task's frontmatter"
         let preamble = """
         Context:
         - The task in progress is .clearway/TASK.md.

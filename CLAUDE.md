@@ -80,11 +80,11 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
   Context:
   - The task in progress is .clearway/TASK.md.
   - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
-  - When done, write `status: <next>` as the last thing you do.
+  - When done, set the `status:` field in the task's frontmatter to `<next>` as the last thing you do.
 
   ---
   ```
-  A **terminal** action (`nextValue == nil`) gets the same preamble but with `write `completed: true`` instead of the `status:` advance — it runs once and the loop ends.
+  A **terminal** action (`nextValue == nil`) gets the same preamble but with `set `completed: true` in the task's frontmatter` instead of the `status:` advance — it runs once and the loop ends.
 - **No trust gate.** `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches `agent.command` directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its `agent.command` and `hooks.after_create` with no approval step (mitigated by: the hook runs visibly in the secondary terminal, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
 
 ### Autopilot (`WorkTask.autopilot: Bool?`)
