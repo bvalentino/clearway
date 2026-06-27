@@ -33,18 +33,29 @@ enum SidePanelTab: String, CaseIterable {
     case todos = "Todos"
     case notes = "Notes"
     case prompts = "Prompts"
+
+    /// Tabs available on a worktree. The main branch never drives a workflow loop, so it has no
+    /// Task tab; every other worktree gets all tabs.
+    static func available(isMain: Bool) -> [SidePanelTab] {
+        isMain ? allCases.filter { $0 != .task } : allCases
+    }
 }
 
 /// Resolves which side panel tab to show when a worktree is opened.
 ///
-/// Precedence: a stored per-worktree tab wins; otherwise a JSON-workflow project
-/// defaults to `.task`; otherwise the legacy `in_progress` status selects `.task`;
-/// otherwise the current tab is kept (demoting `.task` to `.todos`).
+/// A stored per-worktree tab wins (if still available); otherwise a JSON-workflow project
+/// defaults to `.task`; otherwise the legacy `in_progress` status selects `.task`; otherwise
+/// the current tab is kept (demoting `.task` to `.todos`). On main, `.task` is unavailable,
+/// so none of the `.task` paths fire.
 func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
-                         taskStatus: String?, current: SidePanelTab) -> SidePanelTab {
-    if let stored, let tab = SidePanelTab(rawValue: stored) { return tab }
-    if isWorkflowJSONProject { return .task }
-    if taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
+                         taskStatus: String?, current: SidePanelTab,
+                         isMain: Bool) -> SidePanelTab {
+    let available = SidePanelTab.available(isMain: isMain)
+    if let stored, let tab = SidePanelTab(rawValue: stored), available.contains(tab) { return tab }
+    if available.contains(.task) {
+        if isWorkflowJSONProject { return .task }
+        if taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
+    }
     return current == .task ? .todos : current
 }
 
