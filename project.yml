@@ -36,8 +36,8 @@ targets:
         PRODUCT_NAME: Clearway
         INFOPLIST_FILE: ""
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.7.0"
-        CURRENT_PROJECT_VERSION: 11
+        MARKETING_VERSION: "1.8.0"
+        CURRENT_PROJECT_VERSION: 12
         CODE_SIGN_ENTITLEMENTS: Clearway.entitlements
         SPARKLE_FEED_URL: "https://bvalentino.github.io/clearway/appcast.xml"
         SPARKLE_PUBLIC_KEY: "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY="
