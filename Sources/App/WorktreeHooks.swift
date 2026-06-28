@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// Per-project hook configuration stored in UserDefaults.
-struct ProjectHooks {
+struct WorktreeHooks {
     var afterCreate: String
     var beforeRemove: String
 
@@ -15,7 +15,7 @@ struct ProjectHooks {
 
     /// Returns the interpolated command for a hook, or nil if the hook is empty.
     /// All variable values are shell-escaped to prevent injection via crafted branch names or paths.
-    func interpolated(_ keyPath: KeyPath<ProjectHooks, String>, context: Context) -> String? {
+    func interpolated(_ keyPath: KeyPath<WorktreeHooks, String>, context: Context) -> String? {
         let template = self[keyPath: keyPath]
         guard !template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return template
@@ -37,16 +37,16 @@ struct ProjectHooks {
 
     // MARK: - Persistence
 
-    static func load(for projectPath: String, defaults: UserDefaults = .standard) -> ProjectHooks {
-        let prefix = ProjectHooks.keyPrefix(for: projectPath)
-        return ProjectHooks(
+    static func load(for projectPath: String, defaults: UserDefaults = .standard) -> WorktreeHooks {
+        let prefix = WorktreeHooks.keyPrefix(for: projectPath)
+        return WorktreeHooks(
             afterCreate: defaults.string(forKey: "\(prefix).hook.post_create") ?? "",
             beforeRemove: defaults.string(forKey: "\(prefix).hook.pre_remove") ?? ""
         )
     }
 
     func save(for projectPath: String, defaults: UserDefaults = .standard) {
-        let prefix = ProjectHooks.keyPrefix(for: projectPath)
+        let prefix = WorktreeHooks.keyPrefix(for: projectPath)
         defaults.set(afterCreate, forKey: "\(prefix).hook.post_create")
         defaults.set(beforeRemove, forKey: "\(prefix).hook.pre_remove")
     }

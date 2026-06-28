@@ -4,6 +4,7 @@ import SwiftUI
 private enum SidebarSheet: String, Identifiable {
     case createWorktree
     case debugTerminal
+    case worktreeSettings
 
     var id: String { rawValue }
 }
@@ -16,14 +17,12 @@ struct SidebarView: View {
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
     @Binding var sidebarSelection: DetailSelection?
-    @Binding var detailSelection: DetailSelection?
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
     @State private var activeSheet: SidebarSheet?
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
-    @State private var selectionBeforeSettings: DetailSelection?
     @State private var createWorktreeTargetGroupId: UUID?
     @State private var groupToRename: WorktreeGroup?
     @State private var groupToDelete: WorktreeGroup?
@@ -79,10 +78,6 @@ struct SidebarView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            settingsButton
-                .padding(12)
-        }
-        .overlay(alignment: .bottomTrailing) {
             caffeineButton
                 .padding(12)
         }
@@ -109,6 +104,8 @@ struct SidebarView: View {
                     error: worktreeManager.error ?? "",
                     projectPath: worktreeManager.projectPath
                 )
+            case .worktreeSettings:
+                WorktreeSettingsSheet(projectPath: worktreeManager.projectPath)
             }
         }
         .confirmationDialog(
@@ -259,6 +256,11 @@ struct SidebarView: View {
                 }
                 .padding(.trailing, -6)
 
+                SidebarHeaderButton(systemImage: "gearshape") {
+                    activeSheet = .worktreeSettings
+                }
+                .padding(.trailing, -6)
+
                 SidebarHeaderButton(systemImage: "plus") {
                     createWorktreeTargetGroupId = nil
                     activeSheet = .createWorktree
@@ -344,22 +346,6 @@ struct SidebarView: View {
     }
 
     // MARK: - Floating Buttons
-
-    private var settingsButton: some View {
-        FloatingSidebarButton(
-            systemImage: "gear",
-            isActive: detailSelection == .settings,
-            help: "Project Settings"
-        ) {
-            if detailSelection == .settings {
-                detailSelection = selectionBeforeSettings ?? .planning
-                selectionBeforeSettings = nil
-            } else {
-                selectionBeforeSettings = detailSelection
-                detailSelection = .settings
-            }
-        }
-    }
 
     private var caffeineButton: some View {
         FloatingSidebarButton(
@@ -586,7 +572,7 @@ private struct SearchField: NSViewRepresentable {
 }
 
 /// Circular floating button used in the sidebar's bottom-leading overlay
-/// (settings, caffeine). Matches the shared 36pt thinMaterial + shadow pattern.
+/// (caffeine). Matches the shared 36pt thinMaterial + shadow pattern.
 private struct FloatingSidebarButton: View {
     let systemImage: String
     let isActive: Bool

@@ -216,9 +216,9 @@ class WorktreeManager: ObservableObject {
     // MARK: - Hooks
 
     /// Returns the interpolated hook command for the given worktree, or nil if no hook is configured.
-    func hookCommand(_ keyPath: KeyPath<ProjectHooks, String>, forBranch branch: String, worktreePath: String) -> String? {
-        let hooks = ProjectHooks.load(for: projectPath)
-        let context = ProjectHooks.Context(
+    func hookCommand(_ keyPath: KeyPath<WorktreeHooks, String>, forBranch branch: String, worktreePath: String) -> String? {
+        let hooks = WorktreeHooks.load(for: projectPath)
+        let context = WorktreeHooks.Context(
             branch: branch,
             worktreePath: worktreePath,
             primaryWorktreePath: projectPath
