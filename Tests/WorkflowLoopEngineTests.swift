@@ -250,7 +250,7 @@ final class WorkflowLoopEngineTests: XCTestCase {
         Context:
         - The task in progress is .clearway/TASK.md.
         - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
-        - When done, write `status: review` as the last thing you do.
+        - When done, set the `status:` field in the task's frontmatter to `review` as the last thing you do.
 
         ---
 
@@ -264,7 +264,7 @@ final class WorkflowLoopEngineTests: XCTestCase {
         Context:
         - The task in progress is .clearway/TASK.md.
         - The YAML frontmatter of the task is internal data not relevant to you. Only use it when needing to update it.
-        - When done, write `completed: true` as the last thing you do.
+        - When done, set `completed: true` in the task's frontmatter as the last thing you do.
 
         ---
 
@@ -295,7 +295,7 @@ final class WorkflowLoopEngineTests: XCTestCase {
     func testBuildPromptDelimitsPreambleBlock() {
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: "Do the work.", nextValue: "review")
         XCTAssertTrue(prompt.contains("""
-        - When done, write `status: review` as the last thing you do.
+        - When done, set the `status:` field in the task's frontmatter to `review` as the last thing you do.
 
         ---
 

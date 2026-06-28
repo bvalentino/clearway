@@ -432,12 +432,21 @@ struct ContentView: View {
 
     private var asideVisible: Bool { terminalManager.isAsideVisible(for: selectedWorktree?.id) }
 
-    /// Tabs available for the current worktree. The Task tab is always present; when no
-    /// (visible) task is linked, `TaskAsideView` renders a Create-Task CTA instead of the
-    /// task card, so every worktree — main, task-initiated, or manual — gets first-class
-    /// Task-tab capabilities.
+    /// Tabs available for the current worktree. On a real worktree the Task tab is always
+    /// present; when no (visible) task is linked, `TaskAsideView` renders a Create-Task CTA
+    /// instead of the task card. The main branch never drives a workflow loop, so its Task
+    /// tab is dropped — todos/notes/prompts remain.
     private var availableSidePanelTabs: [SidePanelTab] {
-        SidePanelTab.allCases
+        SidePanelTab.available(isMain: selectedWorktree?.isMain == true)
+    }
+
+    /// The tab actually rendered: `sidePanelTab` clamped to the available set. Guards the one-frame
+    /// window after selecting main where `sidePanelTab` may still hold `.task` (a value valid on the
+    /// worktree we left) before `restoreSidePanelTab` re-resolves it — without this, the aside content
+    /// switch would briefly render `TaskAsideView` on main.
+    private var effectiveSidePanelTab: SidePanelTab {
+        let available = availableSidePanelTabs
+        return available.contains(sidePanelTab) ? sidePanelTab : (available.first ?? .todos)
     }
 
     private var secondaryVisible: Bool { terminalManager.isSecondaryVisible(for: selectedWorktree?.id) }
@@ -553,7 +562,7 @@ struct ContentView: View {
         sidePanelTab = resolveSidePanelTab(
             stored: terminalManager.sidePanelTab(for: worktree.id),
             isWorkflowJSONProject: workTaskCoordinator.isWorkflowJSONProject,
-            taskStatus: status, current: sidePanelTab)
+            taskStatus: status, current: sidePanelTab, isMain: worktree.isMain)
     }
 
     /// Persists the current lists-column width to both `@State` and `UserDefaults`.
@@ -844,7 +853,7 @@ struct ContentView: View {
                             VStack(spacing: 0) {
                                 sidePanelTabStrip
 
-                                switch sidePanelTab {
+                                switch effectiveSidePanelTab {
                                 case .task:
                                     if let branch = selectedWorktree?.branch {
                                         TaskAsideView(
@@ -946,7 +955,7 @@ struct ContentView: View {
     @available(macOS 26.0, *)
     @ViewBuilder
     private func sidePanelTabButton(for tab: SidePanelTab) -> some View {
-        let isSelected = sidePanelTab == tab
+        let isSelected = effectiveSidePanelTab == tab
         Button {
             sidePanelTab = tab
         } label: {

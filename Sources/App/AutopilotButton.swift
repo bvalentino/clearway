@@ -57,8 +57,9 @@ struct AutopilotButton: View {
     var body: some View {
         // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
         // coordinator's cached, reactive flag (no per-render filesystem parse; shows/hides when the
-        // file is added/removed).
-        if workTaskCoordinator.isWorkflowJSONProject {
+        // file is added/removed). The main branch never drives a workflow loop, so the control is
+        // hidden there too even when the project has a WORKFLOW.json.
+        if workTaskCoordinator.isWorkflowJSONProject && !worktree.isMain {
             // The glyph reflects `autopilot` directly: pause when live, play when paused. (No spinner
             // — the agent surface persists, so an "activity" indicator off `hasLiveAgent` would never
             // clear and would mask the play/pause state the user acts on.)
