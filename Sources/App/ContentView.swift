@@ -19,7 +19,6 @@ enum DetailSelection: Hashable {
     case planning
     case prompts
     case workflow
-    case settings
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -139,7 +138,6 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 sidebarSelection: sidebarSelectionBinding,
-                detailSelection: $detailSelection,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
@@ -272,7 +270,7 @@ struct ContentView: View {
             // shell so its output survives to a usable prompt (no blocking modal, no respawn).
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
-            if let cmd = ProjectHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
+            if let cmd = WorktreeHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
@@ -885,8 +883,6 @@ struct ContentView: View {
                         )
                     }
                 }
-            } else if detailSelection == .settings {
-                ProjectSettingsView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .workflow {
                 WorkflowEditorView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
