@@ -126,6 +126,9 @@ extension Ghostty {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            // AppKit doesn't resign a first responder that gets detached from the
+            // window, so clear focus here or it goes stale until the next remount.
+            if window == nil { setFocus(false) }
         }
 
         override func setFrameSize(_ newSize: NSSize) {
@@ -233,7 +236,7 @@ extension Ghostty {
             guard event.modifierFlags.contains(.control) ||
                   event.modifierFlags.contains(.command) else { return false }
 
-            // Let Ctrl+digit pass through to SwiftUI keyboard shortcuts (pane switching)
+            // Let Ctrl+digit pass through to SwiftUI keyboard shortcuts (sidebar destinations)
             if event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.command),
                let chars = event.charactersIgnoringModifiers, chars.count == 1,
                let scalar = chars.unicodeScalars.first, scalar >= "0" && scalar <= "9" {

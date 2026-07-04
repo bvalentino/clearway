@@ -139,23 +139,10 @@ struct WorktreeStatusBar: View {
 /// A terminal pane that observes its surface's focus state and draws a border when focused.
 struct FocusableTerminal: View {
     @ObservedObject var surfaceView: Ghostty.SurfaceView
-    let badge: String
-    let ctrlHeld: Bool
     let showBorder: Bool
 
     var body: some View {
         TerminalSurface(surfaceView: surfaceView)
-            .overlay(alignment: .topLeading) {
-                Text(badge)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color(nsColor: .textBackgroundColor))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(nsColor: .labelColor).opacity(0.75), in: RoundedRectangle(cornerRadius: 6))
-                    .padding(8)
-                    .allowsHitTesting(false)
-                    .opacity(ctrlHeld ? 1 : 0)
-            }
             .overlay {
                 if showBorder && surfaceView.focused {
                     Rectangle()
