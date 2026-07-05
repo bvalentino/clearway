@@ -1,11 +1,10 @@
 import XCTest
 @testable import Clearway
 
-/// Data-safety tests for the task-file location migration: migration must defer until the worktree
-/// set is loaded, must preserve identity when adopting legacy files, and must never delete a central
-/// task to win a worktree-slot collision.
+/// Data-safety tests for task-file relocation: relocation must preserve identity when adopting
+/// legacy files, and must never delete a central task to win a worktree-slot collision.
 @MainActor
-final class WorkTaskMigrationSafetyTests: XCTestCase {
+final class WorkTaskRelocationSafetyTests: XCTestCase {
 
     private var tempRoot: String!
 
@@ -21,34 +20,6 @@ final class WorkTaskMigrationSafetyTests: XCTestCase {
         }
         tempRoot = nil
         super.tearDown()
-    }
-
-    /// Writes a task as a central `<UUID>.md` and returns its path.
-    @discardableResult
-    private func seedCentralTask(_ task: WorkTask) throws -> String {
-        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
-        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
-        let path = (centralDir as NSString).appendingPathComponent("\(task.id.uuidString).md")
-        try task.serialized().write(toFile: path, atomically: true, encoding: .utf8)
-        return path
-    }
-
-    /// Migration defers (does not consume its one-shot) while the live worktree set is empty —
-    /// i.e. not loaded yet — so it can still run once worktrees appear. Guards against destructively
-    /// reconciling against a not-yet-loaded set.
-    func testMigrationDefersUntilWorktreeSetLoaded() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        let orphan = WorkTask(id: UUID(), title: "Old done", status: WorkTask.ReservedStatus.done, worktree: nil)
-        let orphanPath = try seedCentralTask(orphan)
-
-        manager.worktreeResolver = { [] }  // worktrees not loaded yet
-        manager.migrateCentralTasks()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "migration must not act before the worktree set loads")
-
-        // Once the set loads, the deferred migration runs and archives the terminal orphan.
-        manager.worktreeResolver = { [(branch: "main", path: (self.tempRoot as NSString).appendingPathComponent("wt-main"))] }
-        manager.migrateCentralTasks()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "deferred migration must run once worktrees are known")
     }
 
     /// Relocating a legacy central file (filename UUID, NO frontmatter `id`) injects that UUID into
