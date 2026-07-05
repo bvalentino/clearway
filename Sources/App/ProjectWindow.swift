@@ -75,7 +75,6 @@ struct ProjectContentView: View {
     @StateObject private var terminalManager: TerminalManager
     @StateObject private var groupManager: WorktreeGroupManager
     @StateObject private var todoManager = TodoManager()
-    @StateObject private var notesManager = NotesManager()
     @StateObject private var workTaskManager: WorkTaskManager
     @StateObject private var workTaskCoordinator: WorkTaskCoordinator
     @StateObject private var claudeActivityMonitor = ClaudeActivityMonitor()
@@ -108,7 +107,6 @@ struct ProjectContentView: View {
             .environmentObject(worktreeManager)
             .environmentObject(terminalManager)
             .environmentObject(todoManager)
-            .environmentObject(notesManager)
             .environmentObject(workTaskManager)
             .environmentObject(workTaskCoordinator)
             .environmentObject(claudeActivityMonitor)

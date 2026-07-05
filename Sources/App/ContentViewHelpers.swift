@@ -31,7 +31,6 @@ func hookShellCommand(_ cmd: String) -> String {
 enum SidePanelTab: String, CaseIterable {
     case task = "Task"
     case todos = "Todos"
-    case notes = "Notes"
     case prompts = "Prompts"
 
     /// Tabs available on a worktree. The main branch never drives a workflow loop, so it has no

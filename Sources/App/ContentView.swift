@@ -40,7 +40,6 @@ struct ContentView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var todoManager: TodoManager
-    @EnvironmentObject private var notesManager: NotesManager
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
@@ -238,7 +237,6 @@ struct ContentView: View {
             // model). Click the terminal (or Ctrl+1) to focus it.
             terminalManager.clearNotification(for: wt.id)
             todoManager.setWorktreePath(wt.path)
-            notesManager.setWorktreePath(wt.path)
 
             restoreSidePanelTab(for: wt)
         }
@@ -348,7 +346,6 @@ struct ContentView: View {
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
-            notesManager.setWorktreePath(selectedWorktree?.path)
             syncWatchedWorktrees()
 
             // onChange(of: detailSelection) doesn't fire for initial value on macOS 13
@@ -402,7 +399,6 @@ struct ContentView: View {
             removeMainTerminalKeyMonitor()
             ctrlHeld = false
             todoManager.stopWatching()
-            notesManager.stopWatching()
             for observer in taskWindowObservers {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -435,7 +431,7 @@ struct ContentView: View {
     /// Tabs available for the current worktree. On a real worktree the Task tab is always
     /// present; when no (visible) task is linked, `TaskAsideView` renders a Create-Task CTA
     /// instead of the task card. The main branch never drives a workflow loop, so its Task
-    /// tab is dropped — todos/notes/prompts remain.
+    /// tab is dropped — todos/prompts remain.
     private var availableSidePanelTabs: [SidePanelTab] {
         SidePanelTab.available(isMain: selectedWorktree?.isMain == true)
     }
@@ -604,7 +600,7 @@ struct ContentView: View {
 
     /// Tells `WorkTaskManager` which worktrees to watch for live `TASK.md` edits — the opened
     /// set, resolved to filesystem paths. Also re-merges the pool. Mirrors the
-    /// `todoManager/notesManager.setWorktreePath` wiring so the manager needs no `TerminalManager`
+    /// `todoManager.setWorktreePath` wiring so the manager needs no `TerminalManager`
     /// dependency.
     ///
     /// Runs the one-time task-file migration first, gated on a trustworthy live worktree set
@@ -863,8 +859,6 @@ struct ContentView: View {
                                     }
                                 case .todos:
                                     TodosPanelView()
-                                case .notes:
-                                    NotesView()
                                 case .prompts:
                                     PromptsView(onSendToTerminal: { prompt in
                                         sendPromptToTerminal(prompt)
