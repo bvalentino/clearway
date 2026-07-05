@@ -16,9 +16,9 @@ final class SidePanelTabTests: XCTestCase {
     // Criterion 2: stored tab wins over the JSON-project rule.
     func testStoredTabBeatsJSONProjectRule() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.notes.rawValue, isWorkflowJSONProject: true,
+            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue, isWorkflowJSONProject: true,
                                 taskStatus: "build", current: .todos, isMain: false),
-            .notes)
+            .prompts)
     }
 
     // Criterion 3: non-JSON + no stored tab + in_progress → .task.
@@ -38,8 +38,8 @@ final class SidePanelTabTests: XCTestCase {
             .todos)
         XCTAssertEqual(
             resolveSidePanelTab(stored: nil, isWorkflowJSONProject: false,
-                                taskStatus: "done", current: .notes, isMain: false),
-            .notes)
+                                taskStatus: "done", current: .prompts, isMain: false),
+            .prompts)
     }
 
     // An invalid stored raw value falls through to the next rule.
@@ -48,6 +48,22 @@ final class SidePanelTabTests: XCTestCase {
             resolveSidePanelTab(stored: "NotARealTab", isWorkflowJSONProject: true,
                                 taskStatus: "build", current: .todos, isMain: false),
             .task)
+    }
+
+    // Criterion 4 of the Notes removal: a worktree persisted on the now-deleted "Notes" tab
+    // must fall back to a valid tab, never resolve to a stale/invalid selection.
+    func testPersistedNotesTabFallsBackToValidTab() {
+        // JSON project: the removed "Notes" raw value is ignored, resolving to the .task default.
+        let jsonResolved = resolveSidePanelTab(stored: "Notes", isWorkflowJSONProject: true,
+                                               taskStatus: "build", current: .todos, isMain: false)
+        XCTAssertEqual(jsonResolved, .task)
+        XCTAssertTrue(SidePanelTab.available(isMain: false).contains(jsonResolved))
+
+        // Non-JSON project: falls through past the dead value and keeps the valid current tab.
+        let nonJSONResolved = resolveSidePanelTab(stored: "Notes", isWorkflowJSONProject: false,
+                                                  taskStatus: "done", current: .prompts, isMain: false)
+        XCTAssertEqual(nonJSONResolved, .prompts)
+        XCTAssertTrue(SidePanelTab.available(isMain: false).contains(nonJSONResolved))
     }
 
     // Main never lands on .task: the JSON-project default that would pick .task is clamped to .todos.
@@ -62,8 +78,8 @@ final class SidePanelTabTests: XCTestCase {
     func testMainDropsStoredTaskFallingBackToCurrent() {
         XCTAssertEqual(
             resolveSidePanelTab(stored: SidePanelTab.task.rawValue, isWorkflowJSONProject: true,
-                                taskStatus: "build", current: .notes, isMain: true),
-            .notes)
+                                taskStatus: "build", current: .prompts, isMain: true),
+            .prompts)
     }
 
     // Main clamps to .todos when both the stored and current tabs are .task.
@@ -77,9 +93,9 @@ final class SidePanelTabTests: XCTestCase {
     // Main keeps a valid stored non-task tab.
     func testMainKeepsStoredNonTaskTab() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.notes.rawValue, isWorkflowJSONProject: true,
+            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue, isWorkflowJSONProject: true,
                                 taskStatus: "build", current: .todos, isMain: true),
-            .notes)
+            .prompts)
     }
 
     // Main with no stored tab preserves a valid current non-task tab.

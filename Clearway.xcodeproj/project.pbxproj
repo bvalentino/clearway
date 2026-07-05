@@ -31,9 +31,7 @@
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
 		341BA0217D7DFD0145AEA798 /* WorktreeGroupStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
-		3C18348092C81FF44FD574A6 /* NotesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */; };
 		3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC9411B19B7913605A851B1 /* TodosView.swift */; };
-		4031D86051F555F3AA1246FF /* NoteWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52EAD6E8D228C6BF10976F6F /* NoteWindow.swift */; };
 		4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */; };
 		42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */; };
 		449E2BD69F4AAAFC69ADBDE3 /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565AC0451DC45348A309739E /* TerminalSurface.swift */; };
@@ -69,7 +67,6 @@
 		7739376590F4EE192D1C46C9 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB42EDB75EED976AD230B319 /* SettingsManager.swift */; };
 		78C1B08688DBF1C02B5FFD67 /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */; };
 		78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */; };
-		7AFE7009A5CBDE5606F59B9D /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7844869D3D26BEAE9F97543F /* NotesView.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
 		80D8530FF01D5366C39C1FCF /* WorkflowLoopEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */; };
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
@@ -88,7 +85,6 @@
 		BFE1B15A576FC8B6B2C8424D /* PromptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */; };
 		C120017209D6A467A66102D5 /* Ghostty.Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7862270D9FA477C155E4EB09 /* Ghostty.Config.swift */; };
 		C44CD574B2902F0BCAFA9130 /* WorkflowActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F712DCC4FCEACD15C3E0E776 /* WorkflowActionCard.swift */; };
-		C588CA3DA4FDF7BA31F26057 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3B22C73F9FBE52FAFCEFDC /* Note.swift */; };
 		C5BEC93B9ABDAD4794884644 /* Ghostty.App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AF79A9AC43E45BCC60D2C8C /* Ghostty.App.swift */; };
 		CAACE972B2B4C53CAEF632F3 /* PromptsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00CC5D8B585782655D8A81A /* PromptsView.swift */; };
 		CB6DE9838E8EFA076C1FC97E /* WorkflowSidebarActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A38F6C1360B18A7EA0784C /* WorkflowSidebarActionTests.swift */; };
@@ -148,7 +144,6 @@
 		43C4ECCB3CFD45DB93164068 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
 		4D3396ABC258004DA10D0685 /* PromptLauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptLauncherView.swift; sourceTree = "<group>"; };
 		519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskManager.swift; sourceTree = "<group>"; };
-		52EAD6E8D228C6BF10976F6F /* NoteWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteWindow.swift; sourceTree = "<group>"; };
 		54E4F120F042C2615893DCE6 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		559C61A49130CBB58157612B /* TerminalManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManagerTests.swift; sourceTree = "<group>"; };
 		565AC0451DC45348A309739E /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
@@ -161,7 +156,6 @@
 		6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoManager.swift; sourceTree = "<group>"; };
 		733E42F6C068BE314FAD921E /* Ghostty.Shell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Shell.swift; sourceTree = "<group>"; };
 		755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSAppearance+IsDark.swift"; sourceTree = "<group>"; };
-		7844869D3D26BEAE9F97543F /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
 		7862270D9FA477C155E4EB09 /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
 		819821F4A2EB895AB2B55BA7 /* WorkTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskTests.swift; sourceTree = "<group>"; };
 		83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeHooksTests.swift; sourceTree = "<group>"; };
@@ -206,10 +200,8 @@
 		C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		C9505471B12BA23B7E6D1CE1 /* WorkflowEditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorModel.swift; sourceTree = "<group>"; };
 		CF064EDBE730B518F29471B7 /* TerminalTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTab.swift; sourceTree = "<group>"; };
-		D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesManager.swift; sourceTree = "<group>"; };
 		D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerTests.swift; sourceTree = "<group>"; };
 		D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngine.swift; sourceTree = "<group>"; };
-		DA3B22C73F9FBE52FAFCEFDC /* Note.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Note.swift; sourceTree = "<group>"; };
 		DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutopilotButton.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E3193EB27B18ECBEDF1F126F /* TerminalManager+Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Panels.swift"; sourceTree = "<group>"; };
@@ -309,10 +301,6 @@
 				1753DB7CA84C6EBA0B8922EE /* MarkdownPreviewView.swift */,
 				BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */,
 				AF845FCB581E1B628B736556 /* MarkdownSyntaxHighlighter.swift */,
-				DA3B22C73F9FBE52FAFCEFDC /* Note.swift */,
-				D1DAD3AB1F473D50C3B2D6F5 /* NotesManager.swift */,
-				7844869D3D26BEAE9F97543F /* NotesView.swift */,
-				52EAD6E8D228C6BF10976F6F /* NoteWindow.swift */,
 				755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */,
 				BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */,
 				867076303E561F4171EF4C92 /* PreviewCSS.swift */,
@@ -675,10 +663,6 @@
 				EB491D3A6BE4934B06A9B67B /* MarkdownRenderer.swift in Sources */,
 				019F844C8E3EFD5F8E2AA128 /* MarkdownSyntaxHighlighter.swift in Sources */,
 				7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */,
-				C588CA3DA4FDF7BA31F26057 /* Note.swift in Sources */,
-				4031D86051F555F3AA1246FF /* NoteWindow.swift in Sources */,
-				3C18348092C81FF44FD574A6 /* NotesManager.swift in Sources */,
-				7AFE7009A5CBDE5606F59B9D /* NotesView.swift in Sources */,
 				8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */,
 				580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */,
 				D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */,

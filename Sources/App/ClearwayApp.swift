@@ -189,15 +189,6 @@ struct ClearwayApp: App {
             }
         }
 
-        WindowGroup(for: NoteIdentifier.self) { $identifier in
-            if let identifier {
-                NoteWindow(identifier: identifier)
-                    .clearwayChrome(settings)
-            }
-        }
-        .defaultSize(width: 500, height: 500)
-        .windowStyle(.titleBar)
-
         WindowGroup(for: WorkTaskIdentifier.self) { $identifier in
             if let identifier {
                 WorkTaskWindow(identifier: identifier)
