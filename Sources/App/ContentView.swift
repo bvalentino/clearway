@@ -137,6 +137,7 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 sidebarSelection: sidebarSelectionBinding,
+                ctrlHeld: ctrlHeld,
                 onRemoveWorktree: { beginRemoveWorktree($0) },
                 onSearchActiveChanged: { worktreeShortcutsDisabled = $0 }
             )
@@ -311,19 +312,32 @@ struct ContentView: View {
                     Button("") {
                         // Closed rows hide their ⌘N badge; the shortcut must match.
                         guard terminalManager.isOpen(wt) else { return }
-                        detailSelection = .worktree(wt)
+                        guard selectedWorktree?.id == wt.id else {
+                            detailSelection = .worktree(wt)
+                            return
+                        }
+                        // Repeat press on the selected worktree cycles pane focus:
+                        // primary focused → secondary (revealed if hidden), else → primary.
+                        if terminalManager.isActiveMainSurfaceFocused {
+                            showAndFocusSecondary(isVisible: secondaryVisible, toggle: toggleSecondaryTerminal)
+                        } else {
+                            focusActiveMainTab()
+                        }
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
                     .hidden()
                 }
             }
 
-            // Ctrl+N: focus terminal panes
-            Button("") { focusActiveMainTab() }
+            // Ctrl+N: select top-level sidebar destinations
+            Button("") { detailSelection = .planning }
                 .keyboardShortcut("1", modifiers: .control)
                 .hidden()
-            Button("") { showAndFocusSecondary(isVisible: secondaryVisible, toggle: toggleSecondaryTerminal) }
+            Button("") { detailSelection = .prompts }
                 .keyboardShortcut("2", modifiers: .control)
+                .hidden()
+            Button("") { detailSelection = .workflow }
+                .keyboardShortcut("3", modifiers: .control)
                 .hidden()
 
             // Cmd+Ctrl+N: toggle pane visibility
@@ -499,7 +513,7 @@ struct ContentView: View {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let code = event.keyCode
             guard flags == .command || flags == [.command, .shift] else { return event }
-            guard NSApp.keyWindow?.firstResponder === terminalManager.activeMainSurface,
+            guard terminalManager.isActiveMainSurfaceFocused,
                   let worktreeId = terminalManager.activeSurfaceId else { return event }
             let tabs = terminalManager.mainTabs(for: worktreeId)
             guard !tabs.isEmpty else { return event }
@@ -803,8 +817,6 @@ struct ContentView: View {
                                 } else if let activeSurface = pane.main.activeSurface {
                                     FocusableTerminal(
                                         surfaceView: activeSurface,
-                                        badge: "⌃1",
-                                        ctrlHeld: ctrlHeld,
                                         showBorder: shouldShowFocusBorder
                                     )
                                 }
@@ -836,8 +848,6 @@ struct ContentView: View {
 
                                 FocusableTerminal(
                                     surfaceView: pane.secondary,
-                                    badge: "⌃2",
-                                    ctrlHeld: ctrlHeld,
                                     showBorder: shouldShowFocusBorder
                                 )
                                 .frame(height: terminalManager.secondaryHeight(for: selectedWorktree?.id))

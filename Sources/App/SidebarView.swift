@@ -17,6 +17,7 @@ struct SidebarView: View {
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
     @Binding var sidebarSelection: DetailSelection?
+    var ctrlHeld: Bool = false
     var onRemoveWorktree: ((Worktree) -> Void)?
     var onSearchActiveChanged: ((Bool) -> Void)?
     @State private var activeSheet: SidebarSheet?
@@ -186,18 +187,32 @@ struct SidebarView: View {
 
     private var planningRow: some View {
         let icon = workTaskManager.tasks.contains(where: { $0.worktree == nil }) ? "tray.full" : "tray"
-        return Label("Planning", systemImage: icon)
+        return destinationRow("Planning", systemImage: icon, shortcutHint: "⌃1")
             .tag(DetailSelection.planning)
     }
 
     private var promptsRow: some View {
-        Label("Prompts", systemImage: "text.quote")
+        destinationRow("Prompts", systemImage: "text.quote", shortcutHint: "⌃2")
             .tag(DetailSelection.prompts)
     }
 
     private var workflowRow: some View {
-        Label("Workflow", systemImage: "flowchart")
+        destinationRow("Workflow", systemImage: "flowchart", shortcutHint: "⌃3")
             .tag(DetailSelection.workflow)
+    }
+
+    /// Top-level destination row whose icon gives way to its `⌃N` hint while
+    /// Control is held, mirroring the worktree rows' `⌘N` badge style.
+    private func destinationRow(_ title: String, systemImage: String, shortcutHint: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            if ctrlHeld {
+                ShortcutBadge(text: shortcutHint)
+            } else {
+                Image(systemName: systemImage)
+            }
+        }
     }
 
     private var defaultWorktreeSection: some View {
@@ -486,13 +501,24 @@ struct WorktreeRow: View {
             }
         } icon: {
             if let index = shortcutIndex {
-                Text("⌘\(index)")
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
+                ShortcutBadge(text: "⌘\(index)")
             } else {
                 Image(systemName: "square.on.square.intersection.dashed")
             }
         }
+    }
+}
+
+// MARK: - Shortcut Badge
+
+/// Keyboard-shortcut hint shown in place of a sidebar row's icon.
+private struct ShortcutBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.monospaced())
+            .foregroundStyle(.tertiary)
     }
 }
 

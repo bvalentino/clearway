@@ -208,6 +208,8 @@ class TerminalManager: ObservableObject {
         return panes[id]?.main.activeSurface
     }
 
+    var isActiveMainSurfaceFocused: Bool { activeMainSurface != nil && NSApp.keyWindow?.firstResponder === activeMainSurface }
+
     /// Whether `sendToActiveMainTab` has somewhere to dispatch (launcher or surface tab).
     /// Use this for UI gates instead of `activeMainSurface != nil`, which excludes launchers.
     var canSendToActiveMainTab: Bool {
