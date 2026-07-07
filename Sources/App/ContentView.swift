@@ -277,9 +277,8 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             claudeActivityMonitor.updateWorktrees(newWorktrees)
-            // Re-merge the task pool (and run the one-time migration once the live worktree set is
-            // known): a created/removed worktree adds/drops its TASK.md, and a just-appeared
-            // worktree path may newly enable a watcher for an opened worktree.
+            // Re-merge the task pool: a created/removed worktree adds/drops its TASK.md, and a
+            // just-appeared worktree path may newly enable a watcher for an opened worktree.
             syncWatchedWorktrees()
             let currentIds = Set(newWorktrees.map(\.id))
             // Skip pruning on a failed or empty refresh — a transient `git worktree list`
@@ -616,15 +615,7 @@ struct ContentView: View {
     /// set, resolved to filesystem paths. Also re-merges the pool. Mirrors the
     /// `todoManager.setWorktreePath` wiring so the manager needs no `TerminalManager`
     /// dependency.
-    ///
-    /// Runs the one-time task-file migration first, gated on a trustworthy live worktree set
-    /// (non-empty, no refresh error — the same boundary as pruning). Driven from here rather than a
-    /// single `onChange` so it fires from whichever path first sees the loaded set (worktree-set
-    /// change, opened-set change, or `onAppear`); the manager guards it to run once.
     private func syncWatchedWorktrees() {
-        if !worktreeManager.worktrees.isEmpty && worktreeManager.error == nil {
-            workTaskManager.migrateCentralTasks()
-        }
         let paths = terminalManager.openWorktreeIds.compactMap { id in
             worktreeManager.worktrees.first { $0.id == id }?.path
         }

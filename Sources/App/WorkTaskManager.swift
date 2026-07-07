@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Manages tasks persisted as markdown files whose location encodes their association with a
 /// worktree. Backlog tasks live centrally in `.clearway/tasks/<UUID>.md`; a task linked to a live
@@ -27,16 +26,6 @@ class WorkTaskManager: ObservableObject {
     /// loaded by `reload()` but not watched, keeping file-descriptor cost proportional to what's
     /// on screen. Driven from the view layer via `setWatchedWorktrees(_:)`.
     private var worktreeWatchers: [String: DispatchSourceFileSystemObject] = [:]
-
-    /// Persisted per-project key so `migrateCentralTasks()` runs **once per project**, not once per
-    /// launch. Re-running every launch would also risk re-archiving a task that legitimately becomes
-    /// terminal (done/canceled) while still central after the initial migration. Keyed by a hash of
-    /// the project path.
-    private var migrationDoneKey: String {
-        let hash = SHA256.hash(data: Data(projectPath.utf8))
-        let hex = hash.prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "clearway.tasks.migrated.\(hex)"
-    }
 
     /// Resolves the live worktrees as `(branch, path)` pairs. Injected at construction so the
     /// manager can route a task's file to its worktree (and merge-load every worktree's
@@ -87,9 +76,9 @@ class WorkTaskManager: ObservableObject {
         reload()
     }
 
-    /// The file move itself, without a re-merge — so batch callers (migration) can move many files
-    /// and reload once. See `relocateTaskToWorktree` for the contract (move only into an empty
-    /// worktree slot, never delete the central file on collision, creation-date preservation).
+    /// The file move itself, without a re-merge — the caller reloads. See `relocateTaskToWorktree`
+    /// for the contract (move only into an empty worktree slot, never delete the central file on
+    /// collision, creation-date preservation).
     private func moveCentralFileIntoWorktree(id: UUID, worktreePath: String) {
         let fm = FileManager.default
         let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
@@ -379,82 +368,6 @@ class WorkTaskManager: ObservableObject {
               let content = String(data: data, encoding: .utf8) else { return nil }
         if requireFrontmatterID, WorkTask.frontmatterID(from: content) == nil { return nil }
         return WorkTask.parse(from: content, id: fallbackId, createdAt: createdAt)
-    }
-
-    // MARK: - Migration
-
-    /// One-time, idempotent migration toward location-encoded association. For each central
-    /// `<UUID>.md`:
-    ///   (a) if its `worktree` matches a **live** worktree, relocate it into that worktree's
-    ///       `TASK.md` (so pre-existing active tasks converge on their worktree); else
-    ///   (b) if it is a `done`/`canceled` orphan (no live worktree owns it), move it into
-    ///       `.clearway/tasks-archive/` — kept in-repo (never `removeItem`), because `.clearway/`
-    ///       is gitignored so permanent deletion would destroy user-authored task bodies on
-    ///       upgrade. The archive is never scanned, so the task leaves the pool but stays on disk; else
-    ///   (c) if it is a non-terminal task linked to a branch with no live worktree (a legacy
-    ///       phantom — the worktree was removed out-of-band before upgrade), clear the stale link
-    ///       so it returns to Planning instead of lingering as a never-converging "active" task.
-    ///       The body is preserved; only the frontmatter link is rewritten in place.
-    /// After the first run the central directory holds only backlog (`worktree == nil`,
-    /// non-terminal), so Planning's `worktree == nil` filter needs no status check. Runs **once per
-    /// project** (persisted via `migrationDoneKey`); the caller decides *when* (after a trustworthy
-    /// live worktree set is known — a partial set could mis-classify (c) and clear a valid link).
-    func migrateCentralTasks() {
-        guard !UserDefaults.standard.bool(forKey: migrationDoneKey) else { return }
-
-        let liveWorktrees = worktreeResolver()
-        // Defer (without marking done) until the live worktree set is known: an empty resolver
-        // means worktrees haven't loaded yet, and running now would mis-classify active tasks as
-        // orphans and clear valid links. Safe to call repeatedly from the view until then.
-        guard !liveWorktrees.isEmpty else { return }
-
-        let fm = FileManager.default
-        let files = (try? fm.contentsOfDirectory(atPath: tasksDirectory)) ?? []
-        var changed = false
-
-        for file in files where file.hasSuffix(".md") {
-            let path = (tasksDirectory as NSString).appendingPathComponent(file)
-            guard let id = UUID(uuidString: (file as NSString).deletingPathExtension),
-                  let task = loadTask(atPath: path, fallbackId: id) else { continue }
-
-            if let branch = task.worktree,
-               let live = liveWorktrees.first(where: { $0.branch == branch }) {
-                moveCentralFileIntoWorktree(id: task.id, worktreePath: live.path)
-                changed = true
-            } else if task.status == WorkTask.ReservedStatus.done || task.status == WorkTask.ReservedStatus.canceled {
-                archiveCentralFile(at: path, named: file)
-                changed = true
-            } else if task.worktree != nil {
-                var detached = task
-                detached.worktree = nil
-                write(detached)  // worktree == nil routes back to the same central `<UUID>.md`
-                changed = true
-            }
-        }
-
-        // Mark this project migrated so it never runs again — neither re-scanning each launch nor,
-        // crucially, re-archiving a task that becomes terminal while still central after this point.
-        UserDefaults.standard.set(true, forKey: migrationDoneKey)
-
-        // The migration trigger always re-merges the pool afterward; only pay for a reload here
-        // when this run actually moved files (the steady-state post-convergence run is a no-op).
-        if changed { reload() }
-    }
-
-    /// Moves a terminal-status orphan out of the active backlog into `.clearway/tasks-archive/`,
-    /// keeping the file (and its `<UUID>.md` name) in-repo instead of deleting it. The archive is a
-    /// sibling of `tasks/` and is never scanned by `reload()`, so the task leaves the pool while the
-    /// history stays recoverable on disk. Idempotent: if already archived, drops the active copy.
-    private func archiveCentralFile(at path: String, named filename: String) {
-        let fm = FileManager.default
-        let archiveDir = (projectPath as NSString).appendingPathComponent(".clearway/tasks-archive")
-        try? fm.createDirectory(atPath: archiveDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let destination = (archiveDir as NSString).appendingPathComponent(filename)
-        if fm.fileExists(atPath: destination) {
-            try? fm.removeItem(atPath: path)
-        } else {
-            try? fm.moveItem(atPath: path, toPath: destination)
-        }
     }
 
     // MARK: - File Watching
