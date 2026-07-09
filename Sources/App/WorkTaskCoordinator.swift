@@ -2,7 +2,7 @@ import Foundation
 import GhosttyKit
 
 /// Coordinates the task launch workflow: creating worktrees, running hooks,
-/// and launching Claude Code. Extracted from ContentView to keep the view
+/// and launching the configured agent. Extracted from ContentView to keep the view
 /// focused on layout and navigation.
 @MainActor
 class WorkTaskCoordinator: ObservableObject {
@@ -72,8 +72,9 @@ class WorkTaskCoordinator: ObservableObject {
     var appProvider: @MainActor () -> ghostty_app_t? = { nil }
 
     /// Test seam for the JSON loop's surface spawn. `nil` in production → `performLaunch` runs the real
-    /// `launchWorkflowAgent` (prompt file → stdin → Ghostty surface). Harness tests override it to
-    /// observe that a launch was reached without a live Ghostty app (mirrors `appProvider`).
+    /// `launchWorkflowAgent` (prompt file → positional arg via `buildAgentPromptCommand` → Ghostty
+    /// surface). Harness tests override it to observe that a launch was reached without a live
+    /// Ghostty app (mirrors `appProvider`).
     var workflowAgentLauncher: (@MainActor (_ prompt: String, _ command: String, _ worktree: Worktree, _ app: ghostty_app_t) -> Void)?
 
     /// A pending auto-run countdown: the action about to auto-launch and the deadline the card
@@ -156,10 +157,16 @@ class WorkTaskCoordinator: ObservableObject {
         rawWorkflowDefinition?.planning?.instructions
     }
 
-    /// The agent command the manual Plan step launches — `WORKFLOW.json`'s top-level `agent.command`
-    /// (default `"claude"`), reused rather than a planning-specific command.
+    /// The agent command the manual Plan step launches — `WORKFLOW.json` `agent.command` when set,
+    /// else Settings → Main Terminal, else `SettingsManager.defaultMainTerminalCommand`
+    /// (see `resolveAgentCommand`).
     var planningAgentCommand: String {
-        rawWorkflowDefinition?.agent.command ?? WorkflowDefinition.AgentSettings.defaultCommand
+        resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command)
+    }
+
+    /// Command for workflow-loop agent launches — same resolution as Plan.
+    func workflowAgentCommand(for definition: WorkflowDefinition) -> String {
+        resolveAgentCommand(workflowCommand: definition.agent.command)
     }
 
     private var exitObserver: Any?

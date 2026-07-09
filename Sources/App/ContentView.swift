@@ -785,7 +785,7 @@ struct ContentView: View {
                                             let command = settings.resolvedMainTerminalCommand
                                             let mode: TerminalManager.LauncherPromotion = prompt.isEmpty
                                                 ? .command(command)
-                                                : .prompt(command: command, stdin: prompt)
+                                                : .prompt(command: command, prompt: prompt)
                                             terminalManager.promoteLauncher(
                                                 tabId: activeTab.id,
                                                 in: worktreeId,

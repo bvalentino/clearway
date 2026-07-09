@@ -59,10 +59,15 @@ class WorkflowHarnessTestCase: XCTestCase {
 
     /// Writes `.clearway/WORKFLOW.json` into the project root.
     func writeWorkflow() throws {
+        try writeWorkflowJSON(Self.workflowJSON)
+    }
+
+    /// Writes arbitrary `.clearway/WORKFLOW.json` content into the project root.
+    func writeWorkflowJSON(_ json: String) throws {
         let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
         let path = (clearway as NSString).appendingPathComponent("WORKFLOW.json")
-        try Self.workflowJSON.write(toFile: path, atomically: true, encoding: .utf8)
+        try json.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     /// Writes a worktree `TASK.md` with the given status (and optional autopilot) and returns the

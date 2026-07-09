@@ -256,8 +256,9 @@ final class WorkflowDefinitionTests: XCTestCase {
     func testAgentDefaultsWhenAgentOmitted() throws {
         let definition = try decode(Self.validGraphJSON)
 
+        // Empty command = inherit Main Terminal at launch (`resolveAgentCommand`).
         XCTAssertEqual(definition.agent.command, WorkflowDefinition.AgentSettings.defaultCommand)
-        XCTAssertEqual(definition.agent.command, "claude")
+        XCTAssertEqual(definition.agent.command, "")
         XCTAssertEqual(definition.agent.timeoutMs, WorkflowDefinition.AgentSettings.defaultTimeoutMs)
         XCTAssertNil(definition.hooks)
     }

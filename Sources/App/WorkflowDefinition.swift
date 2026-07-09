@@ -43,7 +43,8 @@ struct WorkflowDefinition: Equatable, Codable {
 
     /// Runtime knobs for the agent that runs each action.
     struct AgentSettings: Equatable, Codable {
-        /// The command to launch (e.g. `"claude"`). Defaults to `"claude"` when omitted.
+        /// The command to launch (e.g. `"claude"`, `"grok"`). Empty / omitted means
+        /// "inherit Settings → Main Terminal" at launch (see `resolveAgentCommand`).
         let command: String
 
         /// Per-action timeout in milliseconds. Defaults to `Self.defaultTimeoutMs` when omitted.
@@ -52,8 +53,9 @@ struct WorkflowDefinition: Equatable, Codable {
         /// Decoded and validated (a reserved part of the `WORKFLOW.json` format) but never acted on.
         let timeoutMs: Int
 
-        /// Default agent command when `WORKFLOW.json` omits `agent.command`.
-        static let defaultCommand = "claude"
+        /// Stored default when `WORKFLOW.json` omits `agent.command` — empty so launch sites
+        /// fall through to the user's Main Terminal setting via `resolveAgentCommand`.
+        static let defaultCommand = ""
 
         /// Default per-action timeout (10 minutes) when `WORKFLOW.json` omits `agent.timeout_ms`.
         /// Generous because agent steps (implement / test / review) are long-running. **Reserved /

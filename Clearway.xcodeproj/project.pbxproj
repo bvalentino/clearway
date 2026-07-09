@@ -68,6 +68,7 @@
 		7739376590F4EE192D1C46C9 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB42EDB75EED976AD230B319 /* SettingsManager.swift */; };
 		78C1B08688DBF1C02B5FFD67 /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */; };
 		78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */; };
+		7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A3868EDD642635D44655B0 /* AgentLaunch.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
 		80D8530FF01D5366C39C1FCF /* WorkflowLoopEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */; };
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
@@ -208,6 +209,7 @@
 		E44995D0B46DA43D1AB997D8 /* WorkflowCompletionHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowCompletionHarnessTests.swift; sourceTree = "<group>"; };
 		E4FED179216122D158BE6A56 /* PromptDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptDetailView.swift; sourceTree = "<group>"; };
 		E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTerminalSheet.swift; sourceTree = "<group>"; };
+		E7A3868EDD642635D44655B0 /* AgentLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunch.swift; sourceTree = "<group>"; };
 		EB42EDB75EED976AD230B319 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		EC1F48D279D802C46C9A7164 /* WorkTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTask.swift; sourceTree = "<group>"; };
 		ED79B25044489EC6F20BEF19 /* WorkflowEditorModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorModelTests.swift; sourceTree = "<group>"; };
@@ -284,6 +286,7 @@
 			isa = PBXGroup;
 			children = (
 				85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */,
+				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
 				DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */,
 				C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */,
@@ -640,6 +643,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */,
+				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
 				5BF10077D36A2C58F0D94233 /* AutopilotButton.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,

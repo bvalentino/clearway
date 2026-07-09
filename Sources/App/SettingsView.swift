@@ -9,6 +9,7 @@ struct SettingsView: View {
                 Picker("Command", selection: $settings.mainTerminalCommand) {
                     Text("None").tag("")
                     Text("claude").tag("claude")
+                    Text("grok").tag("grok")
                 }
             } header: {
                 Text("Main Terminal")
