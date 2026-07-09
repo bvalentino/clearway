@@ -83,6 +83,83 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
         XCTAssertEqual(result, .launched(slug: "test"), "a legal advance launches the next action")
     }
 
+    // MARK: - Agent command resolution at launch
+
+    /// Temporarily sets Main Terminal on `UserDefaults.standard` (what `resolveAgentCommand` reads)
+    /// and restores the prior value. Isolated suites cannot be used here: production resolution
+    /// always goes through `.standard`.
+    private func withMainTerminalCommand(_ command: String?, _ body: () throws -> Void) rethrows {
+        let key = SettingsKey.mainTerminalCommand
+        let previous = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        if let command {
+            UserDefaults.standard.set(command, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        try body()
+    }
+
+    /// Fixture omits `agent` → empty command must resolve to Main Terminal (not hardcode `claude`
+    /// and not pass through empty). Guards the `workflowAgentCommand(for:)` wiring in `performLaunch`.
+    func testLaunchReceivesResolvedCommand_inheritsMainTerminalWhenAgentOmitted() throws {
+        try writeWorkflow()
+        let branch = "resolve-inherit"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        try withMainTerminalCommand("grok") {
+            var captured: String?
+            coordinator.workflowAgentLauncher = { _, command, _, _ in captured = command }
+
+            let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+            XCTAssertEqual(result, .launched(slug: "test"))
+            XCTAssertEqual(captured, "grok",
+                           "empty WORKFLOW agent.command must resolve to Main Terminal at launch")
+            XCTAssertEqual(coordinator.planningAgentCommand, "grok",
+                           "Plan uses the same resolution as the workflow loop")
+        }
+    }
+
+    /// Explicit `agent.command` wins over Main Terminal — the seam must receive the override, not
+    /// the settings value (and not the raw empty-default decode).
+    func testLaunchReceivesResolvedCommand_prefersExplicitWorkflowAgent() throws {
+        try writeWorkflowJSON("""
+        {
+          "version": 1,
+          "start": "implement",
+          "agent": { "command": "codex" },
+          "actions": {
+            "implement": { "name": "Implement", "instructions": "Implement.", "routes": { "success": "test" } },
+            "test": { "name": "Test", "instructions": "Test.", "routes": { "success": "review" } },
+            "review": { "name": "Review", "instructions": "Review." }
+          }
+        }
+        """)
+        let branch = "resolve-override"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        try withMainTerminalCommand("grok") {
+            var captured: String?
+            coordinator.workflowAgentLauncher = { _, command, _, _ in captured = command }
+
+            let result = coordinator.advanceWorkflow(forBranch: branch, app: dummyApp)
+            XCTAssertEqual(result, .launched(slug: "test"))
+            XCTAssertEqual(captured, "codex",
+                           "explicit WORKFLOW agent.command must win over Main Terminal")
+            XCTAssertEqual(coordinator.planningAgentCommand, "codex")
+        }
+    }
+
     func testIllegalValueHalts() throws {
         try writeWorkflow()
         let branch = "illegal"

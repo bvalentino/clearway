@@ -134,17 +134,21 @@ final class TerminalManagerTests: XCTestCase {
     // MARK: - buildAgentPromptCommand
 
     func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
-        let out = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello").command
-        XCTAssertTrue(out.contains("\"$(cat \"$2\")\""),
-                      "prompt must be a positional arg via cat-into-quotes; got: \(out)")
-        XCTAssertFalse(out.contains("cat \"$2\" | $1"),
-                       "must not pipe prompt into agent stdin; got: \(out)")
+        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello")
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+        XCTAssertTrue(launch.command.contains("\"$(cat \"$2\")\""),
+                      "prompt must be a positional arg via cat-into-quotes; got: \(launch.command)")
+        XCTAssertFalse(launch.command.contains("cat \"$2\" | $1"),
+                       "must not pipe prompt into agent stdin; got: \(launch.command)")
     }
 
     func test_buildAgentPromptCommand_exportsLoginShellPath_andDisablesGlobbing() {
-        let out = buildAgentPromptCommand(agentCommand: "claude", prompt: "x").command
-        XCTAssertTrue(out.contains("export PATH="), "must export PATH; got: \(out)")
-        XCTAssertTrue(out.contains("set -f"), "must disable globbing; got: \(out)")
+        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x")
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+        XCTAssertTrue(launch.command.contains("export PATH="), "must export PATH; got: \(launch.command)")
+        XCTAssertTrue(launch.command.contains("set -f"), "must disable globbing; got: \(launch.command)")
+        XCTAssertTrue(launch.command.contains("rm -f \"$2\""),
+                      "must clean up the prompt file after the agent exits; got: \(launch.command)")
     }
 
     func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() {
@@ -153,6 +157,7 @@ final class TerminalManagerTests: XCTestCase {
             prompt: "do the work",
             filePrefix: "clearway-test-prompt"
         )
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: launch.promptFile),
                       "must write the prompt temp file")
         if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
@@ -167,7 +172,31 @@ final class TerminalManagerTests: XCTestCase {
                       "must invoke /bin/sh -c; got: \(launch.command)")
         XCTAssertTrue(launch.command.contains(" -- "),
                       "must pass `--` before positionals; got: \(launch.command)")
-        try? FileManager.default.removeItem(atPath: launch.promptFile)
+    }
+
+    func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() {
+        let prompt = "say \"hi\"\n$HOME `id` 'x'"
+        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: prompt)
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
+           let body = String(data: data, encoding: .utf8) {
+            XCTAssertEqual(body, prompt, "prompt file must preserve the body byte-for-byte")
+        } else {
+            XCTFail("could not read prompt file at \(launch.promptFile)")
+        }
+        XCTAssertFalse(launch.command.contains(prompt),
+                       "prompt body must not be inlined into the shell string")
+        XCTAssertFalse(launch.command.contains("$HOME"),
+                       "prompt metacharacters must not appear raw in the shell string")
+        XCTAssertTrue(launch.command.contains("\"$(cat \"$2\")\""),
+                      "must still use positional cat expansion; got: \(launch.command)")
+    }
+
+    func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() {
+        let launch = buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x")
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+        XCTAssertTrue(launch.command.contains("'weird'\\''name'"),
+                      "single quotes in agent command must be shell-escaped; got: \(launch.command)")
     }
 
     func test_buildAgentPromptCommand_usesFilePrefix() {
@@ -176,11 +205,11 @@ final class TerminalManagerTests: XCTestCase {
             prompt: "p",
             filePrefix: "clearway-launcher"
         )
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(
             (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-launcher-"),
             "prompt file name should use the prefix; got: \(launch.promptFile)"
         )
-        try? FileManager.default.removeItem(atPath: launch.promptFile)
     }
 
     // MARK: - buildBareCommand

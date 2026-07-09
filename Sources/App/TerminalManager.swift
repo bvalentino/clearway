@@ -420,7 +420,7 @@ class TerminalManager: ObservableObject {
     /// agent command, or a bare agent command with no initial prompt.
     enum LauncherPromotion {
         case loginShell
-        case prompt(command: String, stdin: String)
+        case prompt(command: String, prompt: String)
         case command(String)
     }
 
@@ -446,10 +446,10 @@ class TerminalManager: ObservableObject {
         switch mode {
         case .loginShell:
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
-        case let .prompt(command, stdin):
+        case let .prompt(command, prompt):
             let cmd = buildAgentPromptCommand(
                 agentCommand: command,
-                prompt: stdin,
+                prompt: prompt,
                 filePrefix: "clearway-launcher"
             ).command
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)

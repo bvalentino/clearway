@@ -559,13 +559,12 @@ extension WorkTaskCoordinator {
         return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
     }
 
-    /// Launches an action's agent in `worktree` via `buildAgentPromptCommand` (positional
-    /// prompt arg → Ghostty surface). `command` is already resolved (workflow override or
-    /// Main Terminal). Deliberately
-    /// does **not** attach the legacy activity/stall observers (which mutate `status` to
-    /// `in_progress`/`done`) — under the JSON engine the agent owns every `status` advance,
-    /// so the engine must never write status other than the initial seed. The surface is still
-    /// tracked for teardown/`isAgentSurface`.
+    /// Launches an action's agent in `worktree` via `buildAgentPromptCommand` (positional prompt
+    /// arg → Ghostty surface). `command` is already resolved (workflow override or Main Terminal).
+    /// Deliberately does **not** attach the legacy activity/stall observers (which mutate `status`
+    /// to `in_progress`/`done`) — under the JSON engine the agent owns every `status` advance, so
+    /// the engine must never write status other than the initial seed. The surface is still tracked
+    /// for teardown/`isAgentSurface`.
     @MainActor
     private func launchWorkflowAgent(prompt: String, command: String, in worktree: Worktree, app: ghostty_app_t) {
         let launch = buildAgentPromptCommand(
@@ -577,6 +576,12 @@ extension WorkTaskCoordinator {
         setAgentSurface(surface, forWorktree: worktree.id)
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
         launchPromptFiles[ObjectIdentifier(surface)] = launch.promptFile
-        Ghostty.logger.info("Workflow agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
+        let surfaceId = ObjectIdentifier(surface).debugDescription
+        Ghostty.logger.info(
+            "Workflow agent launched worktree=\(worktree.id, privacy: .public) agent=\(command, privacy: .public)"
+        )
+        Ghostty.logger.info(
+            "Workflow agent promptFile=\(launch.promptFile, privacy: .public) surface=\(surfaceId, privacy: .public)"
+        )
     }
 }
