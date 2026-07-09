@@ -550,37 +550,33 @@ extension WorkTaskCoordinator {
         guard let action = definition.actions[slug] else { return .ignored }
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
         runningAction[worktree.id] = slug
+        let command = workflowAgentCommand(for: definition)
         if let launcher = workflowAgentLauncher {
-            launcher(prompt, definition.agent.command, worktree, app)
+            launcher(prompt, command, worktree, app)
         } else {
-            launchWorkflowAgent(prompt: prompt, command: definition.agent.command, in: worktree, app: app)
+            launchWorkflowAgent(prompt: prompt, command: command, in: worktree, app: app)
         }
         return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
     }
 
-    /// Launches an action's agent in `worktree`, reusing the prompt-file → stdin → Ghostty-surface
-    /// plumbing but driven by `WORKFLOW.json`'s `agent.command`. Deliberately does **not** attach the
-    /// legacy activity/stall observers (which mutate `status` to `in_progress`/`done`) — under the
-    /// JSON engine the agent owns every `status` advance, so the engine must never write status
-    /// other than the initial seed. The surface is still tracked for teardown/`isAgentSurface`.
+    /// Launches an action's agent in `worktree` via `buildAgentPromptCommand` (positional
+    /// prompt arg → Ghostty surface). `command` is already resolved (workflow override or
+    /// Main Terminal). Deliberately
+    /// does **not** attach the legacy activity/stall observers (which mutate `status` to
+    /// `in_progress`/`done`) — under the JSON engine the agent owns every `status` advance,
+    /// so the engine must never write status other than the initial seed. The surface is still
+    /// tracked for teardown/`isAgentSurface`.
     @MainActor
     private func launchWorkflowAgent(prompt: String, command: String, in worktree: Worktree, app: ghostty_app_t) {
-        // Unique per-launch prompt file (same contract as the legacy launch).
-        let tempDir = NSTemporaryDirectory()
-        let launchId = UUID().uuidString
-        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-workflow-prompt-\(launchId).md")
-        FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
-
-        // Pipe prompt file to the agent command via stdin. Command + path are positional args to
-        // avoid shell injection; $1 is unquoted so multi-word commands word-split; $3 injects PATH.
-        let script = shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1")
-        let args = [command, promptFile, ShellEnvironment.path].map(shellEscape).joined(separator: " ")
-        let shellCommand = "/bin/sh -c \(script) -- \(args)"
-
-        let surface = terminalManager.launchAgentTab(for: worktree, app: app, command: shellCommand)
+        let launch = buildAgentPromptCommand(
+            agentCommand: command,
+            prompt: prompt,
+            filePrefix: "clearway-workflow-prompt"
+        )
+        let surface = terminalManager.launchAgentTab(for: worktree, app: app, command: launch.command)
         setAgentSurface(surface, forWorktree: worktree.id)
         agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
-        launchPromptFiles[ObjectIdentifier(surface)] = promptFile
+        launchPromptFiles[ObjectIdentifier(surface)] = launch.promptFile
         Ghostty.logger.info("Workflow agent launched for worktree \(worktree.id, privacy: .public), surface: \(ObjectIdentifier(surface).debugDescription, privacy: .public)")
     }
 }

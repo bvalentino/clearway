@@ -90,12 +90,97 @@ final class TerminalManagerTests: XCTestCase {
 
     func test_launcherPromotion_command_pattern_matches() {
         // Empty Enter should land in this case at the call site, carrying the
-        // resolved main command (e.g. "claude") with no stdin.
+        // resolved main command (e.g. "claude") with no initial prompt.
         let mode: TerminalManager.LauncherPromotion = .command("claude")
         guard case .command(let cmd) = mode else {
             return XCTFail("Expected .command case but got \(mode)")
         }
         XCTAssertEqual(cmd, "claude")
+    }
+
+    // MARK: - resolveAgentCommand
+
+    func test_resolveAgentCommand_prefersNonEmptyWorkflowCommand() {
+        let suite = "resolveAgent.prefer.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("grok", forKey: SettingsKey.mainTerminalCommand)
+        XCTAssertEqual(
+            resolveAgentCommand(workflowCommand: "codex", defaults: defaults),
+            "codex"
+        )
+    }
+
+    func test_resolveAgentCommand_fallsBackToMainTerminal_whenWorkflowEmpty() {
+        let suite = "resolveAgent.main.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("grok", forKey: SettingsKey.mainTerminalCommand)
+        XCTAssertEqual(resolveAgentCommand(workflowCommand: "", defaults: defaults), "grok")
+        XCTAssertEqual(resolveAgentCommand(workflowCommand: nil, defaults: defaults), "grok")
+        XCTAssertEqual(resolveAgentCommand(workflowCommand: "   ", defaults: defaults), "grok")
+    }
+
+    func test_resolveAgentCommand_fallsBackToDefaultMainTerminal_whenBothBlank() {
+        let suite = "resolveAgent.default.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(
+            resolveAgentCommand(workflowCommand: nil, defaults: defaults),
+            SettingsManager.defaultMainTerminalCommand
+        )
+    }
+
+    // MARK: - buildAgentPromptCommand
+
+    func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
+        let out = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello").command
+        XCTAssertTrue(out.contains("\"$(cat \"$2\")\""),
+                      "prompt must be a positional arg via cat-into-quotes; got: \(out)")
+        XCTAssertFalse(out.contains("cat \"$2\" | $1"),
+                       "must not pipe prompt into agent stdin; got: \(out)")
+    }
+
+    func test_buildAgentPromptCommand_exportsLoginShellPath_andDisablesGlobbing() {
+        let out = buildAgentPromptCommand(agentCommand: "claude", prompt: "x").command
+        XCTAssertTrue(out.contains("export PATH="), "must export PATH; got: \(out)")
+        XCTAssertTrue(out.contains("set -f"), "must disable globbing; got: \(out)")
+    }
+
+    func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() {
+        let launch = buildAgentPromptCommand(
+            agentCommand: "claude; rm -rf /",
+            prompt: "do the work",
+            filePrefix: "clearway-test-prompt"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: launch.promptFile),
+                      "must write the prompt temp file")
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
+           let body = String(data: data, encoding: .utf8) {
+            XCTAssertEqual(body, "do the work")
+        } else {
+            XCTFail("could not read prompt file at \(launch.promptFile)")
+        }
+        XCTAssertTrue(launch.command.contains("'claude; rm -rf /'"),
+                      "agent command must be single-quoted; got: \(launch.command)")
+        XCTAssertTrue(launch.command.hasPrefix("/bin/sh -c "),
+                      "must invoke /bin/sh -c; got: \(launch.command)")
+        XCTAssertTrue(launch.command.contains(" -- "),
+                      "must pass `--` before positionals; got: \(launch.command)")
+        try? FileManager.default.removeItem(atPath: launch.promptFile)
+    }
+
+    func test_buildAgentPromptCommand_usesFilePrefix() {
+        let launch = buildAgentPromptCommand(
+            agentCommand: "grok",
+            prompt: "p",
+            filePrefix: "clearway-launcher"
+        )
+        XCTAssertTrue(
+            (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-launcher-"),
+            "prompt file name should use the prefix; got: \(launch.promptFile)"
+        )
+        try? FileManager.default.removeItem(atPath: launch.promptFile)
     }
 
     // MARK: - buildBareCommand
@@ -128,13 +213,13 @@ final class TerminalManagerTests: XCTestCase {
                       "buildBareCommand must `set -f` to disable globbing; got: \(out)")
     }
 
-    /// Unlike the prompt-pipe recipe, the bare path takes no stdin: there
-    /// must be no temp-file argument and no `cat … | $1` pipe.
-    func test_buildBareCommand_hasNoStdinPipe_orTempFile() {
+    /// Unlike the prompt recipe, the bare path takes no initial prompt: there
+    /// must be no temp-file argument and no prompt-file `cat`.
+    func test_buildBareCommand_hasNoPromptFile_orCat() {
         let manager = TerminalManager()
         let out = manager.buildBareCommand(agentCommand: "claude")
         XCTAssertFalse(out.contains("cat "),
-                       "buildBareCommand must not pipe a temp file into the agent; got: \(out)")
+                       "buildBareCommand must not read a prompt file; got: \(out)")
         XCTAssertFalse(out.contains("clearway-launcher-"),
                        "buildBareCommand must not allocate a launcher temp file; got: \(out)")
     }

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The initial, pre-process screen of every main-panel tab. Users type a prompt
-/// that gets piped into a fresh `claude` (or configured) process on Enter, or
+/// that is passed as a positional arg to the configured agent command on Enter, or
 /// click *Open terminal* to spawn a plain login shell. Both transitions happen
 /// in-place — the tab's `TerminalTab.Kind` flips from `.launcher` to `.surface`.
 ///

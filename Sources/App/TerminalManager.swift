@@ -417,7 +417,7 @@ class TerminalManager: ObservableObject {
     }
 
     /// How a launcher tab should be promoted: into a plain login shell, a prompt-driven
-    /// agent command, or a bare agent command with no stdin.
+    /// agent command, or a bare agent command with no initial prompt.
     enum LauncherPromotion {
         case loginShell
         case prompt(command: String, stdin: String)
@@ -428,8 +428,8 @@ class TerminalManager: ObservableObject {
     ///
     /// Keeps the tab id and position so the tab strip and focus-routing needn't special-case
     /// the transition. `.loginShell` spawns pattern 1 (login shell); `.prompt` builds a
-    /// `/bin/sh -c …` pipe that feeds the prompt into the agent command. No-op
-    /// (returns nil) if the target tab isn't a launcher.
+    /// `/bin/sh -c …` command that passes the prompt as a positional arg to the agent
+    /// (see `buildAgentPromptCommand`). No-op (returns nil) if the target tab isn't a launcher.
     @discardableResult
     func promoteLauncher(
         tabId: UUID,
@@ -447,7 +447,11 @@ class TerminalManager: ObservableObject {
         case .loginShell:
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
         case let .prompt(command, stdin):
-            let cmd = buildPromptPipeCommand(agentCommand: command, prompt: stdin)
+            let cmd = buildAgentPromptCommand(
+                agentCommand: command,
+                prompt: stdin,
+                filePrefix: "clearway-launcher"
+            ).command
             newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
         case let .command(command):
             let cmd = buildBareCommand(agentCommand: command)
@@ -466,23 +470,9 @@ class TerminalManager: ObservableObject {
         return newSurface
     }
 
-    /// Build the `/bin/sh -c` pipe command used by the prompt launcher: export resolved
-    /// login-shell PATH, then `cat $promptFile | $agentCmd` with positional args to avoid
-    /// shell injection. The prompt file is removed after the agent consumes it so temp dir
-    /// doesn't accumulate.
-    private func buildPromptPipeCommand(agentCommand: String, prompt: String) -> String {
-        let tempDir = NSTemporaryDirectory()
-        let launchId = UUID().uuidString
-        let promptFile = (tempDir as NSString).appendingPathComponent("clearway-launcher-\(launchId).md")
-        FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
-        let recipe = "export PATH=\"$3\"; set -f; cat \"$2\" | $1; rc=$?; rm -f \"$2\"; exit $rc"
-        return "/bin/sh -c " + shellEscape(recipe) + " -- "
-            + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
-    }
-
-    /// Build a `/bin/sh -c` wrapper that runs the agent command with no stdin.
-    /// Mirrors `buildPromptPipeCommand`'s PATH export and `set -f` (no glob)
-    /// guarantees, but drops the temp-file/`cat` pipe and `exec`s so the wrapping
+    /// Build a `/bin/sh -c` wrapper that runs the agent command with no initial prompt.
+    /// Mirrors `buildAgentPromptCommand`'s PATH export and `set -f` (no glob)
+    /// guarantees, but drops the temp-file/prompt arg and `exec`s so the wrapping
     /// shell is replaced by the agent process — tab-close signals reach the agent
     /// directly instead of the shell.
     ///

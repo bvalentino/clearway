@@ -263,23 +263,20 @@ struct WorkTaskListView: View {
             let taskPath = workTaskManager.filePath(for: task)
             let prompt = PlanningConfig.renderPlanningPrompt(instructions: instructions, task: task, taskPath: taskPath)
             let agentCmd = workTaskCoordinator.planningAgentCommand
-
-            // Write prompt to temp file to handle long prompts safely
-            let tempDir = NSTemporaryDirectory()
-            let promptFile = (tempDir as NSString).appendingPathComponent("clearway-plan-\(task.id.uuidString).md")
-            FileManager.default.createFile(atPath: promptFile, contents: prompt.data(using: .utf8), attributes: [.posixPermissions: 0o600])
-
-            let resolvedPath = ShellEnvironment.path
-            let command = "/bin/sh -c " + shellEscape("export PATH=\"$3\"; set -f; cat \"$2\" | $1") + " -- " + shellEscape(agentCmd) + " " + shellEscape(promptFile) + " " + shellEscape(resolvedPath)
-            planLogger.info("plan agent=\(agentCmd, privacy: .public) promptFile=\(promptFile, privacy: .public)")
-            planLogger.info("plan path=\(resolvedPath, privacy: .public)")
-            planLogger.debug("plan command: \(command, privacy: .public)")
-            terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
+            let launch = buildAgentPromptCommand(
+                agentCommand: agentCmd,
+                prompt: prompt,
+                filePrefix: "clearway-plan"
+            )
+            planLogger.info("plan agent=\(agentCmd, privacy: .public) promptFile=\(launch.promptFile, privacy: .public)")
+            planLogger.debug("plan command: \(launch.command, privacy: .public)")
+            terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: launch.command)
         } else {
             // No planning instruction — open terminal with the Main Terminal command
             let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
             if !command.isEmpty {
-                terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: command)
+                let bare = terminalManager.buildBareCommand(agentCommand: command)
+                terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: bare)
             } else {
                 terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
             }

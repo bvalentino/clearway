@@ -156,10 +156,15 @@ class WorkTaskCoordinator: ObservableObject {
         rawWorkflowDefinition?.planning?.instructions
     }
 
-    /// The agent command the manual Plan step launches — `WORKFLOW.json`'s top-level `agent.command`
-    /// (default `"claude"`), reused rather than a planning-specific command.
+    /// The agent command the manual Plan step launches — `WORKFLOW.json`'s top-level
+    /// `agent.command` when set, otherwise Settings → Main Terminal (see `resolveAgentCommand`).
     var planningAgentCommand: String {
-        rawWorkflowDefinition?.agent.command ?? WorkflowDefinition.AgentSettings.defaultCommand
+        resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command)
+    }
+
+    /// Command for workflow-loop agent launches — same resolution as Plan.
+    func workflowAgentCommand(for definition: WorkflowDefinition) -> String {
+        resolveAgentCommand(workflowCommand: definition.agent.command)
     }
 
     private var exitObserver: Any?
