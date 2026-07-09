@@ -10,6 +10,7 @@ struct SettingsView: View {
                     Text("None").tag("")
                     Text("claude").tag("claude")
                     Text("grok").tag("grok")
+                    Text("codex").tag("codex")
                 }
             } header: {
                 Text("Main Terminal")
