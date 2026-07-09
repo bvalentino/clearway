@@ -39,10 +39,10 @@ enum ClaudeSessionFiles {
         guard fd >= 0 else { return nil }
 
         // Broad mask catches atomic file operations (write-to-temp → rename)
-        // that .write alone can miss.
+        // and in-place rewrites that .write alone can miss.
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: [.write, .attrib, .rename, .link, .extend],
+            eventMask: [.write, .attrib, .rename, .link, .extend, .delete],
             queue: .global(qos: .utility)
         )
         source.setEventHandler(handler: handler)
