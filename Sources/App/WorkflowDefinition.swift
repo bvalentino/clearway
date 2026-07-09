@@ -43,7 +43,7 @@ struct WorkflowDefinition: Equatable, Codable {
 
     /// Runtime knobs for the agent that runs each action.
     struct AgentSettings: Equatable, Codable {
-        /// The command to launch (e.g. `"claude"`, `"grok"`). Empty / omitted means
+        /// The command to launch (e.g. `"claude"`, `"grok"`, `"codex"`). Empty / omitted means
         /// "inherit Settings → Main Terminal" at launch (see `resolveAgentCommand`).
         let command: String
 
