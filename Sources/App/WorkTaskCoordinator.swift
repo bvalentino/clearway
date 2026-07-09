@@ -221,21 +221,18 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     func startTask(_ task: WorkTask, app: ghostty_app_t) -> StartResult {
-        guard task.status == WorkTask.ReservedStatus.new
-                || task.status == WorkTask.ReservedStatus.readyToStart
-                || task.status == WorkTask.ReservedStatus.canceled else { return .ignored }
-
-        var updated = task
-        if task.status == WorkTask.ReservedStatus.canceled {
-            updated.attempt = (task.attempt ?? 0) + 1
-        }
-        updated.errorMessage = nil
+        // Content authority is disk/pool by id — never the UI-captured snapshot (pre-plan
+        // title/body would otherwise clobber a completed Plan write on the bookkeeping save).
+        guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
+        guard current.status == WorkTask.ReservedStatus.new
+                || current.status == WorkTask.ReservedStatus.readyToStart
+                || current.status == WorkTask.ReservedStatus.canceled else { return .ignored }
 
         // Starting a task creates (or focuses) its worktree — agent spawning happens only through the
         // WORKFLOW.json loop engine. A JSON project's worktree-creation chokepoint seeds `status =
         // start` and launches its agent; a non-JSON project gets a worktree and nothing else.
         // Branch-keyed lookup resolves the correct worktree even when HEAD is detached (e.g. mid-rebase).
-        if let branch = task.worktree,
+        if let branch = current.worktree,
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             // Existing worktree → focus it; a JSON loop was already seeded at creation, don't relaunch.
             return .reuse(wt)
@@ -244,10 +241,17 @@ class WorkTaskCoordinator: ObservableObject {
         // on its backlog marker; a JSON project's seed advances it to `start`. `pendingLaunch` is set
         // so `completePendingLaunch` relocates TASK.md into the worktree.
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
-        let branch = task.worktree ?? workTaskManager.deriveBranchName(from: task.title, existingBranches: existingBranches)
-        updated.worktree = branch
-        workTaskManager.updateTask(updated)
-        pendingLaunch = (id: updated.id, branch: branch)
+        let branch = current.worktree
+            ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
+        let written = workTaskManager.updateFields(id: current.id) { updated in
+            if updated.status == WorkTask.ReservedStatus.canceled {
+                updated.attempt = (updated.attempt ?? 0) + 1
+            }
+            updated.errorMessage = nil
+            updated.worktree = branch
+        }
+        guard written != nil else { return .ignored }
+        pendingLaunch = (id: current.id, branch: branch)
         return .createWorktree(branch)
     }
 
@@ -396,17 +400,12 @@ class WorkTaskCoordinator: ObservableObject {
 
         guard let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }),
               let branch = worktree.branch,
-              var task = workTaskManager.task(forWorktree: branch) else { return }
+              let task = workTaskManager.task(forWorktree: branch) else { return }
 
         // Don't auto-change status — user may have exited to start a new session.
         // Just record an error on non-zero exit.
-        if exitCode == 0 {
-            task.errorMessage = nil
-        } else {
-            task.errorMessage = "Agent exited with code \(exitCode)"
-        }
-
-        workTaskManager.updateTask(task)
+        let message: String? = exitCode == 0 ? nil : "Agent exited with code \(exitCode)"
+        workTaskManager.updateFields(id: task.id) { $0.errorMessage = message }
     }
 }
 

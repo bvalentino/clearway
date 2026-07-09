@@ -107,10 +107,10 @@ extension WorkTaskCoordinator {
         // loop is reopened/resumable and idle — the idle-launch rule would otherwise immediately
         // re-run the terminal action, so the user must steer it with a manual pick.
         if task.completed == true {
-            var reopened = task
-            reopened.completed = nil
-            reopened.autopilot = false
-            workTaskManager.updateTask(reopened)
+            workTaskManager.updateFields(id: task.id) {
+                $0.completed = nil
+                $0.autopilot = false
+            }
             lastKnownAutopilot[branch] = false
             return true
         }
@@ -200,12 +200,12 @@ extension WorkTaskCoordinator {
             // counting down to an action the user just overrode.
             cancelCountdown(forWorktree: id)
         }
-        var updated = task
-        updated.status = slug
-        updated.errorMessage = nil
-        // Clear completion so a completed loop reopens (writes `nil` — omits the line — never `false`).
-        updated.completed = nil
-        workTaskManager.updateTask(updated)
+        workTaskManager.updateFields(id: task.id) {
+            $0.status = slug
+            $0.errorMessage = nil
+            // Clear completion so a completed loop reopens (writes `nil` — omits the line — never `false`).
+            $0.completed = nil
+        }
     }
 
     /// A sidebar action card's **Set as current** — steer `status` to `slug` without launching it,
@@ -369,23 +369,23 @@ extension WorkTaskCoordinator {
     @MainActor
     func seedWorkflowStatus(forBranch branch: String) {
         guard let definition = try? WorkflowDefinition.load(projectPath: workTaskManager.projectPath),
-              var task = workTaskManager.task(forWorktree: branch),
+              let task = workTaskManager.task(forWorktree: branch),
               definition.actions[task.status] == nil || task.autopilot == nil else { return }
-        // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
-        // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
-        if definition.actions[task.status] == nil { task.status = definition.start }
-        // Default autopilot on **only when the task has content** to work on — a manually-created
-        // worktree with a blank TASK.md starts paused (`false`, not `nil`, since the engine treats a
-        // missing flag as on and would launch anyway). Written alongside the seed as one coherent
-        // creation write; only set when absent so a user's prior pause isn't clobbered.
-        if task.autopilot == nil { task.autopilot = task.hasContent }
-        task.errorMessage = nil
         // Clear any stale halt for a reused branch so the fresh seed can launch.
         engineHalted.remove(branch)
-        workTaskManager.updateTask(task)
+        workTaskManager.updateFields(id: task.id) { updated in
+            // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
+            // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
+            if definition.actions[updated.status] == nil { updated.status = definition.start }
+            // Default autopilot on **only when the task has content** to work on — a manually-created
+            // worktree with a blank TASK.md starts paused (`false`, not `nil`, since the engine treats a
+            // missing flag as on and would launch anyway). Written alongside the seed as one coherent
+            // creation write; only set when absent so a user's prior pause isn't clobbered.
+            if updated.autopilot == nil { updated.autopilot = updated.hasContent }
+            updated.errorMessage = nil
+        }
 
-        // `updateTask` mutates the in-memory pool without re-running `reload()`, so the
-        // `onTasksReloaded` engine hook won't fire for the seed. Kick the first launch directly.
+        // Seed write bypasses the reload watcher — kick the first launch directly.
         if let app = appProvider() {
             _ = advanceWorkflow(forBranch: branch, app: app)
         }
@@ -411,7 +411,7 @@ extension WorkTaskCoordinator {
         // A halted loop stays halted until something external clears it; don't re-evaluate.
         guard !engineHalted.contains(branch) else { return .ignored }
         guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
-              var task = workTaskManager.task(forWorktree: branch) else { return .ignored }
+              let task = workTaskManager.task(forWorktree: branch) else { return .ignored }
 
         let decision = WorkflowLoopEngine.decideTransition(
             running: runningAction[worktree.id],
@@ -431,8 +431,7 @@ extension WorkTaskCoordinator {
             // A halt leaves the normal advance path — drop any countdown armed by a prior legal
             // advance so the card stops counting down to a launch the halted loop won't perform.
             cancelCountdown(forWorktree: worktree.id)
-            task.errorMessage = reason
-            workTaskManager.updateTask(task)
+            workTaskManager.updateFields(id: task.id) { $0.errorMessage = reason }
             return .halted(reason: reason)
 
         case .launch(let slug, let nextValue):

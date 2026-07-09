@@ -151,63 +151,32 @@ struct WorkTaskWindow: View {
             }
         }
         .onChange(of: title) { _ in
-            guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+            guard TaskEditorBuffers.shouldAutosave(reloadingCount: &reloadingCount) else { return }
             scheduleSave()
         }
         .onChange(of: bodyText) { _ in
-            guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+            guard TaskEditorBuffers.shouldAutosave(reloadingCount: &reloadingCount) else { return }
             scheduleSave()
         }
         .onChange(of: editorText) { _ in
             guard showFrontmatter else { return }
-            guard reloadingCount <= 0 else { reloadingCount -= 1; return }
+            guard TaskEditorBuffers.shouldAutosave(reloadingCount: &reloadingCount) else { return }
             scheduleSave()
         }
         .onChange(of: task) { newTask in
-            guard let newTask, pendingSave == nil else { return }
-            if newTask.title != title {
-                reloadingCount += 1
-                title = newTask.title
-            }
-            if newTask.body != bodyText {
-                reloadingCount += 1
-                bodyText = newTask.body
-            }
-            if showFrontmatter, !frontmatterError {
-                let newSer = newTask.serialized()
-                if newSer != editorText {
-                    reloadingCount += 1
-                    editorText = newSer
-                }
+            guard let newTask else { return }
+            // Keep in-flight local edits. A pending autosave means the user has typed
+            // since the last flush; adopting would clobber those keystrokes (including
+            // when our own write echoes through the pool). External rewrites still land
+            // once the debounce clears, and save CAS blocks ghost-clobber of agent content.
+            guard pendingSave == nil else { return }
+            withBuffers { state in
+                TaskEditorBuffers.adoptFromPool(newTask, state: &state, showFrontmatter: showFrontmatter)
             }
         }
         .onChange(of: showFrontmatter) { newValue in
-            if newValue {
-                if var updated = task {
-                    updated.title = title
-                    updated.body = bodyText
-                    editorText = updated.serialized()
-                }
-                frontmatterError = false
-            } else {
-                // YAML.bodyText falls back to the full document when frontmatter
-                // delimiters are malformed, so a bad buffer would turn into body
-                // text and get committed by the body-only autosave. Keep the
-                // error raised instead; saveNow blocks writes until it's fixed.
-                let createdAt = task?.createdAt ?? Date()
-                guard WorkTask.parse(
-                    from: editorText,
-                    id: taskId,
-                    createdAt: createdAt
-                ) != nil else {
-                    frontmatterError = true
-                    return
-                }
-                if let parsed = WorkTask.parseTitle(from: editorText) {
-                    title = parsed
-                }
-                bodyText = YAML.bodyText(in: editorText)
-                frontmatterError = false
+            withBuffers { state in
+                TaskEditorBuffers.setShowFrontmatter(newValue, task: task, taskId: taskId, state: &state)
             }
         }
         .onDisappear {
@@ -365,39 +334,39 @@ struct WorkTaskWindow: View {
 
     private var isDirty: Bool {
         guard let task else { return false }
-        if showFrontmatter {
-            return editorText != task.serialized()
-        }
-        return title != task.title || bodyText != task.body
+        return TaskEditorBuffers.isDirty(task: task, state: bufferState, showFrontmatter: showFrontmatter)
+    }
+
+    private var bufferState: TaskEditorBufferState {
+        TaskEditorBufferState(
+            title: title,
+            bodyText: bodyText,
+            editorText: editorText,
+            frontmatterError: frontmatterError,
+            reloadingCount: reloadingCount
+        )
+    }
+
+    private func withBuffers(_ body: (inout TaskEditorBufferState) -> Void) {
+        var state = bufferState
+        body(&state)
+        reloadingCount = state.reloadingCount
+        title = state.title
+        bodyText = state.bodyText
+        editorText = state.editorText
+        frontmatterError = state.frontmatterError
     }
 
     private func saveNow() {
         guard !deleted, let existing = task else { return }
-        if showFrontmatter {
-            guard editorText != existing.serialized() else { return }
-            let success = workTaskManager.applyEditorBuffer(editorText, expectedId: taskId)
-            if success {
-                frontmatterError = false
-                if let updated = task {
-                    let newSerialized = updated.serialized()
-                    if newSerialized != editorText {
-                        reloadingCount += 1
-                        editorText = newSerialized
-                    }
-                }
-            } else {
-                frontmatterError = true
-            }
-        } else {
-            // Honor the "changes won't save until fixed" banner: if the last known
-            // buffer had invalid frontmatter, a body-only write would silently clear
-            // the error and commit state the user was told wouldn't save.
-            guard !frontmatterError else { return }
-            guard title != existing.title || bodyText != existing.body else { return }
-            var updated = existing
-            updated.title = title
-            updated.body = bodyText
-            workTaskManager.updateTask(updated)
+        withBuffers { state in
+            TaskEditorBuffers.save(
+                taskId: taskId,
+                existing: existing,
+                state: &state,
+                showFrontmatter: showFrontmatter,
+                manager: workTaskManager
+            )
         }
     }
 }

@@ -27,6 +27,11 @@ class WorkTaskManager: ObservableObject {
     /// on screen. Driven from the view layer via `setWatchedWorktrees(_:)`.
     private var worktreeWatchers: [String: DispatchSourceFileSystemObject] = [:]
 
+    /// Per-task-file watchers keyed by absolute path. Directory watchers miss many in-place
+    /// content rewrites (agent open/truncate/write of an existing `TASK.md` / `<UUID>.md`);
+    /// watching the file inode catches those. Rebuilt after every reload from the pool's paths.
+    private var taskFileWatchers: [String: DispatchSourceFileSystemObject] = [:]
+
     /// Resolves the live worktrees as `(branch, path)` pairs. Injected at construction so the
     /// manager can route a task's file to its worktree (and merge-load every worktree's
     /// `TASK.md`) without taking a hard dependency on `WorktreeManager`. Defaults to empty,
@@ -84,13 +89,13 @@ class WorkTaskManager: ObservableObject {
         let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
         guard fm.fileExists(atPath: central) else { return }
 
-        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
-        let destination = (clearway as NSString).appendingPathComponent("TASK.md")
+        let destination = Self.taskMarkdownPath(inWorktree: worktreePath)
         // Adopt the central file only into an empty slot. If the worktree already has a TASK.md,
         // leave the central file in place — NEVER delete it to resolve a collision. The merge-load
         // dedups by id, so at worst the task is shown once; at best the user keeps their data.
         guard !fm.fileExists(atPath: destination) else { return }
 
+        let clearway = (destination as NSString).deletingLastPathComponent
         try? fm.createDirectory(atPath: clearway, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try? fm.moveItem(atPath: central, toPath: destination)
         // Legacy files carried identity in the filename (`<UUID>.md`), which the rename to
@@ -117,6 +122,7 @@ class WorkTaskManager: ObservableObject {
         watcherSource?.cancel()
         rootClearwayWatcherSource?.cancel()
         worktreeWatchers.values.forEach { $0.cancel() }
+        taskFileWatchers.values.forEach { $0.cancel() }
     }
 
     // MARK: - Lookups
@@ -170,10 +176,7 @@ class WorkTaskManager: ObservableObject {
     @discardableResult
     func expose(_ task: WorkTask) -> WorkTask {
         guard task.hidden else { return task }
-        var updated = task
-        updated.hidden = false
-        updateTask(updated)
-        return updated
+        return updateFields(id: task.id) { $0.hidden = false } ?? task
     }
 
     /// Creates an exposed task linked to `branch` — used by the aside CTA when a worktree
@@ -190,23 +193,41 @@ class WorkTaskManager: ObservableObject {
         return tasks.first { $0.id == task.id }
     }
 
-    func updateTask(_ task: WorkTask) {
-        write(task)
-        // Update in-memory so callers see immediate changes without
-        // waiting for the watcher reload.
-        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
-            tasks[index] = task
+    /// Loads the current on-disk task for `id`, falling back to the in-memory pool entry.
+    /// Field writers and Start Now use this so a stale caller snapshot never becomes the
+    /// serialization base when disk is newer.
+    func freshTask(id: UUID) -> WorkTask? {
+        if let pooled = tasks.first(where: { $0.id == id }) {
+            return loadTask(atPath: filePath(for: pooled), fallbackId: id, requireFrontmatterID: false)
+                ?? pooled
         }
+        let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
+        return loadTask(atPath: central, fallbackId: id)
+    }
+
+    /// Re-bases from disk/pool by id, applies `mutate`, and writes only when something changed.
+    /// Sole public mutation path for existing tasks — callers cannot pass a full snapshot that
+    /// would clobber fresher title/body/status on disk.
+    @discardableResult
+    func updateFields(id: UUID, mutate: (inout WorkTask) -> Void) -> WorkTask? {
+        guard var base = freshTask(id: id) else { return nil }
+        let before = base
+        mutate(&base)
+        guard base != before else { return base }
+        persist(base)
+        return base
     }
 
     /// Applies an editor buffer's parsed form to the persisted task. System-managed fields
     /// (`worktree`, `status`, `attempt`, timestamps) are owned by
     /// `WorkTaskCoordinator` and state commands — editor buffers never overwrite them, which
     /// is what prevents a stale buffer from clobbering a concurrent coordinator write.
+    /// Re-bases those fields from disk (via `freshTask`) so a lagging pool cannot re-publish
+    /// a pre-agent status/title over a newer file either.
     /// Returns `false` if the buffer has unparseable frontmatter.
     @discardableResult
     func applyEditorBuffer(_ content: String, expectedId: UUID) -> Bool {
-        let existing = tasks.first { $0.id == expectedId }
+        let existing = freshTask(id: expectedId)
         guard let parsed = WorkTask.parse(
             from: content,
             id: expectedId,
@@ -214,21 +235,37 @@ class WorkTaskManager: ObservableObject {
         ) else {
             return false
         }
-        if var merged = existing {
-            merged.title = parsed.title
-            merged.body = parsed.body
-            updateTask(merged)
+        if existing != nil {
+            updateFields(id: expectedId) {
+                $0.title = parsed.title
+                $0.body = parsed.body
+            }
         } else {
-            updateTask(parsed)
+            // Novel id (not on disk/pool yet) — no prior document to clobber.
+            persist(parsed)
         }
         return true
     }
 
+    /// Writes a fully resolved task and updates the pool. Private so callers cannot supply a
+    /// stale full snapshot; use `updateFields` (re-base + mutate) for existing tasks.
+    private func persist(_ task: WorkTask) {
+        write(task)
+        // Update in-memory so callers see immediate changes without
+        // waiting for the watcher reload.
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
+            // Path may change (e.g. worktree just linked); keep per-file watchers in sync.
+            syncTaskFileWatchers()
+        } else {
+            // New id not yet in the pool (e.g. applyEditorBuffer novel insert) — re-merge so
+            // subsequent freshTask/updateFields can resolve it. `reload` also re-syncs watchers.
+            reload()
+        }
+    }
+
     func setStatus(_ task: WorkTask, to status: String) {
-        guard task.status != status else { return }
-        var updated = task
-        updated.status = status
-        updateTask(updated)
+        updateFields(id: task.id) { $0.status = status }
     }
 
     /// Reads a worktree task's `status` **fresh from its `TASK.md` on disk**, bypassing the
@@ -240,9 +277,11 @@ class WorkTaskManager: ObservableObject {
     /// `nil` when the branch has no live worktree or its `TASK.md` doesn't parse.
     func freshStatus(forWorktree branch: String) -> String? {
         guard let path = worktreePath(forBranch: branch) else { return nil }
-        let taskMd = ((path as NSString).appendingPathComponent(".clearway") as NSString)
-            .appendingPathComponent("TASK.md")
-        return loadTask(atPath: taskMd, fallbackId: UUID(), requireFrontmatterID: false)?.status
+        return loadTask(
+            atPath: Self.taskMarkdownPath(inWorktree: path),
+            fallbackId: UUID(),
+            requireFrontmatterID: false
+        )?.status
     }
 
     /// Writes the `autopilot` flag into the task's `.clearway/TASK.md` (the single field-write
@@ -250,10 +289,13 @@ class WorkTaskManager: ObservableObject {
     /// loop engine's watcher then enacts the flip (enable → resume, disable → pause). Unlike
     /// `status`, `autopilot` is Clearway-owned, so this write is allowed. No-op on no change.
     func setAutopilot(_ task: WorkTask, to autopilot: Bool) {
-        guard task.autopilot != autopilot else { return }
-        var updated = task
-        updated.autopilot = autopilot
-        updateTask(updated)
+        updateFields(id: task.id) { $0.autopilot = autopilot }
+    }
+
+    /// Forces a merge-load from disk into the pool. Production relies on watchers; tests use
+    /// this to assert adoption without waiting on debounce timing.
+    func reloadFromDisk() {
+        reload()
     }
 
     func deleteTask(_ task: WorkTask) {
@@ -289,10 +331,15 @@ class WorkTaskManager: ObservableObject {
     func filePath(for task: WorkTask) -> String {
         if let branch = task.worktree,
            let path = worktreePath(forBranch: branch) {
-            let clearway = (path as NSString).appendingPathComponent(".clearway")
-            return (clearway as NSString).appendingPathComponent("TASK.md")
+            return Self.taskMarkdownPath(inWorktree: path)
         }
         return (tasksDirectory as NSString).appendingPathComponent("\(task.id.uuidString).md")
+    }
+
+    /// `.clearway/TASK.md` under a worktree root.
+    private static func taskMarkdownPath(inWorktree worktreePath: String) -> String {
+        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
+        return (clearway as NSString).appendingPathComponent("TASK.md")
     }
 
     private func write(_ task: WorkTask) {
@@ -332,8 +379,7 @@ class WorkTaskManager: ObservableObject {
         // flapping the task in and out of the pool. (Going forward every write emits `id`; this
         // guards against an external agent/hook rewriting `TASK.md` and dropping the line.)
         for worktree in worktreeResolver() {
-            let clearway = (worktree.path as NSString).appendingPathComponent(".clearway")
-            let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
+            let taskMd = Self.taskMarkdownPath(inWorktree: worktree.path)
             if let task = loadTask(atPath: taskMd, fallbackId: UUID(), requireFrontmatterID: true) {
                 byId[task.id] = task
             }
@@ -347,13 +393,83 @@ class WorkTaskManager: ObservableObject {
 
         // Newest first
         let sorted = byId.values.sorted { $0.createdAt > $1.createdAt }
-        guard sorted != tasks else { return }
-        tasks = sorted
+        // Always re-arm per-file watchers — even on a no-op content reload an atomic rewrite can
+        // replace the inode under a path, leaving a dead file watcher if we only sync on change.
+        let poolChanged = sorted != tasks
+        if poolChanged {
+            tasks = sorted
+        }
+        syncTaskFileWatchers()
+
+        guard poolChanged else { return }
 
         // Drive the loop engine off the same reload the watcher already debounces. Only worktree-
         // linked tasks can be in a running loop, so that's the set the engine re-evaluates.
         let branches = sorted.compactMap(\.worktree)
         if !branches.isEmpty { onTasksReloaded(branches) }
+    }
+
+    /// Watches each known task file so in-place content edits fire a reload. Directory watchers
+    /// alone miss many agent write patterns (open + truncate + write of an existing path).
+    ///
+    /// Always re-opens every desired path: `DispatchSource` holds an fd on a specific inode, and
+    /// an atomic rewrite (write-to-temp → rename) replaces that inode under the same path. Keeping
+    /// the old source keyed by path leaves a **dead** watcher that never sees later writes — the
+    /// failure mode that left the pool/UI on a stale `status` after an external frontmatter edit.
+    private func syncTaskFileWatchers() {
+        let desired = desiredTaskFileWatcherPaths()
+
+        for (path, source) in taskFileWatchers where !desired.contains(path) {
+            source.cancel()
+            taskFileWatchers.removeValue(forKey: path)
+        }
+        for path in desired {
+            taskFileWatchers[path]?.cancel()
+            if let source = makeTaskFileWatcher(path: path) {
+                taskFileWatchers[path] = source
+            } else {
+                taskFileWatchers.removeValue(forKey: path)
+            }
+        }
+    }
+
+    /// File watcher that re-arms itself on each event before the debounced reload. Needed because
+    /// a rename/delete event invalidates the current fd; without an immediate re-open, a second
+    /// write during the 0.3s debounce (or after a no-op reload path) would be missed.
+    private func makeTaskFileWatcher(path: String) -> DispatchSourceFileSystemObject? {
+        ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                // Re-open this path if still desired; the event may have been the atomic replace
+                // that killed the previous inode.
+                if self.desiredTaskFileWatcherPaths().contains(path) {
+                    self.taskFileWatchers[path]?.cancel()
+                    if let source = self.makeTaskFileWatcher(path: path) {
+                        self.taskFileWatchers[path] = source
+                    } else {
+                        self.taskFileWatchers.removeValue(forKey: path)
+                    }
+                }
+            }
+            self?.scheduleReload()
+        }
+    }
+
+    /// Pool paths plus any on-disk task files not yet merged (mid-create / unparsed).
+    private func desiredTaskFileWatcherPaths() -> Set<String> {
+        var desired = Set(tasks.map { filePath(for: $0) })
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: tasksDirectory) {
+            for file in files where file.hasSuffix(".md") {
+                desired.insert((tasksDirectory as NSString).appendingPathComponent(file))
+            }
+        }
+        for worktree in worktreeResolver() {
+            let taskMd = Self.taskMarkdownPath(inWorktree: worktree.path)
+            if FileManager.default.fileExists(atPath: taskMd) {
+                desired.insert(taskMd)
+            }
+        }
+        return desired
     }
 
     /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
@@ -384,7 +500,7 @@ class WorkTaskManager: ObservableObject {
             worktreeWatchers.removeValue(forKey: dir)
         }
         for dir in desired where worktreeWatchers[dir] == nil {
-            if let source = makeWatcher(forDirectory: dir) { worktreeWatchers[dir] = source }
+            if let source = makeWatcher(forPath: dir) { worktreeWatchers[dir] = source }
         }
 
         reload()
@@ -392,7 +508,7 @@ class WorkTaskManager: ObservableObject {
 
     private func watchDirectory() {
         watcherSource?.cancel()
-        watcherSource = makeWatcher(forDirectory: tasksDirectory)
+        watcherSource = makeWatcher(forPath: tasksDirectory)
     }
 
     /// Watches the project root's `.clearway/` directory so a `WORKFLOW.json` add/remove/edit fires a
@@ -402,15 +518,14 @@ class WorkTaskManager: ObservableObject {
     /// write) so a project that has no `.clearway/` yet still picks one up the moment one appears.
     private func watchRootClearway() {
         rootClearwayWatcherSource?.cancel()
-        rootClearwayWatcherSource = makeWatcher(forDirectory: rootClearwayDirectory)
+        rootClearwayWatcherSource = makeWatcher(forPath: rootClearwayDirectory)
     }
 
-    /// Debounced watcher on `directory` (nil when it doesn't exist yet — it gets created on first
-    /// write, which re-arms the central watcher via `write`). Delegates to the shared
-    /// `ClaudeSessionFiles.makeWatcher`, whose broad event mask catches the atomic write-then-rename
-    /// an in-worktree agent uses when it edits `TASK.md`.
-    private func makeWatcher(forDirectory directory: String) -> DispatchSourceFileSystemObject? {
-        ClaudeSessionFiles.makeWatcher(path: directory) { [weak self] in
+    /// Directory watcher → debounced pool reload. Nil when the path does not exist yet
+    /// (re-armed from `write` once the directory appears). Task **files** use
+    /// `makeTaskFileWatcher` so their inodes re-arm after atomic replace.
+    private func makeWatcher(forPath path: String) -> DispatchSourceFileSystemObject? {
+        ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
             self?.scheduleReload()
         }
     }
