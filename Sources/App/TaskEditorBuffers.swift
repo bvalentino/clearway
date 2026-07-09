@@ -9,12 +9,17 @@ struct TaskEditorBufferState {
     var reloadingCount: Int = 0
 }
 
-/// Shared local-buffer policy for task editors. Disk/pool always wins over unsaved local state.
+/// Shared local-buffer policy for task editors.
+///
+/// Callers adopt pool content only when no autosave is pending (`pendingSave == nil`), so
+/// in-flight local keystrokes are not clobbered by our own write echoing through the pool.
+/// Late autosaves still compare-and-swap against disk so they cannot ghost-clobber an
+/// external/agent rewrite.
 enum TaskEditorBuffers {
 
-    /// Adopt pool content into local buffers. Caller must cancel any pending autosave first.
-    /// Bumps `reloadingCount` for each buffer that changes so the matching `onChange` does
-    /// not schedule a save of the discarded content.
+    /// Adopt pool content into local buffers. Caller must only invoke when no autosave is
+    /// pending. Bumps `reloadingCount` for each buffer that changes so the matching
+    /// `onChange` does not schedule a save of the discarded content.
     static func adoptFromPool(
         _ task: WorkTask,
         state: inout TaskEditorBufferState,

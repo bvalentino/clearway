@@ -143,8 +143,11 @@ struct TaskDetailView: View {
                 scheduleSave()
             }
             .onChange(of: task) { newTask in
-                pendingSave?.cancel()
-                pendingSave = nil
+                // Keep in-flight local edits. A pending autosave means the user has typed
+                // since the last flush; adopting would clobber those keystrokes (including
+                // when our own write echoes through the pool). External rewrites still land
+                // once the debounce clears, and save CAS blocks ghost-clobber of agent content.
+                guard pendingSave == nil else { return }
                 withBuffers { state in
                     TaskEditorBuffers.adoptFromPool(newTask, state: &state, showFrontmatter: showFrontmatter)
                 }
