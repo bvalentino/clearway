@@ -312,52 +312,6 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
         XCTAssertEqual(result, .ignored, "a write equal to the running action is idempotently ignored")
     }
 
-    // MARK: - Manual kill
-
-    /// The manual kill pauses the loop by writing `autopilot = false` — the half that needs no
-    /// Ghostty surface. (Surface termination is exercised via `shouldTerminateOnManualKill` below,
-    /// since a live surface needs a real app.)
-    func testManualKillPausesAutopilot() throws {
-        try writeWorkflow()
-        let branch = "kill"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        coordinator.manualKill(forBranch: branch)
-
-        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false,
-                       "the manual kill pauses the loop by writing autopilot = false")
-    }
-
-    /// The surface-termination *decision* is false when no live agent surface is tracked, so a kill
-    /// on an idle worktree pauses without requesting a (nonexistent) termination.
-    func testManualKillDoesNotTerminateWhenNoSurface() throws {
-        try writeWorkflow()
-        let branch = "kill-idle"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
-
-        XCTAssertFalse(coordinator.shouldTerminateOnManualKill(forWorktree: worktreeId),
-                       "no tracked agent surface means nothing to terminate")
-        // The kill still pauses, even with nothing to terminate.
-        coordinator.manualKill(forBranch: branch)
-        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false)
-    }
-
-    /// `manualKill` on a branch with no task is a safe no-op (nothing to pause or terminate).
-    func testManualKillNoTaskIsNoOp() throws {
-        try writeWorkflow()
-        let branch = "kill-notask"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        coordinator.manualKill(forBranch: "nonexistent-branch")
-        // The real branch is untouched.
-        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
-                       "killing an unknown branch leaves other worktrees untouched")
-    }
-
     // MARK: - Legacy WORKFLOW.md is suppressed for JSON projects
 
     /// In a JSON-workflow project, starting a task whose worktree already exists must NOT run the

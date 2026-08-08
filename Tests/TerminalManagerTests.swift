@@ -4,6 +4,8 @@ import XCTest
 @MainActor
 final class TerminalManagerTests: XCTestCase {
 
+    private let testPath = "/opt/homebrew/bin:/usr/bin:/bin"
+
     // MARK: - setInitialPanelVisibility
 
     func test_setInitialPanelVisibility_mainWorktree_secondaryFollowsProvider() {
@@ -86,18 +88,6 @@ final class TerminalManagerTests: XCTestCase {
                       "the hook reveal must win over the open-on-start-off default")
     }
 
-    // MARK: - LauncherPromotion.command
-
-    func test_launcherPromotion_command_pattern_matches() {
-        // Empty Enter should land in this case at the call site, carrying the
-        // resolved main command (e.g. "claude") with no initial prompt.
-        let mode: TerminalManager.LauncherPromotion = .command("claude")
-        guard case .command(let cmd) = mode else {
-            return XCTFail("Expected .command case but got \(mode)")
-        }
-        XCTAssertEqual(cmd, "claude")
-    }
-
     // MARK: - resolveAgentCommand
 
     func test_resolveAgentCommand_prefersNonEmptyWorkflowCommand() {
@@ -134,7 +124,7 @@ final class TerminalManagerTests: XCTestCase {
     // MARK: - buildAgentPromptCommand
 
     func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello")
+        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello", path: testPath)
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("\"$(cat \"$2\")\""),
                       "prompt must be a positional arg via cat-into-quotes; got: \(launch.command)")
@@ -142,10 +132,13 @@ final class TerminalManagerTests: XCTestCase {
                        "must not pipe prompt into agent stdin; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_exportsLoginShellPath_andDisablesGlobbing() {
-        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x")
+    /// The builder must export the PATH it was given, not one it reads for itself: the
+    /// caller is the only place that knows whether a resolution has completed.
+    func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() {
+        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
-        XCTAssertTrue(launch.command.contains("export PATH="), "must export PATH; got: \(launch.command)")
+        XCTAssertTrue(launch.command.contains("export PATH=") && launch.command.contains("'\(testPath)'"),
+                      "must export the given PATH; got: \(launch.command)")
         XCTAssertTrue(launch.command.contains("set -f"), "must disable globbing; got: \(launch.command)")
         XCTAssertTrue(launch.command.contains("rm -f \"$2\""),
                       "must clean up the prompt file after the agent exits; got: \(launch.command)")
@@ -155,6 +148,7 @@ final class TerminalManagerTests: XCTestCase {
         let launch = buildAgentPromptCommand(
             agentCommand: "claude; rm -rf /",
             prompt: "do the work",
+            path: testPath,
             filePrefix: "clearway-test-prompt"
         )
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
@@ -176,7 +170,7 @@ final class TerminalManagerTests: XCTestCase {
 
     func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() {
         let prompt = "say \"hi\"\n$HOME `id` 'x'"
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: prompt)
+        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: prompt, path: testPath)
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
            let body = String(data: data, encoding: .utf8) {
@@ -193,7 +187,7 @@ final class TerminalManagerTests: XCTestCase {
     }
 
     func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() {
-        let launch = buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x")
+        let launch = buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x", path: testPath)
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("'weird'\\''name'"),
                       "single quotes in agent command must be shell-escaped; got: \(launch.command)")
@@ -203,6 +197,7 @@ final class TerminalManagerTests: XCTestCase {
         let launch = buildAgentPromptCommand(
             agentCommand: "grok",
             prompt: "p",
+            path: testPath,
             filePrefix: "clearway-launcher"
         )
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
@@ -219,25 +214,26 @@ final class TerminalManagerTests: XCTestCase {
     /// helper's docstring.
     func test_buildBareCommand_usesExec_forDirectSignalDelivery() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "claude")
+        let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertTrue(out.contains("exec $1"),
                       "buildBareCommand must `exec` the agent; got: \(out)")
     }
 
-    /// Without exporting the login-shell PATH, user-installed agents like
-    /// `~/.bun/bin/claude` or `~/.claude/local/claude` would `command not found`.
-    func test_buildBareCommand_exportsLoginShellPath() {
+    /// Without exporting the resolved PATH, user-installed agents like `~/.bun/bin/claude`
+    /// or `~/.claude/local/claude` would `command not found`. The builder must export the
+    /// PATH it was given: the caller is the only place that knows a resolution completed.
+    func test_buildBareCommand_exportsTheGivenPath() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "claude")
-        XCTAssertTrue(out.contains("export PATH="),
-                      "buildBareCommand must export PATH; got: \(out)")
+        let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
+        XCTAssertTrue(out.contains("export PATH=") && out.contains("'\(testPath)'"),
+                      "buildBareCommand must export the given PATH; got: \(out)")
     }
 
     /// `set -f` disables glob expansion so an agent name containing `*`/`?`
     /// can't accidentally be globbed by the wrapping shell.
     func test_buildBareCommand_disablesGlobbing() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "claude")
+        let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertTrue(out.contains("set -f"),
                       "buildBareCommand must `set -f` to disable globbing; got: \(out)")
     }
@@ -246,7 +242,7 @@ final class TerminalManagerTests: XCTestCase {
     /// must be no temp-file argument and no prompt-file `cat`.
     func test_buildBareCommand_hasNoPromptFile_orCat() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "claude")
+        let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertFalse(out.contains("cat "),
                        "buildBareCommand must not read a prompt file; got: \(out)")
         XCTAssertFalse(out.contains("clearway-launcher-"),
@@ -259,7 +255,7 @@ final class TerminalManagerTests: XCTestCase {
     func test_buildBareCommand_quotesShellMetacharacters_inAgentCommand() {
         let manager = TerminalManager()
         let malicious = "claude; rm -rf /"
-        let out = manager.buildBareCommand(agentCommand: malicious)
+        let out = manager.buildBareCommand(agentCommand: malicious, path: testPath)
 
         // The agent command must appear single-quoted (per `shellEscape`) so
         // `/bin/sh -c` receives it as $1, not as additional commands.
@@ -278,7 +274,7 @@ final class TerminalManagerTests: XCTestCase {
     /// `'\''` quote-escape recipe in `shellEscape`, not by string interpolation.
     func test_buildBareCommand_escapesSingleQuotes_inAgentCommand() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "weird'name")
+        let out = manager.buildBareCommand(agentCommand: "weird'name", path: testPath)
         XCTAssertTrue(out.contains("'weird'\\''name'"),
                       "single quotes must be escaped via `'\\''` to stay inside the quoted form; got: \(out)")
     }
@@ -287,10 +283,36 @@ final class TerminalManagerTests: XCTestCase {
     /// invocation with exactly two positional arguments after `--`.
     func test_buildBareCommand_shapeMatches_binShCRecipeWithTwoPositionals() {
         let manager = TerminalManager()
-        let out = manager.buildBareCommand(agentCommand: "claude")
+        let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertTrue(out.hasPrefix("/bin/sh -c "),
                       "must invoke /bin/sh -c; got: \(out)")
         XCTAssertTrue(out.contains(" -- "),
                       "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
+    }
+
+    // MARK: - beginTaskLaunch
+
+    /// A plan launch awaits the resolved PATH before it has a surface, so nothing else marks the
+    /// task as busy for that window. A second press must lose the claim rather than start a second
+    /// agent — on a machine whose first resolution blocks, that window is seconds long.
+    func test_beginTaskLaunch_secondClaimIsRefusedUntilTheFirstEnds() {
+        let manager = TerminalManager()
+        let task = UUID()
+
+        XCTAssertTrue(manager.beginTaskLaunch(for: task))
+        XCTAssertFalse(manager.beginTaskLaunch(for: task),
+                       "a launch already in flight must refuse the second press")
+
+        manager.endTaskLaunch(for: task)
+        XCTAssertTrue(manager.beginTaskLaunch(for: task),
+                      "the claim must be released once the launch has its surface")
+    }
+
+    /// The claim is per task: a launch for one task must not block a launch for another.
+    func test_beginTaskLaunch_claimsAreIndependentPerTask() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
+        XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
     }
 }

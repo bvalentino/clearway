@@ -54,6 +54,13 @@ class WorkTaskCoordinator: ObservableObject {
     /// off both its inputs (the other being `agentSurfaces`), not just a coincidental re-render.
     @Published var runningAction: [String: String] = [:]
 
+    /// A counter bumped on every launch of a worktree — the second half of a `WorkflowLaunchID`, so a
+    /// launch can tell whether it is still the one the engine wants once it resumes from awaiting the
+    /// resolved PATH. `runningAction` alone can't: a kill followed by a play relaunches the *same*
+    /// slug, and the superseded launch would read its own slug back and spawn a second agent.
+    /// Not `@Published` — engine bookkeeping, never view state.
+    var launchGeneration: [String: Int] = [:]
+
     /// Worktrees whose loop has halted (illegal/unknown status). Once halted the engine stops
     /// launching for that worktree until something external resets it.
     var engineHalted: Set<String> = []

@@ -325,7 +325,9 @@ class WorktreeManager: ObservableObject {
         let process = Process()
 
         // For git commands, use the resolved git path directly.
-        // For everything else (e.g. `gh`), use /usr/bin/env with the resolved PATH.
+        // For everything else (e.g. `gh`), use /usr/bin/env with the resolved PATH. Neither
+        // branch starts a resolution: the shell can open an approval browser, so that trigger
+        // belongs on an agent launch, not on a subprocess spawn.
         if args.first == "git" {
             process.executableURL = URL(fileURLWithPath: GitResolver.resolvedPath)
             process.arguments = Array(args.dropFirst())

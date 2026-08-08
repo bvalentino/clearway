@@ -9,6 +9,14 @@ struct WorkflowCountdown: Equatable {
     let deadline: Date
 }
 
+/// Identifies one launch: which action, and which launch *of* that action. A launch suspends while it
+/// awaits the resolved PATH, and needs both halves to decide on resume whether it is still the one the
+/// engine wants — see `isLaunchCurrent(_:forWorktree:)`.
+struct WorkflowLaunchID: Equatable {
+    let slug: String
+    let generation: Int
+}
+
 /// The `WORKFLOW.json` agent-driven loop engine, factored out of `WorkTaskCoordinator` to keep that
 /// file focused on the legacy agent lifecycle. Mirrors the `+ConfigWatching` extension split: the
 /// engine's in-memory state (`runningAction`, `engineHalted`, `lastKnownAutopilot`) and the surface-
@@ -17,8 +25,9 @@ struct WorkflowCountdown: Equatable {
 ///
 /// Everything here runs on `@MainActor` (the type is `@MainActor`-isolated): the watcher hops to the
 /// main queue before invoking `onTasksReloaded`, so the engine never touches its state off-main, and
-/// the launch tail sets `runningAction` immediately before spawning the surface with no `await`
-/// between — guard and launch are one atomic step a concurrent reload can't interleave.
+/// the launch tail sets `runningAction` synchronously with the decision that produced it, so a
+/// concurrent reload can't interleave between the two. The surface spawn that follows *does* suspend
+/// (it awaits the resolved PATH), so it re-reads the guard before spawning — see `launchWorkflowAgent`.
 extension WorkTaskCoordinator {
 
     /// Re-evaluates the loop engine for each worktree after a `TASK.md` reload. No-op for projects
@@ -257,12 +266,35 @@ extension WorkTaskCoordinator {
     /// Whether the loop engine has a step *actually running* for this worktree — a live agent
     /// surface and/or a tracked running action (`P`). Read-only window onto the engine's internal
     /// state for the toolbar's activity indicator; it never mutates `runningAction`/`agentSurfaces`,
-    /// so the view can't leak engine state. The two move in lockstep (`performLaunch` sets
-    /// `runningAction` immediately before spawning the surface), so either being set means a step
-    /// is mid-run. Keyed by worktree id (its path), matching how the engine stores both.
+    /// so the view can't leak engine state. Either being set means a step is mid-run: `runningAction`
+    /// alone covers the window where `launchWorkflowAgent` is still awaiting the PATH and no surface
+    /// exists yet. Keyed by worktree id (its path), matching how the engine stores both.
     @MainActor
     func isAgentRunning(forWorktree worktreeId: String) -> Bool {
         runningAction[worktreeId] != nil || agentSurfaces[worktreeId] != nil
+    }
+
+    /// Records a new launch of `slug` for the worktree — the idempotency guard (`runningAction`) plus
+    /// this launch's generation — and returns its identity for the resume check below.
+    @MainActor
+    private func beginLaunch(slug: String, forWorktree worktreeId: String) -> WorkflowLaunchID {
+        runningAction[worktreeId] = slug
+        let generation = (launchGeneration[worktreeId] ?? 0) + 1
+        launchGeneration[worktreeId] = generation
+        return WorkflowLaunchID(slug: slug, generation: generation)
+    }
+
+    /// Whether `launch` is still the launch the engine wants — the check it makes when it resumes
+    /// from awaiting the resolved PATH.
+    ///
+    /// Both halves are load-bearing. The slug catches a *steer*: a manual pick or a halt moves
+    /// `runningAction` to another action, or clears it, and never bumps the generation. The
+    /// generation catches a *relaunch of the same action*: a kill clears `runningAction`, a play
+    /// re-launches the action the worktree still sits on, and the superseded launch would otherwise
+    /// read its own slug back and spawn a second agent into the worktree.
+    @MainActor
+    func isLaunchCurrent(_ launch: WorkflowLaunchID, forWorktree worktreeId: String) -> Bool {
+        runningAction[worktreeId] == launch.slug && launchGeneration[worktreeId] == launch.generation
     }
 
     /// Whether a manual kill should terminate a surface for a worktree — true only when a live agent
@@ -328,7 +360,13 @@ extension WorkTaskCoordinator {
         // Drop any pending auto-launch countdown — stopping the loop must also stop its next launch.
         cancelCountdown(forWorktree: worktree.id)
         guard shouldTerminateOnManualKill(forWorktree: worktree.id),
-              let surface = agentSurfaces[worktree.id] else { return }
+              let surface = agentSurfaces[worktree.id] else {
+            // A running action with no surface means `launchWorkflowAgent` is mid-await on the PATH.
+            // Nothing will exit later to clear `P`, so clear it here: that both un-wedges the engine
+            // and makes the resumed launch abandon itself.
+            runningAction.removeValue(forKey: worktree.id)
+            return
+        }
         terminalManager.terminateSurface(surface, in: worktree.id)
     }
 
@@ -336,11 +374,14 @@ extension WorkTaskCoordinator {
     /// Test/restart seam: sets the in-memory running action (`P`) for a worktree directly, without a
     /// launch. Phase 3's restart-resume rebuilds this from disk; tests use it to stage a mid-loop
     /// state. The worktree id (its path) is the key, matching how `advanceWorkflow` reads `P`.
+    /// Goes through `beginLaunch`, so a staged step is indistinguishable from a launched one; the
+    /// returned identity is what a test needs to stand in for a launch still awaiting its PATH.
     /// DEBUG-only — the test bundle builds DEBUG, so this stays reachable from tests but never ships.
     @MainActor
-    func setRunningActionForTesting(_ slug: String, branch: String, worktreePath: String) {
+    @discardableResult
+    func setRunningActionForTesting(_ slug: String, branch: String, worktreePath: String) -> WorkflowLaunchID {
         let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
-        runningAction[worktreeId] = slug
+        return beginLaunch(slug: slug, forWorktree: worktreeId)
     }
     #endif
 
@@ -530,10 +571,12 @@ extension WorkTaskCoordinator {
     }
 
     /// Shared launch tail for `advanceWorkflow` and `relaunchCurrentAction`: builds the prompt, sets
-    /// the idempotency guard (`runningAction`), and spawns the agent surface. Returns `.ended` for a
-    /// terminal action; else `.launched`. `runningAction` is set immediately before the surface spawn
-    /// with no `await` between — the method is synchronous on `@MainActor`, so guard+launch are atomic
-    /// (a concurrent reload can't interleave between the idempotency guard being set and the spawn).
+    /// the idempotency guard (`runningAction`) and this launch's generation, and spawns the agent
+    /// surface. Returns `.ended` for a terminal action; else `.launched`. Both are set synchronously
+    /// on `@MainActor`, so a concurrent reload can't interleave between the decision and the guard.
+    ///
+    /// The spawn itself is *not* synchronous — it awaits the resolved PATH — so `launchWorkflowAgent`
+    /// re-checks `isLaunchCurrent` before creating the surface. See its docstring.
     ///
     /// The actual surface spawn goes through `workflowAgentLauncher` — `nil` in production (so the real
     /// `launchWorkflowAgent` runs), overridable in harness tests so they can observe a launch without a
@@ -548,12 +591,12 @@ extension WorkTaskCoordinator {
     ) -> WorkflowAdvanceResult {
         guard let action = definition.actions[slug] else { return .ignored }
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
-        runningAction[worktree.id] = slug
+        let launch = beginLaunch(slug: slug, forWorktree: worktree.id)
         let command = workflowAgentCommand(for: definition)
         if let launcher = workflowAgentLauncher {
             launcher(prompt, command, worktree, app)
         } else {
-            launchWorkflowAgent(prompt: prompt, command: command, in: worktree, app: app)
+            launchWorkflowAgent(prompt: prompt, command: command, launch: launch, in: worktree, app: app)
         }
         return nextValue == nil ? .ended(slug: slug) : .launched(slug: slug)
     }
@@ -564,23 +607,45 @@ extension WorkTaskCoordinator {
     /// to `in_progress`/`done`) — under the JSON engine the agent owns every `status` advance, so
     /// the engine must never write status other than the initial seed. The surface is still tracked
     /// for teardown/`isAgentSurface`.
+    ///
+    /// Awaiting the resolved PATH suspends between `performLaunch` setting the guard and the surface
+    /// existing, so `isLaunchCurrent` is re-read on resume: a manual status pick
+    /// (`setWorkflowStatus`), a manual kill, or a fresh launch landing in that window abandons this
+    /// one. Without it the superseded agent would still spawn — untracked, since the steering path
+    /// already ran its teardown — and its eventual status write would halt the loop.
     @MainActor
-    private func launchWorkflowAgent(prompt: String, command: String, in worktree: Worktree, app: ghostty_app_t) {
-        let launch = buildAgentPromptCommand(
-            agentCommand: command,
-            prompt: prompt,
-            filePrefix: "clearway-workflow-prompt"
-        )
-        let surface = terminalManager.launchAgentTab(for: worktree, app: app, command: launch.command)
-        setAgentSurface(surface, forWorktree: worktree.id)
-        agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
-        launchPromptFiles[ObjectIdentifier(surface)] = launch.promptFile
-        let surfaceId = ObjectIdentifier(surface).debugDescription
-        Ghostty.logger.info(
-            "Workflow agent launched worktree=\(worktree.id, privacy: .public) agent=\(command, privacy: .public)"
-        )
-        Ghostty.logger.info(
-            "Workflow agent promptFile=\(launch.promptFile, privacy: .public) surface=\(surfaceId, privacy: .public)"
-        )
+    private func launchWorkflowAgent(
+        prompt: String,
+        command: String,
+        launch: WorkflowLaunchID,
+        in worktree: Worktree,
+        app: ghostty_app_t
+    ) {
+        Task { @MainActor in
+            let agent = buildAgentPromptCommand(
+                agentCommand: command,
+                prompt: prompt,
+                path: await ShellEnvironment.awaitPath(),
+                filePrefix: "clearway-workflow-prompt"
+            )
+            guard isLaunchCurrent(launch, forWorktree: worktree.id) else {
+                try? FileManager.default.removeItem(atPath: agent.promptFile)
+                Ghostty.logger.info(
+                    "Workflow agent launch abandoned worktree=\(worktree.id, privacy: .public) action=\(launch.slug, privacy: .public)"
+                )
+                return
+            }
+            let surface = terminalManager.launchAgentTab(for: worktree, app: app, command: agent.command)
+            setAgentSurface(surface, forWorktree: worktree.id)
+            agentSurfaceIdentities[worktree.id, default: []].insert(ObjectIdentifier(surface))
+            launchPromptFiles[ObjectIdentifier(surface)] = agent.promptFile
+            let surfaceId = ObjectIdentifier(surface).debugDescription
+            Ghostty.logger.info(
+                "Workflow agent launched worktree=\(worktree.id, privacy: .public) agent=\(command, privacy: .public)"
+            )
+            Ghostty.logger.info(
+                "Workflow agent promptFile=\(agent.promptFile, privacy: .public) surface=\(surfaceId, privacy: .public)"
+            )
+        }
     }
 }
