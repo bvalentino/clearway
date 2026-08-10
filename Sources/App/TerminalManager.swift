@@ -49,6 +49,10 @@ class TerminalManager: ObservableObject {
     @Published var taskTerminalVisible: [UUID: Bool] = [:]
     /// Per-task terminal panel height.
     @Published var taskTerminalHeights: [UUID: CGFloat] = [:]
+    /// Tasks whose terminal launch is in flight: the command is not built yet because the launch is
+    /// awaiting the resolved PATH, so no surface exists and `taskTerminalVisible` still reads false.
+    /// Without this claim a second press during that window starts a second agent for the task.
+    var taskLaunchesInFlight: Set<UUID> = []
 
     /// Per-worktree active side panel tab (stored as raw string to avoid coupling to view enum).
     /// Internal so the panel accessors in `TerminalManager+Panels.swift` can reach it.
@@ -162,7 +166,7 @@ class TerminalManager: ObservableObject {
 
         // No main command configured → skip the launcher screen entirely.
         if mainCommandProvider() == nil {
-            promoteLauncher(tabId: initialTab.id, in: key, app: app, mode: .loginShell)
+            promoteLauncher(tabId: initialTab.id, in: key, app: app)
         }
 
         return panes[key] ?? tp
@@ -395,7 +399,7 @@ class TerminalManager: ObservableObject {
         // `pendingFocusTabId` isn't `@Published`, so it must be set *before* the
         // `objectWillChange.send()` below to be visible in the resulting render pass.
         if mainCommandProvider() == nil {
-            promoteLauncher(tabId: newTab.id, in: key, app: app, mode: .loginShell)
+            promoteLauncher(tabId: newTab.id, in: key, app: app)
         } else {
             pendingFocusTabId = newTab.id
         }
@@ -407,56 +411,37 @@ class TerminalManager: ObservableObject {
 
     /// Append a new tab that immediately runs a login shell (no launcher screen).
     ///
-    /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher(mode: .loginShell)`.
+    /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher`.
     /// Used by the Cmd+Shift+T shortcut.
     @discardableResult
     func appendShellTab(for worktree: Worktree, app: ghostty_app_t, projectPath: String? = nil) -> UUID {
         let id = appendLauncherTab(for: worktree, app: app, projectPath: projectPath)
-        promoteLauncher(tabId: id, in: worktree.id, app: app, mode: .loginShell)
+        promoteLauncher(tabId: id, in: worktree.id, app: app)
         return id
     }
 
-    /// How a launcher tab should be promoted: into a plain login shell, a prompt-driven
-    /// agent command, or a bare agent command with no initial prompt.
-    enum LauncherPromotion {
-        case loginShell
-        case prompt(command: String, prompt: String)
-        case command(String)
-    }
-
-    /// Promote a `.launcher` tab to a `.surface` tab in-place, wiring a fresh Ghostty surface.
+    /// Swaps a `.launcher` tab for a `.surface` tab in-place, running `command` — or a login
+    /// shell when it is nil.
     ///
     /// Keeps the tab id and position so the tab strip and focus-routing needn't special-case
-    /// the transition. `.loginShell` spawns pattern 1 (login shell); `.prompt` builds a
-    /// `/bin/sh -c …` command that passes the prompt as a positional arg to the agent
-    /// (see `buildAgentPromptCommand`). No-op (returns nil) if the target tab isn't a launcher.
+    /// the transition. No-op (returns nil) if the target tab isn't a launcher — which is also
+    /// how `promoteLauncherToAgent` handles a tab the user closed while the PATH resolved.
     @discardableResult
     func promoteLauncher(
         tabId: UUID,
         in worktreeId: String,
         app: ghostty_app_t,
-        mode: LauncherPromotion
+        command: String? = nil
     ) -> Ghostty.SurfaceView? {
         guard let pane = panes[worktreeId],
               let tabIndex = pane.main.tabs.firstIndex(where: { $0.id == tabId }),
               pane.main.tabs[tabIndex].isLauncher else { return nil }
 
-        let dir = pane.secondary.initialWorkingDirectory
-        let newSurface: Ghostty.SurfaceView
-        switch mode {
-        case .loginShell:
-            newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
-        case let .prompt(command, prompt):
-            let cmd = buildAgentPromptCommand(
-                agentCommand: command,
-                prompt: prompt,
-                filePrefix: "clearway-launcher"
-            ).command
-            newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
-        case let .command(command):
-            let cmd = buildBareCommand(agentCommand: command)
-            newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, command: cmd)
-        }
+        let newSurface = Ghostty.SurfaceView(
+            app,
+            workingDirectory: pane.secondary.initialWorkingDirectory,
+            command: command
+        )
 
         panes[worktreeId]!.main.tabs[tabIndex].kind = .surface(newSurface)
         panes[worktreeId]!.main.activeId = tabId
@@ -468,20 +453,6 @@ class TerminalManager: ObservableObject {
         objectWillChange.send()
         transferFirstResponder(to: newSurface)
         return newSurface
-    }
-
-    /// Build a `/bin/sh -c` wrapper that runs the agent command with no initial prompt.
-    /// Mirrors `buildAgentPromptCommand`'s PATH export and `set -f` (no glob)
-    /// guarantees, but drops the temp-file/prompt arg and `exec`s so the wrapping
-    /// shell is replaced by the agent process — tab-close signals reach the agent
-    /// directly instead of the shell.
-    ///
-    /// Internal (not `private`) so `TerminalManagerTests` can pin the shell-injection
-    /// invariants without spinning up a Ghostty surface.
-    func buildBareCommand(agentCommand: String) -> String {
-        let recipe = "export PATH=\"$2\"; set -f; exec $1"
-        return "/bin/sh -c " + shellEscape(recipe) + " -- "
-            + shellEscape(agentCommand) + " " + shellEscape(ShellEnvironment.path)
     }
 
     /// Dispatch a first-responder handoff so keyboard focus follows the newly

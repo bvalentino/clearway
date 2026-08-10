@@ -37,6 +37,7 @@ func resolveAgentCommand(
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,
+    path: String,
     filePrefix: String = "clearway-agent-prompt"
 ) -> (command: String, promptFile: String) {
     let tempDir = NSTemporaryDirectory()
@@ -54,6 +55,6 @@ func buildAgentPromptCommand(
     }
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "
-        + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(ShellEnvironment.path)
+        + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(path)
     return (command, promptFile)
 }

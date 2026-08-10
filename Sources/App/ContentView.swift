@@ -782,24 +782,22 @@ struct ContentView: View {
                                         ),
                                         onSubmit: { prompt in
                                             guard let app = ghosttyApp.app else { return }
-                                            let command = settings.resolvedMainTerminalCommand
-                                            let mode: TerminalManager.LauncherPromotion = prompt.isEmpty
-                                                ? .command(command)
-                                                : .prompt(command: command, prompt: prompt)
-                                            terminalManager.promoteLauncher(
-                                                tabId: activeTab.id,
-                                                in: worktreeId,
-                                                app: app,
-                                                mode: mode
-                                            )
+                                            Task {
+                                                await terminalManager.promoteLauncherToAgent(
+                                                    tabId: activeTab.id,
+                                                    in: worktreeId,
+                                                    app: app,
+                                                    command: settings.resolvedMainTerminalCommand,
+                                                    prompt: prompt
+                                                )
+                                            }
                                         },
                                         onOpenTerminal: {
                                             guard let app = ghosttyApp.app else { return }
                                             terminalManager.promoteLauncher(
                                                 tabId: activeTab.id,
                                                 in: worktreeId,
-                                                app: app,
-                                                mode: .loginShell
+                                                app: app
                                             )
                                         },
                                         onConsumeFocus: { terminalManager.pendingFocusTabId = nil }

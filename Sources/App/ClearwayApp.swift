@@ -132,6 +132,7 @@ struct ClearwayApp: App {
 
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
+        ShellEnvironment.startEagerResolution()
         // SettingsManager.init applies the stored color scheme to NSApp, so Ghostty.App
         // picks up the correct effective appearance when it reads it during its own init.
         _settings = StateObject(wrappedValue: SettingsManager())

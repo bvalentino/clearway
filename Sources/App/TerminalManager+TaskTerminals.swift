@@ -59,6 +59,17 @@ extension TerminalManager {
         surface.closeSurface()
     }
 
+    /// Claims the task's terminal for a launch that has yet to build its command, and reports
+    /// whether the claim is this caller's. `false` means a launch is already in flight and this one
+    /// must abandon itself. Release it with `endTaskLaunch` once the surface exists.
+    func beginTaskLaunch(for taskId: UUID) -> Bool {
+        taskLaunchesInFlight.insert(taskId).inserted
+    }
+
+    func endTaskLaunch(for taskId: UUID) {
+        taskLaunchesInFlight.remove(taskId)
+    }
+
     /// Open a task terminal that runs the given command directly (no login shell).
     /// Replaces any existing task surface for the same task.
     func openTaskTerminalWithCommand(for taskId: UUID, app: ghostty_app_t, projectPath: String?, command: String) {
