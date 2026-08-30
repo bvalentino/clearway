@@ -17,6 +17,20 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<td>1</td>"), html)
     }
 
+    /// Without `CMARK_OPT_TABLE_PREFER_STYLE_ATTRIBUTES` cmark emits `align=`, a
+    /// presentational hint that loses to `PreviewCSS`'s `th, td { text-align: left }`,
+    /// so every aligned column would silently render left-aligned.
+    func testTableColumnAlignmentUsesStyleAttribute() {
+        let html = MarkdownRenderer.renderBody(from: """
+        | a | b |
+        |:--|--:|
+        | 1 | 2 |
+        """)
+
+        XCTAssertTrue(html.contains("style=\"text-align: right\""), html)
+        XCTAssertFalse(html.contains("align=\"right\""), html)
+    }
+
     func testUncheckedTaskItemRendersCheckbox() {
         let html = MarkdownRenderer.renderBody(from: "- [ ] todo")
 
@@ -33,6 +47,14 @@ final class MarkdownRendererTests: XCTestCase {
         let html = MarkdownRenderer.renderBody(from: "~~struck~~")
 
         XCTAssertTrue(html.contains("<del>struck</del>"), html)
+    }
+
+    /// `CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE` is what stops a single tilde from
+    /// striking text through — task documents write ranges like `~5~10 minutes`.
+    func testSingleTildeIsNotStrikethrough() {
+        let html = MarkdownRenderer.renderBody(from: "Takes ~5~10 minutes.")
+
+        XCTAssertFalse(html.contains("<del>"), html)
     }
 
     func testBareWWWURLAutolinks() {
@@ -77,9 +99,19 @@ final class MarkdownRendererTests: XCTestCase {
     }
 
     func testPreviewCSSMatchesEmittedTaskListMarkup() {
-        let css = PreviewCSS.css
+        let html = MarkdownRenderer.renderBody(from: "- [ ] todo")
+        XCTAssertTrue(html.contains("<li><input type=\"checkbox\" disabled=\"\" />"), html)
 
-        XCTAssertTrue(css.contains("input[type=\"checkbox\"]"), css)
+        let css = PreviewCSS.css
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: " ")
+
+        XCTAssertTrue(css.contains("li:has(> input[type=\"checkbox\"]) { list-style: none; }"), css)
+        XCTAssertTrue(
+            css.contains("li:has(> input[type=\"checkbox\"]) > p:first-of-type { display: inline; }"),
+            css
+        )
         XCTAssertFalse(css.contains("contains-task-list"), css)
         XCTAssertFalse(css.contains("task-list-item"), css)
     }
