@@ -79,6 +79,7 @@
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
 		8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */; };
 		8F86E5A8BC2C125266589818 /* ShellPathValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */; };
+		92367EB2512A0164CC0984DE /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE877D844360476C671BE156 /* MarkdownRendererTests.swift */; };
 		94E634B515C7B773A791EF1A /* MainTerminalTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */; };
 		980A81CFA86592849DCBC170 /* Ghostty.SurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */; };
 		98B18A8F9508E08F7E852BF4 /* Prompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A28DBBCFBC067478FD8795 /* Prompt.swift */; };
@@ -212,6 +213,7 @@
 		BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningConfig.swift; sourceTree = "<group>"; };
 		BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		BE877D844360476C671BE156 /* MarkdownRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRendererTests.swift; sourceTree = "<group>"; };
 		BF0D1CD2D79BEEEAAEFF6827 /* WorkflowDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDefinition.swift; sourceTree = "<group>"; };
 		BF303BDB106268697C4BEB27 /* WorkTaskWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskWindow.swift; sourceTree = "<group>"; };
 		C00CC5D8B585782655D8A81A /* PromptsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptsView.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 		CF064EDBE730B518F29471B7 /* TerminalTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTab.swift; sourceTree = "<group>"; };
 		D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerTests.swift; sourceTree = "<group>"; };
 		D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngine.swift; sourceTree = "<group>"; };
+		D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Clearway-Bridging-Header.h"; sourceTree = "<group>"; };
 		DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutopilotButton.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E3193EB27B18ECBEDF1F126F /* TerminalManager+Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Panels.swift"; sourceTree = "<group>"; };
@@ -279,6 +282,7 @@
 			children = (
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
 				87D53B2248C692859A82CD26 /* GitResolverTests.swift */,
+				BE877D844360476C671BE156 /* MarkdownRendererTests.swift */,
 				1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */,
 				2E372333888BC8E073569810 /* PromptManagerTests.swift */,
 				D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */,
@@ -324,6 +328,7 @@
 				9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */,
 				6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */,
 				C5EA9088599AFDEA76C47EB6 /* ClaudeSessionFiles.swift */,
+				D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */,
 				A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */,
 				90F058F6484B056DE5C42A4C /* ContentView.swift */,
 				17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */,
@@ -765,6 +770,7 @@
 			files = (
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
 				4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */,
+				92367EB2512A0164CC0984DE /* MarkdownRendererTests.swift in Sources */,
 				4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */,
 				63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */,
 				6F5D6D9BFBD2C994864797CC /* SettingsManagerTests.swift in Sources */,
@@ -857,7 +863,7 @@
 				SWIFT_INCLUDE_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
 				);
-				SWIFT_OBJC_BRIDGING_HEADER = "";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/Clearway-Bridging-Header.h";
 			};
 			name = Debug;
 		};
@@ -1062,7 +1068,7 @@
 				SWIFT_INCLUDE_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/Headers",
 				);
-				SWIFT_OBJC_BRIDGING_HEADER = "";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/Clearway-Bridging-Header.h";
 			};
 			name = Release;
 		};
@@ -1133,8 +1139,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/brokenhandsio/cmark-gfm.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.1.0;
+				kind = exactVersion;
+				version = 2.1.0;
 			};
 		};
 		4D3019AEFAC59B45DF5CF058 /* XCRemoteSwiftPackageReference "Sparkle" */ = {

@@ -98,18 +98,15 @@ enum PreviewCSS {
         margin-bottom: 0;
     }
 
-    /* Task lists */
-    ul.contains-task-list {
+    /* Task lists — cmark-gfm emits a bare <li> with a direct <input> child */
+    li:has(> input[type="checkbox"]) {
         list-style: none;
-        padding-left: 0;
     }
-    li.task-list-item {
-        display: flex;
-        align-items: baseline;
-        gap: 0.4em;
+    li:has(> input[type="checkbox"]) > p:first-of-type {
+        display: inline;
     }
-    li.task-list-item input[type="checkbox"] {
-        margin: 0;
+    li > input[type="checkbox"] {
+        margin-right: 0.4em;
     }
 
     /* Tables */

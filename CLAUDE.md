@@ -46,6 +46,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - `TerminalSurface.swift` — SwiftUI `NSViewRepresentable` wrapper
 - **Sources/App/** — SwiftUI app entry point + task/worktree/workflow logic
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
+- **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
+- swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.
 
 ## Workflow engine
 
