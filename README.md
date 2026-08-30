@@ -53,31 +53,74 @@ swiftlint lint --quiet
 
 Configuration is in `.swiftlint.yml`.
 
-## Task workflows (`WORKFLOW.md`)
+## Task workflows (`.clearway/WORKFLOW.json`)
 
-A project can define task-lifecycle behavior in a `WORKFLOW.md` at its root. The file uses YAML frontmatter for configuration and a markdown body as the agent prompt template.
+A project can define its task pipeline in `.clearway/WORKFLOW.json`. When that file is present and valid, Clearway drives each worktree's task through it: every step launches an agent with that step's instructions, and the agent advances the task by writing the next step's slug into the task's YAML frontmatter. Without the file, you get the worktree and nothing else — you drive the terminal and the status by hand.
 
-State commands surface a play button next to the status picker in the task aside panel. Clicking it pastes the rendered command into the active terminal. Recognized keys under `state_commands`: `in_progress`, `qa`, `ready_for_review`, `done`, `canceled`.
+Edit it from the **Workflow** section in the sidebar, or by hand.
 
-```markdown
----
-agent:
-  command: claude
-state_commands:
-  ready_for_review: /codex:adversarial-review
----
-Work on the following task:
-
-{{ task.title }}
-
-{{ task.body }}
+```json
+{
+  "version": 1,
+  "start": "build",
+  "agent": { "command": "claude" },
+  "actions": {
+    "build": {
+      "name": "Build",
+      "instructions": "Implement the task. Run the test suite before you finish.",
+      "routes": { "success": "review" }
+    },
+    "review": {
+      "name": "Review",
+      "instructions": "Review the diff for correctness and clarity. Do not commit."
+    }
+  }
+}
 ```
 
-Template variables (substituted as `{{ var }}`, interpolated as-is — add your own quoting if a state command targets a shell):
+### Actions
 
-- `task.title`, `task.body`, `task.id`, `task.worktree`, `task.path`
-- `attempt`
-- `status.<name>` for each status raw value
+`actions` is a map keyed by **slug** — the value that lands in the task's `status:` field. Order in the file is cosmetic; flow comes from the pointers.
+
+- `name` — display label. Cosmetic, so renaming it never breaks the graph.
+- `instructions` — the prompt handed to the agent for this step.
+- `routes` — outcome → target slug. v1 has a single outcome, `success`. Omit `routes` to make the action **terminal**: the loop ends there.
+
+`start` names the slug a new worktree begins on. Every pointer (`start`, route targets) must resolve to an action or the file is rejected, and a rejected file reads the same as no file at all. `new` and `ready_to_start` are reserved backlog markers and cannot be used as slugs.
+
+> `agent.timeout_ms`, `max_attempts`, and `on_max_attempts` are accepted and validated, but **not enforced in v1** — they are reserved for a future loop guard. Setting them bounds nothing today; **Stop Agent** is the only thing that halts a running step.
+
+### Agent
+
+```json
+"agent": { "command": "codex" }
+```
+
+The CLI Clearway launches for each step — e.g. `claude`, `codex`, `grok`. Omit `command` (or the whole `agent` object) to inherit the Main Terminal command from Settings.
+
+### Hooks
+
+```json
+"hooks": { "after_create": "bin/setup" }
+```
+
+`after_create` runs in the worktree's secondary terminal just after the worktree is created. It runs in parallel with the agent, so a slow or failing hook never blocks the first step — you see its output inline.
+
+### Planning
+
+```json
+"planning": { "instructions": "/plan-task {{ task.path }}" }
+```
+
+A manual step that sharpens a task *before* a worktree exists, so it sits outside the action graph and has no slug. This is the only field that takes template variables — `{{ task.title }}`, `{{ task.body }}`, `{{ task.id }}`, `{{ task.worktree }}`, `{{ task.path }}`. Action `instructions` are passed through verbatim.
+
+A file may hold only `planning` and no actions, enabling the planning step without turning on the automated loop.
+
+### Running a workflow
+
+Clearway prepends a short context block to each action's `instructions`, telling the agent where the task lives and what to write when it finishes — the next slug for a routed action, `completed: true` for a terminal one. You write only the instructions.
+
+Autopilot is per-worktree and never starts on its own: reopening a project leaves every worktree paused until you press play. Use the toolbar play/pause to resume, and **Stop Agent** in its context menu to end a running step.
 
 ## Architecture
 

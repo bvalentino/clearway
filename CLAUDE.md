@@ -17,6 +17,14 @@ Requires: `zig`, `xcodegen`, `swiftlint`
 ./scripts/run.sh     # build + launch
 ```
 
+## Verifying a change
+
+```bash
+./scripts/ci.sh
+```
+
+Regenerates the Xcode project, lints, builds, and runs the test suite — the same gate `.github/workflows/ci.yml` applies to a PR. Use it instead of a hand-written `xcodebuild` line: new Swift files are invisible to the build until `xcodegen generate` runs, and `build.sh`'s `PRODUCT_NAME` override breaks `TEST_HOST`, so the tests fail to launch.
+
 ## Linting
 
 SwiftLint runs as a post-build script phase. To lint manually:
