@@ -39,6 +39,15 @@ struct WorkflowDefinition: Equatable, Codable {
     /// `instructions` — the prompt rendered against the selected task's `{{ task.* }}` data.
     struct Planning: Equatable, Codable {
         let instructions: String
+
+        /// Optional per-entry model (`"sonnet"`, `"gpt-5.4-codex"`, …), appended as `--model` by
+        /// `applyModel`. `nil` = no flag. Synthesized `Codable` emits no key when absent.
+        let model: String?
+
+        init(instructions: String, model: String? = nil) {
+            self.instructions = instructions
+            self.model = model
+        }
     }
 
     /// Runtime knobs for the agent that runs each action.
@@ -120,12 +129,16 @@ struct WorkflowDefinition: Equatable, Codable {
         /// can trust the pointer), but the engine never routes to it today. `nil` = unset.
         let onMaxAttempts: String?
 
+        /// Optional per-action model, applied the same way as `Planning.model`. `nil` = no flag.
+        let model: String?
+
         private enum CodingKeys: String, CodingKey {
             case name
             case instructions
             case routes
             case maxAttempts = "max_attempts"
             case onMaxAttempts = "on_max_attempts"
+            case model
         }
 
         init(
@@ -133,13 +146,15 @@ struct WorkflowDefinition: Equatable, Codable {
             instructions: String,
             routes: [String: String] = [:],
             maxAttempts: Int? = nil,
-            onMaxAttempts: String? = nil
+            onMaxAttempts: String? = nil,
+            model: String? = nil
         ) {
             self.name = name
             self.instructions = instructions
             self.routes = routes
             self.maxAttempts = maxAttempts
             self.onMaxAttempts = onMaxAttempts
+            self.model = model
         }
 
         init(from decoder: Decoder) throws {
@@ -150,6 +165,7 @@ struct WorkflowDefinition: Equatable, Codable {
             routes = try container.decodeIfPresent([String: String].self, forKey: .routes) ?? [:]
             maxAttempts = try container.decodeIfPresent(Int.self, forKey: .maxAttempts)
             onMaxAttempts = try container.decodeIfPresent(String.self, forKey: .onMaxAttempts)
+            model = try container.decodeIfPresent(String.self, forKey: .model)
         }
 
         func encode(to encoder: Encoder) throws {
@@ -163,6 +179,7 @@ struct WorkflowDefinition: Equatable, Codable {
             }
             try container.encodeIfPresent(maxAttempts, forKey: .maxAttempts)
             try container.encodeIfPresent(onMaxAttempts, forKey: .onMaxAttempts)
+            try container.encodeIfPresent(model, forKey: .model)
         }
     }
 

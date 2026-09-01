@@ -193,8 +193,17 @@ class TerminalManager: ObservableObject {
     /// A new main tab, stamped at birth with the step its worktree is on so the strip can badge
     /// it. Every tab-creating path goes through here, so no caller can forget the stamp and no
     /// launch path needs to pass its slug in — each writes `status` before creating its tab.
-    private func makeTab(_ kind: TerminalTab.Kind, in worktreeId: String) -> TerminalTab {
-        TerminalTab(id: UUID(), kind: kind, stepSlug: currentWorkflowStepProvider(worktreeId))
+    private func makeTab(
+        _ kind: TerminalTab.Kind,
+        in worktreeId: String,
+        launcherCommand: String? = nil
+    ) -> TerminalTab {
+        TerminalTab(
+            id: UUID(),
+            kind: kind,
+            stepSlug: currentWorkflowStepProvider(worktreeId),
+            launcherCommand: launcherCommand
+        )
     }
 
     /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary
@@ -384,11 +393,18 @@ class TerminalManager: ObservableObject {
     /// Append a new launcher tab (no process) to the given worktree's main terminal and activate it.
     ///
     /// Creates the pane on-the-fly when it doesn't exist yet (mirrors `appendMainTab`'s
-    /// fallback). Returns the new tab's id so callers can later promote it.
+    /// fallback). Returns the new tab's id so callers can later promote it. `command` stamps the
+    /// tab for a step's "Run in New Terminal"; the submit reads it back off the tab instead of
+    /// falling back to Main Terminal.
     @discardableResult
-    func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t, projectPath: String? = nil) -> UUID {
+    func appendLauncherTab(
+        for worktree: Worktree,
+        app: ghostty_app_t,
+        projectPath: String? = nil,
+        command: String? = nil
+    ) -> UUID {
         let key = worktree.id
-        let newTab = makeTab(.launcher, in: key)
+        let newTab = makeTab(.launcher, in: key, launcherCommand: command)
 
         if panes[key] != nil {
             panes[key]!.main.tabs.append(newTab)

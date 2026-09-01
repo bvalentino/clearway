@@ -166,14 +166,18 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// The agent command the manual Plan step launches — `WORKFLOW.json` `agent.command` when set,
     /// else Settings → Main Terminal, else `SettingsManager.defaultMainTerminalCommand`
-    /// (see `resolveAgentCommand`).
+    /// (see `resolveAgentCommand`), carrying `planning.model` (see `applyModel`).
     var planningAgentCommand: String {
-        resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command)
+        applyModel(
+            to: resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command),
+            model: rawWorkflowDefinition?.planning?.model
+        )
     }
 
-    /// Command for workflow-loop agent launches — same resolution as Plan.
-    func workflowAgentCommand(for definition: WorkflowDefinition) -> String {
-        resolveAgentCommand(workflowCommand: definition.agent.command)
+    /// Command for workflow-loop agent launches — same resolution as Plan, carrying the action's
+    /// own `model`.
+    func workflowAgentCommand(for definition: WorkflowDefinition, action: WorkflowDefinition.Action?) -> String {
+        applyModel(to: resolveAgentCommand(workflowCommand: definition.agent.command), model: action?.model)
     }
 
     private var exitObserver: Any?

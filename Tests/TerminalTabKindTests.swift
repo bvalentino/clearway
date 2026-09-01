@@ -40,6 +40,24 @@ final class TerminalTabKindTests: XCTestCase {
         XCTAssertFalse(terminal.hasActiveTab)
     }
 
+    // MARK: - Launcher command
+
+    /// Only a step's "Run in New Terminal" stamps a command, so a plain Cmd+T tab carries none even
+    /// while the worktree sits on a modelled step and falls back to Main Terminal. How the stamped
+    /// command is resolved is `WorkflowLoopEngineHarnessTests`' subject, not the tab's.
+    func testLauncherCommandIsUnsetUnlessStamped() {
+        XCTAssertNil(TerminalTab(id: UUID(), kind: .launcher, stepSlug: "review").launcherCommand)
+        XCTAssertEqual(
+            TerminalTab(
+                id: UUID(),
+                kind: .launcher,
+                stepSlug: "review",
+                launcherCommand: "codex --model gpt-5.4-codex"
+            ).launcherCommand,
+            "codex --model gpt-5.4-codex"
+        )
+    }
+
     // MARK: - Launcher draft append
 
     func testAppendingToDraftReturnsTextWhenExistingIsEmpty() {

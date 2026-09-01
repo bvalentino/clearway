@@ -274,7 +274,7 @@ final class WorkflowEditorModelTests: XCTestCase {
             actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
         )
         let model = WorkflowEditorModel(from: base)
-        XCTAssertEqual(model.planning, "Plan the task.")
+        XCTAssertEqual(model.planning?.instructions, "Plan the task.")
     }
 
     func testInitFromDefinitionWithoutPlanningLeavesPlanningNil() {
@@ -287,7 +287,7 @@ final class WorkflowEditorModelTests: XCTestCase {
     func testToDefinitionCarriesPlanningAlongsideActions() {
         var model = WorkflowEditorModel()
         model.add(name: "Implement", instructions: "Do it.")
-        model.planning = "Plan it."
+        model.planning = .init(instructions: "Plan it.")
 
         let definition = assertValid(model)
         XCTAssertEqual(definition.planning?.instructions, "Plan it.")
@@ -298,7 +298,7 @@ final class WorkflowEditorModelTests: XCTestCase {
         // Planning present, zero actions: toDefinition produces a planning-only definition that
         // round-trips (it can't validate — noActions — but it must encode/decode cleanly).
         var model = WorkflowEditorModel()
-        model.planning = "Plan it."
+        model.planning = .init(instructions: "Plan it.")
 
         let definition = model.toDefinition(preserving: nil)
         XCTAssertTrue(definition.actions.isEmpty)
@@ -328,6 +328,81 @@ final class WorkflowEditorModelTests: XCTestCase {
         let definition = model.toDefinition(preserving: base)
         XCTAssertTrue(definition.actions.isEmpty, "all actions removed")
         XCTAssertEqual(definition.planning?.instructions, "Plan it.", "planning survives removing every action")
+    }
+
+    // MARK: - Per-entry model
+
+    func testInitFromDefinitionReadsModelsAsEmptyStringWhenAbsent() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it."),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(model.planning?.model, "", "an absent model reads as the empty field")
+        XCTAssertEqual(model.actions.first?.model, "")
+    }
+
+    func testInitFromDefinitionReadsModels() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it.", model: "fable"),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.", model: "opus")]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(model.planning?.model, "fable")
+        XCTAssertEqual(model.actions.first?.model, "opus")
+    }
+
+    func testToDefinitionCarriesModels() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.actions[0].model = "sonnet"
+        model.planning = .init(instructions: "Plan it.", model: "fable")
+
+        let definition = assertValid(model)
+        XCTAssertEqual(definition.actions["implement"]?.model, "sonnet")
+        XCTAssertEqual(definition.planning?.model, "fable")
+    }
+
+    func testBlankModelRemovesTheKey() throws {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it.", model: "fable"),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.", model: "opus")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.actions[0].model = ""
+        model.planning?.model = ""
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertNil(definition.actions["implement"]?.model)
+        XCTAssertNil(definition.planning?.model)
+        let json = try XCTUnwrap(String(bytes: definition.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("model"), "a cleared model leaves no key behind")
+    }
+
+    func testModelSurvivesMoveAndRemove() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.add(name: "Test", instructions: "Test it.")
+        model.add(name: "Review", instructions: "Review it.")
+        model.actions[2].model = "opus"
+
+        model.move(from: IndexSet(integer: 2), to: 0)
+        model.remove(at: 2)
+
+        let definition = assertValid(model)
+        XCTAssertEqual(definition.actions["review"]?.model, "opus")
+    }
+
+    func testIsCompleteIgnoresTheModel() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        XCTAssertTrue(model.actions[0].isComplete, "a model is never required")
     }
 
     // MARK: - every-mutation-valid sweep

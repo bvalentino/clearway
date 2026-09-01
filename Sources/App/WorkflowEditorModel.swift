@@ -15,6 +15,10 @@ struct WorkflowEditorModel: Equatable {
         var name: String
         var instructions: String
 
+        /// Optional model for this step. Empty = unset, so the detail form's `TextField` keeps a
+        /// non-optional binding like `name`/`instructions`; `toDefinition` maps it back to `nil`.
+        var model: String = ""
+
         var id: String { slug }
 
         /// Both fields are required; an incomplete action is never persisted.
@@ -28,10 +32,16 @@ struct WorkflowEditorModel: Equatable {
     /// `move`; `name`/`instructions` are safe to mutate in place since the slug is frozen.
     var actions: [EditorAction]
 
-    /// The pinned planning instruction, edited above the action list. `nil` = no planning entry;
-    /// non-`nil` (even empty) = a `planning` object is persisted. Outside the action graph — it has
-    /// no slug and never participates in routing.
-    var planning: String?
+    /// The pinned planning entry, edited above the action list. `nil` = no planning entry;
+    /// non-`nil` (even with empty instructions) = a `planning` object is persisted. Outside the
+    /// action graph — it has no slug and never participates in routing.
+    var planning: EditorPlanning?
+
+    /// The editor-facing planning entry.
+    struct EditorPlanning: Equatable {
+        var instructions: String
+        var model: String = ""
+    }
 
     /// The single routing outcome v1 uses.
     static let successOutcome = "success"
@@ -39,7 +49,7 @@ struct WorkflowEditorModel: Equatable {
     /// Fallback slug body for an empty / all-symbol name (`action`, `action_2`, …).
     static let fallbackSlugBase = "action"
 
-    init(actions: [EditorAction] = [], planning: String? = nil) {
+    init(actions: [EditorAction] = [], planning: EditorPlanning? = nil) {
         self.actions = actions
         self.planning = planning
     }
@@ -48,9 +58,16 @@ struct WorkflowEditorModel: Equatable {
     init(from definition: WorkflowDefinition) {
         self.actions = definition.orderedActionSlugs().compactMap { slug in
             guard let action = definition.actions[slug] else { return nil }
-            return EditorAction(slug: slug, name: action.name, instructions: action.instructions)
+            return EditorAction(
+                slug: slug,
+                name: action.name,
+                instructions: action.instructions,
+                model: action.model ?? ""
+            )
         }
-        self.planning = definition.planning?.instructions
+        self.planning = definition.planning.map {
+            EditorPlanning(instructions: $0.instructions, model: $0.model ?? "")
+        }
     }
 
     // MARK: - Slug generation
@@ -119,6 +136,13 @@ struct WorkflowEditorModel: Equatable {
 
     // MARK: - Serialization
 
+    /// The editor's empty field means "no model", which must persist as an absent key rather than
+    /// an empty string — otherwise a models-free file would stop round-tripping minimally.
+    private static func persistedModel(_ model: String) -> String? {
+        let trimmed = model.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Rebuilds a `WorkflowDefinition` from card order: `start` is the first slug, each non-last card
     /// routes `success` to the next, the last is terminal. The editor owns `planning` (carried from
     /// the model, not `base`). Fields the editor doesn't surface (`version`/`agent`/`hooks`, per-action
@@ -142,7 +166,8 @@ struct WorkflowEditorModel: Equatable {
                 instructions: action.instructions,
                 routes: routes,
                 maxAttempts: preserved?.maxAttempts,
-                onMaxAttempts: escape
+                onMaxAttempts: escape,
+                model: Self.persistedModel(action.model)
             )
         }
         return WorkflowDefinition(
@@ -150,7 +175,9 @@ struct WorkflowEditorModel: Equatable {
             start: actions.first?.slug ?? "",
             agent: base?.agent ?? .default,
             hooks: base?.hooks,
-            planning: planning.map { WorkflowDefinition.Planning(instructions: $0) },
+            planning: planning.map {
+                WorkflowDefinition.Planning(instructions: $0.instructions, model: Self.persistedModel($0.model))
+            },
             actions: map
         )
     }

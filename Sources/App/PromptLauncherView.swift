@@ -10,7 +10,9 @@ import SwiftUI
 /// SwiftUI's `TextEditor` cannot distinguish Enter from Shift+Enter on macOS
 /// without private APIs, so we bridge to `NSTextView` for clean `keyDown` hooks.
 struct PromptLauncherView: View {
-    /// Resolved command label used as the text area placeholder (caller passes `SettingsManager.resolvedMainTerminalCommand`).
+    /// The command this launcher will run, used as the text area placeholder. The caller resolves it
+    /// (the tab's own stamped command when a step's "Run in New Terminal" opened it, else Main
+    /// Terminal) so the placeholder never understates what Enter launches.
     let command: String
     /// True only when this launcher tab was just explicitly created (Cmd+T). Plain
     /// selection of a worktree whose active tab is a launcher passes false, so the
