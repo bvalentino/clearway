@@ -431,7 +431,7 @@ extension WorkTaskCoordinator {
     func exposeTask(_ task: WorkTask, forBranch branch: String) -> WorkTask {
         let exposed = workTaskManager.expose(task)
         seedWorkflowStatus(forBranch: branch)
-        return exposed
+        return workTaskManager.task(forWorktree: branch) ?? exposed
     }
 
     /// `exposeTask` for a worktree with no task MD at all: creates an exposed task, then seeds.
@@ -439,6 +439,6 @@ extension WorkTaskCoordinator {
     func createTask(forBranch branch: String) -> WorkTask? {
         guard let created = workTaskManager.createExposedTask(forBranch: branch) else { return nil }
         seedWorkflowStatus(forBranch: branch)
-        return created
+        return workTaskManager.task(forWorktree: branch) ?? created
     }
 }

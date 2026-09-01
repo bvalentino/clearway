@@ -161,6 +161,7 @@ class TerminalManager: ObservableObject {
         if !openWorktreeIds.contains(key) {
             openWorktreeIds.append(key)
         }
+
         setInitialPanelVisibility(for: key, worktree: worktree)
 
         // No main command configured → skip the launcher screen entirely.

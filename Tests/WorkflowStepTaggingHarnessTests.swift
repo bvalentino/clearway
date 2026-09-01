@@ -8,7 +8,9 @@ import GhosttyKit
 @MainActor
 final class WorkflowStepTaggingHarnessTests: WorkflowHarnessTestCase {
 
-    /// A coordinator over one worktree, plus the id the step lookup is keyed by.
+    /// A coordinator over one worktree, plus the id the step lookup is keyed by. `appProvider` is
+    /// wired so `seedWorkflowStatus` runs its trailing advance — the half of the seed that decides
+    /// whether anything launches, and which an unwired provider silently skips.
     private func harness(
         branch: String,
         status: String,
@@ -18,7 +20,9 @@ final class WorkflowStepTaggingHarnessTests: WorkflowHarnessTestCase {
     ) throws -> (coordinator: WorkTaskCoordinator, worktreeId: String) {
         if withWorkflow { try writeWorkflow() }
         let path = try writeWorktreeTask(branch: branch, status: status, title: title, hidden: hidden)
-        return (makeCoordinator(branch: branch, worktreePath: path), worktreeId(branch: branch, path: path))
+        let coordinator = makeCoordinator(branch: branch, worktreePath: path)
+        coordinator.appProvider = { [dummyApp] in dummyApp }
+        return (coordinator, worktreeId(branch: branch, path: path))
     }
 
     /// The seam `ContentView` installs reads the task's status, so a tab opened by hand while the
@@ -98,6 +102,28 @@ final class WorkflowStepTaggingHarnessTests: WorkflowHarnessTestCase {
         XCTAssertNil(coordinator.currentWorkflowStep(forWorktree: worktreeId),
                      "and a tab opened in it carries no badge")
         XCTAssertTrue(coordinator.runningAction.isEmpty, "nothing launches")
+        XCTAssertNil(task?.errorMessage,
+                     "the status the seed deliberately left alone is not an agent's bad write")
+        XCTAssertFalse(coordinator.engineHalted.contains("manual"),
+                       "and it must not halt the branch, which would swallow every later advance")
+    }
+
+    /// The watcher reaches the same un-stepped shadow on every `TASK.md` reload, so the engine has to
+    /// ignore it there too — gating only the seed would halt on the very next reload.
+    func testTheWatcherIgnoresAnUnassociatedWorktree() throws {
+        let (coordinator, _) = try harness(
+            branch: "manual",
+            status: WorkTask.ReservedStatus.inProgress,
+            title: "",
+            hidden: true
+        )
+        coordinator.seedWorkflowStatus(forBranch: "manual")
+
+        coordinator.handleTasksReloaded(branches: ["manual"])
+
+        XCTAssertNil(coordinator.workTaskManager.task(forWorktree: "manual")?.errorMessage)
+        XCTAssertFalse(coordinator.engineHalted.contains("manual"))
+        XCTAssertTrue(coordinator.runningAction.isEmpty)
     }
 
     /// Create Task associates the task and seeds in one call — that is when the worktree gains its
@@ -134,5 +160,7 @@ final class WorkflowStepTaggingHarnessTests: WorkflowHarnessTestCase {
         XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: "planned")?.status, "implement")
         XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: "planned")?.autopilot, true)
         XCTAssertEqual(coordinator.currentWorkflowStep(forWorktree: worktreeId), "implement")
+        XCTAssertEqual(coordinator.runningAction[worktreeId], "implement",
+                       "and the seed's trailing advance really does launch the first step")
     }
 }

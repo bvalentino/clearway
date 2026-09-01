@@ -484,6 +484,11 @@ extension WorkTaskCoordinator {
         guard !engineHalted.contains(branch) else { return .ignored }
         guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
               let task = workTaskManager.task(forWorktree: branch) else { return .ignored }
+        // A hidden shadow the seed deliberately left un-stepped has no task associated, so its status
+        // is Clearway's own marker rather than an agent write — halting on it would blame a
+        // hallucination that never happened, and stick, swallowing every later advance. A step card's
+        // Set Current gives such a worktree a real action, and then it runs normally.
+        guard !task.hidden || definition.actions[task.status] != nil else { return .ignored }
 
         let decision = WorkflowLoopEngine.decideTransition(
             running: runningAction[worktree.id],

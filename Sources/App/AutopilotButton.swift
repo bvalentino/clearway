@@ -10,9 +10,9 @@ import SwiftUI
 ///   when live (`autopilot == true`). A missing `autopilot` (not yet seeded) reads as paused. The
 ///   glyph reflects `autopilot` *directly* — there is no spinner state, because the agent's Ghostty
 ///   terminal persists after a step finishes, so an activity indicator would never clear.
-/// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false) and no agent
-///   surface is live — there is nothing for an agent to do against a blank `TASK.md`, so autopilot
-///   can't be toggled on until the user adds a title/body. A live agent keeps the control enabled so
+/// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false), or is a
+///   hidden shadow with no current step (no task associated — the engine ignores it, so there is
+///   nothing to start), and no agent surface is live. A live agent keeps the control enabled so
 ///   pause / Stop Agent stay reachable.
 ///
 /// Clicking is the primary write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
@@ -50,9 +50,16 @@ struct AutopilotButton: View {
     /// `TASK.md` (e.g. a freshly-created manual worktree), so the button is disabled until it does.
     private var hasContent: Bool { task?.hasContent ?? false }
 
-    /// Disabled when there's nothing to run — no task content and no live agent. A live agent keeps
-    /// the control reachable so pause / Stop Agent stay available.
-    private var isDisabled: Bool { !hasContent && !hasLiveAgent }
+    /// A hidden shadow sitting on no action is a worktree with no task associated: `advanceWorkflow`
+    /// ignores it, so play has nothing to start. A step card's Set Current gives it a real action and
+    /// the control comes back.
+    private var isUnassociated: Bool {
+        task?.hidden == true && workTaskCoordinator.currentWorkflowStep(forWorktree: worktree.id) == nil
+    }
+
+    /// Disabled when there's nothing to run — no step, or no task content — and no live agent. A live
+    /// agent keeps the control reachable so pause / Stop Agent stay available.
+    private var isDisabled: Bool { (isUnassociated || !hasContent) && !hasLiveAgent }
 
     var body: some View {
         // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
@@ -87,11 +94,13 @@ struct AutopilotButton: View {
     }
 
     private var accessibilityValue: String {
+        if isUnassociated { return "Unavailable — create a task for this worktree first" }
         if !hasContent { return "Unavailable — add a task description first" }
         return isLive ? "Active" : "Paused"
     }
 
     private var helpText: String {
+        if isUnassociated { return "Create a task for this worktree to enable autopilot" }
         if !hasContent { return "Add a task description to enable autopilot" }
         return isLive ? "Pause autopilot" : "Start autopilot"
     }

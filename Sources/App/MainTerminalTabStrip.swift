@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Chip subview (scoped ObservableObject for title updates)
+// MARK: - Chip subviews
 
 /// A tab chip: an optional workflow step badge, the title, and the close button that appears on
 /// hover or while active.
