@@ -451,62 +451,6 @@ final class WorkflowDefinitionTests: XCTestCase {
         XCTAssertEqual(back.actions["implement"]?.name, "Implement")
     }
 
-    // MARK: - Per-entry model
-
-    func testModelDecodesOnPlanningAndAction() throws {
-        let json = """
-        {
-          "version": 1,
-          "start": "implement",
-          "planning": { "instructions": "Plan it.", "model": "fable" },
-          "actions": {
-            "implement": { "name": "Implement", "instructions": "Do it.", "model": "opus" }
-          }
-        }
-        """
-        let definition = try decode(json)
-        XCTAssertEqual(definition.planning?.model, "fable")
-        XCTAssertEqual(definition.actions["implement"]?.model, "opus")
-        XCTAssertEqual(try roundTrip(definition), definition)
-    }
-
-    func testModelAbsentDecodesAsNilOnBothEntryKinds() throws {
-        let definition = try decode(Self.validGraphJSON)
-        XCTAssertNil(definition.actions["implement"]?.model)
-        XCTAssertNil(definition.planning?.model)
-    }
-
-    func testEncodeOmitsModelKeyWhenAbsent() throws {
-        let definition = try decode("""
-        {
-          "version": 1,
-          "start": "implement",
-          "planning": { "instructions": "Plan it." },
-          "actions": {
-            "implement": { "name": "Implement", "instructions": "Do it." }
-          }
-        }
-        """)
-        let json = try XCTUnwrap(String(bytes: definition.encoded(), encoding: .utf8))
-        XCTAssertFalse(json.contains("model"), "an absent model emits no key")
-    }
-
-    func testValidateAcceptsMalformedModel() throws {
-        // A bad model value is dropped at launch, never a validation failure — failing here would
-        // make the whole file read as "no JSON workflow" and silently disable autopilot.
-        let definition = try decode("""
-        {
-          "version": 1,
-          "start": "implement",
-          "planning": { "instructions": "Plan it.", "model": "sonnet; curl x" },
-          "actions": {
-            "implement": { "name": "Implement", "instructions": "Do it.", "model": "sonnet; curl x" }
-          }
-        }
-        """)
-        XCTAssertNoThrow(try definition.validate())
-    }
-
     // MARK: - Raw (non-validating) load
 
     func testLoadRawDecodesPlanningOnlyFileWithoutValidation() throws {

@@ -37,7 +37,6 @@ struct WorkflowEditorModel: Equatable {
     /// action graph — it has no slug and never participates in routing.
     var planning: EditorPlanning?
 
-    /// The editor-facing planning entry.
     struct EditorPlanning: Equatable {
         var instructions: String
         var model: String = ""

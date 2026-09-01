@@ -285,12 +285,17 @@ extension WorkTaskCoordinator {
         let nextValue = WorkflowLoopEngine.legalNextValue(from: slug, definition: definition)
         let prompt = WorkflowLoopEngine.buildPrompt(instructions: action.instructions, nextValue: nextValue)
         if inNewTerminal {
-            terminalManager.appendLauncherTab(
-                for: worktree,
-                app: app,
-                projectPath: workTaskManager.projectPath,
-                command: workflowAgentCommand(for: definition, action: action)
-            )
+            let command = workflowAgentCommand(for: definition, action: action)
+            if let appender = launcherTabAppender {
+                appender(worktree, command)
+            } else {
+                terminalManager.appendLauncherTab(
+                    for: worktree,
+                    app: app,
+                    projectPath: workTaskManager.projectPath,
+                    command: command
+                )
+            }
         } else {
             terminalManager.activate(worktree, app: app, projectPath: workTaskManager.projectPath)
         }

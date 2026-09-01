@@ -42,9 +42,10 @@ final class TerminalTabKindTests: XCTestCase {
 
     // MARK: - Launcher command
 
-    /// Only a step's "Run in New Terminal" stamps a command, so a plain Cmd+T tab carries none even
-    /// while the worktree sits on a modelled step and falls back to Main Terminal. How the stamped
-    /// command is resolved is `WorkflowLoopEngineHarnessTests`' subject, not the tab's.
+    /// The initializer defaults the stamp to nil, so a caller that omits it — every path but a step's
+    /// "Run in New Terminal" — leaves the tab on Main Terminal. That those other paths do omit it is
+    /// not pinned here: `makeTab` is private and every tab-creating path needs a live
+    /// `ghostty_app_t`. What the stamp resolves to is `WorkflowModelLaunchTests`' subject.
     func testLauncherCommandIsUnsetUnlessStamped() {
         XCTAssertNil(TerminalTab(id: UUID(), kind: .launcher, stepSlug: "review").launcherCommand)
         XCTAssertEqual(

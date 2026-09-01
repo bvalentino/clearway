@@ -405,6 +405,18 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertTrue(model.actions[0].isComplete, "a model is never required")
     }
 
+    /// `Invalid` and `Required` share an affordance but not a consequence. `isComplete` gates the
+    /// autosave, so blocking on an unusable model would silently stop persisting *every* edit —
+    /// renames, instructions, reordering — while a half-typed value sat in the field. A bad model is
+    /// dropped at launch instead.
+    func testIsCompleteIgnoresAnUnusableModel() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.actions[0].model = "sonnet opus"
+        XCTAssertTrue(model.actions[0].isComplete,
+                      "an Invalid model must not gate persistence the way a missing Required field does")
+    }
+
     // MARK: - every-mutation-valid sweep
 
     func testEveryMutationStaysValid() {

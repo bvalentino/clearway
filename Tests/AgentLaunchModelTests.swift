@@ -74,4 +74,27 @@ final class AgentLaunchModelTests: XCTestCase {
         XCTAssertEqual(applyModel(to: "claude", model: ""), "claude")
         XCTAssertEqual(applyModel(to: "claude", model: "   "), "claude")
     }
+
+    // MARK: - Survival through the launch recipe
+
+    /// `applyModel` returns one string, which `buildAgentPromptCommand` shell-escapes into a *single*
+    /// positional. The only thing that splits `claude --model sonnet` back into three argv words is
+    /// the bare `$1` in the recipe, so quoting it — the textbook SC2086 "fix", and the last unquoted
+    /// expansion left in there — would turn every modelled launch into `command not found` while
+    /// leaving every string-level assertion in this file green.
+    func testRecipeLeavesTheAgentCommandUnquotedSoTheModelFlagWordSplits() {
+        let launch = buildAgentPromptCommand(
+            agentCommand: applyModel(to: "claude", model: "sonnet"),
+            prompt: "Do the thing.",
+            path: NSTemporaryDirectory()
+        )
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+
+        XCTAssertTrue(launch.command.contains("$1 \"$(cat \"$2\")\""),
+                      "$1 must stay unquoted so a multi-word command word-splits: \(launch.command)")
+        XCTAssertFalse(launch.command.contains("\"$1\""),
+                       "quoting $1 would run `claude --model sonnet` as one binary name")
+        XCTAssertTrue(launch.command.contains("'claude --model sonnet'"),
+                      "the whole resolved command arrives as one escaped positional")
+    }
 }

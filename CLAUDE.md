@@ -137,10 +137,12 @@ launch, the gate names what accepts `--model`. Adding an agent to one does not a
 There is **no workflow-wide default model** — each entry is independent, and an omitted model means
 "no flag", not "inherit".
 
-Applied at three launch sites, all reading the model fresh at launch: `planningAgentCommand`
-(Plan), `performLaunch` (autopilot), and the **Run in New Terminal** launcher tab. The first two and
-the third all resolve through `workflowAgentCommand(for:action:)`, so a step's model never leaves the
-agent it was authored against: **the model and the command must travel together**. A workflow that
+Applied at three launch sites: `planningAgentCommand` (Plan), `performLaunch` (autopilot), and the
+**Run in New Terminal** launcher tab. The last two resolve through `workflowAgentCommand(for:action:)`;
+`planningAgentCommand` applies `applyModel` itself, since planning has no `Action` to pass, and reads
+the coordinator's cached `rawWorkflowDefinition` rather than loading from disk per launch. Routing the
+two action sites through one helper is what keeps a step's model with the agent it was authored
+against: **the model and the command must travel together**. A workflow that
 sets `agent.command: "codex"` while Settings → Main Terminal is `claude` would otherwise launch
 `claude --model gpt-5.4-codex` from that tab, which claude rejects outright (exit 1, "There's an issue
 with the selected model") — a broken launch, exactly what `agentsAcceptingModelFlag` exists to
@@ -151,6 +153,17 @@ prevent. So `runWorkflowAction` stamps the whole resolved command onto `Terminal
 what it will run. Nothing else stamps it, so a plain Cmd+T tab still falls back to Main Terminal and
 launches bare even while step-badged, and the value dies with the tab. **Run in Current Terminal**
 carries no model — it pastes into a live agent, and there is no launch to flag.
+
+A stamped tab is also **exempt from the Main Terminal "None" shortcut**. `appendLauncherTab` normally
+promotes straight to a login shell when `mainCommandProvider() == nil`, which would discard the stamp
+before anything could read it (the tab becomes a `.surface`, and `ContentView` reads `launcherCommand`
+only while `isLauncher`) — the step's prompt would then be pasted into a shell instead of run.
+`resolveAgentCommand` never returns empty, so a step run always *has* an agent to launch; the
+promotion is therefore gated on `command == nil`, keeping the launcher up for step runs while Cmd+T
+still opens a login shell. The stamp itself is observed in tests through
+`WorkTaskCoordinator.launcherTabAppender`, a `nil`-in-production seam beside `workflowAgentLauncher` —
+`appendLauncherTab` needs a live `ghostty_app_t`, so without it the whole "Run in New Terminal" wiring
+is unpinnable. The promotion gate above stays untestable for that same reason.
 
 ### Step badge on main tabs
 

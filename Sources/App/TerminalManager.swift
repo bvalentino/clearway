@@ -422,11 +422,13 @@ class TerminalManager: ObservableObject {
         }
 
         // No main command configured → promote immediately to a login shell (which
-        // focuses via `promoteLauncher`). Otherwise the tab stays a launcher, so signal
-        // its view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
-        // `pendingFocusTabId` isn't `@Published`, so it must be set *before* the
-        // `objectWillChange.send()` below to be visible in the resulting render pass.
-        if mainCommandProvider() == nil {
+        // focuses via `promoteLauncher`). A stamped tab is exempt: it carries a workflow
+        // agent to run, so trading it for a login shell would discard the step's command.
+        // Otherwise the tab stays a launcher, so signal its view to focus the prompt input
+        // — this is the explicit-creation (Cmd+T) path. `pendingFocusTabId` isn't
+        // `@Published`, so it must be set *before* the `objectWillChange.send()` below to
+        // be visible in the resulting render pass.
+        if mainCommandProvider() == nil && command == nil {
             promoteLauncher(tabId: newTab.id, in: key, app: app)
         } else {
             pendingFocusTabId = newTab.id
