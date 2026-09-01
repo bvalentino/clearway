@@ -352,6 +352,9 @@ struct ContentView: View {
             // the command at runtime immediately skips the prompt screen on new tabs.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
+            terminalManager.currentWorkflowStepProvider = { [weak workTaskCoordinator] in
+                workTaskCoordinator?.currentWorkflowStep(forWorktree: $0)
+            }
 
             // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
             // can launch agent surfaces without the per-call app argument.

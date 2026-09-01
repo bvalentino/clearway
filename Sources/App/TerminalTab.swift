@@ -29,6 +29,10 @@ struct TerminalTab {
     let id: UUID
     var kind: Kind
 
+    /// The workflow action slug this tab was opened under, or nil outside a workflow step. Riding
+    /// on the tab is what makes it survive `promoteLauncher`, which mutates `kind` in place.
+    var stepSlug: String?
+
     /// The live surface for this tab, or nil if the tab is a launcher.
     var surface: Ghostty.SurfaceView? {
         if case .surface(let s) = kind { return s }
