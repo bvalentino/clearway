@@ -153,7 +153,7 @@ class TerminalManager: ObservableObject {
 
         // Main tab starts as a launcher; no Ghostty surface until the user submits
         // a prompt or clicks "Open terminal" (or `launchAgentTab` replaces it).
-        let initialTab = TerminalTab(id: UUID(), kind: .launcher)
+        let initialTab = makeTab(.launcher, in: key)
         initialTabIds[key] = initialTab.id
         let main = MainTerminal(tabs: [initialTab], activeId: initialTab.id)
         let tp = TerminalPane(main: main, secondary: secondary)
@@ -184,6 +184,18 @@ class TerminalManager: ObservableObject {
     /// "Open secondary terminal on start" preference. Consulted only at pane
     /// creation so manual `Cmd+\` toggles afterwards are preserved.
     var openSecondaryOnStartProvider: () -> Bool = { false }
+
+    /// The workflow step a worktree currently sits on (an action slug), or nil. Wired from
+    /// `ContentView` to `WorkTaskCoordinator.currentWorkflowStep(forWorktree:)`. The default
+    /// leaves every tab untagged, which is what a project without a JSON workflow gets.
+    var currentWorkflowStepProvider: (String) -> String? = { _ in nil }
+
+    /// A new main tab, stamped at birth with the step its worktree is on so the strip can badge
+    /// it. Every tab-creating path goes through here, so no caller can forget the stamp and no
+    /// launch path needs to pass its slug in — each writes `status` before creating its tab.
+    private func makeTab(_ kind: TerminalTab.Kind, in worktreeId: String) -> TerminalTab {
+        TerminalTab(id: UUID(), kind: kind, stepSlug: currentWorkflowStepProvider(worktreeId))
+    }
 
     /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary
     /// follows `openSecondaryOnStartProvider()` for every worktree.
@@ -293,7 +305,7 @@ class TerminalManager: ObservableObject {
     func appendMainTab(for worktree: Worktree, app: ghostty_app_t, command: String, projectPath: String? = nil) -> Ghostty.SurfaceView {
         let key = worktree.id
         let newSurface = Ghostty.SurfaceView(app, workingDirectory: worktree.path ?? projectPath, command: command)
-        let newTab = TerminalTab(id: UUID(), kind: .surface(newSurface))
+        let newTab = makeTab(.surface(newSurface), in: key)
 
         if panes[key] != nil {
             panes[key]!.main.tabs.append(newTab)
@@ -361,7 +373,7 @@ class TerminalManager: ObservableObject {
             ?? activeTab?.surface?.initialWorkingDirectory
             ?? pane.secondary.initialWorkingDirectory
         let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
-        let newTab = TerminalTab(id: UUID(), kind: .surface(newSurface))
+        let newTab = makeTab(.surface(newSurface), in: worktreeId)
         panes[worktreeId]!.main.tabs.append(newTab)
         panes[worktreeId]!.main.activeId = newTab.id
         objectWillChange.send()
@@ -376,7 +388,7 @@ class TerminalManager: ObservableObject {
     @discardableResult
     func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t, projectPath: String? = nil) -> UUID {
         let key = worktree.id
-        let newTab = TerminalTab(id: UUID(), kind: .launcher)
+        let newTab = makeTab(.launcher, in: key)
 
         if panes[key] != nil {
             panes[key]!.main.tabs.append(newTab)

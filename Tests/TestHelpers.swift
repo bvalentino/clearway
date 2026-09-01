@@ -78,6 +78,7 @@ class WorkflowHarnessTestCase: XCTestCase {
         status: String,
         autopilot: Bool? = nil,
         title: String = "Task",
+        hidden: Bool = false,
         id: UUID = UUID()
     ) throws -> String {
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
@@ -86,6 +87,7 @@ class WorkflowHarnessTestCase: XCTestCase {
         let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
         var task = WorkTask(id: id, title: title, status: status, worktree: branch)
         task.autopilot = autopilot
+        task.hidden = hidden
         try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
         return worktreePath
     }

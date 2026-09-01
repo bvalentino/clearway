@@ -134,6 +134,13 @@ extension WorkTaskCoordinator {
         worktreeManager.worktrees.first(where: { $0.branch == branch })?.id
     }
 
+    /// The branch of the worktree with this id, or `nil` when no live worktree matches. The mirror
+    /// of `worktreeId(forBranch:)`: engine state is keyed by worktree id, task state by branch.
+    @MainActor
+    func branch(forWorktree worktreeId: String) -> String? {
+        worktreeManager.worktrees.first(where: { $0.id == worktreeId })?.branch
+    }
+
     /// The pending auto-run countdown for a branch's worktree, or `nil` when none is scheduled — the
     /// read-only window the task aside's current card uses to render its depleting ring + Pause.
     @MainActor
@@ -159,6 +166,28 @@ extension WorkTaskCoordinator {
     @MainActor
     func workflowActionSlugs() -> [String]? {
         workflowDefinition?.orderedActionSlugs()
+    }
+
+    /// An action's display label, read from the **cached** definition like `workflowActionSlugs()`
+    /// so the tab strip never hits disk per render.
+    func workflowActionName(_ slug: String) -> String? {
+        workflowDefinition?.actions[slug]?.name
+    }
+
+    /// The workflow step a worktree currently sits on — what a newly opened tab is badged with.
+    ///
+    /// Sourced from the task's `status`, **not** `runningAction`: the latter holds a slug only while
+    /// an agent process is alive, so it is empty for the whole of normal manual use (opening a
+    /// worktree pauses autopilot, and a manual step pick clears it outright) and would leave every
+    /// hand-opened tab unbadged. Admitting the status only when it names a real action is what keeps
+    /// reserved backlog markers, the legacy fixed states, and projects with no `WORKFLOW.json` from
+    /// badging anything — no caller needs to branch on `isWorkflowJSONProject`.
+    @MainActor
+    func currentWorkflowStep(forWorktree worktreeId: String) -> String? {
+        guard let branch = branch(forWorktree: worktreeId),
+              let status = workTaskManager.task(forWorktree: branch)?.status,
+              workflowDefinition?.actions[status] != nil else { return nil }
+        return status
     }
 
     /// Writes a **manual** status change from the task aside's picker. A human pick is an explicit
@@ -328,7 +357,7 @@ extension WorkTaskCoordinator {
     func pauseIfAgentDiedMidStep(worktreeId: String, clearedAction: String?) {
         guard let clearedAction,
               hasJSONWorkflow(),
-              let branch = worktreeManager.worktrees.first(where: { $0.id == worktreeId })?.branch,
+              let branch = branch(forWorktree: worktreeId),
               let task = workTaskManager.task(forWorktree: branch),
               task.autopilot != false else { return }
         let diskStatus = workTaskManager.freshStatus(forWorktree: branch) ?? task.status
@@ -417,7 +446,9 @@ extension WorkTaskCoordinator {
         workTaskManager.updateFields(id: task.id) { updated in
             // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
             // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
-            if definition.actions[updated.status] == nil { updated.status = definition.start }
+            // A **hidden** task is a shadow: no task is associated with the worktree yet, so it gets no
+            // step until `exposeTask` associates one and calls back here.
+            if definition.actions[updated.status] == nil && !updated.hidden { updated.status = definition.start }
             // Default autopilot on **only when the task has content** to work on — a manually-created
             // worktree with a blank TASK.md starts paused (`false`, not `nil`, since the engine treats a
             // missing flag as on and would launch anyway). Written alongside the seed as one coherent
@@ -453,6 +484,11 @@ extension WorkTaskCoordinator {
         guard !engineHalted.contains(branch) else { return .ignored }
         guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
               let task = workTaskManager.task(forWorktree: branch) else { return .ignored }
+        // A hidden shadow the seed deliberately left un-stepped has no task associated, so its status
+        // is Clearway's own marker rather than an agent write — halting on it would blame a
+        // hallucination that never happened, and stick, swallowing every later advance. A step card's
+        // Set Current gives such a worktree a real action, and then it runs normally.
+        guard !task.hidden || definition.actions[task.status] != nil else { return .ignored }
 
         let decision = WorkflowLoopEngine.decideTransition(
             running: runningAction[worktree.id],

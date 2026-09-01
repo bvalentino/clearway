@@ -113,8 +113,7 @@ struct TaskAsideView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
-                let exposed = workTaskManager.expose(task)
-                openTaskWindow(exposed)
+                openTaskWindow(workTaskCoordinator.exposeTask(task, forBranch: worktreeBranch))
             } label: {
                 Label("Create Task", systemImage: "plus")
             }
@@ -131,7 +130,7 @@ struct TaskAsideView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
-                if let created = workTaskManager.createExposedTask(forBranch: worktreeBranch) {
+                if let created = workTaskCoordinator.createTask(forBranch: worktreeBranch) {
                     openTaskWindow(created)
                 }
             } label: {

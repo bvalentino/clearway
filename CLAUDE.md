@@ -82,7 +82,7 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
 
 `WorkflowLoopEngine.decideTransition(running:written:autopilot:definition:)` is a **pure** function returning `.launch(slug:nextValue:)` / `.ignore` / `.halt(reason:)`. The stateful plumbing lives in `WorkTaskCoordinator+WorkflowEngine.swift` (`@MainActor`).
 
-- **Seed.** On worktree creation in a JSON project, `seedWorkflowStatus` writes `status = start` (the engine's **only** write to `status` — the agent owns all advances) and defaults `autopilot = true`.
+- **Seed.** On worktree creation in a JSON project, `seedWorkflowStatus` writes `status = start` (the engine's **only** write to `status` — the agent owns all advances) and defaults `autopilot = true`. The `status` write is skipped for a **hidden** task — a manually-created worktree's shadow, which means no task is associated yet, so the seed leaves it on `in_progress` with no step to badge tabs with — and `advanceWorkflow` ignores a hidden task whose status names no action, since that status is Clearway's own marker and the unknown-slug halt would otherwise fire on it (from the seed *and* every later reload) and stick. The gate is on the *automatic* seed, not on the user: a step card's Set Current / Run writes whatever slug it is handed, hidden task or not, and such a worktree does then badge. The aside's **Create Task** button goes through `WorkTaskCoordinator.exposeTask` / `createTask`, which associate the task and then seed — and *that* is when such a worktree gains `start`. `autopilot` is still written on the first seed either way, since a `nil` would read as on.
 - **Watch.** On a `.clearway/TASK.md` reload (`handleTasksReloaded`), `advanceWorkflow` feeds the change through `decideTransition`: `S == P` or a backlog marker → ignore; **while a step is running** (`P != nil`), `S` must be a legal route out of `P` or it halts; **while idle** (`P == nil` — after the seed, after a step's agent exits, or a manual status pick) any real action launches (no route validation — there's no active step to validate against); an unknown slug always halts + surfaces `errorMessage`. Route validation is thus enforced only mid-step, where a hallucinated advance actually needs guarding.
 - **Manual status pick.** The task aside's status picker lists the `WORKFLOW.json` actions (`workflowActionSlugs()`, flow-ordered — reading the coordinator's **cached** definition, not a per-render disk load) and writes via `setWorkflowStatus`. A human pick may set **any** state and is **never route-validated**: it **terminates a live agent surface first** (steering, not stopping — autopilot is *not* paused, unlike `manualKill`; otherwise the superseded agent and the relaunched one would both run and the zombie's eventual status write would halt the loop), clears the running pointer (`runningAction`) so the watcher's `advanceWorkflow` takes the *idle* path (launch under autopilot / hold under pause) instead of validating a transition from the running action, and clears any halt + error so a halted loop recovers. This is why the picker never produces a "not a legal next" halt.
 - **Launch.** `WorkflowLoopEngine.buildPrompt(instructions:nextValue:)` **prepends** a labeled `Context:` block — closed by a trailing `---` thematic break, and leading with the label (never a `---` fence) so it can't be mistaken for the task's own YAML frontmatter — to the action's own `instructions` (which land last, for highest-recency emphasis):
@@ -97,9 +97,38 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
   A **terminal** action (`nextValue == nil`) gets the same preamble but with `set `completed: true` in the task's frontmatter` instead of the `status:` advance — it runs once and the loop ends.
 - **No trust gate.** `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches the resolved agent command (workflow `agent.command`, or Main Terminal when omitted) directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its agent command and `hooks.after_create` with no approval step (mitigated by: the hook runs visibly in the secondary terminal, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
 
+### Step badge on main tabs
+
+Each main tab carries `TerminalTab.stepSlug: String?` — the workflow action it was opened under —
+and `MainTerminalTabStrip` renders it as a pill before the tab title (`WorkflowStepBadge`). The tag
+is **per-tab and historical**: it records the step current at creation and never changes, so tabs
+opened before any step was current stay unbadged.
+
+Every tab-creating path (`pane(for:app:projectPath:)`, `appendMainTab`, `appendLauncherTab`,
+`newShellTab`) builds its tab through the private `TerminalManager.makeTab(_:in:)`, which stamps
+the slug at construction from the `currentWorkflowStepProvider` seam — wired in `ContentView` to
+`WorkTaskCoordinator.currentWorkflowStep(forWorktree:)`.
+
+Two invariants make this smaller than it looks, and both are easy to break:
+
+- **The source is the task's `status`, not `runningAction`.** `runningAction` holds a slug only
+  while an agent process is alive, so it is empty for all of manual use — opening a worktree pauses
+  autopilot, and a manual step pick clears it outright — and would leave every hand-opened tab
+  unbadged. No launch path needs to pass its slug in, because each writes `status` *before* creating
+  its tab: the engine launches the slug the agent just wrote, `seedWorkflowStatus` writes `start`
+  first, and a step card's Run calls `setWorkflowActionCurrent` first.
+- **The status is admitted only when it names an action** in the cached definition
+  (`workflowDefinition?.actions[status] != nil`). That single gate is why nothing badges for the
+  reserved backlog markers, for the legacy fixed states, or in a project with no `WORKFLOW.json` —
+  and why no caller branches on `isWorkflowJSONProject`.
+
+The badge takes its host chip's foreground colour (`.primary` when inactive, white on the
+accent-filled active chip) rather than a per-step palette: the active chip is filled with the user's
+*system* accent colour, which no fixed palette can be guaranteed to sit legibly on.
+
 ### Autopilot (`WorkTask.autopilot: Bool?`)
 
-- Default `true` at creation **iff** the project has a valid `WORKFLOW.json` **and the task has content** (`WorkTask.hasContent` — a non-empty title or body). A manually-created worktree with a blank `TASK.md` seeds `autopilot: false` (paused, written explicitly — `nil` would read as on and launch anyway) and its toolbar button is **disabled** until the user gives it something to do. Non-JSON projects have no `autopilot` field.
+- Default `true` at creation **iff** the project has a valid `WORKFLOW.json` **and the task has content** (`WorkTask.hasContent` — a non-empty title or body). A manually-created worktree with a blank `TASK.md` seeds `autopilot: false` (paused, written explicitly — `nil` would read as on and launch anyway) and its toolbar button is **disabled** until the user gives it something to do — as it also is while the task is a hidden shadow with no current step, since the engine ignores such a worktree and play would have nothing to start. Non-JSON projects have no `autopilot` field.
 - Toolbar play/pause control: `AutopilotButton` (in `AutopilotButton.swift`), **hidden** unless `isWorkflowJSONProject`. Click writes `autopilot` via `WorkTaskManager.setAutopilot`.
 - Disable = **pause** (never interrupts a running agent — the running step finishes, nothing new launches). Enable = **resume** the current action (idempotent, `handleAutopilotFlip`).
 - **Agent death pauses.** If the live agent exits **without having advanced `status` on disk** (crash, Ctrl-C, the user closing its terminal), `handleChildExited` → `pauseIfAgentDiedMidStep` writes `autopilot = false` — otherwise the worktree would sit idle with autopilot on and the engine's idle rule would respawn the same action on the next reload. "Died vs. advanced" is judged against a **fresh disk read** (`WorkTaskManager.freshStatus`), since a normal advance's exit can beat the debounced reload; disk is race-free (a dead process can't write afterwards). `handleMainTabClosed` leaves a still-live agent's bookkeeping in place so the exit stays attributable to `handleChildExited`.
