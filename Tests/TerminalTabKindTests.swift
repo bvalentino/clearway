@@ -40,6 +40,25 @@ final class TerminalTabKindTests: XCTestCase {
         XCTAssertFalse(terminal.hasActiveTab)
     }
 
+    // MARK: - Launcher command
+
+    /// The initializer defaults the stamp to nil, so a caller that omits it — every path but a step's
+    /// "Run in New Terminal" — leaves the tab on Main Terminal. That those other paths do omit it is
+    /// not pinned here: `makeTab` is private and every tab-creating path needs a live
+    /// `ghostty_app_t`. What the stamp resolves to is `WorkflowModelLaunchTests`' subject.
+    func testLauncherCommandIsUnsetUnlessStamped() {
+        XCTAssertNil(TerminalTab(id: UUID(), kind: .launcher, stepSlug: "review").launcherCommand)
+        XCTAssertEqual(
+            TerminalTab(
+                id: UUID(),
+                kind: .launcher,
+                stepSlug: "review",
+                launcherCommand: "codex --model gpt-5.4-codex"
+            ).launcherCommand,
+            "codex --model gpt-5.4-codex"
+        )
+    }
+
     // MARK: - Launcher draft append
 
     func testAppendingToDraftReturnsTextWhenExistingIsEmpty() {

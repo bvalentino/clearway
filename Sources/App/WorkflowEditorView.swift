@@ -164,7 +164,7 @@ struct WorkflowEditorView: View {
                 forceValidation: forceValidation
             )
         } else if editingPlanning {
-            WorkflowPlanningDetailView(instructions: planningTextBinding, contentMaxWidth: contentMaxWidth)
+            WorkflowPlanningDetailView(planning: planningBinding, contentMaxWidth: contentMaxWidth)
         } else {
             VStack(spacing: 0) {
                 planningEntry
@@ -176,10 +176,10 @@ struct WorkflowEditorView: View {
         }
     }
 
-    /// A two-way binding to the planning text, mapping the optional model field to the detail editor's
-    /// non-optional `TextEditor` binding.
-    private var planningTextBinding: Binding<String> {
-        Binding(get: { model.planning ?? "" }, set: { model.planning = $0 })
+    /// A two-way binding to the planning entry, mapping the optional model field to the detail
+    /// editor's non-optional binding.
+    private var planningBinding: Binding<WorkflowEditorModel.EditorPlanning> {
+        Binding(get: { model.planning ?? .init(instructions: "") }, set: { model.planning = $0 })
     }
 
     // MARK: - Pinned planning entry
@@ -191,7 +191,7 @@ struct WorkflowEditorView: View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader("Planning")
 
-            if let instructions = model.planning {
+            if let instructions = model.planning?.instructions {
                 Button { openPlanningEditor() } label: {
                     WorkflowActionCard(name: "Planning", instructions: instructions)
                 }
@@ -379,7 +379,7 @@ struct WorkflowEditorView: View {
     // MARK: - Planning mutations
 
     private func addPlanning() {
-        model.planning = ""
+        model.planning = .init(instructions: "")
         planningIsNew = true
         editingPlanning = true
     }
@@ -393,7 +393,7 @@ struct WorkflowEditorView: View {
     /// added blank entry is discarded and a cleared one is removed), then the write is flushed since
     /// a new planning's saves were suppressed while editing.
     private func closePlanningEditor() {
-        if model.planning?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+        if model.planning?.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
             model.planning = nil
         }
         finishPlanningEdit()
@@ -541,42 +541,38 @@ struct WorkflowEditorView: View {
 
 // MARK: - Planning detail form
 
-/// The editing form for the pinned planning instruction: a single multi-line instructions field.
+/// The editing form for the pinned planning entry: its multi-line instructions plus an optional model.
 /// Unlike an action, planning has no name, slug, or routes. Back navigation and Remove live in the
 /// window toolbar.
 private struct WorkflowPlanningDetailView: View {
-    @Binding var instructions: String
+    @Binding var planning: WorkflowEditorModel.EditorPlanning
     let contentMaxWidth: CGFloat
 
     @FocusState private var focused: Bool
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Instructions")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                // TextEditor (not TextField) so Return inserts a line break.
-                TextEditor(text: $instructions)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 200)
-                    .focused($focused)
-                    .padding(8)
-                    .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color(.separatorColor), lineWidth: 1)
-                    )
-                    .accessibilityLabel("Planning instructions")
-                Text("Runs when you tap Plan, before the worktree exists. "
-                    + "Use {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    workflowDetailField("Instructions") {
+                        // TextEditor (not TextField) so Return inserts a line break.
+                        TextEditor(text: $planning.instructions)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 200)
+                            .focused($focused)
+                            .accessibilityLabel("Planning instructions")
+                    }
+                    Text("Runs when you tap Plan, before the worktree exists. "
+                        + "Use {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                workflowModelField($planning.model, accessibilityLabel: "Planning model")
             }
                 .workflowDetailFormContainer(maxWidth: contentMaxWidth)
         }
-        .onAppear { if instructions.isEmpty { focused = true } }
+        .onAppear { if planning.instructions.isEmpty { focused = true } }
     }
 }
 
@@ -598,14 +594,17 @@ private struct WorkflowActionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                field("Name", isMissing: (nameEdited || forceValidation) && isBlank(action.name)) {
+                workflowDetailField("Name", warning: requiredWarning(nameEdited, action.name)) {
                     TextField("Action name", text: $action.name)
                         .textFieldStyle(.plain)
                         .font(.body)
                         .focused($nameFocused)
                         .accessibilityLabel("Action name")
                 }
-                field("Instructions", isMissing: (instructionsEdited || forceValidation) && isBlank(action.instructions)) {
+                workflowDetailField(
+                    "Instructions",
+                    warning: requiredWarning(instructionsEdited, action.instructions)
+                ) {
                     // TextEditor (not TextField) so Return inserts a line break.
                     TextEditor(text: $action.instructions)
                         .font(.body)
@@ -613,6 +612,7 @@ private struct WorkflowActionDetailView: View {
                         .frame(minHeight: 160)
                         .accessibilityLabel("Action instructions")
                 }
+                workflowModelField($action.model, accessibilityLabel: "Action model")
             }
                 .workflowDetailFormContainer(maxWidth: contentMaxWidth)
         }
@@ -623,36 +623,54 @@ private struct WorkflowActionDetailView: View {
         }
     }
 
-    private func isBlank(_ text: String) -> Bool {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func requiredWarning(_ edited: Bool, _ text: String) -> String? {
+        guard edited || forceValidation,
+              text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return "Required"
     }
+}
 
-    @ViewBuilder
-    private func field<Content: View>(
-        _ title: String,
-        isMissing: Bool,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                if isMissing {
-                    Text("Required")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
+/// The Model field, shared by both detail forms. `Invalid` flags a multi-word value, which
+/// `applyModel` drops at launch with no flag and no message anywhere. A typo (`sonet`) is not
+/// caught — it reaches the agent and errors visibly in its terminal.
+@ViewBuilder
+private func workflowModelField(_ model: Binding<String>, accessibilityLabel: String) -> some View {
+    let trimmed = model.wrappedValue.trimmingCharacters(in: .whitespaces)
+    workflowDetailField("Model", warning: trimmed.isEmpty || isModelValueSafe(trimmed) ? nil : "Invalid") {
+        TextField("Default", text: model)
+            .textFieldStyle(.plain)
+            .font(.body)
+            .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+/// One labeled field in the editor's detail forms. `warning` renders beside the label and tints the
+/// border — "Required" for a missing required field, "Invalid" for an unusable model.
+@ViewBuilder
+private func workflowDetailField<Content: View>(
+    _ title: String,
+    warning: String? = nil,
+    @ViewBuilder content: () -> Content
+) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let warning {
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
-            content()
-                .padding(8)
-                .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isMissing ? Color.red.opacity(0.7) : Color(.separatorColor),
-                                      lineWidth: 1)
-                )
         }
+        content()
+            .padding(8)
+            .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(warning != nil ? Color.red.opacity(0.7) : Color(.separatorColor),
+                                  lineWidth: 1)
+            )
     }
 }
 

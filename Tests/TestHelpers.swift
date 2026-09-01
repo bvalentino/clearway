@@ -113,6 +113,27 @@ class WorkflowHarnessTestCase: XCTestCase {
         return coordinator
     }
 
+    /// Temporarily sets Main Terminal on `UserDefaults.standard` (what `resolveAgentCommand` reads)
+    /// and restores the prior value. Isolated suites cannot be used here: production resolution
+    /// always goes through `.standard`.
+    func withMainTerminalCommand(_ command: String?, _ body: () throws -> Void) rethrows {
+        let key = SettingsKey.mainTerminalCommand
+        let previous = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        if let command {
+            UserDefaults.standard.set(command, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        try body()
+    }
+
     /// The worktree id (its path) the coordinator keys engine state by.
     func worktreeId(branch: String, path: String) -> String {
         Worktree(branch: branch, path: path, isMain: false, headStatus: .attached).id

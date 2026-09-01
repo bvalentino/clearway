@@ -84,6 +84,12 @@ class WorkTaskCoordinator: ObservableObject {
     /// Ghostty app (mirrors `appProvider`).
     var workflowAgentLauncher: (@MainActor (_ prompt: String, _ command: String, _ worktree: Worktree, _ app: ghostty_app_t) -> Void)?
 
+    /// Test seam for a step's "Run in New Terminal" tab append. `nil` in production → `runWorkflowAction`
+    /// calls the real `TerminalManager.appendLauncherTab`. Harness tests override it to observe the
+    /// command stamped onto the launcher tab, which `appendLauncherTab` itself cannot expose without a
+    /// live Ghostty app (mirrors `workflowAgentLauncher`).
+    var launcherTabAppender: (@MainActor (_ worktree: Worktree, _ command: String) -> Void)?
+
     /// A pending auto-run countdown: the action about to auto-launch and the deadline the card
     /// animates against. Keyed by worktree id (its path), matching `runningAction`. `@Published` so
     /// the `.current` action card reactively shows/hides the depleting-ring affordance. A grace-period
@@ -166,14 +172,18 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// The agent command the manual Plan step launches — `WORKFLOW.json` `agent.command` when set,
     /// else Settings → Main Terminal, else `SettingsManager.defaultMainTerminalCommand`
-    /// (see `resolveAgentCommand`).
+    /// (see `resolveAgentCommand`), carrying `planning.model` (see `applyModel`).
     var planningAgentCommand: String {
-        resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command)
+        applyModel(
+            to: resolveAgentCommand(workflowCommand: rawWorkflowDefinition?.agent.command),
+            model: rawWorkflowDefinition?.planning?.model
+        )
     }
 
-    /// Command for workflow-loop agent launches — same resolution as Plan.
-    func workflowAgentCommand(for definition: WorkflowDefinition) -> String {
-        resolveAgentCommand(workflowCommand: definition.agent.command)
+    /// Command for workflow-loop agent launches — same resolution as Plan, carrying the action's
+    /// own `model`.
+    func workflowAgentCommand(for definition: WorkflowDefinition, action: WorkflowDefinition.Action) -> String {
+        applyModel(to: resolveAgentCommand(workflowCommand: definition.agent.command), model: action.model)
     }
 
     private var exitObserver: Any?

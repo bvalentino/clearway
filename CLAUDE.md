@@ -66,6 +66,8 @@ Decoded with `Codable` (snake_case JSON keys → camelCase Swift):
 - `hooks` (optional `Hooks`): `afterCreate` (`after_create`) / `beforeRun` (`before_run`) shell commands. **`after_create` is wired** — sourced via `workflowAfterCreateHook()` and run on worktree creation (`ContentView`'s `lastCreatedBranch` handler). It runs **in parallel** in the worktree's persistent secondary terminal (`TerminalManager.runHookInSecondary`, fed via `sendPaste`), **decoupled from the agent launch**: the agent seeds and launches immediately and never waits for the hook, and a failing hook can't block it (the command runs raw in the secondary terminal, so the user sees any failure inline). **`before_run` is decoded but NOT yet executed** (reserved; a per-action interactive hook sheet would break autopilot — wiring it would need a non-interactive run before each launch).
 - `actions: [String: Action]` — a **map keyed by frozen slug** (order is cosmetic). Each `Action` has `name` (editable display label), `instructions` (agent prompt), `routes` (`[outcome: targetSlug]`, v1 has a single `success` outcome; empty/absent = **terminal**), and the **reserved** `maxAttempts` (`max_attempts`) / `onMaxAttempts` (`on_max_attempts`).
 
+Both `Planning` and `Action` also carry an optional `model` (`nil` = unset) — see **Per-entry model** below.
+
 `maxAttempts`/`onMaxAttempts` are **decoded and validated but NOT enforced in v1** (see loop guard below). Pointers (`start`, route values, `onMaxAttempts`) target slugs, never `name`. `validate()` rejects empty `actions`, a `start`/route/`onMaxAttempts` target that doesn't resolve, and an action keyed by a reserved backlog marker (`new`/`ready_to_start` — the engine unconditionally ignores those, so such an action would be silently unreachable). Helpers: `isTerminal(_:)`, `legalNext(from:)` (sorted for deterministic injection).
 
 ### status-as-slug contract
@@ -96,6 +98,72 @@ Loop end-states are **derived, not stored**: **done** = status sits on a routele
   ```
   A **terminal** action (`nextValue == nil`) gets the same preamble but with `set `completed: true` in the task's frontmatter` instead of the `status:` advance — it runs once and the loop ends.
 - **No trust gate.** `WORKFLOW.json` is **not** trust-gated: it is treated as user-authored config, so the engine launches the resolved agent command (workflow `agent.command`, or Main Terminal when omitted) directly. Note the trade-off (maintainer-approved): the file is *repo*-authored — starting a task in a freshly cloned third-party repo with a `.clearway/WORKFLOW.json` runs its agent command and `hooks.after_create` with no approval step (mitigated by: the hook runs visibly in the secondary terminal, autopilot never auto-starts on open, and a worktree must be explicitly created). The launch goes through `WorkTaskCoordinator.workflowAgentLauncher` (a `nil`-in-production seam the harness tests override to observe a launch without a live Ghostty surface).
+
+### Per-entry model
+
+`planning.model` and each action's `model` name the model that entry's agent launches on.
+`applyModel(to:model:)` (in `AgentLaunch.swift`) appends `--model <model>` to an **already-resolved**
+command, and returns it untouched unless both hold:
+
+- **The command is a known agent** — first whitespace-separated token, last path component, in
+  `agentsAcceptingModelFlag` (`claude`, `codex`, `grok`). All three were verified to take the same
+  `--model <value>` long form: `claude --model`; `codex -m, --model <MODEL>` (openai/codex,
+  `codex-rs/utils/cli/src/shared_options.rs`, shared options flattened into both the interactive TUI
+  and `exec`); `grok -m, --model <MODEL>` (https://docs.x.ai/build/cli/reference). **Verify any new
+  agent against its own docs before adding it** — appending a flag a CLI does not accept turns a
+  working launch into a broken one, which is the whole point of the gate. `npx claude` and
+  `env FOO=1 claude` read as unknown and get the no-flag path — an accepted miss, never a broken launch.
+- **The value is a single non-empty word.** It lands in `buildAgentPromptCommand`'s *unquoted*
+  command expansion (`$1 "$(cat "$2")"`), which **word-splits**, so a multi-word value would reach
+  the agent as extra argv words. That is the whole risk: unquoted parameter expansion is never
+  re-scanned for shell operators, so `sonnet; curl x` arrives as the literal argv words `sonnet;`,
+  `curl`, `x` and nothing executes. This is a well-formedness check, **not** an injection guard —
+  do not re-tighten it to a charset on security grounds. It deliberately admits provider-prefixed
+  and tagged IDs (`openai/gpt-5`, `gpt-oss:20b`), which non-claude agents use.
+
+A failing value is **dropped, never an error**: the agent launches with no flag and `validate()` stays
+permissive, because failing validation would make the whole file read as "no JSON workflow" and
+silently disable autopilot over a typo. The editor's Model field flags a multi-word value `Invalid` inline
+(reusing the same affordance that renders `Required`). It does **not** flag the other silent drop —
+a model set while `agent.command` is an unknown agent also launches with no flag and no message; the
+editor could say so (it holds `agent.command` via `lastLoaded`) and today does not. A *typo* is not
+caught either — this is not a known-model list, and model names are per-agent, so `opus` under `codex`
+fails in the agent terminal, not in Clearway.
+
+`agentsAcceptingModelFlag` and Settings → Main Terminal's picker (`SettingsView`) list the same three
+agents today, but they are separate lists with separate contracts: the picker offers what Clearway can
+launch, the gate names what accepts `--model`. Adding an agent to one does not add it to the other.
+
+There is **no workflow-wide default model** — each entry is independent, and an omitted model means
+"no flag", not "inherit".
+
+Applied at three launch sites: `planningAgentCommand` (Plan), `performLaunch` (autopilot), and the
+**Run in New Terminal** launcher tab. The last two resolve through `workflowAgentCommand(for:action:)`;
+`planningAgentCommand` applies `applyModel` itself, since planning has no `Action` to pass, and reads
+the coordinator's cached `rawWorkflowDefinition` rather than loading from disk per launch. Routing the
+two action sites through one helper is what keeps a step's model with the agent it was authored
+against: **the model and the command must travel together**. A workflow that
+sets `agent.command: "codex"` while Settings → Main Terminal is `claude` would otherwise launch
+`claude --model gpt-5.4-codex` from that tab, which claude rejects outright (exit 1, "There's an issue
+with the selected model") — a broken launch, exactly what `agentsAcceptingModelFlag` exists to
+prevent. So `runWorkflowAction` stamps the whole resolved command onto `TerminalTab.launcherCommand`
+(alongside `stepSlug`), and `ContentView` reads it back as
+`activeTab.launcherCommand ?? settings.resolvedMainTerminalCommand`, passing that one value to both
+`PromptLauncherView(command:)` (the placeholder) and the submit — so the launcher never understates
+what it will run. Nothing else stamps it, so a plain Cmd+T tab still falls back to Main Terminal and
+launches bare even while step-badged, and the value dies with the tab. **Run in Current Terminal**
+carries no model — it pastes into a live agent, and there is no launch to flag.
+
+A stamped tab is also **exempt from the Main Terminal "None" shortcut**. `appendLauncherTab` normally
+promotes straight to a login shell when `mainCommandProvider() == nil`, which would discard the stamp
+before anything could read it (the tab becomes a `.surface`, and `ContentView` reads `launcherCommand`
+only while `isLauncher`) — the step's prompt would then be pasted into a shell instead of run.
+`resolveAgentCommand` never returns empty, so a step run always *has* an agent to launch; the
+promotion is therefore gated on `command == nil`, keeping the launcher up for step runs while Cmd+T
+still opens a login shell. The stamp itself is observed in tests through
+`WorkTaskCoordinator.launcherTabAppender`, a `nil`-in-production seam beside `workflowAgentLauncher` —
+`appendLauncherTab` needs a live `ghostty_app_t`, so without it the whole "Run in New Terminal" wiring
+is unpinnable. The promotion gate above stays untestable for that same reason.
 
 ### Step badge on main tabs
 
