@@ -8,9 +8,9 @@ struct SettingsView: View {
             Section {
                 Picker("Command", selection: $settings.mainTerminalCommand) {
                     Text("None").tag("")
-                    Text("claude").tag("claude")
-                    Text("grok").tag("grok")
-                    Text("codex").tag("codex")
+                    ForEach(agentAllowlist, id: \.self) { agent in
+                        Text(agent).tag(agent)
+                    }
                 }
             } header: {
                 Text("Main Terminal")

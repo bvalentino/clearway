@@ -1,16 +1,45 @@
 import Foundation
 
+/// The agents Clearway can launch, in picker order — the rows Settings → Main Terminal offers and
+/// the values a `WORKFLOW.json` may name. Deliberately **separate** from `agentsAcceptingModelFlag`
+/// even though both hold the same three names today: this list says what Clearway may launch, that
+/// one says what accepts `--model`. Adding an agent to one does not add it to the other.
+let agentAllowlist = ["claude", "grok", "codex"]
+
+/// Whether a `WORKFLOW.json` agent value is honored: its **last path component** must be an
+/// allowlisted agent, so `/opt/homebrew/bin/claude` passes while `aider`, `npx claude` and
+/// `claude --foo` do not. Anything carrying whitespace therefore never matches — an allowlisted
+/// agent can never smuggle flags. Shared with the workflow editor, which flags a failing value
+/// inline rather than letting it vanish at launch.
+func isAllowlistedAgentCommand(_ command: String) -> Bool {
+    !command.contains(where: \.isWhitespace)
+        && agentAllowlist.contains((command as NSString).lastPathComponent)
+}
+
+/// Returned **verbatim** (minus surrounding whitespace) — the last path component gates the check,
+/// never the launch, so a deliberately-pinned binary is not rewritten to a bare agent name.
+private func allowlistedAgent(_ command: String?) -> String? {
+    guard let trimmed = command?.trimmingCharacters(in: .whitespaces),
+          isAllowlistedAgentCommand(trimmed) else { return nil }
+    return trimmed
+}
+
 /// Resolves which binary to launch for Plan / workflow agents.
 ///
-/// Prefer a non-empty `WORKFLOW.json` `agent.command`. Otherwise use Settings → Main
-/// Terminal. If that is also blank (empty Main Terminal setting / UI "None"), fall back to
+/// Walks entry → workflow → Settings → default, taking the first level that yields an agent. The two
+/// `WORKFLOW.json` levels (`entryCommand`, then `workflowCommand`) are gated by `agentAllowlist`, so
+/// an off-allowlist value falls through instead of failing — a typo costs a step its agent rather
+/// than disabling the workflow. Settings → Main Terminal is deliberately **ungated**: the picker
+/// already constrains it, and gating it would disturb the Cmd+T "None" login-shell path. If that is
+/// also blank (empty Main Terminal setting / UI "None"), fall back to
 /// `SettingsManager.defaultMainTerminalCommand`.
 func resolveAgentCommand(
+    entryCommand: String?,
     workflowCommand: String?,
     defaults: UserDefaults = .standard
 ) -> String {
-    let fromWorkflow = workflowCommand?.trimmingCharacters(in: .whitespaces) ?? ""
-    if !fromWorkflow.isEmpty { return fromWorkflow }
+    if let fromEntry = allowlistedAgent(entryCommand) { return fromEntry }
+    if let fromWorkflow = allowlistedAgent(workflowCommand) { return fromWorkflow }
 
     let fromSettings = (defaults.string(forKey: SettingsKey.mainTerminalCommand) ?? "")
         .trimmingCharacters(in: .whitespaces)

@@ -161,12 +161,18 @@ struct WorkflowEditorView: View {
             WorkflowActionDetailView(
                 action: $model.actions[index],
                 contentMaxWidth: contentMaxWidth,
+                inheritedAgent: inheritedAgent,
                 forceValidation: forceValidation
             )
         } else if editingPlanning {
-            WorkflowPlanningDetailView(planning: planningBinding, contentMaxWidth: contentMaxWidth)
+            WorkflowPlanningDetailView(
+                planning: planningBinding,
+                contentMaxWidth: contentMaxWidth,
+                inheritedAgent: inheritedAgent
+            )
         } else {
             VStack(spacing: 0) {
+                if hasPersistableWorkflow { agentEntry }
                 planningEntry
                 listOrEmpty
             }
@@ -176,10 +182,46 @@ struct WorkflowEditorView: View {
         }
     }
 
+    /// What an entry naming no agent — or one the allowlist rejects — actually launches on, resolved
+    /// by the same function the launch sites use so the editor's flag can never name a stale level.
+    private var inheritedAgent: String {
+        resolveAgentCommand(entryCommand: nil, workflowCommand: model.agentCommand)
+    }
+
     /// A two-way binding to the planning entry, mapping the optional model field to the detail
     /// editor's non-optional binding.
     private var planningBinding: Binding<WorkflowEditorModel.EditorPlanning> {
         Binding(get: { model.planning ?? .init(instructions: "") }, set: { model.planning = $0 })
+    }
+
+    // MARK: - Pinned agent entry
+
+    /// Whether `performSave` would keep a file at all. The workflow-wide agent hides below this bar
+    /// because the same save deletes the file instead of writing it, so the picker would take a
+    /// value it silently discards — and, on a hand-authored agent-only file, delete it on the first
+    /// touch.
+    private var hasPersistableWorkflow: Bool {
+        !model.actions.isEmpty || model.planning != nil
+    }
+
+    /// The pinned "Agent" row above Planning: the workflow-wide `agent.command` every entry that
+    /// names none inherits. An inline picker rather than a card — there is nothing to push a detail
+    /// screen for.
+    private var agentEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            workflowAgentField(
+                $model.agentCommand,
+                accessibilityLabel: "Workflow agent",
+                ignoredFallback: resolveAgentCommand(entryCommand: nil, workflowCommand: nil)
+            )
+
+            Divider()
+                .padding(.top, 6)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Pinned planning entry
@@ -189,7 +231,7 @@ struct WorkflowEditorView: View {
     /// drag-reorderable. A divider separates it from the actions below.
     private var planningEntry: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Planning")
+            workflowFieldLabel("Planning")
 
             if let instructions = model.planning?.instructions {
                 Button { openPlanningEditor() } label: {
@@ -249,19 +291,11 @@ struct WorkflowEditorView: View {
     /// Lives only in the populated branch, so it's hidden in the empty state. Carries the section
     /// padding the planning header gets from its enclosing `VStack`.
     private var actionsHeader: some View {
-        sectionHeader("Worktree Actions")
+        workflowFieldLabel("Worktree Actions")
             .padding(.horizontal, 20)
             .padding(.top, 16)
             .frame(maxWidth: contentMaxWidth)
             .frame(maxWidth: .infinity)
-    }
-
-    /// Shared label styling for the "Planning" and "Worktree Actions" headers, so the two read as a pair.
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Empty state
@@ -536,156 +570,5 @@ struct WorkflowEditorView: View {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-    }
-}
-
-// MARK: - Planning detail form
-
-/// The editing form for the pinned planning entry: its multi-line instructions plus an optional model.
-/// Unlike an action, planning has no name, slug, or routes. Back navigation and Remove live in the
-/// window toolbar.
-private struct WorkflowPlanningDetailView: View {
-    @Binding var planning: WorkflowEditorModel.EditorPlanning
-    let contentMaxWidth: CGFloat
-
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    workflowDetailField("Instructions") {
-                        // TextEditor (not TextField) so Return inserts a line break.
-                        TextEditor(text: $planning.instructions)
-                            .font(.body)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 200)
-                            .focused($focused)
-                            .accessibilityLabel("Planning instructions")
-                    }
-                    Text("Runs when you tap Plan, before the worktree exists. "
-                        + "Use {{ task.title }}, {{ task.body }}, {{ task.id }}, {{ task.path }}.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                workflowModelField($planning.model, accessibilityLabel: "Planning model")
-            }
-                .workflowDetailFormContainer(maxWidth: contentMaxWidth)
-        }
-        .onAppear { if planning.instructions.isEmpty { focused = true } }
-    }
-}
-
-// MARK: - Action detail form
-
-/// The editing form for one action: its name and multi-line instructions. Back navigation and Delete
-/// live in the window toolbar, not in this content.
-private struct WorkflowActionDetailView: View {
-    @Binding var action: WorkflowEditorModel.EditorAction
-    let contentMaxWidth: CGFloat
-    /// Forces the "Required" indicators on regardless of which fields were touched.
-    let forceValidation: Bool
-
-    @FocusState private var nameFocused: Bool
-    /// "Required" shows only after a field is edited and left empty, so a fresh action isn't pre-flagged.
-    @State private var nameEdited = false
-    @State private var instructionsEdited = false
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                workflowDetailField("Name", warning: requiredWarning(nameEdited, action.name)) {
-                    TextField("Action name", text: $action.name)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .focused($nameFocused)
-                        .accessibilityLabel("Action name")
-                }
-                workflowDetailField(
-                    "Instructions",
-                    warning: requiredWarning(instructionsEdited, action.instructions)
-                ) {
-                    // TextEditor (not TextField) so Return inserts a line break.
-                    TextEditor(text: $action.instructions)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 160)
-                        .accessibilityLabel("Action instructions")
-                }
-                workflowModelField($action.model, accessibilityLabel: "Action model")
-            }
-                .workflowDetailFormContainer(maxWidth: contentMaxWidth)
-        }
-        .onChange(of: action.name) { _ in nameEdited = true }
-        .onChange(of: action.instructions) { _ in instructionsEdited = true }
-        .onAppear {
-            if action.name.isEmpty && action.instructions.isEmpty { nameFocused = true }
-        }
-    }
-
-    private func requiredWarning(_ edited: Bool, _ text: String) -> String? {
-        guard edited || forceValidation,
-              text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return "Required"
-    }
-}
-
-/// The Model field, shared by both detail forms. `Invalid` flags a multi-word value, which
-/// `applyModel` drops at launch with no flag and no message anywhere. A typo (`sonet`) is not
-/// caught — it reaches the agent and errors visibly in its terminal.
-@ViewBuilder
-private func workflowModelField(_ model: Binding<String>, accessibilityLabel: String) -> some View {
-    let trimmed = model.wrappedValue.trimmingCharacters(in: .whitespaces)
-    workflowDetailField("Model", warning: trimmed.isEmpty || isModelValueSafe(trimmed) ? nil : "Invalid") {
-        TextField("Default", text: model)
-            .textFieldStyle(.plain)
-            .font(.body)
-            .accessibilityLabel(accessibilityLabel)
-    }
-}
-
-/// One labeled field in the editor's detail forms. `warning` renders beside the label and tints the
-/// border — "Required" for a missing required field, "Invalid" for an unusable model.
-@ViewBuilder
-private func workflowDetailField<Content: View>(
-    _ title: String,
-    warning: String? = nil,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            if let warning {
-                Text(warning)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-        content()
-            .padding(8)
-            .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(warning != nil ? Color.red.opacity(0.7) : Color(.separatorColor),
-                                  lineWidth: 1)
-            )
-    }
-}
-
-private extension View {
-    /// Shared chrome for the editor's detail forms (planning + action): a material card with content
-    /// padding, centered to the editor's max content width.
-    func workflowDetailFormContainer(maxWidth: CGFloat) -> some View {
-        self
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-            .padding(.bottom, 24)
-            .frame(maxWidth: maxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity)
     }
 }

@@ -19,6 +19,10 @@ struct WorkflowEditorModel: Equatable {
         /// non-optional binding like `name`/`instructions`; `toDefinition` maps it back to `nil`.
         var model: String = ""
 
+        /// Optional agent for this step. A **raw string**, not an enum, so a hand-authored value the
+        /// allowlist would reject survives the round-trip verbatim. Empty = inherit.
+        var command: String = ""
+
         var id: String { slug }
 
         /// Both fields are required; an incomplete action is never persisted.
@@ -40,7 +44,12 @@ struct WorkflowEditorModel: Equatable {
     struct EditorPlanning: Equatable {
         var instructions: String
         var model: String = ""
+        var command: String = ""
     }
+
+    /// The workflow-wide agent (`agent.command`), inherited by every entry that names none. Empty =
+    /// inherit Settings → Main Terminal. Raw for the same reason as `EditorAction.command`.
+    var agentCommand: String = ""
 
     /// The single routing outcome v1 uses.
     static let successOutcome = "success"
@@ -61,12 +70,14 @@ struct WorkflowEditorModel: Equatable {
                 slug: slug,
                 name: action.name,
                 instructions: action.instructions,
-                model: action.model ?? ""
+                model: action.model ?? "",
+                command: action.command ?? ""
             )
         }
         self.planning = definition.planning.map {
-            EditorPlanning(instructions: $0.instructions, model: $0.model ?? "")
+            EditorPlanning(instructions: $0.instructions, model: $0.model ?? "", command: $0.command ?? "")
         }
+        self.agentCommand = definition.agent.command
     }
 
     // MARK: - Slug generation
@@ -135,17 +146,18 @@ struct WorkflowEditorModel: Equatable {
 
     // MARK: - Serialization
 
-    /// The editor's empty field means "no model", which must persist as an absent key rather than
-    /// an empty string — otherwise a models-free file would stop round-tripping minimally.
-    private static func persistedModel(_ model: String) -> String? {
-        let trimmed = model.trimmingCharacters(in: .whitespaces)
+    /// The editor's empty field means "unset", which must persist as an absent key rather than an
+    /// empty string — otherwise a models- or agents-free file would stop round-tripping minimally.
+    private static func persistedValue(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Rebuilds a `WorkflowDefinition` from card order: `start` is the first slug, each non-last card
-    /// routes `success` to the next, the last is terminal. The editor owns `planning` (carried from
-    /// the model, not `base`). Fields the editor doesn't surface (`version`/`agent`/`hooks`, per-action
-    /// `maxAttempts`/`onMaxAttempts`) carry forward from `base`; a `nil` base uses v1 defaults.
+    /// routes `success` to the next, the last is terminal. The editor owns `planning` and
+    /// `agent.command` (carried from the model, not `base`). Fields the editor doesn't surface
+    /// (`version`/`hooks`/`agent.timeoutMs`, per-action `maxAttempts`/`onMaxAttempts`) carry forward
+    /// from `base`; a `nil` base uses v1 defaults.
     func toDefinition(preserving base: WorkflowDefinition?) -> WorkflowDefinition {
         let liveSlugs = Set(actions.map { $0.slug })
         var map: [String: WorkflowDefinition.Action] = [:]
@@ -166,16 +178,24 @@ struct WorkflowEditorModel: Equatable {
                 routes: routes,
                 maxAttempts: preserved?.maxAttempts,
                 onMaxAttempts: escape,
-                model: Self.persistedModel(action.model)
+                model: Self.persistedValue(action.model),
+                command: Self.persistedValue(action.command)
             )
         }
         return WorkflowDefinition(
             version: base?.version ?? 1,
             start: actions.first?.slug ?? "",
-            agent: base?.agent ?? .default,
+            agent: WorkflowDefinition.AgentSettings(
+                command: agentCommand.trimmingCharacters(in: .whitespaces),
+                timeoutMs: base?.agent.timeoutMs ?? WorkflowDefinition.AgentSettings.defaultTimeoutMs
+            ),
             hooks: base?.hooks,
             planning: planning.map {
-                WorkflowDefinition.Planning(instructions: $0.instructions, model: Self.persistedModel($0.model))
+                WorkflowDefinition.Planning(
+                    instructions: $0.instructions,
+                    model: Self.persistedValue($0.model),
+                    command: Self.persistedValue($0.command)
+                )
             },
             actions: map
         )
