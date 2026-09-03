@@ -47,7 +47,7 @@ extension WorkTaskCoordinator {
     /// The command the planning terminal runs, as a function of the resolved shell PATH — deferred
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.
-    private func planningLaunchCommand(for task: WorkTask) -> ((String) -> String)? {
+    func planningLaunchCommand(for task: WorkTask) -> ((String) -> String)? {
         if let instructions = planningInstructions {
             let prompt = PlanningConfig.renderPlanningPrompt(
                 instructions: instructions,

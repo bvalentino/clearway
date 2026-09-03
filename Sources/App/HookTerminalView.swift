@@ -47,9 +47,7 @@ struct HookTerminalView: View {
             if let exitCode = surface.childExitCode {
                 handleChildExit(exitCode)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                surface.window?.makeFirstResponder(surface)
-            }
+            surface.takeFocus(after: 0.1)
         }
     }
 

@@ -4,9 +4,10 @@ import AppKit
 /// encoding a key for the shell, and hands back anything claimed here so SwiftUI can act on it.
 ///
 /// This list belongs to the app, not to the terminal wrapper: its counterparts are `ContentView`'s
-/// `.keyboardShortcut` modifiers and its main-terminal `NSEvent` monitor. A shortcut declared there
-/// and missing here is declared but unreachable whenever a terminal has focus, which is why the
-/// two live in the same layer.
+/// `.keyboardShortcut` modifiers and its main-terminal `NSEvent` monitor, and `ClearwayApp`'s menu
+/// commands — the view hierarchy is offered a key equivalent before the main menu, so a menu item's
+/// shortcut needs an entry here too (Cmd+T is one). A shortcut declared at any of those sites and
+/// missing here is declared but unreachable whenever a terminal has focus.
 enum AppKeyboardShortcuts {
 
     /// macOS virtual key codes for keys whose character depends on the keyboard layout, shared with
@@ -23,10 +24,12 @@ enum AppKeyboardShortcuts {
     /// the brackets match on `keyCode` because their consumer is a keyCode-matched `NSEvent`
     /// monitor and the shifted character varies by layout.
     static func claims(flags: NSEvent.ModifierFlags, chars: String?, keyCode: UInt16) -> Bool {
-        // Ctrl+digit → sidebar destinations. Deliberately tolerates a stray Shift or Option.
+        // Ctrl+1…3 → sidebar destinations. Deliberately tolerates a stray Shift or Option. The range
+        // stops at the last destination that exists: claiming a digit no handler answers would take
+        // it from the shell and do nothing with it.
         if flags.contains(.control) && !flags.contains(.command),
            let chars, chars.count == 1,
-           let scalar = chars.unicodeScalars.first, scalar >= "0" && scalar <= "9" {
+           let scalar = chars.unicodeScalars.first, scalar >= "1" && scalar <= "3" {
             return true
         }
 
@@ -35,6 +38,8 @@ enum AppKeyboardShortcuts {
             return chars == "t" || chars == "w" || chars == "j"  // new tab, close tab, bottom panel
         case [.command, .shift]:
             return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket  // previous/next tab
+        case [.command, .control]:
+            return chars == "3"  // toggle aside
         default:
             return false
         }

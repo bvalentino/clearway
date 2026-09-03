@@ -133,6 +133,12 @@ struct ClearwayApp: App {
     init() {
         precondition(ghosttyInitResult, "ghostty_init failed")
         ShellEnvironment.startEagerResolution()
+        // Tell focused terminal surfaces which combos the app claims, so its `.keyboardShortcut`
+        // declarations stay reachable while a terminal has the keyboard. Wired here rather than
+        // per-window: the storage is one static for the whole process, so the value has to be
+        // window-independent — capturing a window's state here would let the last window opened
+        // answer for every window's surfaces.
+        Ghostty.SurfaceView.claimsShortcut = AppKeyboardShortcuts.claims
         // SettingsManager.init applies the stored color scheme to NSApp, so Ghostty.App
         // picks up the correct effective appearance when it reads it during its own init.
         _settings = StateObject(wrappedValue: SettingsManager())

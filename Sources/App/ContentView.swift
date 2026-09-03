@@ -372,10 +372,6 @@ struct ContentView: View {
             // can launch agent surfaces without the per-call app argument.
             workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
 
-            // Tell focused terminal surfaces which combos this app claims, so the shortcuts
-            // declared above stay reachable while a terminal has the keyboard.
-            Ghostty.SurfaceView.claimsShortcut = AppKeyboardShortcuts.claims
-
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
             syncWatchedWorktrees()

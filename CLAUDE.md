@@ -48,15 +48,20 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     helper that gets tested instead — the same split `TerminalManager.revealSecondaryForHook` makes
     for panel visibility.
     A focused surface swallows **every** Cmd/Ctrl combo, encoding it for the shell, unless the app
-    claims it via `SurfaceView.claimsShortcut` — a provider wired in `ContentView.onAppear` to
-    `AppKeyboardShortcuts.claims`. A SwiftUI `.keyboardShortcut` declared without a matching entry
-    there is unreachable whenever a terminal has focus, which is why the table and the declarations
-    live in the same layer.
+    claims it via `SurfaceView.claimsShortcut` — one **static** provider wired in `ClearwayApp.init`
+    to `AppKeyboardShortcuts.claims`. Process-scoped, not per-window: the value must stay
+    window-independent, so wire it there rather than beside the per-window seams in
+    `ContentView.onAppear`. A SwiftUI `.keyboardShortcut` declared without a matching entry is
+    unreachable whenever a terminal has focus, which is why the table and the declarations live in
+    the same layer.
   - `TerminalSurface.swift` — SwiftUI `NSViewRepresentable` wrapper
 - **Sources/App/** — SwiftUI app entry point + task/worktree/workflow logic
   - `AppKeyboardShortcuts.swift` — the combos the app claims from focused terminal surfaces, plus the
     layout-independent key codes its `NSEvent` monitor matches on. Add a shortcut here in the same
-    change that declares it.
+    change that declares it — declaration sites are `ContentView`'s hidden buttons and `NSEvent`
+    monitor, and `ClearwayApp`'s menu commands (the view hierarchy is offered a key equivalent
+    before the main menu, so menu shortcuts need an entry too). Claim **exactly** what the app
+    handles: a claimed combo no handler answers is taken from the shell and then dropped.
   - Agent and terminal launch logic lives on `WorkTaskCoordinator`, never in a view: a view resolves
     no command and awaits nothing, it calls a coordinator method. This is what lets one behavior carry
     several entry points without the decision being written once per door.
