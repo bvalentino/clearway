@@ -136,6 +136,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     full-screen item survives the replacement** — verified against the running app. So the app
     declares no full-screen command and claims no ⌃⌘F; re-declaring one produced a duplicate menu
     item, and the system's own key for it is not ⌃⌘F on macOS 26.
+    A `PanelToggle`'s `nil` gate must carry **every** precondition its action would guard, or the
+    item renders enabled and silently does nothing: the Planning bottom panel needs `ghosttyApp.app`
+    as well as a `selectedTaskId`, since only `detailView` switches on readiness, so a failed
+    `ghostty_app_new` still leaves the task list rendering and setting a selection.
+    `newTabAction` / `newShellTabAction` still split the two and are the known exceptions.
   - Agent and terminal launch logic lives on `WorkTaskCoordinator`, never in a view: a view resolves
     no command and awaits nothing, it calls a coordinator method. This is what lets one behavior carry
     several entry points without the decision being written once per door.
