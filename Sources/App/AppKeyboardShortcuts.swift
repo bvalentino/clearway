@@ -15,15 +15,21 @@ enum AppKeyboardShortcuts {
     enum KeyCode {
         static let leftBracket: UInt16 = 0x21
         static let rightBracket: UInt16 = 0x1E
+        static let comma: UInt16 = 0x2B
     }
 
     /// Whether the app claims this key event. Pure, so the whole table is testable without a live
     /// Ghostty surface.
     ///
-    /// The letters match on `chars` because SwiftUI matches their `.keyboardShortcut` the same way;
-    /// the brackets match on `keyCode` because their consumer is a keyCode-matched `NSEvent`
-    /// monitor and the shifted character varies by layout.
+    /// Letters match on `chars`, lowercased: SwiftUI matches their `.keyboardShortcut` against the
+    /// character the key produces, so this follows a non-QWERTY layout the way a key code would not
+    /// — but `charactersIgnoringModifiers` still applies Shift, so Cmd+Shift+T arrives as `"T"`.
+    /// Punctuation matches on `keyCode` instead, because Shift turns it into a different glyph that
+    /// varies by layout (`[` → `{`, `,` → `<`); the brackets additionally need it to agree with the
+    /// keyCode-matched `NSEvent` monitor that consumes them.
     static func claims(flags: NSEvent.ModifierFlags, chars: String?, keyCode: UInt16) -> Bool {
+        let letter = chars?.lowercased()
+
         // Ctrl+1…3 → sidebar destinations. Deliberately tolerates a stray Shift or Option. The range
         // stops at the last destination that exists: claiming a digit no handler answers would take
         // it from the shell and do nothing with it.
@@ -35,9 +41,14 @@ enum AppKeyboardShortcuts {
 
         switch flags.intersection([.command, .shift, .control, .option]) {
         case [.command]:
-            return chars == "t" || chars == "w" || chars == "j"  // new tab, close tab, bottom panel
+            // new tab, close tab, bottom panel, new window, settings (the `Settings` scene's
+            // automatic Cmd+, is a menu key equivalent like any other, so it needs claiming too)
+            return letter == "t" || letter == "w" || letter == "j" || letter == "n"
+                || keyCode == KeyCode.comma
         case [.command, .shift]:
-            return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket  // previous/next tab
+            // previous/next tab, new shell tab, new group, reload configuration
+            return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket
+                || letter == "t" || letter == "n" || keyCode == KeyCode.comma
         case [.command, .control]:
             return chars == "3"  // toggle aside
         default:

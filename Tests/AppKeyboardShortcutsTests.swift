@@ -37,7 +37,7 @@ final class AppKeyboardShortcutsTests: XCTestCase {
 
     func testCommandTIsClaimed() {
         XCTAssertTrue(claims([.command], "t"))
-        XCTAssertFalse(claims([.command, .shift], "t"))
+        XCTAssertFalse(claims([.command, .control], "t"))
     }
 
     func testCommandWIsClaimed() {
@@ -68,6 +68,33 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertFalse(claims([.control], "4"))
         XCTAssertFalse(claims([.control], "6"))
         XCTAssertFalse(claims([.control], "9"))
+    }
+
+    // MARK: - Menu-bar commands (declared in ClearwayApp, subject to the same table)
+
+    /// `charactersIgnoringModifiers` still applies Shift, so these arrive uppercased — matching on a
+    /// bare `"t"` would leave New Shell Tab dead exactly as it was before it was claimed.
+    func testShiftedMenuLettersAreClaimedDespiteArrivingUppercased() {
+        XCTAssertTrue(claims([.command, .shift], "T"), "New Shell Tab")
+        XCTAssertTrue(claims([.command, .shift], "N"), "New Group")
+    }
+
+    func testCommandNIsClaimed() {
+        XCTAssertTrue(claims([.command], "n"), "New Window")
+    }
+
+    /// Both comma shortcuts match on key code: Shift turns "," into a layout-dependent glyph, the
+    /// same reason the bracket clauses do. Cmd+, is the `Settings` scene's automatic shortcut, which
+    /// reaches a focused surface as an ordinary menu key equivalent and so needs claiming like the rest.
+    func testCommaShortcutsAreClaimed() {
+        let comma = AppKeyboardShortcuts.KeyCode.comma
+        XCTAssertTrue(claims([.command], ",", comma), "Settings")
+        XCTAssertTrue(claims([.command, .shift], "<", comma), "Reload Configuration")
+        XCTAssertFalse(claims([.command, .option], ",", comma))
+    }
+
+    func testUnclaimedCommandShiftComboIsNotClaimed() {
+        XCTAssertFalse(claims([.command, .shift], "K"))
     }
 
     // MARK: - Cmd+Ctrl+3 (the aside toggle)
