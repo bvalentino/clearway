@@ -79,12 +79,23 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
 - `OpaquePointer` and `UnsafeMutableRawPointer` carry an *unavailable* `Sendable` conformance, so no
   wrapper holding a `ghostty_*_t` can be checked-`Sendable`. With the RAII shape above it usually
   does not need to be.
-- **Never form a C callback inside a `@MainActor` context.** A `@convention(c)` closure literal
-  written inside a `@MainActor` member is main-actor isolated: its prologue calls
-  `swift_task_isCurrentExecutor` and traps when libghostty invokes it from the renderer thread. The
-  compiler reports nothing. `Ghostty.App.makeRuntimeConfig` is `nonisolated static` for exactly this
-  reason — build the callback table there, never in `init`. Marking the callee `static func`s
-  `nonisolated` is also required but is **not** sufficient on its own.
+- **Never form a C or block callback inside a `@MainActor` context.** A `@convention(c)` *or*
+  `@convention(block)` closure literal written inside a `@MainActor` member is main-actor isolated:
+  its prologue calls `swift_task_isCurrentExecutor` and traps when the callback is invoked from any
+  other thread. The compiler reports nothing — unlike a plain Swift function-typed parameter, which
+  infers the literal `nonisolated` and checks it statically. `Ghostty.App.makeRuntimeConfig` is
+  `nonisolated static` for exactly this reason — build the callback table there, never in `init`.
+  Marking the callee `static func`s `nonisolated` is also required but is **not** sufficient on its own.
+- **`DispatchSource` handlers are that same block trap**, and cost a shipped release (v1.9.3) a
+  crash on every worktree switch: `setEventHandler`/`setCancelHandler` take
+  `DispatchSourceHandler = @convention(block) () -> Void`, so a literal written in a `@MainActor`
+  method traps in `dispatch_assert_queue` the moment libdispatch runs it on the source's queue —
+  the cancel handler included, which fires on teardown rather than on any file event. Swift 5.10
+  converted these silently; `SWIFT_VERSION: "6.0"` turns them into hard traps. So **every**
+  `DispatchSource` goes through `ClaudeSessionFiles.makeWatcher`, which is `nonisolated static` and
+  takes the handler as a plain `() -> Void`. Never call `setEventHandler`/`setCancelHandler` from an
+  isolated method. `WorktreeGroupStore` builds its own sources safely only because the type is
+  `Sendable` rather than `@MainActor`, so its methods are already nonisolated.
 - A minimal probe of that shape does not reproduce the trap; it runs the body off-main silently.
   Verify by disassembling the built binary (`lldb -b -o "disassemble -a <addr>"`) and looking for
   `MainActor.shared` / `swift_task_isCurrentExecutor` in the closure's prologue.

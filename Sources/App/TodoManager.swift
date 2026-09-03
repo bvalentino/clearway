@@ -134,20 +134,9 @@ class TodoManager: ObservableObject {
         // Only watch if the directory already exists — it gets created on first todo write.
         guard FileManager.default.fileExists(atPath: dir) else { return }
 
-        let fd = open(dir, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
+        watcherSource = ClaudeSessionFiles.makeWatcher(path: dir, eventMask: .write) { [weak self] in
             self?.scheduleReload()
         }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        watcherSource = source
     }
 
     private nonisolated func scheduleReload() {

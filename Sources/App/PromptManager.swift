@@ -135,23 +135,15 @@ class PromptManager: ObservableObject {
     // MARK: - File Watching
 
     private func watchDirectory() {
+        watcherSource?.cancel()
+        watcherSource = nil
+
         let dir = directory
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
-        let fd = open(dir, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
+        watcherSource = ClaudeSessionFiles.makeWatcher(path: dir, eventMask: .write) { [weak self] in
             self?.scheduleReload()
         }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        watcherSource = source
     }
 
     private nonisolated func scheduleReload() {
