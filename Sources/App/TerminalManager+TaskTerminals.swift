@@ -93,9 +93,9 @@ extension TerminalManager {
 
     /// Terminate a specific main-tab surface within a worktree by closing its tab.
     ///
-    /// Used by the workflow engine's **manual kill** to stop a running agent: it locates the main
-    /// tab whose surface is `surface` and routes through the existing `closeMainTab` teardown
-    /// (which fires `onMainTabClosed` and SIGHUPs the surface via `closeSurface()`), so the kill
+    /// Used by the workflow engine's **manual status pick** to supersede a running agent: it locates
+    /// the main tab whose surface is `surface` and routes through the existing `closeMainTab` teardown
+    /// (which fires `onMainTabClosed` and SIGHUPs the surface via `closeSurface()`), so the takedown
     /// reuses the same ordering guarantees as a user-initiated tab close rather than a raw free.
     /// No-op when the surface isn't a live main tab in the worktree (already gone).
     @discardableResult

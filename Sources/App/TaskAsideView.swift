@@ -8,10 +8,17 @@ struct TaskAsideView: View {
     @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
+    let worktreeId: String
     let projectPath: String
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
+    }
+
+    /// The validated `WORKFLOW.json`, or `nil` for a project without one — the single gate the step
+    /// cards and the autopilot row below them share, so the two can never drift apart.
+    private var workflowDefinition: WorkflowDefinition? {
+        workTaskCoordinator.isWorkflowJSONProject ? workTaskCoordinator.workflowDefinition : nil
     }
 
     var body: some View {
@@ -30,31 +37,39 @@ struct TaskAsideView: View {
     // MARK: - Task Content
 
     private func taskContent(_ task: WorkTask) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if task.hidden {
-                    createTaskPlaceholder(for: task)
-                } else {
-                    WorkTaskCard(
-                        task: task,
-                        showStatusBadge: false,
-                        showContextMenu: false,
-                        onEdit: { openTaskWindow(task) }
-                    )
-                }
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if task.hidden {
+                        createTaskPlaceholder(for: task)
+                    } else {
+                        WorkTaskCard(
+                            task: task,
+                            showStatusBadge: false,
+                            showContextMenu: false,
+                            onEdit: { openTaskWindow(task) }
+                        )
+                    }
 
-                if workTaskCoordinator.isWorkflowJSONProject,
-                   let definition = workTaskCoordinator.workflowDefinition {
-                    Divider()
-                    workflowActionCards(for: task, definition: definition)
-                }
+                    if let definition = workflowDefinition {
+                        Divider()
+                        workflowActionCards(for: task, definition: definition)
+                    }
 
-                // Agent metadata (show for tasks that have been worked on; never for placeholders)
-                if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
-                    WorkTaskAgentMetadata(task: task)
+                    // Agent metadata (show for tasks that have been worked on; never for placeholders)
+                    if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
+                        WorkTaskAgentMetadata(task: task)
+                    }
                 }
+                .padding(16)
             }
-            .padding(16)
+
+            // Outside the ScrollView so it stays reachable however many step cards there are.
+            if workflowDefinition != nil {
+                AutopilotButton(worktreeBranch: worktreeBranch, worktreeId: worktreeId)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
         }
     }
 

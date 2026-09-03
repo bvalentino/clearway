@@ -111,7 +111,7 @@ final class WorkflowSidebarActionTests: WorkflowHarnessTestCase {
     }
 
     /// The card's Pause closure routes to `pauseFromCountdown`, which cancels the countdown and pauses
-    /// autopilot — identical to pressing the toolbar pause at that instant.
+    /// autopilot — identical to pausing from the aside's autopilot row at that instant.
     func testPauseFromCountdownCancelsAndPauses() throws {
         try writeWorkflow()
         let branch = "card-pause"
