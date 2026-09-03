@@ -194,9 +194,9 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
         XCTAssertEqual(result, .launched(slug: "test"), "an enabled worktree launches the next action")
     }
 
-    // MARK: - Agent-running accessor (toolbar activity indicator)
+    // MARK: - Agent-running accessor (the autopilot row's enabled state)
 
-    /// `isAgentRunning(forWorktree:)` — the read-only window the toolbar's activity indicator reads —
+    /// `isAgentRunning(forWorktree:)` — the read-only window the aside's autopilot row reads —
     /// is false for an idle worktree and true once a running action (`P`) is staged, matching how the
     /// engine sets `runningAction` in lockstep with the live agent surface.
     func testIsAgentRunningReflectsRunningAction() throws {
@@ -375,11 +375,10 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
     }
 
     /// A manual pick made **while a step is running** supersedes the in-flight agent (clears the
-    /// running pointer so the watcher relaunches the picked action) but, unlike `manualKill`, must
-    /// **not** pause autopilot — the user is steering the loop, not stopping it. The surface
-    /// *termination* half needs a live Ghostty surface (so it's covered by `shouldTerminateOnManualKill`
-    /// elsewhere); here we assert the observable engine-state distinction from a kill: autopilot stays
-    /// on and the running pointer is cleared.
+    /// running pointer so the watcher relaunches the picked action) but must **not** pause autopilot —
+    /// the user is steering the loop, not stopping it. The surface *termination* half needs a live
+    /// Ghostty surface, so here we assert the observable engine state: autopilot stays on and the
+    /// running pointer is cleared.
     func testManualPickWhileRunningDoesNotPauseAutopilot() throws {
         try writeWorkflow()
         let branch = "steer"
@@ -394,9 +393,27 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
         coordinator.setWorkflowStatus(task, to: "test")
 
         XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, true,
-                       "a manual pick steers the loop — it never pauses autopilot like manualKill does")
+                       "a manual pick steers the loop — it never pauses autopilot")
         XCTAssertNil(coordinator.runningAction[worktreeId],
                      "the running pointer is cleared so the watcher relaunches the picked action idle")
+    }
+
+    /// The termination half of a manual pick is gated on a *tracked agent surface*, not on the
+    /// running action: a pick landing while `launchWorkflowAgent` still awaits the PATH has a running
+    /// action but nothing to SIGHUP. Pinning the false branch is what keeps `setWorkflowStatus` from
+    /// reaching for a surface that isn't there — the true branch needs a live Ghostty app.
+    func testShouldTerminateRunningAgentIsFalseWithoutASurface() throws {
+        try writeWorkflow()
+        let branch = "no-surface"
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        let worktreeId = worktreeId(branch: branch, path: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        XCTAssertTrue(coordinator.isAgentRunning(forWorktree: worktreeId),
+                      "a staged running action reads as running")
+        XCTAssertFalse(coordinator.shouldTerminateRunningAgent(forWorktree: worktreeId),
+                       "no tracked agent surface means a pick has nothing to terminate")
     }
 
     // MARK: - Pause on agent death (exit without an advance)
@@ -597,10 +614,10 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
 
     // MARK: - Reserved cap fields are decoded but not enforced
 
-    /// `max_attempts` is a reserved, NOT-enforced field in v1 (manual kill is the loop-stopper). A
-    /// workflow carrying it still decodes/validates and launches exactly like any other: a self-routing
-    /// action launches normally rather than hitting any cap-driven halt. This pins that the reserved
-    /// field never short-circuits a launch.
+    /// `max_attempts` is a reserved, NOT-enforced field in v1 (Ctrl-C or closing the agent's tab is
+    /// the loop-stopper). A workflow carrying it still decodes/validates and launches exactly like any
+    /// other: a self-routing action launches normally rather than hitting any cap-driven halt. This
+    /// pins that the reserved field never short-circuits a launch.
     func testReservedMaxAttemptsFieldDoesNotBlockLaunch() throws {
         let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)

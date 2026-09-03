@@ -151,25 +151,6 @@ final class WorkflowCountdownHarnessTests: WorkflowHarnessTestCase {
         XCTAssertNil(coordinator.workflowCountdowns[wtId], "a manual status pick cancels the pending countdown")
     }
 
-    /// The manual kill cancels the pending auto-launch alongside pausing the loop.
-    func testManualKillCancelsCountdown() throws {
-        try writeWorkflow()
-        let branch = "kill-cancel"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
-        let wtId = worktreeId(branch: branch, path: worktreePath)
-        coordinator.workflowCountdownScheduler = { _ in }
-
-        XCTAssertEqual(coordinator.advanceWorkflow(forBranch: branch, app: dummyApp, gracePeriod: true),
-                       .deferred(slug: "test"))
-
-        coordinator.manualKill(forBranch: branch)
-
-        XCTAssertNil(coordinator.workflowCountdowns[wtId], "the manual kill cancels the pending countdown")
-        XCTAssertEqual(coordinator.workTaskManager.task(forWorktree: branch)?.autopilot, false)
-    }
-
     /// A halt while a countdown is armed (the agent writes an illegal slug after a prior legal advance)
     /// cancels the pending auto-launch — the halted loop won't perform it, so the card must stop
     /// counting down to it.
@@ -197,12 +178,12 @@ final class WorkflowCountdownHarnessTests: WorkflowHarnessTestCase {
         XCTAssertNil(coordinator.workflowCountdowns[wtId], "the halt cancels the armed countdown")
     }
 
-    /// The toolbar Pause has no synchronous cancel of its own: it writes `autopilot = false`, and the
-    /// resulting reload observes the true→false flip. That flip must cancel an armed hand-off countdown
-    /// so the card stops counting down to a launch the user just suppressed.
-    func testToolbarPauseFlipCancelsCountdown() throws {
+    /// The aside's autopilot row has no synchronous cancel of its own: it writes `autopilot = false`,
+    /// and the resulting reload observes the true→false flip. That flip must cancel an armed hand-off
+    /// countdown so the card stops counting down to a launch the user just suppressed.
+    func testAutopilotRowPauseFlipCancelsCountdown() throws {
         try writeWorkflow()
-        let branch = "toolbar-pause"
+        let branch = "row-pause"
         let worktreePath = try writeWorktreeTask(branch: branch, status: "test", autopilot: true)
         let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
         coordinator.appProvider = { [dummyApp] in dummyApp }
@@ -214,7 +195,7 @@ final class WorkflowCountdownHarnessTests: WorkflowHarnessTestCase {
         coordinator.handleTasksReloaded(branches: [branch])
         XCTAssertNotNil(coordinator.workflowCountdowns[wtId], "the hand-off arms a countdown")
 
-        // The toolbar Pause writes autopilot = false; the resulting reload sees the true→false flip.
+        // The row's pause writes autopilot = false; the resulting reload sees the true→false flip.
         guard let task = coordinator.workTaskManager.task(forWorktree: branch) else { return XCTFail("task missing") }
         coordinator.workTaskManager.setAutopilot(task, to: false)
         coordinator.handleTasksReloaded(branches: [branch])

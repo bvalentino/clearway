@@ -1,40 +1,40 @@
 import SwiftUI
 
-/// Worktree-toolbar play/pause control for the `WORKFLOW.json` loop engine.
+/// Full-width play/pause row for the `WORKFLOW.json` loop engine, pinned below the task aside's
+/// workflow step cards.
 ///
-/// Visibility and state derive entirely from observed model state, so the button reacts to
-/// `TASK.md` reloads and engine launches without any local `@State`:
-/// - **Hidden** unless the project has a valid `.clearway/WORKFLOW.json` (Success Criterion #5/#7).
-///   Legacy `WORKFLOW.md` projects show no button and are byte-for-byte unchanged.
-/// - **Play glyph** when the worktree's loop is paused (`autopilot == false`); **pause glyph**
-///   when live (`autopilot == true`). A missing `autopilot` (not yet seeded) reads as paused. The
-///   glyph reflects `autopilot` *directly* — there is no spinner state, because the agent's Ghostty
-///   terminal persists after a step finishes, so an activity indicator would never clear.
+/// State derives entirely from observed model state, so the row reacts to `TASK.md` reloads and
+/// engine launches without any local `@State`:
+/// - **Pause glyph** with `Autopilot: Enabled` when the worktree's loop is live (`autopilot == true`);
+///   **play glyph** with `Autopilot: Disabled` when it is paused. A missing `autopilot` (not yet
+///   seeded) reads as paused. The glyph reflects `autopilot` *directly* — there is no spinner state,
+///   because the agent's Ghostty terminal persists after a step finishes, so an activity indicator
+///   would never clear.
 /// - **Disabled** when the worktree's task has no content (`WorkTask.hasContent` false), or is a
 ///   hidden shadow with no current step (no task associated — the engine ignores it, so there is
-///   nothing to start), and no agent surface is live. A live agent keeps the control enabled so
-///   pause / Stop Agent stay reachable.
+///   nothing to start), and no agent surface is live. A live agent keeps the row enabled so pause
+///   stays reachable.
 ///
-/// Clicking is the primary write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
+/// The call site already gates on a valid `.clearway/WORKFLOW.json` and a non-main worktree (the
+/// aside's Task tab is dropped on main), so the row carries no gate of its own.
+///
+/// Clicking is the only write: Clearway flips the `autopilot` field in `.clearway/TASK.md` via
 /// `WorkTaskManager.setAutopilot`. The established watcher flip path (`handleAutopilotFlip`) then
 /// enacts the intent — enable resumes the current action, disable pauses after the running step
-/// finishes. The view adds no second launch path.
-///
-/// A **context-menu "Stop Agent"** item (shown only while a step is running) is the lone *pause*
-/// exception: it invokes the coordinator's `manualKill`, which pauses *and* terminates the running
-/// agent surface — kept distinct from the pause toggle that lets the in-flight step finish. (A manual
-/// status pick in the aside also terminates a running agent, but it *steers* the loop rather than
-/// pausing it, so it isn't surfaced here.)
+/// finishes. The view adds no second launch path, and offers no way to interrupt a running agent:
+/// Ctrl-C in the agent's terminal or closing its tab does that, and auto-pauses the loop.
 struct AutopilotButton: View {
-    let worktree: Worktree
+    let worktreeBranch: String
+    let worktreeId: String
 
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
+    private static let cornerRadius: CGFloat = 12
+
     /// The task backing this worktree, the source of the `autopilot` flag.
     private var task: WorkTask? {
-        guard let branch = worktree.branch else { return nil }
-        return workTaskManager.task(forWorktree: branch)
+        workTaskManager.task(forWorktree: worktreeBranch)
     }
 
     /// The loop is live when its task explicitly opts in; absent/false reads as paused.
@@ -42,67 +42,72 @@ struct AutopilotButton: View {
 
     /// Whether a live agent surface is tracked for this worktree. NOT a "step in progress" signal —
     /// the agent's Ghostty terminal persists after a step finishes, so this stays true across the
-    /// whole loop. Used only to offer "Stop Agent" and to keep the control enabled, never to drive
-    /// the glyph (which reflects `autopilot`).
-    private var hasLiveAgent: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktree.id) }
+    /// whole loop. Used only to keep the row enabled, never to drive the glyph (which reflects
+    /// `autopilot`).
+    private var hasLiveAgent: Bool { workTaskCoordinator.isAgentRunning(forWorktree: worktreeId) }
 
     /// Whether the task has anything for an agent to act on. Autopilot is pointless against a blank
-    /// `TASK.md` (e.g. a freshly-created manual worktree), so the button is disabled until it does.
+    /// `TASK.md` (e.g. a freshly-created manual worktree), so the row is disabled until it does.
     private var hasContent: Bool { task?.hasContent ?? false }
 
     /// A hidden shadow sitting on no action is a worktree with no task associated: `advanceWorkflow`
     /// ignores it, so play has nothing to start. A step card's Set Current gives it a real action and
     /// the control comes back.
     private var isUnassociated: Bool {
-        task?.hidden == true && workTaskCoordinator.currentWorkflowStep(forWorktree: worktree.id) == nil
+        task?.hidden == true && workTaskCoordinator.currentWorkflowStep(forWorktree: worktreeId) == nil
     }
 
     /// Disabled when there's nothing to run — no step, or no task content — and no live agent. A live
-    /// agent keeps the control reachable so pause / Stop Agent stay available.
+    /// agent keeps the row reachable so pause stays available.
     private var isDisabled: Bool { (isUnassociated || !hasContent) && !hasLiveAgent }
 
     var body: some View {
-        // Gate on a valid WORKFLOW.json — projects without one render nothing at all. Reads the
-        // coordinator's cached, reactive flag (no per-render filesystem parse; shows/hides when the
-        // file is added/removed). The main branch never drives a workflow loop, so the control is
-        // hidden there too even when the project has a WORKFLOW.json.
-        if workTaskCoordinator.isWorkflowJSONProject && !worktree.isMain {
-            // The glyph reflects `autopilot` directly: pause when live, play when paused. (No spinner
-            // — the agent surface persists, so an "activity" indicator off `hasLiveAgent` would never
-            // clear and would mask the play/pause state the user acts on.)
-            Button(action: toggle) {
+        // The glyph reflects `autopilot` directly: pause when live, play when paused. (No spinner —
+        // the agent surface persists, so an "activity" indicator off `hasLiveAgent` would never clear
+        // and would mask the play/pause state the user acts on.)
+        Button(action: toggle) {
+            HStack(spacing: 8) {
                 Image(systemName: isLive ? "pause.fill" : "play.fill")
+                Text(label)
+                    .font(.headline)
             }
-            .disabled(isDisabled)
-            .help(helpText)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue(accessibilityValue)
-            .contextMenu {
-                // Manual kill — the pause-and-interrupt affordance (distinct from the pause toggle,
-                // which lets the running step finish; a manual status pick also interrupts, but steers
-                // rather than pauses). Shown only while an agent surface is live, since there is
-                // nothing to terminate otherwise.
-                if hasLiveAgent {
-                    Button("Stop Agent", role: .destructive, action: manualKill)
-                }
-            }
+            .padding(12)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: Self.cornerRadius)
+                .fill(.thickMaterial)
+        )
+        .disabled(isDisabled)
+        .help(helpText)
+        .accessibilityLabel(label)
+        .accessibilityHint(isLive ? "Pauses autopilot" : "Starts autopilot")
+        .accessibilityValue(accessibilityValue)
     }
 
-    private var accessibilityLabel: String {
-        isLive ? "Pause autopilot" : "Start autopilot"
+    /// The row's visible text, reused verbatim as its accessibility label: a control whose
+    /// accessible name omits its own visible words is unreachable by name in Voice Control. The
+    /// *action* lives in the hint, which is why the label states the state rather than the verb.
+    private var label: String {
+        isLive ? "Autopilot: Enabled" : "Autopilot: Disabled"
     }
 
+    /// Only the unavailable reasons — the label already carries enabled/disabled, so restating it
+    /// here would just double it in the announcement.
     private var accessibilityValue: String {
         if isUnassociated { return "Unavailable — create a task for this worktree first" }
         if !hasContent { return "Unavailable — add a task description first" }
-        return isLive ? "Active" : "Paused"
+        return ""
     }
 
     private var helpText: String {
         if isUnassociated { return "Create a task for this worktree to enable autopilot" }
         if !hasContent { return "Add a task description to enable autopilot" }
-        return isLive ? "Pause autopilot" : "Start autopilot"
+        return isLive
+            ? "Autopilot runs each workflow step automatically. Pausing lets the running step finish; nothing new starts."
+            : "Autopilot runs each workflow step automatically, advancing when the agent finishes."
     }
 
     /// Writes the toggled `autopilot` flag; the watcher flip path enacts resume/pause. No-op when
@@ -110,12 +115,5 @@ struct AutopilotButton: View {
     private func toggle() {
         guard let task else { return }
         workTaskManager.setAutopilot(task, to: !isLive)
-    }
-
-    /// Pauses the loop and terminates the running agent surface — the manual kill. Unlike `toggle`,
-    /// this interrupts the in-flight step rather than letting it finish.
-    private func manualKill() {
-        guard let branch = worktree.branch else { return }
-        workTaskCoordinator.manualKill(forBranch: branch)
     }
 }

@@ -99,8 +99,8 @@ extension WorkTaskCoordinator {
         if let current = task.autopilot { lastKnownAutopilot[branch] = current }
 
         // A pause (true→false) cancels any armed hand-off countdown — the central chokepoint every
-        // pause path reaches via the autopilot write's reload, including the toolbar button, which
-        // (unlike the card's Pause and the manual kill) has no synchronous cancel of its own.
+        // pause path reaches via the autopilot write's reload, including the aside's autopilot row,
+        // which (unlike the card's Pause) has no synchronous cancel of its own.
         if previous == true, task.autopilot == false, let id = worktreeId(forBranch: branch) {
             cancelCountdown(forWorktree: id)
         }
@@ -198,12 +198,12 @@ extension WorkTaskCoordinator {
     ///   watcher launch the picked action (under autopilot), overwriting `agentSurfaces` — two agents
     ///   then run in the same worktree, both editing `TASK.md`, and the superseded one's eventual write
     ///   gets route-validated against the *new* running action and halts with a confusing error.
-    ///   Terminating reuses the manual-kill plumbing (`shouldTerminateOnManualKill` /
-    ///   `terminateSurface`) but, unlike `manualKill`, does **not** pause autopilot — the user is
-    ///   *steering* the loop, not stopping it. Order matters: terminate **before** the status write so
-    ///   the SIGHUP'd old agent is already superseded when the watcher reacts to the new status — and
-    ///   so `handleChildExited`'s `shouldClearLiveAgentState` guard sees the freshly-launched next
-    ///   action as the live surface (not the dying one) and leaves its `runningAction` intact.
+    ///   Terminating (`shouldTerminateRunningAgent` / `terminateSurface`) does **not** pause autopilot
+    ///   — the user is *steering* the loop, not stopping it. Order matters: terminate **before** the
+    ///   status write so the SIGHUP'd old agent is already superseded when the watcher reacts to the
+    ///   new status — and so `handleChildExited`'s `shouldClearLiveAgentState` guard sees the
+    ///   freshly-launched next action as the live surface (not the dying one) and leaves its
+    ///   `runningAction` intact.
     /// - **clears the running pointer** (`runningAction`) so the engine sees the worktree as *idle* on
     ///   the new state. The watcher's `advanceWorkflow` then takes the idle path (launch any real
     ///   action under autopilot, or hold under the pause gate) instead of route-validating a transition
@@ -227,7 +227,7 @@ extension WorkTaskCoordinator {
         // Supersede the in-flight agent first (no autopilot pause — this is steering, not stopping),
         // so the dying surface can't race the watcher's relaunch into a two-agent / halt tangle.
         if let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }),
-           shouldTerminateOnManualKill(forWorktree: worktree.id),
+           shouldTerminateRunningAgent(forWorktree: worktree.id),
            let surface = agentSurfaces[worktree.id] {
             terminalManager.terminateSurface(surface, in: worktree.id)
         }
@@ -249,8 +249,8 @@ extension WorkTaskCoordinator {
     /// A sidebar action card's **Set as current** — steer `status` to `slug` without launching it,
     /// taking manual control of the loop. Unlike `setWorkflowStatus` (which steers *without* pausing),
     /// this pauses autopilot: manual per-card control and the autopilot loop are mutually exclusive,
-    /// and the user re-enables the loop via the toolbar button. The pause is **unconditional** — it
-    /// fires even when `slug` already equals the current status (a no-op status write that
+    /// and the user re-enables the loop via the aside's autopilot row. The pause is **unconditional**
+    /// — it fires even when `slug` already equals the current status (a no-op status write that
     /// `setWorkflowStatus` skips), so clicking a card always hands control over.
     ///
     /// The freshly-paused task is re-read before the status write so it preserves `autopilot:false`
@@ -304,7 +304,7 @@ extension WorkTaskCoordinator {
 
     /// Whether the loop engine has a step *actually running* for this worktree — a live agent
     /// surface and/or a tracked running action (`P`). Read-only window onto the engine's internal
-    /// state for the toolbar's activity indicator; it never mutates `runningAction`/`agentSurfaces`,
+    /// state for the aside's autopilot row; it never mutates `runningAction`/`agentSurfaces`,
     /// so the view can't leak engine state. Either being set means a step is mid-run: `runningAction`
     /// alone covers the window where `launchWorkflowAgent` is still awaiting the PATH and no surface
     /// exists yet. Keyed by worktree id (its path), matching how the engine stores both.
@@ -336,12 +336,12 @@ extension WorkTaskCoordinator {
         runningAction[worktreeId] == launch.slug && launchGeneration[worktreeId] == launch.generation
     }
 
-    /// Whether a manual kill should terminate a surface for a worktree — true only when a live agent
-    /// surface is tracked. Pure (a function of the surface dictionary) so the kill *decision* is
+    /// Whether a manual status pick should terminate a surface for a worktree — true only when a live
+    /// agent surface is tracked, **not** merely a running action (a pick landing mid-launch has the
+    /// latter and nothing to SIGHUP). Pure (a function of the surface dictionary) so the *decision* is
     /// unit-testable without a live Ghostty app; the actual `terminateSurface` side effect needs one.
-    /// The kill always pauses autopilot regardless; this only governs the surface-termination half.
     @MainActor
-    func shouldTerminateOnManualKill(forWorktree worktreeId: String) -> Bool {
+    func shouldTerminateRunningAgent(forWorktree worktreeId: String) -> Bool {
         agentSurfaces[worktreeId] != nil
     }
 
@@ -354,7 +354,7 @@ extension WorkTaskCoordinator {
     /// reload observes — so without this pause, the very next reload would respawn the agent the
     /// user just killed (and a finished **terminal** action would re-run on every later reload).
     /// Pausing keeps the design rule intact: the loop only ever (re)starts on an explicit play or a
-    /// manual status pick. Manual-kill semantics minus the terminate (the agent is already dead).
+    /// manual status pick. There is nothing to terminate — the agent is already dead.
     ///
     /// "Died mid-step" is judged against a **fresh disk read** (`freshStatus`), not the in-memory
     /// pool: an agent that wrote its advance and exited immediately may beat the watcher's debounced
@@ -373,40 +373,6 @@ extension WorkTaskCoordinator {
         let diskStatus = workTaskManager.freshStatus(forWorktree: branch) ?? task.status
         guard diskStatus == clearedAction else { return }
         workTaskManager.setAutopilot(task, to: false)
-    }
-
-    /// **Manual kill** — the engine operation distinct from the autopilot *pause* (which never
-    /// interrupts a running agent). It does two things, in order:
-    ///
-    /// 1. Pauses the loop by writing `autopilot = false` via the existing `setAutopilot` field-write,
-    ///    so even after the surface dies the loop won't auto-advance.
-    /// 2. Terminates the worktree's currently-running agent surface via `TerminalManager`'s existing
-    ///    `terminateSurface` (which routes through `closeMainTab` → `closeSurface()` / SIGHUP).
-    ///
-    /// Because `handleChildExited` clears `runningAction` when the live surface exits (Phase 3), the
-    /// termination tears down the engine's in-memory `P`, and the now-paused loop stays put. This is
-    /// the **pause-and-interrupt** path: it stops the loop. (A manual status pick — `setWorkflowStatus`
-    /// — also terminates a running agent, but it *steers* the loop instead of pausing it.) No-op for a
-    /// worktree with no task / no live surface (nothing to kill — but autopilot is still paused if a
-    /// task exists).
-    @MainActor
-    func manualKill(forBranch branch: String) {
-        guard let task = workTaskManager.task(forWorktree: branch) else { return }
-        // 1. Pause first so a race between the SIGHUP and the next reload can't auto-advance.
-        workTaskManager.setAutopilot(task, to: false)
-        // 2. Terminate the live agent surface for this worktree, if one is running.
-        guard let worktree = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
-        // Drop any pending auto-launch countdown — stopping the loop must also stop its next launch.
-        cancelCountdown(forWorktree: worktree.id)
-        guard shouldTerminateOnManualKill(forWorktree: worktree.id),
-              let surface = agentSurfaces[worktree.id] else {
-            // A running action with no surface means `launchWorkflowAgent` is mid-await on the PATH.
-            // Nothing will exit later to clear `P`, so clear it here: that both un-wedges the engine
-            // and makes the resumed launch abandon itself.
-            runningAction.removeValue(forKey: worktree.id)
-            return
-        }
-        terminalManager.terminateSurface(surface, in: worktree.id)
     }
 
     #if DEBUG
@@ -583,9 +549,9 @@ extension WorkTaskCoordinator {
     }
 
     /// The countdown card's **Pause** — cancel the imminent auto-launch and pause autopilot, reusing
-    /// the existing pause path (`setAutopilot(false)`). Functionally identical to pressing the toolbar
-    /// pause at that instant: the pending action does not launch, and future launches are suppressed
-    /// until the user resumes. No-op for a branch with no task / no live worktree.
+    /// the existing pause path (`setAutopilot(false)`). Functionally identical to pausing from the
+    /// aside's autopilot row at that instant: the pending action does not launch, and future launches
+    /// are suppressed until the user resumes. No-op for a branch with no task / no live worktree.
     @MainActor
     func pauseFromCountdown(forBranch branch: String) {
         if let id = worktreeId(forBranch: branch) {
@@ -656,7 +622,7 @@ extension WorkTaskCoordinator {
     ///
     /// Awaiting the resolved PATH suspends between `performLaunch` setting the guard and the surface
     /// existing, so `isLaunchCurrent` is re-read on resume: a manual status pick
-    /// (`setWorkflowStatus`), a manual kill, or a fresh launch landing in that window abandons this
+    /// (`setWorkflowStatus`), or a fresh launch landing in that window abandons this
     /// one. Without it the superseded agent would still spawn — untracked, since the steering path
     /// already ran its teardown — and its eventual status write would halt the loop.
     @MainActor
