@@ -129,7 +129,7 @@ final class WorkflowCountdownHarnessTests: WorkflowHarnessTestCase {
         XCTAssertEqual(firstDeadline, secondDeadline, "the original deadline is preserved")
     }
 
-    // MARK: - Steer / kill cancel the countdown
+    // MARK: - Steer / halt / pause cancel the countdown
 
     /// A manual status pick mid-countdown cancels the pending auto-launch — steering overrides it.
     func testManualStatusPickCancelsCountdown() throws {

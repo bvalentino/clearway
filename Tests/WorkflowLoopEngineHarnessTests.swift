@@ -379,12 +379,17 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
     /// the user is steering the loop, not stopping it. The surface *termination* half needs a live
     /// Ghostty surface, so here we assert the observable engine state: autopilot stays on and the
     /// running pointer is cleared.
+    ///
+    /// The final assertion pins the **slug** half of `isLaunchCurrent`: a steer moves `runningAction`
+    /// without bumping the generation, so the slug is the only half that can catch it. Its companion
+    /// (the generation half, which catches a same-slug *relaunch*) is pinned in
+    /// `WorkflowAgentSupersedeHarnessTests`.
     func testManualPickWhileRunningDoesNotPauseAutopilot() throws {
         try writeWorkflow()
         let branch = "steer"
         let worktreePath = try writeWorktreeTask(branch: branch, status: "implement", autopilot: true)
         let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+        let awaiting = coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
         let worktreeId = Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached).id
         guard let task = coordinator.workTaskManager.task(forWorktree: branch) else {
             return XCTFail("task missing")
@@ -396,6 +401,8 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
                        "a manual pick steers the loop — it never pauses autopilot")
         XCTAssertNil(coordinator.runningAction[worktreeId],
                      "the running pointer is cleared so the watcher relaunches the picked action idle")
+        XCTAssertFalse(coordinator.isLaunchCurrent(awaiting, forWorktree: worktreeId),
+                       "a launch the user steered away from must abandon itself rather than spawn a second agent")
     }
 
     /// The termination half of a manual pick is gated on a *tracked agent surface*, not on the

@@ -57,9 +57,22 @@ struct AutopilotButton: View {
         task?.hidden == true && workTaskCoordinator.currentWorkflowStep(forWorktree: worktreeId) == nil
     }
 
-    /// Disabled when there's nothing to run — no step, or no task content — and no live agent. A live
-    /// agent keeps the row reachable so pause stays available.
-    private var isDisabled: Bool { (isUnassociated || !hasContent) && !hasLiveAgent }
+    /// Why autopilot can't run here, or `nil` when it can. A live agent overrides both reasons so
+    /// pause stays reachable mid-step. The single source for both the disabled state and the copy
+    /// that explains it — deriving them separately let an enabled row announce itself unavailable.
+    private enum Unavailable {
+        case unassociated
+        case empty
+    }
+
+    private var unavailable: Unavailable? {
+        guard !hasLiveAgent else { return nil }
+        if isUnassociated { return .unassociated }
+        if !hasContent { return .empty }
+        return nil
+    }
+
+    private var isDisabled: Bool { unavailable != nil }
 
     var body: some View {
         // The glyph reflects `autopilot` directly: pause when live, play when paused. (No spinner —
@@ -97,17 +110,22 @@ struct AutopilotButton: View {
     /// Only the unavailable reasons — the label already carries enabled/disabled, so restating it
     /// here would just double it in the announcement.
     private var accessibilityValue: String {
-        if isUnassociated { return "Unavailable — create a task for this worktree first" }
-        if !hasContent { return "Unavailable — add a task description first" }
-        return ""
+        switch unavailable {
+        case .unassociated: return "Unavailable — create a task for this worktree first"
+        case .empty: return "Unavailable — add a task description first"
+        case nil: return ""
+        }
     }
 
     private var helpText: String {
-        if isUnassociated { return "Create a task for this worktree to enable autopilot" }
-        if !hasContent { return "Add a task description to enable autopilot" }
-        return isLive
-            ? "Autopilot runs each workflow step automatically. Pausing lets the running step finish; nothing new starts."
-            : "Autopilot runs each workflow step automatically, advancing when the agent finishes."
+        switch unavailable {
+        case .unassociated: return "Create a task for this worktree to enable autopilot"
+        case .empty: return "Add a task description to enable autopilot"
+        case nil:
+            return isLive
+                ? "Autopilot runs each workflow step automatically. Pausing lets the running step finish; nothing new starts."
+                : "Autopilot runs each workflow step automatically, advancing when the agent finishes."
+        }
     }
 
     /// Writes the toggled `autopilot` flag; the watcher flip path enacts resume/pause. No-op when

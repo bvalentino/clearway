@@ -328,9 +328,9 @@ extension WorkTaskCoordinator {
     ///
     /// Both halves are load-bearing. The slug catches a *steer*: a manual pick or a halt moves
     /// `runningAction` to another action, or clears it, and never bumps the generation. The
-    /// generation catches a *relaunch of the same action*: a kill clears `runningAction`, a play
-    /// re-launches the action the worktree still sits on, and the superseded launch would otherwise
-    /// read its own slug back and spawn a second agent into the worktree.
+    /// generation catches a *relaunch of the same action*: a manual status pick clears `runningAction`,
+    /// a play re-launches the action the worktree still sits on, and the superseded launch would
+    /// otherwise read its own slug back and spawn a second agent into the worktree.
     @MainActor
     func isLaunchCurrent(_ launch: WorkflowLaunchID, forWorktree worktreeId: String) -> Bool {
         runningAction[worktreeId] == launch.slug && launchGeneration[worktreeId] == launch.generation
@@ -540,8 +540,8 @@ extension WorkTaskCoordinator {
     }
 
     /// Cancels a pending countdown for a worktree — stops the scheduled fire and clears the card's
-    /// countdown state. Safe to call when none is pending. Used by the pause control and by manual
-    /// steer/kill so a hand-off in its grace window doesn't fire after the user takes control.
+    /// countdown state. Safe to call when none is pending. Used by the pause control and by a manual
+    /// steer so a hand-off in its grace window doesn't fire after the user takes control.
     @MainActor
     func cancelCountdown(forWorktree worktreeId: String) {
         countdownWorkItems.removeValue(forKey: worktreeId)?.cancel()

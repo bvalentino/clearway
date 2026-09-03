@@ -64,8 +64,7 @@ struct TaskAsideView: View {
                 .padding(16)
             }
 
-            // Pinned below the scrolling steps it drives, under the same gate they use, so it stays
-            // reachable however many step cards there are.
+            // Outside the ScrollView so it stays reachable however many step cards there are.
             if workflowDefinition != nil {
                 AutopilotButton(worktreeBranch: worktreeBranch, worktreeId: worktreeId)
                     .padding(.horizontal, 16)

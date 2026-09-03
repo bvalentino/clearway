@@ -56,7 +56,7 @@ class WorkTaskCoordinator: ObservableObject {
 
     /// A counter bumped on every launch of a worktree — the second half of a `WorkflowLaunchID`, so a
     /// launch can tell whether it is still the one the engine wants once it resumes from awaiting the
-    /// resolved PATH. `runningAction` alone can't: a kill followed by a play relaunches the *same*
+    /// resolved PATH. `runningAction` alone can't: a manual status pick followed by a play relaunches the *same*
     /// slug, and the superseded launch would read its own slug back and spawn a second agent.
     /// Not `@Published` — engine bookkeeping, never view state.
     var launchGeneration: [String: Int] = [:]
