@@ -8,23 +8,7 @@ import GhosttyKit
 /// task is gone, not resurrected. (The pre-location-model behavior marked the task done and wrote it
 /// back centrally; this locks in the divergence.)
 @MainActor
-final class WorkTaskCoordinatorTests: XCTestCase {
-
-    private var tempRoot: String!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-tests-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
+final class WorkTaskCoordinatorTests: TempRootTestCase {
 
     /// Removing a worktree whose task lives in its `TASK.md` must not create a central `<UUID>.md`
     /// for that task. The task dies with the worktree.

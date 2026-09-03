@@ -19,7 +19,7 @@ class WorkTaskManager: ObservableObject {
     private let rootClearwayDirectory: String
     private var watcherSource: DispatchSourceFileSystemObject?
     private var rootClearwayWatcherSource: DispatchSourceFileSystemObject?
-    private var pendingReload: DispatchWorkItem?
+    private var pendingReload: ScheduledWork?
 
     /// `.clearway` watchers for opened worktrees, keyed by the watched directory path. Only
     /// opened worktrees are watched (mirroring the central watcher); closed worktrees are still
@@ -118,7 +118,6 @@ class WorkTaskManager: ObservableObject {
     }
 
     nonisolated deinit {
-        pendingReload?.cancel()
         watcherSource?.cancel()
         rootClearwayWatcherSource?.cancel()
         worktreeWatchers.values.forEach { $0.cancel() }
@@ -438,7 +437,7 @@ class WorkTaskManager: ObservableObject {
     /// write during the 0.3s debounce (or after a no-op reload path) would be missed.
     private func makeTaskFileWatcher(path: String) -> DispatchSourceFileSystemObject? {
         ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 guard let self else { return }
                 // Re-open this path if still desired; the event may have been the atomic replace
                 // that killed the previous inode.
@@ -531,13 +530,12 @@ class WorkTaskManager: ObservableObject {
     }
 
     private nonisolated func scheduleReload() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            self.pendingReload?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 self?.reload()
             }
-            self.pendingReload = work
+            self.pendingReload = ScheduledWork(work)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }

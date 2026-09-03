@@ -10,87 +10,9 @@ import GhosttyKit
 /// `.launch` runs the engine's bookkeeping without spawning a real Ghostty surface; tests that count
 /// launches override it with a recorder.
 @MainActor
-final class WorkflowCompletionHarnessTests: XCTestCase {
+final class WorkflowCompletionHarnessTests: WorkflowHarnessTestCase {
 
-    private var tempRoot: String!
-
-    /// A non-null placeholder `ghostty_app_t` — never dereferenced (the no-op launcher stands in).
-    private let dummyApp: ghostty_app_t = UnsafeMutableRawPointer(bitPattern: 0x1)!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-completion-harness-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
-
-    // MARK: - Fixture builders
-
-    private static let workflowJSON = """
-    {
-      "version": 1,
-      "start": "implement",
-      "actions": {
-        "implement": { "name": "Implement", "instructions": "Implement.", "routes": { "success": "test" } },
-        "test": { "name": "Test", "instructions": "Test.", "routes": { "success": "review" } },
-        "review": { "name": "Review", "instructions": "Review." }
-      }
-    }
-    """
-
-    /// Writes `.clearway/WORKFLOW.json` (the canonical implement → test → review graph) into the root.
-    private func writeWorkflow() throws {
-        try writeWorkflowJSON(Self.workflowJSON)
-    }
-
-    /// Writes arbitrary `.clearway/WORKFLOW.json` content into the project root.
-    private func writeWorkflowJSON(_ json: String) throws {
-        let clearway = (tempRoot as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
-        try json.write(toFile: (clearway as NSString).appendingPathComponent("WORKFLOW.json"),
-                       atomically: true, encoding: .utf8)
-    }
-
-    /// Writes a worktree `TASK.md` with the given status / autopilot / completed and returns the path.
-    @discardableResult
-    private func writeWorktreeTask(branch: String, status: String, autopilot: Bool? = nil, completed: Bool? = nil) throws -> String {
-        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
-        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
-        let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-        var task = WorkTask(id: UUID(), title: "Task", status: status, worktree: branch)
-        task.autopilot = autopilot
-        task.completed = completed
-        try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
-        return worktreePath
-    }
-
-    /// Builds a coordinator scoped to `tempRoot` with one live worktree on `branch`, wired to a no-op
-    /// launcher so launches stay surface-free.
-    private func makeCoordinator(branch: String, worktreePath: String) -> WorkTaskCoordinator {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
-        taskManager.setWatchedWorktrees([worktreePath])
-
-        let worktreeManager = WorktreeManager(projectPath: tempRoot)
-        worktreeManager.worktrees = [
-            Worktree(branch: branch, path: worktreePath, isMain: false, headStatus: .attached),
-        ]
-        let coordinator = WorkTaskCoordinator(
-            workTaskManager: taskManager,
-            terminalManager: TerminalManager(),
-            worktreeManager: worktreeManager
-        )
-        coordinator.workflowAgentLauncher = { _, _, _, _ in }
-        return coordinator
-    }
+    override static var tempRootPrefix: String { "clearway-completion-harness" }
 
     // MARK: - Completion ends the loop
 

@@ -14,14 +14,20 @@ struct WorktreeGroupsPayload: Codable, Equatable {
 
 // MARK: - Store
 
-final class WorktreeGroupStore {
+final class WorktreeGroupStore: Sendable {
+    /// Both watcher sources, held behind a lock so the store stays `Sendable` and a
+    /// nonisolated `deinit` can cancel them from any thread.
+    private struct WatcherSources {
+        var dir: DispatchSourceFileSystemObject?
+        var file: DispatchSourceFileSystemObject?
+    }
+
     private let projectPath: String
 
     // Serialises all writes to prevent interleaved file mutations from the same process.
     private let writeQueue = DispatchQueue(label: "app.getclearway.mac.WorktreeGroupStore.write")
 
-    private var dirWatcherSource: DispatchSourceFileSystemObject?
-    private var fileWatcherSource: DispatchSourceFileSystemObject?
+    private let sources = OSAllocatedUnfairLock(initialState: WatcherSources())
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -106,10 +112,12 @@ final class WorktreeGroupStore {
     }
 
     func stopWatching() {
-        fileWatcherSource?.cancel()
-        fileWatcherSource = nil
-        dirWatcherSource?.cancel()
-        dirWatcherSource = nil
+        let previous = sources.withLock { state in
+            defer { state = WatcherSources() }
+            return state
+        }
+        previous.file?.cancel()
+        previous.dir?.cancel()
     }
 
     // MARK: - Private Watcher Helpers
@@ -125,8 +133,7 @@ final class WorktreeGroupStore {
         }
 
         // File exists — cancel any directory watcher and watch the file directly.
-        dirWatcherSource?.cancel()
-        dirWatcherSource = nil
+        cancelDirWatcher()
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
@@ -142,7 +149,7 @@ final class WorktreeGroupStore {
             let fileGone = events.contains(.delete) || events.contains(.rename)
             onExternalChange()
             // Reopen when the watched inode is gone (atomic save replaces the file),
-            // but do it on the next tick so we don't swap out `fileWatcherSource`
+            // but do it on the next tick so we don't swap out the file source
             // while the current handler is still running inside libdispatch.
             if fileGone {
                 DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -152,14 +159,13 @@ final class WorktreeGroupStore {
         }
         source.setCancelHandler { close(fd) }
         source.resume()
-        fileWatcherSource = source
+        sources.withLock { $0.file = source }
     }
 
     /// Watches the .clearway directory for entry changes. Switches to per-file watching
     /// once groups.json appears (created by another process or by the first save).
     private func openDirWatcher(onExternalChange: @escaping @Sendable () -> Void) {
-        dirWatcherSource?.cancel()
-        dirWatcherSource = nil
+        cancelDirWatcher()
 
         let dirPath = clearwayDir
         let filePath = groupsFile
@@ -183,7 +189,7 @@ final class WorktreeGroupStore {
             guard FileManager.default.fileExists(atPath: filePath) else { return }
             onExternalChange()
             // groups.json appeared — upgrade to a file-level watcher on the next
-            // tick so we don't swap out `dirWatcherSource` from inside its own
+            // tick so we don't swap out the directory source from inside its own
             // handler (same teardown hazard as the file-level path).
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 self?.openFileWatcher(onExternalChange: onExternalChange)
@@ -191,6 +197,14 @@ final class WorktreeGroupStore {
         }
         source.setCancelHandler { close(fd) }
         source.resume()
-        dirWatcherSource = source
+        sources.withLock { $0.dir = source }
+    }
+
+    private func cancelDirWatcher() {
+        let previous = sources.withLock { state in
+            defer { state.dir = nil }
+            return state.dir
+        }
+        previous?.cancel()
     }
 }

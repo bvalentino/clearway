@@ -107,7 +107,8 @@ struct MarkdownEditorView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate {
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate, @MainActor NSTextStorageDelegate {
         @Binding var text: String
         weak var textView: NSTextView?
         var isUpdating = false

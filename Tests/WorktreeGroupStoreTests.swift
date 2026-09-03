@@ -2,26 +2,21 @@ import XCTest
 @testable import Clearway
 
 @MainActor
-final class WorktreeGroupStoreTests: XCTestCase {
+final class WorktreeGroupStoreTests: TempRootTestCase {
 
-    private var tempRoot: String!
+    override static var tempRootPrefix: String { "clearway-store-tests" }
+
     private var store: WorktreeGroupStore!
 
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-store-tests-\(UUID().uuidString)")
+    override func setUp() async throws {
+        try await super.setUp()
         store = WorktreeGroupStore(projectPath: tempRoot)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         store.stopWatching()
         store = nil
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Codable round-trip

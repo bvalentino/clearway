@@ -10,14 +10,13 @@ class PromptManager: ObservableObject {
 
     private(set) var directory: String
     private var watcherSource: DispatchSourceFileSystemObject?
-    private var pendingReload: DispatchWorkItem?
+    private var pendingReload: ScheduledWork?
 
     init(directory: String) {
         self.directory = (directory as NSString).expandingTildeInPath
     }
 
     nonisolated deinit {
-        pendingReload?.cancel()
         watcherSource?.cancel()
     }
 
@@ -36,7 +35,6 @@ class PromptManager: ObservableObject {
     }
 
     func stopWatching() {
-        pendingReload?.cancel()
         pendingReload = nil
         watcherSource?.cancel()
         watcherSource = nil
@@ -157,13 +155,12 @@ class PromptManager: ObservableObject {
     }
 
     private nonisolated func scheduleReload() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            self.pendingReload?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 self?.reload()
             }
-            self.pendingReload = work
+            self.pendingReload = ScheduledWork(work)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }

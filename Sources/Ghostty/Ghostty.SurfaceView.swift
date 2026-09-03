@@ -1,11 +1,25 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 import GhosttyKit
 
 extension Ghostty {
+    /// Owns a `ghostty_surface_t` and frees it as it deallocates, signalling the shell with SIGHUP.
+    private final class SurfaceHandle: @unchecked Sendable {
+        let surface: ghostty_surface_t
+
+        init(_ surface: ghostty_surface_t) {
+            self.surface = surface
+        }
+
+        deinit {
+            ghostty_surface_free(surface)
+        }
+    }
+
     /// NSView subclass that hosts a single Ghostty terminal surface.
-    class SurfaceView: NSView, ObservableObject, NSTextInputClient {
+    class SurfaceView: NSView, ObservableObject, @MainActor NSTextInputClient {
         private static let acceptedDropTypes: [NSPasteboard.PasteboardType] = [.string, .fileURL, .URL]
 
         @Published var title: String = ""
@@ -18,9 +32,18 @@ extension Ghostty {
         /// The working directory passed at initialization, used as a fallback for respawning.
         let initialWorkingDirectory: String?
 
-        private(set) var surfacePtr: ghostty_surface_t?
+        /// Lock-guarded so the `nonisolated` C callbacks in `Ghostty.App` can read the pointer
+        /// without an unsafe opt-out or a runtime isolation assertion.
+        private let surfaceHandle = OSAllocatedUnfairLock<SurfaceHandle?>(initialState: nil)
 
-        var surface: ghostty_surface_t? { surfacePtr }
+        /// Reads the pointer inside the lock so no `SurfaceHandle` reference escapes: a handle
+        /// released by the caller could make its release the last one, running `ghostty_surface_free`
+        /// off the main actor. The caller still gets a bare pointer whose lifetime the lock does not
+        /// extend — closing that needs a scoped `withSurface { }` accessor, which is its own task.
+        /// `withLockUnchecked` because `ghostty_surface_t`'s `Sendable` conformance is unavailable.
+        nonisolated var surfacePtr: ghostty_surface_t? {
+            surfaceHandle.withLockUnchecked { $0?.surface }
+        }
 
         /// Whether this surface has a running foreground process that warrants
         /// a confirmation dialog before closing.
@@ -75,7 +98,8 @@ extension Ghostty {
                 Ghostty.logger.critical("ghostty_surface_new failed")
                 return
             }
-            self.surfacePtr = surface
+            let handle = SurfaceHandle(surface)
+            surfaceHandle.withLock { $0 = handle }
             ghostty_surface_set_focus(surface, false)
 
             updateTrackingAreas()
@@ -88,17 +112,15 @@ extension Ghostty {
 
         /// Free the underlying ghostty surface, signaling the shell with SIGHUP.
         ///
-        /// Safe to call multiple times — subsequent calls are no-ops.
-        /// Called automatically by `deinit` if not called earlier.
+        /// Safe to call multiple times — subsequent calls are no-ops. Releasing the
+        /// view frees the surface the same way, so it is never leaked.
         func closeSurface() {
-            guard let surface = surfacePtr else { return }
-            surfacePtr = nil
-            ghostty_surface_free(surface)
-        }
-
-        deinit {
-            closeSurface()
-            trackingAreas.forEach { removeTrackingArea($0) }
+            // Release outside the lock: freeing re-enters libghostty, which can read the
+            // pointer back through a callback and would deadlock on a held unfair lock.
+            _ = surfaceHandle.withLock { state -> SurfaceHandle? in
+                defer { state = nil }
+                return state
+            }
         }
 
         // MARK: - Focus

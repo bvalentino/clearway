@@ -387,14 +387,18 @@ struct ContentView: View {
                 }
             }
             if taskWindowObservers.isEmpty {
-                let actions: [(Notification.Name, (WorkTask) -> Void)] = [
+                let actions: [(Notification.Name, @MainActor @Sendable (WorkTask) -> Void)] = [
                     (WorkTaskNotification.start, startWorkTask),
                     (WorkTaskNotification.openWorktree, openTaskWorktree),
                 ]
                 let projectPath = worktreeManager.projectPath
                 taskWindowObservers = actions.map { name, action in
-                    NotificationCenter.default.addObserver(forName: name, object: projectPath, queue: .main) { [self] n in
-                        handleTaskNotification(n, action: action)
+                    NotificationCenter.default.addObserver(forName: name, object: projectPath, queue: .main) { n in
+                        let task = n.userInfo?[WorkTaskNotification.taskKey] as? WorkTask
+                        let taskId = n.object as? UUID
+                        Task { @MainActor in
+                            handleTaskNotification(task: task, taskId: taskId, action: action)
+                        }
                     }
                 }
             }
@@ -698,12 +702,12 @@ struct ContentView: View {
         }
     }
 
-    private func handleTaskNotification(_ notification: Notification, action: (WorkTask) -> Void) {
+    private func handleTaskNotification(task: WorkTask?, taskId: UUID?, action: (WorkTask) -> Void) {
         // Prefer task data from userInfo (sent by the task window's manager) to avoid
         // race conditions where our own manager hasn't reloaded from disk yet.
-        if let task = notification.userInfo?[WorkTaskNotification.taskKey] as? WorkTask {
+        if let task {
             action(task)
-        } else if let taskId = notification.object as? UUID,
+        } else if let taskId,
                   let task = workTaskManager.tasks.first(where: { $0.id == taskId }) {
             action(task)
         }

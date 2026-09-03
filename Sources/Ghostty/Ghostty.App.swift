@@ -2,7 +2,21 @@ import AppKit
 import GhosttyKit
 
 extension Ghostty {
+    /// Owns a `ghostty_app_t` and frees it as it deallocates.
+    private final class AppHandle {
+        let app: ghostty_app_t
+
+        init(_ app: ghostty_app_t) {
+            self.app = app
+        }
+
+        deinit {
+            ghostty_app_free(app)
+        }
+    }
+
     /// Manages the global `ghostty_app_t` lifecycle.
+    @MainActor
     class App: ObservableObject {
         enum Readiness: String {
             case loading, error, ready
@@ -12,12 +26,9 @@ extension Ghostty {
         @Published private(set) var config: Config
         @Published private(set) var appIsActive: Bool = NSApp?.isActive ?? true
 
-        @Published var app: ghostty_app_t? {
-            didSet {
-                guard let old = oldValue else { return }
-                ghostty_app_free(old)
-            }
-        }
+        private var appHandle: AppHandle?
+
+        var app: ghostty_app_t? { appHandle?.app }
 
         private var appearanceObservation: NSKeyValueObservation?
         private var lastIsDark: Bool = NSApp?.effectiveAppearance.isDark ?? true
@@ -29,19 +40,8 @@ extension Ghostty {
                 return
             }
 
-            var runtime_cfg = ghostty_runtime_config_s(
-                userdata: Unmanaged.passUnretained(self).toOpaque(),
-                supports_selection_clipboard: true,
-                wakeup_cb: { userdata in App.wakeup(userdata) },
-                action_cb: { app, target, action in App.action(app!, target: target, action: action) },
-                read_clipboard_cb: { userdata, loc, state in App.readClipboard(userdata, location: loc, state: state) },
-                confirm_read_clipboard_cb: { userdata, str, state, request in
-                    App.confirmReadClipboard(userdata, string: str, state: state, request: request)
-                },
-                write_clipboard_cb: { userdata, loc, content, len, confirm in
-                    App.writeClipboard(userdata, location: loc, content: content, len: len, confirm: confirm)
-                },
-                close_surface_cb: { userdata, processAlive in App.closeSurface(userdata, processAlive: processAlive) }
+            var runtime_cfg = App.makeRuntimeConfig(
+                userdata: Unmanaged.passUnretained(self).toOpaque()
             )
 
             guard let app = ghostty_app_new(&runtime_cfg, config.config) else {
@@ -49,14 +49,14 @@ extension Ghostty {
                 readiness = .error
                 return
             }
-            self.app = app
+            self.appHandle = AppHandle(app)
 
             ghostty_app_set_focus(app, NSApp.isActive)
             setColorScheme(for: NSApp.effectiveAppearance)
 
             appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                guard let self else { return }
                 DispatchQueue.main.async {
-                    guard let self else { return }
                     let isDark = NSApp.effectiveAppearance.isDark
                     guard isDark != self.lastIsDark else { return }
                     self.lastIsDark = isDark
@@ -85,7 +85,6 @@ extension Ghostty {
         }
 
         deinit {
-            self.app = nil
             NotificationCenter.default.removeObserver(self)
         }
 
@@ -161,7 +160,7 @@ extension Ghostty {
         // MARK: - Helpers
 
         /// Get the SurfaceView from the userdata pointer stored on a surface.
-        private static func surfaceViewFromTarget(_ target: ghostty_target_s) -> SurfaceView? {
+        private nonisolated static func surfaceViewFromTarget(_ target: ghostty_target_s) -> SurfaceView? {
             guard target.tag == GHOSTTY_TARGET_SURFACE else { return nil }
             let surface = target.target.surface
             guard let userdata = ghostty_surface_userdata(surface) else { return nil }
@@ -170,12 +169,38 @@ extension Ghostty {
 
         // MARK: - Runtime Callbacks
 
-        static func wakeup(_ userdata: UnsafeMutableRawPointer?) {
+        /// Builds the runtime callback table libghostty invokes from its own threads.
+        ///
+        /// `nonisolated` is load-bearing. A closure literal written inside a `@MainActor`
+        /// member is main-actor isolated even when it is `@convention(c)`: it emits a
+        /// `swift_task_isCurrentExecutor` check on entry and traps when libghostty calls it
+        /// from the renderer thread. Nothing in the compiler flags that, so the callbacks
+        /// must be formed here, outside the actor.
+        private nonisolated static func makeRuntimeConfig(
+            userdata: UnsafeMutableRawPointer
+        ) -> ghostty_runtime_config_s {
+            ghostty_runtime_config_s(
+                userdata: userdata,
+                supports_selection_clipboard: true,
+                wakeup_cb: { userdata in App.wakeup(userdata) },
+                action_cb: { app, target, action in App.action(app!, target: target, action: action) },
+                read_clipboard_cb: { userdata, loc, state in App.readClipboard(userdata, location: loc, state: state) },
+                confirm_read_clipboard_cb: { userdata, str, state, request in
+                    App.confirmReadClipboard(userdata, string: str, state: state, request: request)
+                },
+                write_clipboard_cb: { userdata, loc, content, len, confirm in
+                    App.writeClipboard(userdata, location: loc, content: content, len: len, confirm: confirm)
+                },
+                close_surface_cb: { userdata, processAlive in App.closeSurface(userdata, processAlive: processAlive) }
+            )
+        }
+
+        nonisolated static func wakeup(_ userdata: UnsafeMutableRawPointer?) {
             let state = Unmanaged<App>.fromOpaque(userdata!).takeUnretainedValue()
             DispatchQueue.main.async { state.appTick() }
         }
 
-        static func action(_ app: ghostty_app_t, target: ghostty_target_s, action: ghostty_action_s) -> Bool {
+        nonisolated static func action(_ app: ghostty_app_t, target: ghostty_target_s, action: ghostty_action_s) -> Bool {
             switch action.tag {
             case GHOSTTY_ACTION_SET_TITLE:
                 guard let surface = surfaceViewFromTarget(target) else { return false }
@@ -288,14 +313,14 @@ extension Ghostty {
         }
 
         @discardableResult
-        static func readClipboard(
+        nonisolated static func readClipboard(
             _ userdata: UnsafeMutableRawPointer?,
             location: ghostty_clipboard_e,
             state: UnsafeMutableRawPointer?
         ) -> Bool {
             guard let userdata else { return false }
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-            guard let surface = surfaceView.surface else { return false }
+            guard let surface = surfaceView.surfacePtr else { return false }
 
             let pasteboard: NSPasteboard = switch location {
             case GHOSTTY_CLIPBOARD_SELECTION:
@@ -311,7 +336,7 @@ extension Ghostty {
             return true
         }
 
-        static func confirmReadClipboard(
+        nonisolated static func confirmReadClipboard(
             _ userdata: UnsafeMutableRawPointer?,
             string: UnsafePointer<CChar>?,
             state: UnsafeMutableRawPointer?,
@@ -320,11 +345,11 @@ extension Ghostty {
             // Auto-confirm all clipboard requests for now
             guard let userdata else { return }
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
-            guard let surface = surfaceView.surface else { return }
+            guard let surface = surfaceView.surfacePtr else { return }
             ghostty_surface_complete_clipboard_request(surface, string, state, false)
         }
 
-        static func writeClipboard(
+        nonisolated static func writeClipboard(
             _ userdata: UnsafeMutableRawPointer?,
             location: ghostty_clipboard_e,
             content: UnsafePointer<ghostty_clipboard_content_s>?,
@@ -353,7 +378,7 @@ extension Ghostty {
             }
         }
 
-        static func closeSurface(_ userdata: UnsafeMutableRawPointer?, processAlive: Bool) {
+        nonisolated static func closeSurface(_ userdata: UnsafeMutableRawPointer?, processAlive: Bool) {
             guard let userdata else { return }
             let surfaceView = Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
             DispatchQueue.main.async {

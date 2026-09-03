@@ -4,13 +4,20 @@ import XCTest
 @MainActor
 final class ProjectListManagerTests: XCTestCase {
 
-    private let suiteName = "app.getclearway.mac.tests"
+    private var suiteName: String!
     private var testDefaults: UserDefaults!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
+        suiteName = "ProjectListManagerTests.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    override func tearDown() async throws {
         testDefaults.removePersistentDomain(forName: suiteName)
+        testDefaults = nil
+        suiteName = nil
+        try await super.tearDown()
     }
 
     // MARK: - Project Management

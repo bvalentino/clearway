@@ -2,23 +2,7 @@ import XCTest
 @testable import Clearway
 
 @MainActor
-final class WorkTaskManagerTests: XCTestCase {
-
-    private var tempRoot: String!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-tests-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
+final class WorkTaskManagerTests: TempRootTestCase {
 
     /// Regression lock: applying a stale editor buffer must preserve system-managed fields
     /// (status, worktree) and only update editor-owned fields (title, body).
