@@ -152,6 +152,7 @@ private struct PromptTextEditor: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         @Binding var contentHeight: CGFloat

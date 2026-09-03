@@ -35,7 +35,7 @@ enum ColorSchemePreference: String, CaseIterable, Identifiable {
 @MainActor
 class SettingsManager: ObservableObject {
     /// Fallback command when `mainTerminalCommand` is unset or whitespace-only.
-    static let defaultMainTerminalCommand = "claude"
+    nonisolated static let defaultMainTerminalCommand = "claude"
 
     private let defaults: UserDefaults
 

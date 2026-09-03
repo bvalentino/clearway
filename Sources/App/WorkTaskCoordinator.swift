@@ -196,22 +196,24 @@ class WorkTaskCoordinator: ObservableObject {
         )
     }
 
-    private var exitObserver: Any?
+    private var exitObserver: NotificationObservation?
 
     init(workTaskManager: WorkTaskManager, terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
         self.workTaskManager = workTaskManager
         self.terminalManager = terminalManager
         self.worktreeManager = worktreeManager
 
-        exitObserver = NotificationCenter.default.addObserver(
+        exitObserver = NotificationObservation(NotificationCenter.default.addObserver(
             forName: .ghosttyChildExited,
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let surface = notification.object as? Ghostty.SurfaceView,
+                  let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32 else { return }
             Task { @MainActor [weak self] in
-                self?.handleChildExited(notification)
+                self?.handleChildExited(surface: surface, exitCode: exitCode)
             }
-        }
+        })
 
         // Drive the WORKFLOW.json loop engine off the manager's debounced TASK.md reload. The
         // closure hops back through `self` so the engine logic stays on `WorkTaskCoordinator`.
@@ -231,12 +233,6 @@ class WorkTaskCoordinator: ObservableObject {
         // Seed the cached workflow-json gate so the aside is correct before the first reload;
         // subsequent `.clearway/` changes refresh it via `onClearwayChanged`.
         refreshWorkflowJSONGate()
-    }
-
-    nonisolated deinit {
-        if let observer = exitObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     // MARK: - Actions
@@ -379,10 +375,7 @@ class WorkTaskCoordinator: ObservableObject {
         liveAgentSurface === exitingSurface
     }
 
-    private func handleChildExited(_ notification: Notification) {
-        guard let surface = notification.object as? Ghostty.SurfaceView,
-              let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32 else { return }
-
+    private func handleChildExited(surface: Ghostty.SurfaceView, exitCode: UInt32) {
         let surfaceId = ObjectIdentifier(surface).debugDescription
         guard let worktreeId = agentSurfaceIdentities.first(where: { $0.value.contains(ObjectIdentifier(surface)) })?.key else {
             Ghostty.logger.info("ghosttyChildExited: surface=\(surfaceId, privacy: .public) exitCode=\(exitCode) isAgent=false")

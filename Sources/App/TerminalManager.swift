@@ -17,14 +17,14 @@ class TerminalManager: ObservableObject {
     /// Non-private so the task-terminal extension (a separate file) can cache the handle
     /// when it creates surfaces outside the main-pane flow.
     var ghosttyApp: ghostty_app_t?
-    private var closeSurfaceObserver: Any?
+    private var closeSurfaceObserver: NotificationObservation?
     private var recentRestarts: [String: [Date]] = [:]
     @Published var activeSurfaceId: String?
     @Published private(set) var notifiedWorktrees: Set<String> = []
     /// Worktree IDs that have active terminal panes. Must stay in sync with
     /// `panes.keys` — all pane mutations should go through `removeSurface` or `closeWorktree`.
     @Published private(set) var openWorktreeIds: [String] = []
-    private var notificationObserver: Any?
+    private var notificationObserver: NotificationObservation?
 
     /// Per-worktree panel visibility (defaults to false when absent).
     /// Internal (not private) so the panel accessors in
@@ -66,18 +66,18 @@ class TerminalManager: ObservableObject {
     init() {
         TerminalManager.allInstances.add(self)
 
-        notificationObserver = NotificationCenter.default.addObserver(
+        notificationObserver = NotificationObservation(NotificationCenter.default.addObserver(
             forName: .ghosttyDesktopNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self, let surface = notification.object as? Ghostty.SurfaceView else { return }
-            MainActor.assumeIsolated {
-                self.handleDesktopNotification(from: surface)
+            guard let surface = notification.object as? Ghostty.SurfaceView else { return }
+            Task { @MainActor [weak self] in
+                self?.handleDesktopNotification(from: surface)
             }
-        }
+        })
 
-        closeSurfaceObserver = NotificationCenter.default.addObserver(
+        closeSurfaceObserver = NotificationObservation(NotificationCenter.default.addObserver(
             forName: .ghosttyCloseSurface,
             object: nil,
             queue: .main
@@ -89,16 +89,7 @@ class TerminalManager: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.replaceSurface(deadSurface)
             }
-        }
-    }
-
-    deinit {
-        if let observer = notificationObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = closeSurfaceObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        })
     }
 
     /// Explicitly close all terminal surfaces, sending SIGHUP to their shells.
@@ -107,10 +98,7 @@ class TerminalManager: ObservableObject {
     /// process exits. Removes the close-surface observer first to prevent
     /// the restart logic from firing during teardown.
     func closeAllSurfaces() {
-        if let observer = closeSurfaceObserver {
-            NotificationCenter.default.removeObserver(observer)
-            closeSurfaceObserver = nil
-        }
+        closeSurfaceObserver = nil
         for surface in allSurfaces {
             surface.closeSurface()
         }

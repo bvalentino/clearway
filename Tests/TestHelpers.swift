@@ -16,32 +16,43 @@ func makeWorktree(
     )
 }
 
+/// Base for tests that need a scratch project root, created per test and removed on teardown.
+@MainActor
+class TempRootTestCase: XCTestCase {
+
+    /// Directory-name prefix for the scratch root; subclasses override it to stay distinguishable
+    /// in `NSTemporaryDirectory()` when a run leaves one behind.
+    class var tempRootPrefix: String { "clearway-tests" }
+
+    var tempRoot: String!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        tempRoot = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("\(Self.tempRootPrefix)-\(UUID().uuidString)")
+    }
+
+    override func tearDown() async throws {
+        if let root = tempRoot {
+            try? FileManager.default.removeItem(atPath: root)
+        }
+        tempRoot = nil
+        try await super.tearDown()
+    }
+}
+
 /// Shared scaffolding for the `WORKFLOW.json` loop-engine harness tests: a scratch project root, the
 /// standard implement→test→review workflow fixture, and a coordinator wired surface-free. Subclasses
 /// drive the coordinator and assert its observable state. The real Ghostty surface launch is replaced
 /// by a no-op `workflowAgentLauncher`, so launches run the engine's bookkeeping without a terminal.
 @MainActor
-class WorkflowHarnessTestCase: XCTestCase {
+class WorkflowHarnessTestCase: TempRootTestCase {
 
-    var tempRoot: String!
+    override class var tempRootPrefix: String { "clearway-workflow-harness" }
 
     /// A non-null placeholder `ghostty_app_t` (`void*`). Never dereferenced: the no-op launcher seam
     /// stands in for the real surface spawn, so `app` is only ever passed around, never touched.
     let dummyApp: ghostty_app_t = UnsafeMutableRawPointer(bitPattern: 0x1)!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-workflow-harness-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
 
     // MARK: - Fixture builders
 
@@ -77,6 +88,7 @@ class WorkflowHarnessTestCase: XCTestCase {
         branch: String,
         status: String,
         autopilot: Bool? = nil,
+        completed: Bool? = nil,
         title: String = "Task",
         hidden: Bool = false,
         id: UUID = UUID()
@@ -88,6 +100,7 @@ class WorkflowHarnessTestCase: XCTestCase {
         var task = WorkTask(id: id, title: title, status: status, worktree: branch)
         task.autopilot = autopilot
         task.hidden = hidden
+        task.completed = completed
         try task.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
         return worktreePath
     }

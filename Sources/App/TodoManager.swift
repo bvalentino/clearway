@@ -10,10 +10,9 @@ class TodoManager: ObservableObject {
 
     private var worktreePath: String?
     private var watcherSource: DispatchSourceFileSystemObject?
-    private var pendingReload: DispatchWorkItem?
+    private var pendingReload: ScheduledWork?
 
     nonisolated deinit {
-        pendingReload?.cancel()
         watcherSource?.cancel()
     }
 
@@ -28,7 +27,6 @@ class TodoManager: ObservableObject {
     }
 
     func stopWatching() {
-        pendingReload?.cancel()
         pendingReload = nil
         watcherSource?.cancel()
         watcherSource = nil
@@ -153,13 +151,12 @@ class TodoManager: ObservableObject {
     }
 
     private nonisolated func scheduleReload() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            self.pendingReload?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 self?.reload()
             }
-            self.pendingReload = work
+            self.pendingReload = ScheduledWork(work)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }

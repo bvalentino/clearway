@@ -19,14 +19,24 @@ class ClaudeActivityMonitor: ObservableObject {
     /// How long after the last write event before a worktree stops being "working."
     private static let expirySeconds: Double = 8.0
 
-    /// Per-worktree watcher state.
-    private struct WatcherState {
+    /// Per-worktree watcher state. A class so dropping it from `watchers` tears its
+    /// sources down, which is what lets the nonisolated `deinit` below stay empty of reads.
+    private final class WatcherState {
+        init(projectDir: String) {
+            self.projectDir = projectDir
+        }
+
+        deinit {
+            dirSource?.cancel()
+            fileSource?.cancel()
+        }
+
         /// Watches the project directory for new/deleted session files.
         var dirSource: DispatchSourceFileSystemObject?
         /// Watches the most recent JSONL file for content appends.
         var fileSource: DispatchSourceFileSystemObject?
-        var expiryTimer: DispatchWorkItem?
-        var projectDir: String
+        var expiryTimer: ScheduledWork?
+        let projectDir: String
         /// DispatchSource fires an initial event on resume for existing directories.
         /// Skip events before this timestamp (50ms after watcher creation).
         var readyAfter: Date = .distantFuture
@@ -41,16 +51,10 @@ class ClaudeActivityMonitor: ObservableObject {
     /// Watches `~/.claude/projects/` for entry changes (subdirectory creation).
     private var parentDirSource: DispatchSourceFileSystemObject?
     /// Fallback poll when `~/.claude/projects/` itself doesn't exist.
-    private var parentPollWorkItem: DispatchWorkItem?
+    private var parentPollWorkItem: ScheduledWork?
 
     nonisolated deinit {
-        for (_, state) in watchers {
-            state.expiryTimer?.cancel()
-            state.dirSource?.cancel()
-            state.fileSource?.cancel()
-        }
         parentDirSource?.cancel()
-        parentPollWorkItem?.cancel()
     }
 
     /// Reconcile watchers with the current set of worktrees.
@@ -75,7 +79,7 @@ class ClaudeActivityMonitor: ObservableObject {
 
     private func startWatching(worktreeId: String, worktreePath: String) {
         let projectDir = ClaudeSessionFiles.projectDir(forWorktreePath: worktreePath)
-        var state = WatcherState(projectDir: projectDir)
+        let state = WatcherState(projectDir: projectDir)
 
         if let source = ClaudeSessionFiles.makeWatcher(path: projectDir, handler: { [weak self] in
             self?.handleDirEvent(worktreeId: worktreeId)
@@ -124,11 +128,7 @@ class ClaudeActivityMonitor: ObservableObject {
     }
 
     private func stopWatching(id: String) {
-        if let state = watchers.removeValue(forKey: id) {
-            state.dirSource?.cancel()
-            state.fileSource?.cancel()
-            state.expiryTimer?.cancel()
-        }
+        watchers.removeValue(forKey: id)
         pendingWorktrees.removeValue(forKey: id)
         if pendingWorktrees.isEmpty {
             tearDownParentWatcher()
@@ -183,7 +183,7 @@ class ClaudeActivityMonitor: ObservableObject {
 
     /// Called when the project directory itself changes (file created/deleted).
     private nonisolated func handleDirEvent(worktreeId: String) {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self,
                   let state = self.watchers[worktreeId],
                   Date() >= state.readyAfter else { return }
@@ -195,7 +195,7 @@ class ClaudeActivityMonitor: ObservableObject {
 
     /// Called when a JSONL file is written to (Claude actively working).
     private nonisolated func handleActivity(worktreeId: String) {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self,
                   let state = self.watchers[worktreeId],
                   Date() >= state.readyAfter else { return }
@@ -211,13 +211,11 @@ class ClaudeActivityMonitor: ObservableObject {
     }
 
     private func resetExpiryTimer(worktreeId: String) {
-        watchers[worktreeId]?.expiryTimer?.cancel()
-
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.workingWorktreeIds.contains(worktreeId) else { return }
             self.workingWorktreeIds.remove(worktreeId)
         }
-        watchers[worktreeId]?.expiryTimer = work
+        watchers[worktreeId]?.expiryTimer = ScheduledWork(work)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.expirySeconds, execute: work)
     }
 
@@ -245,7 +243,7 @@ class ClaudeActivityMonitor: ObservableObject {
     /// Checks each pending worktree's project directory. If it now exists,
     /// installs real watchers and removes it from the pending set.
     private nonisolated func checkPendingWorktrees() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             var resolved: [String] = []
             for (worktreeId, projectDir) in self.pendingWorktrees {
@@ -267,13 +265,12 @@ class ClaudeActivityMonitor: ObservableObject {
 
     /// Polls for `~/.claude/projects/` with exponential backoff (10s → 120s cap).
     private func pollForParentDirectory(interval: Double = 10.0) {
-        parentPollWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(
                 atPath: ClaudeSessionFiles.projectsParentDir, isDirectory: &isDir
             ) && isDir.boolValue
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self, !self.pendingWorktrees.isEmpty else {
                     self?.parentPollWorkItem = nil
                     return
@@ -286,14 +283,13 @@ class ClaudeActivityMonitor: ObservableObject {
                 }
             }
         }
-        parentPollWorkItem = work
+        parentPollWorkItem = ScheduledWork(work)
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + interval, execute: work)
     }
 
     private func tearDownParentWatcher() {
         parentDirSource?.cancel()
         parentDirSource = nil
-        parentPollWorkItem?.cancel()
         parentPollWorkItem = nil
     }
 }

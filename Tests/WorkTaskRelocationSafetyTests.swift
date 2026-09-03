@@ -4,23 +4,7 @@ import XCTest
 /// Data-safety tests for task-file relocation: relocation must preserve identity when adopting
 /// legacy files, and must never delete a central task to win a worktree-slot collision.
 @MainActor
-final class WorkTaskRelocationSafetyTests: XCTestCase {
-
-    private var tempRoot: String!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-tests-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
+final class WorkTaskRelocationSafetyTests: TempRootTestCase {
 
     /// Relocating a legacy central file (filename UUID, NO frontmatter `id`) injects that UUID into
     /// the moved `TASK.md`, so identity survives the rename and reload doesn't skip the id-less file.

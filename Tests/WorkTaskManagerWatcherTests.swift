@@ -7,23 +7,9 @@ import XCTest
 /// machine load; a 3s timeout matches `WorktreeGroupStoreTests.testWatcherFiresOnExternalWrite`.
 /// Rerun once before treating a timeout as a real failure.
 @MainActor
-final class WorkTaskManagerWatcherTests: XCTestCase {
+final class WorkTaskManagerWatcherTests: TempRootTestCase {
 
-    private var tempRoot: String!
-
-    override func setUp() {
-        super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-watcher-tests-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        super.tearDown()
-    }
+    override static var tempRootPrefix: String { "clearway-watcher-tests" }
 
     /// External atomic rewrite of a central backlog task is adopted without a forced reload.
     func testWatcherAdoptsAtomicCentralRewrite() async throws {

@@ -7,8 +7,8 @@ final class ProjectListManagerTests: XCTestCase {
     private let suiteName = "app.getclearway.mac.tests"
     private var testDefaults: UserDefaults!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         testDefaults = UserDefaults(suiteName: suiteName)!
         testDefaults.removePersistentDomain(forName: suiteName)
     }

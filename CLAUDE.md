@@ -17,6 +17,14 @@ Requires: `zig`, `xcodegen`, `swiftlint`
 ./scripts/run.sh     # build + launch
 ```
 
+`build.sh` names the product per worktree (`Clearway (<worktree>).app`) while `ci.sh` builds the
+default `Clearway.app` into the same `BUILT_PRODUCTS_DIR`, so the two overwrite each other. Resolve
+the bundle the way `run.sh` does — newest `.app` in `BUILT_PRODUCTS_DIR`, executable name from
+`CFBundleExecutable` — rather than hardcoding a DerivedData path, or you will run a stale binary.
+
+Running the Debug build drops `default.profraw` in the repo root and it is **not** gitignored, so
+`git status` goes dirty after every launch. Never `git add -A` without reading the list.
+
 ## Verifying a change
 
 ```bash
@@ -35,10 +43,52 @@ swiftlint lint --quiet
 
 All new code must pass `swiftlint lint` with zero errors before committing. Warnings are acceptable for now but should not be introduced in new code.
 
+## Concurrency
+
+- **Never use `isolated deinit` (SE-0371) while the deployment target is macOS 13.** It typechecks
+  and emits object code with no availability diagnostic, but references `_swift_task_deinitOnExecutor`
+  — a Swift 6.2 runtime symbol. The SDK's `libswift_Concurrency.tbd` back-deploys to `@rpath` only
+  below macOS 12.0, so a 13.0 target links the OS copy and the app fails at launch on older systems.
+  The compiler will not warn you. Make the `deinit` genuinely nonisolated instead.
+- Prefer an **isolated conformance** (`@MainActor SomeDelegate`) over `@preconcurrency` whenever the
+  compiler reports `#ConformanceIsolation`. `@preconcurrency` downgrades the check to a runtime trap;
+  an isolated conformance keeps it static. Applies to the unannotated AppKit delegate protocols —
+  `NSTextStorageDelegate` is one; `NSTextViewDelegate` is already `NS_SWIFT_UI_ACTOR` and needs neither.
+- `DispatchSourceFileSystemObject` is `Sendable`, so a nonisolated `deinit` can cancel one directly.
+  `DispatchWorkItem` is not — hold it in a `ScheduledWork` (`Sources/App/ScheduledWork.swift`) whose own
+  `deinit` cancels it. `@preconcurrency import Dispatch` also silences the diagnostic, but file-wide;
+  the only one left (`ClaudeSessionFiles.swift:1`) predates the RAII holder.
+- `MainActor.assumeIsolated` asserts, it does not dispatch. Use it only where arrival on main is
+  already guaranteed — never on a `DispatchSource` callback path. Even where arrival *is* guaranteed
+  (a `NotificationCenter` observer registered with `queue: .main`), prefer `Task { @MainActor in }`
+  unless the call has to stay synchronous: it keeps the check static instead of runtime.
+- A nonisolated `deinit` may not *read* an isolated non-`Sendable` property, but releasing one is not
+  reading it. So an RAII holder whose own `deinit` does the cleanup needs no suppression at all —
+  `NotificationObservation` deregisters a `NotificationCenter` token, `ScheduledWork` cancels a
+  `DispatchWorkItem`, and `Ghostty`'s `AppHandle` / `SurfaceHandle` reach `ghostty_app_free` /
+  `ghostty_surface_free`. It scales to collections: `ClaudeActivityMonitor.WatcherState` is a class
+  for this reason, so releasing the dictionary cancels every watcher. Reach for this before a lock.
+- `OpaquePointer` and `UnsafeMutableRawPointer` carry an *unavailable* `Sendable` conformance, so no
+  wrapper holding a `ghostty_*_t` can be checked-`Sendable`. With the RAII shape above it usually
+  does not need to be.
+- **Never form a C callback inside a `@MainActor` context.** A `@convention(c)` closure literal
+  written inside a `@MainActor` member is main-actor isolated: its prologue calls
+  `swift_task_isCurrentExecutor` and traps when libghostty invokes it from the renderer thread. The
+  compiler reports nothing. `Ghostty.App.makeRuntimeConfig` is `nonisolated static` for exactly this
+  reason — build the callback table there, never in `init`. Marking the callee `static func`s
+  `nonisolated` is also required but is **not** sufficient on its own.
+- A minimal probe of that shape does not reproduce the trap; it runs the body off-main silently.
+  Verify by disassembling the built binary (`lldb -b -o "disassemble -a <addr>"`) and looking for
+  `MainActor.shared` / `swift_task_isCurrentExecutor` in the closure's prologue.
+- libghostty installs its **own** crash handler, so a crash writes no macOS `.ips`. Reports land in
+  `~/.local/state/ghostty/crash/*.ghosttycrash` (a Sentry envelope; the minidump is the
+  `event.minidump` attachment, loadable with `lldb --core`). A directly-exec'd crash surfaces as
+  exit code 6, not a signal.
+
 ## Architecture
 
 - **ghostty/** — upstream ghostty submodule, built into `GhosttyKit.xcframework`
-- **Sources/Ghostty/** — Swift wrappers around the libghostty C API
+- **Sources/Ghostty/** — first-party Swift wrappers around the libghostty C API. Excluded from SwiftLint (`.swiftlint.yml`), but **not** vendored and not an upstream mirror — only `ghostty/` is a submodule. Held to the same engineering bar as `Sources/App`.
   - `Ghostty.swift` — namespace + logger
   - `Ghostty.Config.swift` — wraps `ghostty_config_t`
   - `Ghostty.App.swift` — wraps `ghostty_app_t`, runtime callbacks
@@ -65,6 +115,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - Agent and terminal launch logic lives on `WorkTaskCoordinator`, never in a view: a view resolves
     no command and awaits nothing, it calls a coordinator method. This is what lets one behavior carry
     several entry points without the decision being written once per door.
+  - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
+    installs a new source over the old one without cancelling it, so the old cancel handler never
+    runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the
+    Swift 6 migration because fixing it is a behaviour change; it needs its own task.
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 - **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
 - swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.

@@ -7,7 +7,7 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "5.10"
+    SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 packages:
@@ -306,7 +306,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.tests
         GENERATE_INFOPLIST_FILE: YES
-        SWIFT_VERSION: "5.10"
+        SWIFT_VERSION: "6.0"
         FRAMEWORK_SEARCH_PATHS:
           - "$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64"
         HEADER_SEARCH_PATHS:

@@ -12,7 +12,7 @@ final class WorkflowEditorModelTests: XCTestCase {
     private func assertValid(
         _ model: WorkflowEditorModel,
         preserving base: WorkflowDefinition? = nil,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line
     ) -> WorkflowDefinition {
         let definition = model.toDefinition(preserving: base)
