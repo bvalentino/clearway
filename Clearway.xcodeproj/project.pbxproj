@@ -17,6 +17,7 @@
 		151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */; };
 		16632D26B22A8BC9CE983236 /* WorkTaskRelocationSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B249C5162F943C6A161511 /* WorkTaskRelocationSafetyTests.swift */; };
 		1727A54CCA2B65EC1F18B9C5 /* Todo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA925629DB815AC555414676 /* Todo.swift */; };
+		18557154406E93AAE978B5BE /* PanelCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */; };
 		195AAC48F4ACED4727E0550C /* WorkflowModelLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E03602DF33645AE8A34788 /* WorkflowModelLaunchTests.swift */; };
 		1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */; };
 		1AFDAD7162258B079BBC3B49 /* AgentLaunchModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */; };
@@ -80,6 +81,7 @@
 		78C1B08688DBF1C02B5FFD67 /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */; };
 		78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */; };
 		7948BECFE863C3076C46407D /* WorkTaskManagerWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09830C5C5C57BECC73694B93 /* WorkTaskManagerWatcherTests.swift */; };
+		7A9CB2F32586AF5ACE4C955F /* SidebarVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */; };
 		7D3A21FD5999F0D194550EAC /* ShellPathStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4B326E23A2331E2809D9A8 /* ShellPathStore.swift */; };
 		7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A3868EDD642635D44655B0 /* AgentLaunch.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
@@ -151,6 +153,7 @@
 
 /* Begin PBXFileReference section */
 		02A15AF63CD7636A38973624 /* PromptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManager.swift; sourceTree = "<group>"; };
+		03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarVisibilityTests.swift; sourceTree = "<group>"; };
 		082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookTerminalView.swift; sourceTree = "<group>"; };
 		09830C5C5C57BECC73694B93 /* WorkTaskManagerWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskManagerWatcherTests.swift; sourceTree = "<group>"; };
 		0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAsideView.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 		5A687B79E4CF9B494E2A6391 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationObservation.swift; sourceTree = "<group>"; };
 		5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunchModelTests.swift; sourceTree = "<group>"; };
+		6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelCommands.swift; sourceTree = "<group>"; };
 		62A38F6C1360B18A7EA0784C /* WorkflowSidebarActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowSidebarActionTests.swift; sourceTree = "<group>"; };
 		62E65C09069869291224DF1D /* TodosPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosPanelView.swift; sourceTree = "<group>"; };
 		664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathStoreTests.swift; sourceTree = "<group>"; };
@@ -328,6 +332,7 @@
 				BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */,
 				664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */,
 				A0BB28BB9D069A601AE8E718 /* ShellPathValidationTests.swift */,
+				03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */,
 				91CEC8883C94E4C6D2251537 /* SidePanelTabTests.swift */,
 				4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */,
 				559C61A49130CBB58157612B /* TerminalManagerTests.swift */,
@@ -385,6 +390,7 @@
 				AF845FCB581E1B628B736556 /* MarkdownSyntaxHighlighter.swift */,
 				5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */,
 				755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */,
+				6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */,
 				BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */,
 				867076303E561F4171EF4C92 /* PreviewCSS.swift */,
 				179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */,
@@ -758,6 +764,7 @@
 				019F844C8E3EFD5F8E2AA128 /* MarkdownSyntaxHighlighter.swift in Sources */,
 				7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */,
 				2FC531EDD2252FCF9B20819A /* NotificationObservation.swift in Sources */,
+				18557154406E93AAE978B5BE /* PanelCommands.swift in Sources */,
 				8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */,
 				580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */,
 				D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */,
@@ -839,6 +846,7 @@
 				D0D9853E698401494E0E656D /* ShellPathStoreTests.swift in Sources */,
 				9C5DCA7C8D021A775B94678A /* ShellPathValidationTests.swift in Sources */,
 				6CC9B9412CE55A7117791136 /* SidePanelTabTests.swift in Sources */,
+				7A9CB2F32586AF5ACE4C955F /* SidebarVisibilityTests.swift in Sources */,
 				AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */,
 				75AE7FFC553C6C15E5FEC328 /* TerminalManagerTests.swift in Sources */,
 				2780C26D99F1C1FCAA846A07 /* TerminalTabKindTests.swift in Sources */,

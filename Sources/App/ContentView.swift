@@ -26,7 +26,7 @@ enum DetailSelection: Hashable {
         return nil
     }
 
-    /// Which bottom panel Cmd+J toggles here. Pure so it can be tested — `toggleBottomPanel`
+    /// Which bottom panel Cmd+J toggles here. Pure so it can be tested — `ContentView.bottomPanel`
     /// itself reads `@EnvironmentObject` state XCTest cannot build. Exhaustive on purpose: a new
     /// destination must say whether it hosts a panel rather than silently getting none.
     static func bottomPanelAction(for selection: DetailSelection?) -> BottomPanelAction {
@@ -91,10 +91,38 @@ struct ContentView: View {
     @State private var sidePanelTab: SidePanelTab = .todos
     @State private var tabCloseQueue: [TabCloseRequest] = []
     @State private var previousDetailSelection: DetailSelection?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var columnWidthTracker = ColumnWidthTracker()
     @State private var listsColumnIdealWidth: Double
 
     private var selectedWorktree: Worktree? { detailSelection?.worktree }
+
+    /// The three panels the View menu titles and gates, exposed via `focusedSceneValue`. A `nil`
+    /// value means the panel doesn't apply on this screen, which greys its item out; the sidebar
+    /// applies everywhere in a project window, so it alone is non-optional.
+    private var sidebarPanel: PanelToggle {
+        PanelToggle(isVisible: columnVisibility.sidebarIsVisible, toggle: toggleSidebar)
+    }
+
+    private var bottomPanel: PanelToggle? {
+        switch DetailSelection.bottomPanelAction(for: detailSelection) {
+        case .secondaryTerminal:
+            return PanelToggle(isVisible: secondaryVisible, toggle: toggleAndFocusSecondary)
+        case .planningTerminal:
+            guard let taskId = selectedTaskId else { return nil }
+            return PanelToggle(isVisible: terminalManager.isTaskTerminalVisible(for: taskId)) {
+                guard let app = ghosttyApp.app else { return }
+                workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
+            }
+        case .noPanel:
+            return nil
+        }
+    }
+
+    private var asidePanel: PanelToggle? {
+        guard selectedWorktree != nil else { return nil }
+        return PanelToggle(isVisible: asideVisible, toggle: toggleAside)
+    }
 
     /// Action exposed via `focusedSceneValue` so the File > New Tab menu item
     /// is enabled only when this window has an active worktree.
@@ -152,7 +180,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var navigator: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(
                 sidebarSelection: sidebarSelectionBinding,
                 ctrlHeld: ctrlHeld,
@@ -226,6 +254,9 @@ struct ContentView: View {
         .focusedSceneValue(\.newTabAction, newTabAction)
         .focusedSceneValue(\.newShellTabAction, newShellTabAction)
         .focusedSceneValue(\.newTaskAction, newTaskAction)
+        .focusedSceneValue(\.sidebarToggle, sidebarPanel)
+        .focusedSceneValue(\.bottomPanelToggle, bottomPanel)
+        .focusedSceneValue(\.asideToggle, asidePanel)
         .navigationTitle(navigationTitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
@@ -345,13 +376,6 @@ struct ContentView: View {
                 .hidden()
             Button("") { detailSelection = .workflow }
                 .keyboardShortcut("3", modifiers: .control)
-                .hidden()
-
-            Button("") { toggleBottomPanel() }
-                .keyboardShortcut("j", modifiers: .command)
-                .hidden()
-            Button("") { toggleAside() }
-                .keyboardShortcut("3", modifiers: [.command, .control])
                 .hidden()
         }
         .onAppear {
@@ -572,24 +596,16 @@ struct ContentView: View {
         if !wasVisible { focusSecondary() }
     }
 
-    private func toggleBottomPanel() {
-        switch DetailSelection.bottomPanelAction(for: detailSelection) {
-        case .secondaryTerminal:
-            toggleAndFocusSecondary()
-        case .planningTerminal:
-            guard let taskId = selectedTaskId, let app = ghosttyApp.app else { return }
-            workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
-        case .noPanel:
-            break
-        }
-    }
-
     private func toggleSecondaryTerminal() {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleSecondary(for: selectedWorktree?.id) }
     }
 
     private func toggleAside() {
         withAnimation(.easeInOut(duration: 0.2)) { terminalManager.toggleAside(for: selectedWorktree?.id) }
+    }
+
+    private func toggleSidebar() {
+        withAnimation(.easeInOut(duration: 0.2)) { columnVisibility = columnVisibility.togglingSidebar }
     }
 
     /// Restore the stored side panel tab for a worktree, or auto-select on first visit.

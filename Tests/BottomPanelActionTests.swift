@@ -1,7 +1,7 @@
 import XCTest
 @testable import Clearway
 
-/// Pins `DetailSelection.bottomPanelAction`, the rule Cmd+J routes on. `ContentView.toggleBottomPanel`
+/// Pins `DetailSelection.bottomPanelAction`, the rule Cmd+J routes on. `ContentView.bottomPanel`
 /// itself is unreachable from XCTest — it reads `@EnvironmentObject` state a test cannot build.
 final class BottomPanelActionTests: XCTestCase {
 

@@ -120,6 +120,22 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     monitor, and `ClearwayApp`'s menu commands (the view hierarchy is offered a key equivalent
     before the main menu, so menu shortcuts need an entry too). Claim **exactly** what the app
     handles: a claimed combo no handler answers is taken from the shell and then dropped.
+    A shortcut Clearway itself retires gets a not-claimed pin in `AppKeyboardShortcutsTests`
+    (⌘⌃2, ⌘⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the app
+    once owned, not every combo it declines.
+  - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
+    aside ⌥⌘B, each a `PanelToggle` (`isVisible` + `toggle`) that `ContentView` publishes as a
+    focused **scene** value. A `nil` value greys the item out, which is also how all three grey out
+    on a standalone Task/Prompt/Settings window. Each key is declared **only** on its menu item —
+    a hidden `.keyboardShortcut` button would declare it a second time, in a layer that silently
+    wins. ⌘⌃3 (aside) and ⌃⌘S (sidebar) were retired here with no alias.
+    `ClearwayApp` declares them with `CommandGroup(replacing: .sidebar)`: SwiftUI generates that
+    group's Show Sidebar item on ⌃⌘S and offers no way to retitle or re-key it, and `replacing:` is
+    the only removal. Show Frontmatter moved inside that group so it stays above Full Screen.
+    Despite Apple documenting the group as carrying Enter/Exit Full Screen too, **the stock
+    full-screen item survives the replacement** — verified against the running app. So the app
+    declares no full-screen command and claims no ⌃⌘F; re-declaring one produced a duplicate menu
+    item, and the system's own key for it is not ⌃⌘F on macOS 26.
   - Agent and terminal launch logic lives on `WorkTaskCoordinator`, never in a view: a view resolves
     no command and awaits nothing, it calls a coordinator method. This is what lets one behavior carry
     several entry points without the decision being written once per door.
