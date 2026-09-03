@@ -36,11 +36,11 @@ extension Ghostty {
         /// without an unsafe opt-out or a runtime isolation assertion.
         private let surfaceHandle = OSAllocatedUnfairLock<SurfaceHandle?>(initialState: nil)
 
-        /// Reads the pointer, never the handle: letting a `SurfaceHandle` reference escape the
-        /// lock would let the caller's release be the last one, running `ghostty_surface_free`
-        /// on that thread and leaving the pointer it just returned dangling. `withLockUnchecked`
-        /// because `ghostty_surface_t`'s `Sendable` conformance is unavailable, which is what
-        /// forces the checked overload to hand back the handle instead.
+        /// Reads the pointer inside the lock so no `SurfaceHandle` reference escapes: a handle
+        /// released by the caller could make its release the last one, running `ghostty_surface_free`
+        /// off the main actor. The caller still gets a bare pointer whose lifetime the lock does not
+        /// extend — closing that needs a scoped `withSurface { }` accessor, which is its own task.
+        /// `withLockUnchecked` because `ghostty_surface_t`'s `Sendable` conformance is unavailable.
         nonisolated var surfacePtr: ghostty_surface_t? {
             surfaceHandle.withLockUnchecked { $0?.surface }
         }

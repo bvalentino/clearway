@@ -270,7 +270,7 @@ class ClaudeActivityMonitor: ObservableObject {
             let exists = FileManager.default.fileExists(
                 atPath: ClaudeSessionFiles.projectsParentDir, isDirectory: &isDir
             ) && isDir.boolValue
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 guard let self, !self.pendingWorktrees.isEmpty else {
                     self?.parentPollWorkItem = nil
                     return

@@ -3,6 +3,8 @@ import Foundation
 /// Owns a debounce `DispatchWorkItem` and cancels it on release, so replacing or
 /// clearing the holder cancels the pending work.
 final class ScheduledWork {
+    private let item: DispatchWorkItem
+
     init(_ item: DispatchWorkItem) {
         self.item = item
     }
@@ -10,6 +12,4 @@ final class ScheduledWork {
     deinit {
         item.cancel()
     }
-
-    private let item: DispatchWorkItem
 }

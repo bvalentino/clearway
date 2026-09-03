@@ -210,7 +210,7 @@ class WorkTaskCoordinator: ObservableObject {
         ) { [weak self] notification in
             guard let surface = notification.object as? Ghostty.SurfaceView,
                   let exitCode = notification.userInfo?[GhosttyNotificationKey.exitCode] as? UInt32 else { return }
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 self?.handleChildExited(surface: surface, exitCode: exitCode)
             }
         })

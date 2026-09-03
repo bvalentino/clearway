@@ -72,7 +72,7 @@ class TerminalManager: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let surface = notification.object as? Ghostty.SurfaceView else { return }
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 self?.handleDesktopNotification(from: surface)
             }
         })

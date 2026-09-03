@@ -68,6 +68,14 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   `DispatchWorkItem`, and `Ghostty`'s `AppHandle` / `SurfaceHandle` reach `ghostty_app_free` /
   `ghostty_surface_free`. It scales to collections: `ClaudeActivityMonitor.WatcherState` is a class
   for this reason, so releasing the dictionary cancels every watcher. Reach for this before a lock.
+- **The load-bearing `[weak self]` is the outer one.** On a closure that `NotificationCenter` retains
+  — or a `DispatchWorkItem` the object itself owns — the *outer* capture list is what breaks the
+  cycle. An inner `Task { @MainActor [weak self] }` nested inside it is redundant: a nested closure
+  keeps an outer weak capture weak. Drop the inner one, never the outer. Doing the reverse is exactly
+  how `WorkTaskCoordinator` leaked through `.ghosttyChildExited`, and a code review has since
+  recommended it a second time, so the shape reads as interchangeable and is not. The exception is an
+  outer block that does `guard let self`: there `self` is strong again and the inner `[weak self]`
+  earns its place (`TerminalManager`'s `.ghosttyCloseSurface` observer is the one such site).
 - `OpaquePointer` and `UnsafeMutableRawPointer` carry an *unavailable* `Sendable` conformance, so no
   wrapper holding a `ghostty_*_t` can be checked-`Sendable`. With the RAII shape above it usually
   does not need to be.

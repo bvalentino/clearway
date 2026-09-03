@@ -437,7 +437,7 @@ class WorkTaskManager: ObservableObject {
     /// write during the 0.3s debounce (or after a no-op reload path) would be missed.
     private func makeTaskFileWatcher(path: String) -> DispatchSourceFileSystemObject? {
         ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 guard let self else { return }
                 // Re-open this path if still desired; the event may have been the atomic replace
                 // that killed the previous inode.
