@@ -182,7 +182,7 @@ class TerminalManager: ObservableObject {
     var mainCommandProvider: () -> String? = { nil }
 
     /// "Open secondary terminal on start" preference. Consulted only at pane
-    /// creation so manual `Cmd+\` toggles afterwards are preserved.
+    /// creation so manual Cmd+J toggles afterwards are preserved.
     var openSecondaryOnStartProvider: () -> Bool = { false }
 
     /// The workflow step a worktree currently sits on (an action slug), or nil. Wired from

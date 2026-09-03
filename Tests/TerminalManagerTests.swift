@@ -48,7 +48,7 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertTrue(manager.isSecondaryVisible(for: wt.id))
 
         // Flipping the setting after the pane was seeded must not move existing panes —
-        // the provider is consulted only at pane creation, so a manual `Cmd+\` toggle
+        // the provider is consulted only at pane creation, so a manual Cmd+J toggle
         // the user made earlier would otherwise be clobbered.
         manager.openSecondaryOnStartProvider = { false }
         XCTAssertTrue(manager.isSecondaryVisible(for: wt.id))
