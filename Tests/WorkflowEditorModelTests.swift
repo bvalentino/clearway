@@ -213,7 +213,10 @@ final class WorkflowEditorModelTests: XCTestCase {
 
     // MARK: - preserve-on-write
 
-    func testToDefinitionPreservesAgentHooksAndVersion() {
+    /// `agent.command` is the editor's own field, so it comes from the model — a model built by
+    /// `init(from:)` has already read it off `base`. Everything the editor doesn't surface, including
+    /// the reserved `agent.timeout_ms`, still carries forward.
+    func testToDefinitionPreservesHooksVersionAndTheReservedTimeout() {
         let base = WorkflowDefinition(
             version: 1,
             start: "old",
@@ -222,10 +225,11 @@ final class WorkflowEditorModelTests: XCTestCase {
             actions: ["old": .init(name: "Old", instructions: "x")]
         )
         var model = WorkflowEditorModel()
+        model.agentCommand = "grok"
         model.add(name: "Brand New")
 
         let definition = assertValid(model, preserving: base)
-        XCTAssertEqual(definition.agent.command, "codex")
+        XCTAssertEqual(definition.agent.command, "grok")
         XCTAssertEqual(definition.agent.timeoutMs, 1234)
         XCTAssertEqual(definition.hooks?.afterCreate, "echo created")
         XCTAssertEqual(definition.hooks?.beforeRun, "echo running")
@@ -415,6 +419,159 @@ final class WorkflowEditorModelTests: XCTestCase {
         model.actions[0].model = "sonnet opus"
         XCTAssertTrue(model.actions[0].isComplete,
                       "an Invalid model must not gate persistence the way a missing Required field does")
+    }
+
+    // MARK: - Per-entry agent command
+
+    func testInitFromDefinitionReadsAgentCommandsAsEmptyStringWhenAbsent() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it."),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(model.agentCommand, "", "an omitted agent object reads as the Default row")
+        XCTAssertEqual(model.planning?.command, "")
+        XCTAssertEqual(model.actions.first?.command, "")
+    }
+
+    func testInitFromDefinitionReadsAgentCommands() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            agent: .init(command: "grok", timeoutMs: WorkflowDefinition.AgentSettings.defaultTimeoutMs),
+            planning: .init(instructions: "Plan it.", command: "codex"),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.", command: "claude")]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(model.agentCommand, "grok")
+        XCTAssertEqual(model.planning?.command, "codex")
+        XCTAssertEqual(model.actions.first?.command, "claude")
+    }
+
+    func testToDefinitionCarriesAgentCommands() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.actions[0].command = "codex"
+        model.planning = .init(instructions: "Plan it.", command: "grok")
+        model.agentCommand = "claude"
+
+        let definition = assertValid(model)
+        XCTAssertEqual(definition.actions["implement"]?.command, "codex")
+        XCTAssertEqual(definition.planning?.command, "grok")
+        XCTAssertEqual(definition.agent.command, "claude")
+    }
+
+    func testBlankAgentCommandRemovesTheKey() throws {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it.", command: "codex"),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.", command: "claude")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.actions[0].command = ""
+        model.planning?.command = ""
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertNil(definition.actions["implement"]?.command)
+        XCTAssertNil(definition.planning?.command)
+        let json = try XCTUnwrap(String(bytes: definition.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("command"), "a cleared agent leaves no key behind")
+    }
+
+    /// Workflow-wide `Default` must leave `agent == .default` so the whole object stays omitted —
+    /// otherwise an agent-free file would stop round-tripping minimally.
+    func testWorkflowWideDefaultOmitsTheAgentObject() throws {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            agent: .init(command: "codex", timeoutMs: WorkflowDefinition.AgentSettings.defaultTimeoutMs),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.agentCommand = ""
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertEqual(definition.agent, .default)
+        let json = try XCTUnwrap(String(bytes: definition.encoded(), encoding: .utf8))
+        XCTAssertFalse(json.contains("agent"), "a Default workflow agent emits no object")
+    }
+
+    /// The editor stores raw strings, so opening it on a hand-authored file and saving something
+    /// else must not rewrite a value the allowlist would reject.
+    func testOffAllowlistAgentCommandsRoundTripUnchanged() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            agent: .init(
+                command: "claude --dangerously-skip-permissions",
+                timeoutMs: WorkflowDefinition.AgentSettings.defaultTimeoutMs
+            ),
+            planning: .init(instructions: "Plan it.", command: "aider"),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.", command: "npx claude")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.actions[0].name = "Implement it"
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertEqual(definition.agent.command, "claude --dangerously-skip-permissions")
+        XCTAssertEqual(definition.planning?.command, "aider")
+        XCTAssertEqual(definition.actions["implement"]?.command, "npx claude")
+    }
+
+    /// The command comes from the model; the reserved, unenforced `timeout_ms` still carries
+    /// from the file on disk.
+    func testToDefinitionTakesTheCommandFromTheModelAndTheTimeoutFromBase() {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            agent: .init(command: "claude", timeoutMs: 1234),
+            actions: ["implement": .init(name: "Implement", instructions: "Do it.")]
+        )
+        var model = WorkflowEditorModel(from: base)
+        model.agentCommand = "codex"
+
+        let definition = model.toDefinition(preserving: base)
+        XCTAssertEqual(definition.agent.command, "codex")
+        XCTAssertEqual(definition.agent.timeoutMs, 1234)
+    }
+
+    func testAgentFreeDefinitionRoundTripsByteIdentically() throws {
+        let base = WorkflowDefinition(
+            version: 1,
+            start: "implement",
+            planning: .init(instructions: "Plan it."),
+            actions: [
+                "implement": .init(name: "Implement", instructions: "Do it.", routes: ["success": "test"]),
+                "test": .init(name: "Test", instructions: "Test it."),
+            ]
+        )
+        let model = WorkflowEditorModel(from: base)
+        XCTAssertEqual(try model.toDefinition(preserving: base).encoded(), try base.encoded())
+    }
+
+    func testAgentCommandSurvivesMoveAndRemove() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.add(name: "Test", instructions: "Test it.")
+        model.add(name: "Review", instructions: "Review it.")
+        model.actions[2].command = "codex"
+
+        model.move(from: IndexSet(integer: 2), to: 0)
+        model.remove(at: 2)
+
+        let definition = assertValid(model)
+        XCTAssertEqual(definition.actions["review"]?.command, "codex")
+    }
+
+    func testIsCompleteIgnoresTheAgentCommand() {
+        var model = WorkflowEditorModel()
+        model.add(name: "Implement", instructions: "Do it.")
+        model.actions[0].command = "aider"
+        XCTAssertTrue(model.actions[0].isComplete,
+                      "an unusable agent must not gate persistence the way a missing Required field does")
     }
 
     // MARK: - every-mutation-valid sweep

@@ -86,6 +86,7 @@ Edit it from the **Workflow** section in the sidebar, or by hand.
 - `instructions` — the prompt handed to the agent for this step.
 - `routes` — outcome → target slug. v1 has a single outcome, `success`. Omit `routes` to make the action **terminal**: the loop ends there.
 - `model` — optional model for this step (see [Models](#models)).
+- `command` — optional agent for this step (see [Agents](#agent)).
 
 `start` names the slug a new worktree begins on. Every pointer (`start`, route targets) must resolve to an action or the file is rejected, and a rejected file reads the same as no file at all. `new` and `ready_to_start` are reserved backlog markers and cannot be used as slugs.
 
@@ -93,11 +94,31 @@ Edit it from the **Workflow** section in the sidebar, or by hand.
 
 ### Agent
 
+The CLI Clearway launches for a step. It is chosen from a fixed set — `claude`, `grok`, `codex` — the same three Settings → Main Terminal offers, and may be set workflow-wide, per entry, or both:
+
 ```json
-"agent": { "command": "codex" }
+{
+  "agent": { "command": "claude" },
+  "planning": { "instructions": "…", "command": "codex" },
+  "actions": {
+    "build":  { "name": "Build",  "instructions": "…", "routes": { "success": "review" } },
+    "review": { "name": "Review", "instructions": "…", "command": "codex" }
+  }
+}
 ```
 
-The CLI Clearway launches for each step — e.g. `claude`, `codex`, `grok`. Omit `command` (or the whole `agent` object) to inherit the Main Terminal command from Settings.
+That workflow implements on `claude` and reviews on `codex`. Each launch takes the first of these that names one of the three agents:
+
+1. the entry's own `command` (an action, or `planning`)
+2. the workflow-wide `agent.command`
+3. Settings → Main Terminal
+4. `claude`
+
+The match is on the **last path component**, so `/opt/homebrew/bin/claude` counts — and it launches exactly as written, not as a bare `claude`. Anything else — `aider`, `npx claude`, `claude --foo` — is **ignored** and the next level is used, so a typo costs a step its agent rather than disabling the whole workflow. The editor flags such a value and states what runs instead.
+
+`command` and `model` are independent: an entry may set either, both, or neither, and a step that names its own agent still gets its own `--model` flag.
+
+> **Breaking change.** `agent.command` used to be free text and was launched verbatim, so `"claude --dangerously-skip-permissions"` worked. It no longer does — a value carrying flags is not one of the three agents, so it is ignored and Settings → Main Terminal is used instead. Move the flags to Settings → Main Terminal.
 
 ### Hooks
 
@@ -115,7 +136,7 @@ The CLI Clearway launches for each step — e.g. `claude`, `codex`, `grok`. Omit
 
 A manual step that sharpens a task *before* a worktree exists, so it sits outside the action graph and has no slug. This is the only field that takes template variables — `{{ task.title }}`, `{{ task.body }}`, `{{ task.id }}`, `{{ task.worktree }}`, `{{ task.path }}`. Action `instructions` are passed through verbatim.
 
-A file may hold only `planning` and no actions, enabling the planning step without turning on the automated loop. `planning` also takes an optional `model`.
+A file may hold only `planning` and no actions, enabling the planning step without turning on the automated loop. `planning` also takes an optional `model` and `command`.
 
 ### Models
 

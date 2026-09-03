@@ -62,11 +62,12 @@ Agent spawning happens **only** through this engine. Starting a task (`startTask
 Decoded with `Codable` (snake_case JSON keys → camelCase Swift):
 
 - `version` (Int), `start` (slug pointer into `actions`).
-- `agent` (`AgentSettings`): `command` (empty/omitted → inherit Settings → Main Terminal at launch via `resolveAgentCommand`; explicit values like `"claude"` / `"grok"` / `"codex"` win) + `timeoutMs` (`timeout_ms`, default 600_000 — **decoded but NOT enforced in v1**, like the loop-guard fields). An omitted `agent` falls back entirely to defaults (empty command + default timeout).
+- `agent` (`AgentSettings`): `command` (empty/omitted → inherit Settings → Main Terminal at launch via `resolveAgentCommand`; an **allowlisted** value like `"claude"` / `"grok"` / `"codex"` wins — see **Per-entry agent**) + `timeoutMs` (`timeout_ms`, default 600_000 — **decoded but NOT enforced in v1**, like the loop-guard fields). An omitted `agent` falls back entirely to defaults (empty command + default timeout).
 - `hooks` (optional `Hooks`): `afterCreate` (`after_create`) / `beforeRun` (`before_run`) shell commands. **`after_create` is wired** — sourced via `workflowAfterCreateHook()` and run on worktree creation (`ContentView`'s `lastCreatedBranch` handler). It runs **in parallel** in the worktree's persistent secondary terminal (`TerminalManager.runHookInSecondary`, fed via `sendPaste`), **decoupled from the agent launch**: the agent seeds and launches immediately and never waits for the hook, and a failing hook can't block it (the command runs raw in the secondary terminal, so the user sees any failure inline). **`before_run` is decoded but NOT yet executed** (reserved; a per-action interactive hook sheet would break autopilot — wiring it would need a non-interactive run before each launch).
 - `actions: [String: Action]` — a **map keyed by frozen slug** (order is cosmetic). Each `Action` has `name` (editable display label), `instructions` (agent prompt), `routes` (`[outcome: targetSlug]`, v1 has a single `success` outcome; empty/absent = **terminal**), and the **reserved** `maxAttempts` (`max_attempts`) / `onMaxAttempts` (`on_max_attempts`).
 
-Both `Planning` and `Action` also carry an optional `model` (`nil` = unset) — see **Per-entry model** below.
+Both `Planning` and `Action` also carry an optional `model` and `command` (`nil` = unset) — see
+**Per-entry model** and **Per-entry agent** below.
 
 `maxAttempts`/`onMaxAttempts` are **decoded and validated but NOT enforced in v1** (see loop guard below). Pointers (`start`, route values, `onMaxAttempts`) target slugs, never `name`. `validate()` rejects empty `actions`, a `start`/route/`onMaxAttempts` target that doesn't resolve, and an action keyed by a reserved backlog marker (`new`/`ready_to_start` — the engine unconditionally ignores those, so such an action would be silently unreachable). Helpers: `isTerminal(_:)`, `legalNext(from:)` (sorted for deterministic injection).
 
@@ -124,15 +125,16 @@ command, and returns it untouched unless both hold:
 A failing value is **dropped, never an error**: the agent launches with no flag and `validate()` stays
 permissive, because failing validation would make the whole file read as "no JSON workflow" and
 silently disable autopilot over a typo. The editor's Model field flags a multi-word value `Invalid` inline
-(reusing the same affordance that renders `Required`). It does **not** flag the other silent drop —
-a model set while `agent.command` is an unknown agent also launches with no flag and no message; the
-editor could say so (it holds `agent.command` via `lastLoaded`) and today does not. A *typo* is not
-caught either — this is not a known-model list, and model names are per-agent, so `opus` under `codex`
+(reusing the same affordance that renders `Required`). Since the allowlist landed (see **Per-entry
+agent**) an off-allowlist `agent.command` no longer reaches the launch at all, so the resolved command
+is always a known agent unless Settings → Main Terminal itself holds one that isn't — the one
+remaining silent drop, which the editor does not flag. A *typo* is not caught either — this is not a known-model list, and model names are per-agent, so `opus` under `codex`
 fails in the agent terminal, not in Clearway.
 
-`agentsAcceptingModelFlag` and Settings → Main Terminal's picker (`SettingsView`) list the same three
-agents today, but they are separate lists with separate contracts: the picker offers what Clearway can
-launch, the gate names what accepts `--model`. Adding an agent to one does not add it to the other.
+`agentsAcceptingModelFlag` and `agentAllowlist` hold the same three names today but are separate
+lists with separate contracts: the allowlist says what Clearway can launch (it renders Settings →
+Main Terminal's picker rows in `SettingsView` as well as the editor's), the gate names what accepts
+`--model`. Adding an agent to one does not add it to the other.
 
 There is **no workflow-wide default model** — each entry is independent, and an omitted model means
 "no flag", not "inherit".
@@ -164,6 +166,64 @@ still opens a login shell. The stamp itself is observed in tests through
 `WorkTaskCoordinator.launcherTabAppender`, a `nil`-in-production seam beside `workflowAgentLauncher` —
 `appendLauncherTab` needs a live `ghostty_app_t`, so without it the whole "Run in New Terminal" wiring
 is unpinnable. The promotion gate above stays untestable for that same reason.
+
+### Per-entry agent
+
+`planning.command` and each action's `command` name the agent that entry launches on, overriding
+`agent.command` for that entry only — which is what makes mixing agents inside one workflow possible
+(implement on `claude`, review on `codex`). `resolveAgentCommand(entryCommand:workflowCommand:)`
+walks four levels and takes the first that yields an agent:
+
+1. the entry's own `command`
+2. the workflow-wide `agent.command`
+3. Settings → Main Terminal
+4. `SettingsManager.defaultMainTerminalCommand`
+
+Levels 1–2 are gated by `agentAllowlist` (`claude`, `grok`, `codex`), matched on the value's **last
+path component** — so `/opt/homebrew/bin/claude` is admitted and **launched verbatim**, never
+rewritten to a bare `claude` (the last component gates the check, never the launch, matching
+`acceptsModelFlag`, which also tests the last component and never rewrites). Anything carrying
+whitespace therefore never matches, so an allowlisted agent can never smuggle flags. A *relative*
+path (`./claude`) is admitted the same way and runs from the worktree; deliberately not tightened,
+since the repo-authored file already runs arbitrary shell through `hooks.after_create` (see **No
+trust gate**) — a rule here would guard a door standing next to an open one.
+
+Three invariants hold this together:
+
+- **The gate is launch-time only, never `validate()`.** An off-allowlist value falls through to the
+  next level and is otherwise ignored. Failing validation would make the whole file read as "no JSON
+  workflow" and silently disable autopilot over a typo — the same rule `model` follows.
+- **Level 3 is deliberately ungated.** The Settings picker already constrains it, and gating it would
+  disturb the Cmd+T "None" login-shell path (`appendLauncherTab` promotes to a login shell on a `nil`
+  command).
+- **`agentAllowlist` and `agentsAcceptingModelFlag` stay separate lists** even though both hold the
+  same three names: one says what Clearway may *launch* — it is the single source for both the
+  Settings → Main Terminal picker's rows and the editor's Agent pickers — the other what accepts
+  `--model`. Adding an agent to one does not add it to the other. After this change every workflow-launched command is
+  allowlisted, so the model-flag gate is always true on that path — it is kept as the seam that holds
+  the two contracts apart.
+
+**Knowingly breaking:** a multi-word workflow-wide `agent.command` (e.g.
+`"claude --dangerously-skip-permissions"`) used to be honored verbatim and now falls through to
+Settings → Main Terminal. Exempting the workflow-wide level would reinstate a two-rule split; instead
+the loss is loud — the editor's flagged row names the agent that runs instead (resolved through
+`resolveAgentCommand`, so it can never name a stale level), and README documents it.
+
+`command` and `model` compose: `applyModel` still runs on the *already-resolved* command, so an entry
+naming its own agent gets that agent's `--model` flag. Both action launch sites route through
+`workflowAgentCommand(for:action:)` and Plan through `planningAgentCommand`, which is what keeps a
+step's model with the agent it was authored against.
+
+The editor stores all three values as **raw strings** (`WorkflowEditorModel.agentCommand`,
+`EditorAction.command`, `EditorPlanning.command`), not an enum — an enum would collapse a
+hand-authored off-allowlist value on open. The pickers offer `Default` plus the three agents; a
+stored value that is not exactly one of them keeps its own selected row, unflagged when it is honored
+(a path to an agent) and flagged with its consequence when it is not — the flag names the agent that
+actually runs instead, resolved by `resolveAgentCommand` with that entry's own value removed, since a
+hard-coded level would be wrong whenever the level above it is unset. `toDefinition` now takes
+`agent.command` from the model and carries only the reserved `timeoutMs` from `base`;
+`AgentSettings.encode(to:)` omits both fields when they are at their defaults, so naming an agent on a
+previously agent-free file doesn't newly write a `timeout_ms` the user never asked for.
 
 ### Step badge on main tabs
 

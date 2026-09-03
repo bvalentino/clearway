@@ -28,27 +28,6 @@ final class WorkflowModelLaunchTests: WorkflowHarnessTestCase {
         """)
     }
 
-    /// Advances a worktree parked on `implement` into `test` under `mainTerminal`, and returns the
-    /// command the launcher seam received.
-    private func capturedLaunchCommand(
-        branch: String,
-        mainTerminal: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) throws -> String? {
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "test")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
-
-        var captured: String?
-        try withMainTerminalCommand(mainTerminal) {
-            coordinator.workflowAgentLauncher = { _, command, _, _ in captured = command }
-            XCTAssertEqual(coordinator.advanceWorkflow(forBranch: branch, app: dummyApp),
-                           .launched(slug: "test"), file: file, line: line)
-        }
-        return captured
-    }
-
     /// That `performLaunch` reads `action.model` and routes it through `applyModel`. The gate's own
     /// per-agent matrix is `AgentLaunchModelTests`' subject; here one accepting and one unknown
     /// command are enough to prove the value arrives.
@@ -161,18 +140,7 @@ final class WorkflowModelLaunchTests: WorkflowHarnessTestCase {
           }
         }
         """)
-        let branch = "run-new-stamp"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.appProvider = { [dummyApp] in dummyApp }
-
-        var stamped: String?
-        coordinator.launcherTabAppender = { _, command in stamped = command }
-
-        try withMainTerminalCommand("claude") {
-            coordinator.runWorkflowAction(forBranch: branch, slug: "test", inNewTerminal: true)
-        }
-
+        let stamped = try stampedLauncherCommand(branch: "run-new-stamp", slug: "test", mainTerminal: "claude")
         XCTAssertEqual(stamped, "codex --model gpt-5.4-codex",
                        "the tab must run the workflow's agent on the step's model, not Main Terminal")
     }
@@ -191,18 +159,8 @@ final class WorkflowModelLaunchTests: WorkflowHarnessTestCase {
           }
         }
         """)
-        let branch = "run-new-stamp-bare"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-        coordinator.appProvider = { [dummyApp] in dummyApp }
-
-        var stamped: String?
-        coordinator.launcherTabAppender = { _, command in stamped = command }
-
-        try withMainTerminalCommand("claude") {
-            coordinator.runWorkflowAction(forBranch: branch, slug: "test", inNewTerminal: true)
-        }
-
+        let stamped = try stampedLauncherCommand(
+            branch: "run-new-stamp-bare", slug: "test", mainTerminal: "claude")
         XCTAssertEqual(stamped, "codex", "no model means no flag, not a fallback to Main Terminal")
     }
 }

@@ -138,4 +138,43 @@ class WorkflowHarnessTestCase: XCTestCase {
     func worktreeId(branch: String, path: String) -> String {
         Worktree(branch: branch, path: path, isMain: false, headStatus: .attached).id
     }
+
+    /// Advances a worktree parked on `implement` into `test` under `mainTerminal`, and returns the
+    /// command the launcher seam received. The workflow JSON must already be written.
+    @MainActor
+    func capturedLaunchCommand(
+        branch: String,
+        mainTerminal: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String? {
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "test")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.setRunningActionForTesting("implement", branch: branch, worktreePath: worktreePath)
+
+        var captured: String?
+        withMainTerminalCommand(mainTerminal) {
+            coordinator.workflowAgentLauncher = { _, command, _, _ in captured = command }
+            XCTAssertEqual(coordinator.advanceWorkflow(forBranch: branch, app: dummyApp),
+                           .launched(slug: "test"), file: file, line: line)
+        }
+        return captured
+    }
+
+    /// Runs `slug` in a new terminal under `mainTerminal`, and returns the command stamped onto the
+    /// launcher tab. The workflow JSON must already be written.
+    @MainActor
+    func stampedLauncherCommand(branch: String, slug: String, mainTerminal: String) throws -> String? {
+        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
+        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
+        coordinator.appProvider = { [dummyApp] in dummyApp }
+
+        var stamped: String?
+        coordinator.launcherTabAppender = { _, command in stamped = command }
+
+        withMainTerminalCommand(mainTerminal) {
+            coordinator.runWorkflowAction(forBranch: branch, slug: slug, inNewTerminal: true)
+        }
+        return stamped
+    }
 }

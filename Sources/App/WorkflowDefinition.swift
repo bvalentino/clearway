@@ -44,9 +44,15 @@ struct WorkflowDefinition: Equatable, Codable {
         /// `applyModel`. `nil` = no flag. Synthesized `Codable` emits no key when absent.
         let model: String?
 
-        init(instructions: String, model: String? = nil) {
+        /// Optional per-entry agent (`"claude"`, `"grok"`, `"codex"`), overriding the workflow-wide
+        /// `agent.command` for this entry only. `nil` = inherit. An off-allowlist value is ignored at
+        /// launch (see `resolveAgentCommand`), never a validation error.
+        let command: String?
+
+        init(instructions: String, model: String? = nil, command: String? = nil) {
             self.instructions = instructions
             self.model = model
+            self.command = command
         }
     }
 
@@ -90,6 +96,19 @@ struct WorkflowDefinition: Equatable, Codable {
             command = try container.decodeIfPresent(String.self, forKey: .command) ?? Self.defaultCommand
             timeoutMs = try container.decodeIfPresent(Int.self, forKey: .timeoutMs) ?? Self.defaultTimeoutMs
         }
+
+        /// Omits fields left at their default so naming an agent on a previously agent-free file
+        /// doesn't newly write a `timeout_ms` the user never asked for — decode re-applies the same
+        /// defaults, so the round-trip is lossless.
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            if command != Self.defaultCommand {
+                try container.encode(command, forKey: .command)
+            }
+            if timeoutMs != Self.defaultTimeoutMs {
+                try container.encode(timeoutMs, forKey: .timeoutMs)
+            }
+        }
     }
 
     /// Optional shell hooks. Both fields are individually optional so a workflow can define
@@ -132,6 +151,10 @@ struct WorkflowDefinition: Equatable, Codable {
         /// Optional per-action model, applied the same way as `Planning.model`. `nil` = no flag.
         let model: String?
 
+        /// Optional per-action agent, applied the same way as `Planning.command`. `nil` = inherit
+        /// the workflow-wide `agent.command`.
+        let command: String?
+
         private enum CodingKeys: String, CodingKey {
             case name
             case instructions
@@ -139,6 +162,7 @@ struct WorkflowDefinition: Equatable, Codable {
             case maxAttempts = "max_attempts"
             case onMaxAttempts = "on_max_attempts"
             case model
+            case command
         }
 
         init(
@@ -147,7 +171,8 @@ struct WorkflowDefinition: Equatable, Codable {
             routes: [String: String] = [:],
             maxAttempts: Int? = nil,
             onMaxAttempts: String? = nil,
-            model: String? = nil
+            model: String? = nil,
+            command: String? = nil
         ) {
             self.name = name
             self.instructions = instructions
@@ -155,6 +180,7 @@ struct WorkflowDefinition: Equatable, Codable {
             self.maxAttempts = maxAttempts
             self.onMaxAttempts = onMaxAttempts
             self.model = model
+            self.command = command
         }
 
         init(from decoder: Decoder) throws {
@@ -166,6 +192,7 @@ struct WorkflowDefinition: Equatable, Codable {
             maxAttempts = try container.decodeIfPresent(Int.self, forKey: .maxAttempts)
             onMaxAttempts = try container.decodeIfPresent(String.self, forKey: .onMaxAttempts)
             model = try container.decodeIfPresent(String.self, forKey: .model)
+            command = try container.decodeIfPresent(String.self, forKey: .command)
         }
 
         func encode(to encoder: Encoder) throws {
@@ -180,6 +207,7 @@ struct WorkflowDefinition: Equatable, Codable {
             try container.encodeIfPresent(maxAttempts, forKey: .maxAttempts)
             try container.encodeIfPresent(onMaxAttempts, forKey: .onMaxAttempts)
             try container.encodeIfPresent(model, forKey: .model)
+            try container.encodeIfPresent(command, forKey: .command)
         }
     }
 

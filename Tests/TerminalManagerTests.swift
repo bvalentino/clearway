@@ -88,39 +88,6 @@ final class TerminalManagerTests: XCTestCase {
                       "the hook reveal must win over the open-on-start-off default")
     }
 
-    // MARK: - resolveAgentCommand
-
-    func test_resolveAgentCommand_prefersNonEmptyWorkflowCommand() {
-        let suite = "resolveAgent.prefer.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set("grok", forKey: SettingsKey.mainTerminalCommand)
-        XCTAssertEqual(
-            resolveAgentCommand(workflowCommand: "codex", defaults: defaults),
-            "codex"
-        )
-    }
-
-    func test_resolveAgentCommand_fallsBackToMainTerminal_whenWorkflowEmpty() {
-        let suite = "resolveAgent.main.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set("grok", forKey: SettingsKey.mainTerminalCommand)
-        XCTAssertEqual(resolveAgentCommand(workflowCommand: "", defaults: defaults), "grok")
-        XCTAssertEqual(resolveAgentCommand(workflowCommand: nil, defaults: defaults), "grok")
-        XCTAssertEqual(resolveAgentCommand(workflowCommand: "   ", defaults: defaults), "grok")
-    }
-
-    func test_resolveAgentCommand_fallsBackToDefaultMainTerminal_whenBothBlank() {
-        let suite = "resolveAgent.default.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(
-            resolveAgentCommand(workflowCommand: nil, defaults: defaults),
-            SettingsManager.defaultMainTerminalCommand
-        )
-    }
-
     // MARK: - buildAgentPromptCommand
 
     func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
