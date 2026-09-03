@@ -58,6 +58,17 @@ func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
     return current == .task ? .todos : current
 }
 
+extension NavigationSplitViewVisibility {
+    /// Compared with `==` because this is a struct whose cases are static properties, not an enum.
+    /// `.automatic` is not a case this can see: it carries `kind: .doubleColumn` behind a private
+    /// flag its `==` ignores, so it reads as hidden. `ContentView` seeds `.all` for that reason.
+    var sidebarIsVisible: Bool { self != .doubleColumn && self != .detailOnly }
+
+    /// Hides to `.doubleColumn`, not `.detailOnly`: the leading column goes and the task/prompt
+    /// list column stays.
+    var togglingSidebar: NavigationSplitViewVisibility { sidebarIsVisible ? .doubleColumn : .all }
+}
+
 /// Tracks the content column's live width without triggering SwiftUI view updates.
 ///
 /// This is intentionally a bare reference class, not `@Observable`, `ObservableObject`,

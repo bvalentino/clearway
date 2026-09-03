@@ -189,7 +189,15 @@ struct ClearwayApp: App {
                 NewShellTabMenuItem()
                 NewTaskMenuItem()
             }
-            CommandGroup(after: .sidebar) {
+            // Replacing the whole group is the only way to drop SwiftUI's Show Sidebar item, which
+            // advertises Ctrl+Cmd+S and cannot be retitled or re-keyed. Despite Apple documenting
+            // the group as carrying Enter/Exit Full Screen too, that item survives the replacement,
+            // so the app declares none of its own.
+            CommandGroup(replacing: .sidebar) {
+                PanelToggleMenuItem("Sidebar", shortcut: .init("b"), panel: \.sidebarToggle)
+                PanelToggleMenuItem("Bottom Panel", shortcut: .init("j"), panel: \.bottomPanelToggle)
+                PanelToggleMenuItem("Aside", shortcut: .init("b", modifiers: [.command, .option]),
+                                    panel: \.asideToggle)
                 Toggle(isOn: $showFrontmatter) {
                     Label("Show Frontmatter", systemImage: "chevron.left.forwardslash.chevron.right")
                 }

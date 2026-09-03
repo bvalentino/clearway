@@ -97,16 +97,39 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertFalse(claims([.command, .shift], "K"))
     }
 
-    // MARK: - Cmd+Ctrl+3 (the aside toggle)
+    // MARK: - The View menu's panel toggles
 
-    func testCommandControlThreeIsClaimed() {
-        XCTAssertTrue(claims([.command, .control], "3"))
+    func testCommandBIsClaimed() {
+        XCTAssertTrue(claims([.command], "b"), "toggle sidebar")
     }
 
-    /// Cmd+Ctrl+2 was the secondary panel's shortcut before Cmd+J replaced it. Nothing declares it
-    /// now, so claiming it would take a key from the shell and answer it with nothing.
-    func testRetiredCommandControlTwoIsNotClaimed() {
+    func testCommandOptionBIsClaimed() {
+        XCTAssertTrue(claims([.command, .option], "b"), "toggle aside")
+    }
+
+    func testPanelToggleVariantsWithOtherModifiersAreNotClaimed() {
+        XCTAssertFalse(claims([.command, .control], "b"))
+        XCTAssertFalse(claims([.command, .shift], "B"))
+        XCTAssertFalse(claims([.command, .shift, .option], "B"))
+        XCTAssertFalse(claims([.command], "f"))
+        XCTAssertFalse(claims([.command, .option], "f"))
+    }
+
+    // MARK: - Retired shortcuts
+
+    /// Cmd+Ctrl+3 was the aside's shortcut before Cmd+Option+B replaced it. Cmd+Ctrl+2 was the
+    /// secondary panel's before Cmd+J. Nothing declares either now, so claiming one would take a
+    /// key from the shell and answer it with nothing.
+    func testRetiredCommandControlDigitsAreNotClaimed() {
+        XCTAssertFalse(claims([.command, .control], "3"))
         XCTAssertFalse(claims([.command, .control], "2"))
+    }
+
+    /// Replacing SwiftUI's `.sidebar` command group leaves macOS's own Enter/Exit Full Screen item
+    /// standing, so the app declares no full-screen shortcut and must claim none — a claimed combo
+    /// with no handler is taken from the shell and dropped.
+    func testCommandControlFIsNotClaimed() {
+        XCTAssertFalse(claims([.command, .control], "f"))
     }
 
     /// Unlike every other clause, Ctrl+digit tolerates a stray Shift or Option. Pins that shape
