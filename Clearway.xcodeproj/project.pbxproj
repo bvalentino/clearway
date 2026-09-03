@@ -21,7 +21,6 @@
 		1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */; };
 		1AFDAD7162258B079BBC3B49 /* AgentLaunchModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */; };
 		1D79BDC62A43580E0D889E6C /* GitResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF04318569BD95EFE4C470CA /* GitResolver.swift */; };
-		21E0BDF8E3214F1CD2ECFE9E /* WorkflowManualKillHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B8BB7E4D980BFB0931270BF /* WorkflowManualKillHarnessTests.swift */; };
 		227AAB3A6CC265B56E4E61BB /* WorktreeGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2AB2AB726BE02766D5A27D /* WorktreeGroupStore.swift */; };
 		228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */; };
 		2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1F48D279D802C46C9A7164 /* WorkTask.swift */; };
@@ -93,6 +92,7 @@
 		98B18A8F9508E08F7E852BF4 /* Prompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A28DBBCFBC067478FD8795 /* Prompt.swift */; };
 		9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */; };
 		9C5DCA7C8D021A775B94678A /* ShellPathValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB28BB9D069A601AE8E718 /* ShellPathValidationTests.swift */; };
+		9F3099738D36E6823B1ACC3F /* WorkflowAgentSupersedeHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14D5AE9DB7F84FA87AA9C39 /* WorkflowAgentSupersedeHarnessTests.swift */; };
 		A0FF16C2FB55878FE0371081 /* WorkflowLoopEngineHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A914B06E28671FA54FAF04B0 /* WorkflowLoopEngineHarnessTests.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
 		A78C71F92E45362EFDFE4BAA /* AgentLaunchAgentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */; };
@@ -189,7 +189,6 @@
 		6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeActivityMonitor.swift; sourceTree = "<group>"; };
 		6B33A787767060CC02E5FEED /* WorkflowDefinitionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDefinitionModelTests.swift; sourceTree = "<group>"; };
 		6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
-		6B8BB7E4D980BFB0931270BF /* WorkflowManualKillHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowManualKillHarnessTests.swift; sourceTree = "<group>"; };
 		6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoManager.swift; sourceTree = "<group>"; };
 		733E42F6C068BE314FAD921E /* Ghostty.Shell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Shell.swift; sourceTree = "<group>"; };
 		740FCA94FE463D89AE57E377 /* TerminalManager+Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Launcher.swift"; sourceTree = "<group>"; };
@@ -253,6 +252,7 @@
 		DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutopilotButton.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E13A887930C91FF03A713B5D /* PlanningLaunchCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningLaunchCommandTests.swift; sourceTree = "<group>"; };
+		E14D5AE9DB7F84FA87AA9C39 /* WorkflowAgentSupersedeHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowAgentSupersedeHarnessTests.swift; sourceTree = "<group>"; };
 		E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunchAgentTests.swift; sourceTree = "<group>"; };
 		E3193EB27B18ECBEDF1F126F /* TerminalManager+Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Panels.swift"; sourceTree = "<group>"; };
 		E44995D0B46DA43D1AB997D8 /* WorkflowCompletionHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowCompletionHarnessTests.swift; sourceTree = "<group>"; };
@@ -327,6 +327,7 @@
 				F6AC6A1436F22549F83FB805 /* TerminalTabKindTests.swift */,
 				0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */,
 				D29F2625E4A58FAD88F2E813 /* WorkflowAgentLaunchTests.swift */,
+				E14D5AE9DB7F84FA87AA9C39 /* WorkflowAgentSupersedeHarnessTests.swift */,
 				E44995D0B46DA43D1AB997D8 /* WorkflowCompletionHarnessTests.swift */,
 				F0CA7FF12D101F9B3EBE1D12 /* WorkflowCountdownHarnessTests.swift */,
 				6B33A787767060CC02E5FEED /* WorkflowDefinitionModelTests.swift */,
@@ -334,7 +335,6 @@
 				ED79B25044489EC6F20BEF19 /* WorkflowEditorModelTests.swift */,
 				A914B06E28671FA54FAF04B0 /* WorkflowLoopEngineHarnessTests.swift */,
 				C1346401F8FA7C72F9967331 /* WorkflowLoopEngineTests.swift */,
-				6B8BB7E4D980BFB0931270BF /* WorkflowManualKillHarnessTests.swift */,
 				F5E03602DF33645AE8A34788 /* WorkflowModelLaunchTests.swift */,
 				62A38F6C1360B18A7EA0784C /* WorkflowSidebarActionTests.swift */,
 				BDFF434E15C51E529E091E83 /* WorkflowStepTaggingHarnessTests.swift */,
@@ -837,6 +837,7 @@
 				16632D26B22A8BC9CE983236 /* WorkTaskRelocationSafetyTests.swift in Sources */,
 				2B1679975B653C03C0C03FFF /* WorkTaskTests.swift in Sources */,
 				38930EE65673143BCB4DA932 /* WorkflowAgentLaunchTests.swift in Sources */,
+				9F3099738D36E6823B1ACC3F /* WorkflowAgentSupersedeHarnessTests.swift in Sources */,
 				589AE0BF3BF6D3BEAEF84E23 /* WorkflowCompletionHarnessTests.swift in Sources */,
 				67A43FD9534AACCAAB6808E3 /* WorkflowCountdownHarnessTests.swift in Sources */,
 				3892A4BF97056EF35B9D44D5 /* WorkflowDefinitionModelTests.swift in Sources */,
@@ -844,7 +845,6 @@
 				73A16E3F5662A28DDAC00AC5 /* WorkflowEditorModelTests.swift in Sources */,
 				A0FF16C2FB55878FE0371081 /* WorkflowLoopEngineHarnessTests.swift in Sources */,
 				2EE190398BA35EB6E9FB0014 /* WorkflowLoopEngineTests.swift in Sources */,
-				21E0BDF8E3214F1CD2ECFE9E /* WorkflowManualKillHarnessTests.swift in Sources */,
 				195AAC48F4ACED4727E0550C /* WorkflowModelLaunchTests.swift in Sources */,
 				CB6DE9838E8EFA076C1FC97E /* WorkflowSidebarActionTests.swift in Sources */,
 				F6FC0080DD4925676362F4C8 /* WorkflowStepTaggingHarnessTests.swift in Sources */,

@@ -50,13 +50,13 @@ class WorkTaskCoordinator: ObservableObject {
     /// The action currently running in each worktree, keyed by worktree id. The engine's `P`.
     /// Also the idempotency guard: a `TASK.md` change whose `status` already equals the running
     /// action is ignored, so the same value never double-launches.
-    /// `@Published` so the toolbar's `isAgentRunning(forWorktree:)` has a guaranteed reactive path
+    /// `@Published` so `isAgentRunning(forWorktree:)` has a guaranteed reactive path
     /// off both its inputs (the other being `agentSurfaces`), not just a coincidental re-render.
     @Published var runningAction: [String: String] = [:]
 
     /// A counter bumped on every launch of a worktree — the second half of a `WorkflowLaunchID`, so a
     /// launch can tell whether it is still the one the engine wants once it resumes from awaiting the
-    /// resolved PATH. `runningAction` alone can't: a kill followed by a play relaunches the *same*
+    /// resolved PATH. `runningAction` alone can't: a manual status pick followed by a play relaunches the *same*
     /// slug, and the superseded launch would read its own slug back and spawn a second agent.
     /// Not `@Published` — engine bookkeeping, never view state.
     var launchGeneration: [String: Int] = [:]
@@ -122,16 +122,17 @@ class WorkTaskCoordinator: ObservableObject {
     let worktreeManager: WorktreeManager
 
     /// Cached, reactive answer to "does this project have a valid `.clearway/WORKFLOW.json`?" — the
-    /// `AutopilotButton`'s visibility gate. Reading this `@Published` flag (instead of calling
-    /// `hasJSONWorkflow()` per `body`) both avoids a full load+validate filesystem parse on every
-    /// render and makes the button react when WORKFLOW.json is added/removed. Refreshed from the
+    /// visibility gate the task aside applies to its step cards and autopilot row. Reading this
+    /// `@Published` flag (instead of calling `hasJSONWorkflow()` per `body`) both avoids a full
+    /// load+validate filesystem parse on every render and makes the aside react when WORKFLOW.json
+    /// is added/removed. Refreshed from the
     /// manager's always-fired `onClearwayChanged` reload hook (which fires on a WORKFLOW.json
     /// add/remove/edit even with zero task changes) plus once at init, so it is correct before the
     /// first reload. Same gate semantics: true only for a valid JSON workflow.
     @Published private(set) var isWorkflowJSONProject: Bool = false
 
     /// The parsed, validated `WORKFLOW.json`, cached alongside the gate so view-path reads
-    /// (`workflowActionSlugs()`, the aside's status picker / play button) don't re-load + decode the
+    /// (`workflowActionSlugs()`, the aside's status picker / autopilot row) don't re-load + decode the
     /// file on every render — the gate's `nil`/non-`nil` and this cache are produced by the **single**
     /// load in `refreshWorkflowJSONGate()`. `nil` for a legacy project (or a malformed file, matching
     /// the gate). Refreshed in lockstep with the gate from `onClearwayChanged`, so it tracks a runtime
@@ -220,15 +221,15 @@ class WorkTaskCoordinator: ObservableObject {
 
         // Refresh the cached gate + definition on *every* `.clearway/` change — fired unconditionally
         // by the manager before its pool-changed guard, so a WORKFLOW.json add/remove/edit that
-        // touches no `TASK.md` still flips the gate (toolbar button visibility, aside JSON branch).
+        // touches no `TASK.md` still flips the gate (the aside's JSON branch, autopilot row included).
         // Decoupled from `onTasksReloaded` (the engine advance) on purpose: a pure no-change reload
         // refreshes the gate without driving a needless loop re-evaluation.
         self.workTaskManager.onClearwayChanged = { [weak self] in
             self?.refreshWorkflowJSONGate()
         }
 
-        // Seed the cached workflow-json gate so the toolbar button is correct before the first
-        // reload; subsequent `.clearway/` changes refresh it via `onClearwayChanged`.
+        // Seed the cached workflow-json gate so the aside is correct before the first reload;
+        // subsequent `.clearway/` changes refresh it via `onClearwayChanged`.
         refreshWorkflowJSONGate()
     }
 

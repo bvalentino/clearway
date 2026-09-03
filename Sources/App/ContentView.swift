@@ -169,12 +169,7 @@ struct ContentView: View {
             HookTerminalSheet(hook: hook)
         }
         .toolbar {
-            if let worktree = selectedWorktree {
-                ToolbarItem(placement: .primaryAction) {
-                    // Self-gates on the project having a valid WORKFLOW.json; renders nothing for
-                    // legacy projects, so their toolbar is unchanged.
-                    AutopilotButton(worktree: worktree)
-                }
+            if selectedWorktree != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showRemoveConfirmation = true
@@ -879,9 +874,10 @@ struct ContentView: View {
 
                                 switch effectiveSidePanelTab {
                                 case .task:
-                                    if let branch = selectedWorktree?.branch {
+                                    if let selected = selectedWorktree, let branch = selected.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
+                                            worktreeId: selected.id,
                                             projectPath: worktreeManager.projectPath
                                         )
                                     }

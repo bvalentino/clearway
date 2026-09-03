@@ -90,7 +90,7 @@ Edit it from the **Workflow** section in the sidebar, or by hand.
 
 `start` names the slug a new worktree begins on. Every pointer (`start`, route targets) must resolve to an action or the file is rejected, and a rejected file reads the same as no file at all. `new` and `ready_to_start` are reserved backlog markers and cannot be used as slugs.
 
-> `agent.timeout_ms`, `max_attempts`, and `on_max_attempts` are accepted and validated, but **not enforced in v1** — they are reserved for a future loop guard. Setting them bounds nothing today; **Stop Agent** is the only thing that halts a running step.
+> `agent.timeout_ms`, `max_attempts`, and `on_max_attempts` are accepted and validated, but **not enforced in v1** — they are reserved for a future loop guard. Setting them bounds nothing today; Ctrl-C in the agent's terminal, or closing its tab, is the only thing that halts a running step.
 
 ### Agent
 
@@ -162,7 +162,7 @@ A value with a space in it is ignored at launch rather than rejecting the file; 
 
 Clearway prepends a short context block to each action's `instructions`, telling the agent where the task lives and what to write when it finishes — the next slug for a routed action, `completed: true` for a terminal one. You write only the instructions.
 
-Autopilot is per-worktree and never starts on its own: reopening a project leaves every worktree paused until you press play. Use the toolbar play/pause to resume, and **Stop Agent** in its context menu to end a running step.
+Autopilot is per-worktree and never starts on its own: reopening a project leaves every worktree paused until you press play. Use the **Autopilot** row below the step cards in the task aside to resume, and Ctrl-C in the agent's terminal — or closing its tab — to end a running step.
 
 ## Architecture
 

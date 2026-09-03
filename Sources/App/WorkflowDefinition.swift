@@ -64,7 +64,8 @@ struct WorkflowDefinition: Equatable, Codable {
 
         /// Per-action timeout in milliseconds. Defaults to `Self.defaultTimeoutMs` when omitted.
         /// **Reserved for a future launch guard and NOT enforced in v1** — the launch path never
-        /// consumes it (the manual kill is the only thing that bounds a step's runtime today).
+        /// consumes it (Ctrl-C in the agent's terminal, or closing its tab, is the only thing that
+        /// bounds a step's runtime today).
         /// Decoded and validated (a reserved part of the `WORKFLOW.json` format) but never acted on.
         let timeoutMs: Int
 
@@ -139,8 +140,9 @@ struct WorkflowDefinition: Equatable, Codable {
         let routes: [String: String]
 
         /// Per-action entry cap. **Reserved for a future loop guard and NOT enforced in v1** — the
-        /// manual kill ("Stop Agent") is the v1 loop-stopper. Decoded and validated (a reserved part
-        /// of the `WORKFLOW.json` format) but never acted on by the engine. `nil` = unset.
+        /// v1 loop-stopper is Ctrl-C in the agent's terminal, or closing its tab. Decoded and validated
+        /// (a reserved part of the `WORKFLOW.json` format) but never acted on by the engine.
+        /// `nil` = unset.
         let maxAttempts: Int?
 
         /// Escape slug routed to when `maxAttempts` is hit. **Reserved for a future loop guard and
