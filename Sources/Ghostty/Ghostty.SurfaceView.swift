@@ -231,45 +231,17 @@ extension Ghostty {
 
         // MARK: - Keyboard Events
 
+        /// Set by the app layer to name the Cmd/Ctrl combos it claims as its own shortcuts; a
+        /// focused surface hands those back to SwiftUI instead of encoding them for the shell.
+        /// Unwired it claims nothing, so a surface standing alone still drives a working terminal.
+        static var claimsShortcut: (NSEvent.ModifierFlags, String?, UInt16) -> Bool = { _, _, _ in false }
+
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             guard event.type == .keyDown, surfacePtr != nil, focused else { return false }
             guard event.modifierFlags.contains(.control) ||
                   event.modifierFlags.contains(.command) else { return false }
 
-            // Let Ctrl+digit pass through to SwiftUI keyboard shortcuts (sidebar destinations)
-            if event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.command),
-               let chars = event.charactersIgnoringModifiers, chars.count == 1,
-               let scalar = chars.unicodeScalars.first, scalar >= "0" && scalar <= "9" {
-                return false
-            }
-
-            let flags = event.modifierFlags
-
-            // Let Cmd+T pass through to SwiftUI (new tab)
-            if flags.contains(.command) && !flags.contains(.shift) &&
-               !flags.contains(.control) && !flags.contains(.option),
-               let chars = event.charactersIgnoringModifiers, chars == "t" {
-                return false
-            }
-
-            // Let Cmd+W pass through to SwiftUI (close tab)
-            if flags.contains(.command) && !flags.contains(.shift) &&
-               !flags.contains(.control) && !flags.contains(.option),
-               let chars = event.charactersIgnoringModifiers, chars == "w" {
-                return false
-            }
-
-            // Let Cmd+Shift+[ pass through to SwiftUI (previous tab); use keyCode for layout safety
-            if flags.contains(.command) && flags.contains(.shift) &&
-               !flags.contains(.control) && !flags.contains(.option),
-               event.keyCode == 0x21 {
-                return false
-            }
-
-            // Let Cmd+Shift+] pass through to SwiftUI (next tab); use keyCode for layout safety
-            if flags.contains(.command) && flags.contains(.shift) &&
-               !flags.contains(.control) && !flags.contains(.option),
-               event.keyCode == 0x1E {
+            if Self.claimsShortcut(event.modifierFlags, event.charactersIgnoringModifiers, event.keyCode) {
                 return false
             }
 
@@ -608,6 +580,16 @@ extension Ghostty {
             if flags.contains(.command) { mods |= GHOSTTY_MODS_SUPER.rawValue }
             if flags.contains(.capsLock) { mods |= GHOSTTY_MODS_CAPS.rawValue }
             return ghostty_input_mods_e(rawValue: mods)
+        }
+    }
+}
+
+extension Ghostty.SurfaceView {
+    /// Take keyboard focus. A revealed panel's surface only joins a window once SwiftUI has
+    /// rendered it, so callers revealing a panel pass a delay to wait out that pass.
+    func takeFocus(after delay: Double = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
+            window?.makeFirstResponder(self)
         }
     }
 }

@@ -42,9 +42,24 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - `Ghostty.swift` — namespace + logger
   - `Ghostty.Config.swift` — wraps `ghostty_config_t`
   - `Ghostty.App.swift` — wraps `ghostty_app_t`, runtime callbacks
-  - `Ghostty.SurfaceView.swift` — `NSView` hosting a `ghostty_surface_t` (input, rendering)
+  - `Ghostty.SurfaceView.swift` — `NSView` hosting a `ghostty_surface_t` (input, rendering).
+    Nothing on it is reachable from XCTest: an instance is needed to call anything, and the
+    initializer needs a real `ghostty_app_t`. So any decision rule here is lifted out into a pure
+    helper that gets tested instead — the same split `TerminalManager.revealSecondaryForHook` makes
+    for panel visibility.
+    A focused surface swallows **every** Cmd/Ctrl combo, encoding it for the shell, unless the app
+    claims it via `SurfaceView.claimsShortcut` — a provider wired in `ContentView.onAppear` to
+    `AppKeyboardShortcuts.claims`. A SwiftUI `.keyboardShortcut` declared without a matching entry
+    there is unreachable whenever a terminal has focus, which is why the table and the declarations
+    live in the same layer.
   - `TerminalSurface.swift` — SwiftUI `NSViewRepresentable` wrapper
 - **Sources/App/** — SwiftUI app entry point + task/worktree/workflow logic
+  - `AppKeyboardShortcuts.swift` — the combos the app claims from focused terminal surfaces, plus the
+    layout-independent key codes its `NSEvent` monitor matches on. Add a shortcut here in the same
+    change that declares it.
+  - Agent and terminal launch logic lives on `WorkTaskCoordinator`, never in a view: a view resolves
+    no command and awaits nothing, it calls a coordinator method. This is what lets one behavior carry
+    several entry points without the decision being written once per door.
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 - **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
 - swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.

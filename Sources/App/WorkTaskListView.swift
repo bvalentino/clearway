@@ -1,11 +1,4 @@
-import GhosttyKit
 import SwiftUI
-import os
-
-private let planLogger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
-    category: "plan"
-)
 
 /// The project home — a backlog showing tasks that need shaping or haven't started.
 /// Started/stopped/done tasks live in their worktree's aside panel.
@@ -15,7 +8,6 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
-    let projectPath: String
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
     /// One-shot creation-focus signal owned by `ContentView`; set when this list creates
@@ -245,59 +237,9 @@ struct WorkTaskListView: View {
         return terminalManager.isTaskTerminalVisible(for: id)
     }
 
-    private func toggleTaskTerminal() {
-        guard let id = selection, let app = ghosttyApp.app else { return }
-        terminalManager.toggleTaskTerminal(for: id, app: app, projectPath: projectPath)
-    }
-
     private func planTask() {
-        guard let task = selectedTask, let app = ghosttyApp.app else { return }
-
-        // If already visible, toggle off
-        if taskTerminalOpen {
-            toggleTaskTerminal()
-            return
-        }
-
-        if let instructions = workTaskCoordinator.planningInstructions {
-            let taskPath = workTaskManager.filePath(for: task)
-            let prompt = PlanningConfig.renderPlanningPrompt(instructions: instructions, task: task, taskPath: taskPath)
-            let agentCmd = workTaskCoordinator.planningAgentCommand
-            guard terminalManager.beginTaskLaunch(for: task.id) else { return }
-            Task { @MainActor in
-                defer { terminalManager.endTaskLaunch(for: task.id) }
-                let launch = buildAgentPromptCommand(
-                    agentCommand: agentCmd,
-                    prompt: prompt,
-                    path: await ShellEnvironment.awaitPath(),
-                    filePrefix: "clearway-plan"
-                )
-                planLogger.info("plan agent=\(agentCmd, privacy: .public) promptFile=\(launch.promptFile, privacy: .public)")
-                planLogger.debug("plan command: \(launch.command, privacy: .public)")
-                terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: launch.command)
-            }
-        } else {
-            // No planning instruction — open terminal with the Main Terminal command
-            let command = UserDefaults.standard.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
-            if !command.isEmpty {
-                guard terminalManager.beginTaskLaunch(for: task.id) else { return }
-                Task { @MainActor in
-                    defer { terminalManager.endTaskLaunch(for: task.id) }
-                    let bare = terminalManager.buildBareCommand(
-                        agentCommand: command,
-                        path: await ShellEnvironment.awaitPath()
-                    )
-                    terminalManager.openTaskTerminalWithCommand(for: task.id, app: app, projectPath: projectPath, command: bare)
-                }
-            } else {
-                terminalManager.toggleTaskTerminal(for: task.id, app: app, projectPath: projectPath)
-            }
-        }
-
-        // Opening the planning terminal — tell the editor to switch to preview so
-        // the rendered task sits beside it. The editor owns the live (possibly
-        // unsaved) body buffer, so it decides whether there's anything to preview.
-        NotificationCenter.default.post(name: WorkTaskNotification.planningTerminalOpened, object: task.id)
+        guard let id = selection, let app = ghosttyApp.app else { return }
+        workTaskCoordinator.planTask(taskId: id, app: app)
     }
 
     private func confirmDeleteTask(_ task: WorkTask) {
@@ -311,7 +253,7 @@ struct WorkTaskListView: View {
     private func startTask(_ task: WorkTask) {
         NotificationCenter.default.post(
             name: WorkTaskNotification.start,
-            object: projectPath,
+            object: worktreeManager.projectPath,
             userInfo: [WorkTaskNotification.taskKey: task]
         )
     }

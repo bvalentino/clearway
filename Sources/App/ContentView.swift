@@ -25,6 +25,24 @@ enum DetailSelection: Hashable {
         if case .worktree(let wt) = self { return wt }
         return nil
     }
+
+    /// Which bottom panel Cmd+J toggles here. Pure so it can be tested — `toggleBottomPanel`
+    /// itself reads `@EnvironmentObject` state XCTest cannot build. Exhaustive on purpose: a new
+    /// destination must say whether it hosts a panel rather than silently getting none.
+    static func bottomPanelAction(for selection: DetailSelection?) -> BottomPanelAction {
+        switch selection {
+        case .worktree: return .secondaryTerminal
+        case .planning: return .planningTerminal
+        case .prompts, .workflow, .none: return .noPanel
+        }
+    }
+}
+
+/// The bottom panel a destination hosts, if any.
+enum BottomPanelAction: Equatable {
+    case secondaryTerminal
+    case planningTerminal
+    case noPanel
 }
 
 struct TabCloseRequest: Identifiable {
@@ -315,13 +333,8 @@ struct ContentView: View {
                             detailSelection = .worktree(wt)
                             return
                         }
-                        // Repeat press on the selected worktree cycles pane focus:
-                        // primary focused → secondary (revealed if hidden), else → primary.
-                        if terminalManager.isActiveMainSurfaceFocused {
-                            showAndFocusSecondary(isVisible: secondaryVisible, toggle: toggleSecondaryTerminal)
-                        } else {
-                            focusActiveMainTab()
-                        }
+                        // Repeat press on the already-selected worktree focuses its terminal.
+                        focusActiveMainTab()
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
                     .hidden()
@@ -339,9 +352,8 @@ struct ContentView: View {
                 .keyboardShortcut("3", modifiers: .control)
                 .hidden()
 
-            // Cmd+Ctrl+N: toggle pane visibility
-            Button("") { toggleSecondaryTerminal() }
-                .keyboardShortcut("2", modifiers: [.command, .control])
+            Button("") { toggleBottomPanel() }
+                .keyboardShortcut("j", modifiers: .command)
                 .hidden()
             Button("") { toggleAside() }
                 .keyboardShortcut("3", modifiers: [.command, .control])
@@ -359,6 +371,10 @@ struct ContentView: View {
             // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
             // can launch agent surfaces without the per-call app argument.
             workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
+
+            // Tell focused terminal surfaces which combos this app claims, so the shortcuts
+            // declared above stay reachable while a terminal has the keyboard.
+            Ghostty.SurfaceView.claimsShortcut = AppKeyboardShortcuts.claims
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
@@ -527,10 +543,10 @@ struct ContentView: View {
             guard flags == [.command, .shift],
                   let activeId = terminalManager.mainActiveTabId(for: worktreeId),
                   let index = tabs.firstIndex(where: { $0.id == activeId }) else { return event }
-            if code == 0x21 {
+            if code == AppKeyboardShortcuts.KeyCode.leftBracket {
                 // Cmd+Shift+[: cycle to previous tab (wrap-around)
                 terminalManager.activateMainTab(id: tabs[(index - 1 + tabs.count) % tabs.count].id, in: worktreeId); return nil
-            } else if code == 0x1E {
+            } else if code == AppKeyboardShortcuts.KeyCode.rightBracket {
                 // Cmd+Shift+]: cycle to next tab (wrap-around)
                 terminalManager.activateMainTab(id: tabs[(index + 1) % tabs.count].id, in: worktreeId); return nil
             }
@@ -546,18 +562,31 @@ struct ContentView: View {
 
     // MARK: - Pane Focus & Visibility
 
-    private func focusActiveMainTab(delay: Double = 0) {
-        guard let surface = terminalManager.activeMainSurface else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { surface.window?.makeFirstResponder(surface) }
+    private func focusActiveMainTab() {
+        terminalManager.activeMainSurface?.takeFocus()
     }
 
-    private func focusSecondary(delay: Double = 0) {
-        guard let surface = terminalManager.activePane?.secondary else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { surface.window?.makeFirstResponder(surface) }
+    private func focusSecondary() {
+        terminalManager.activePane?.secondary.takeFocus(after: 0.25)
     }
 
-    private func showAndFocusSecondary(isVisible: Bool, toggle: () -> Void) {
-        if isVisible { focusSecondary() } else { toggle(); focusSecondary(delay: 0.25) }
+    /// Cmd+J on a worktree: a strict toggle that focuses the panel it reveals.
+    private func toggleAndFocusSecondary() {
+        let wasVisible = secondaryVisible
+        toggleSecondaryTerminal()
+        if !wasVisible { focusSecondary() }
+    }
+
+    private func toggleBottomPanel() {
+        switch DetailSelection.bottomPanelAction(for: detailSelection) {
+        case .secondaryTerminal:
+            toggleAndFocusSecondary()
+        case .planningTerminal:
+            guard let taskId = selectedTaskId, let app = ghosttyApp.app else { return }
+            workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
+        case .noPanel:
+            break
+        }
     }
 
     private func toggleSecondaryTerminal() {
@@ -703,7 +732,6 @@ struct ContentView: View {
     private var contentColumn: some View {
         if detailSelection == .planning {
             WorkTaskListView(
-                projectPath: worktreeManager.projectPath,
                 selection: $selectedTaskId,
                 editorMode: $taskEditorMode,
                 newlyCreatedTaskId: $newlyCreatedTaskId

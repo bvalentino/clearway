@@ -34,11 +34,13 @@
 		2E94F35E227CD1A673BF7C0E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A834CA46BCB2AE8057A4A151 /* Sparkle */; };
 		2EE190398BA35EB6E9FB0014 /* WorkflowLoopEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1346401F8FA7C72F9967331 /* WorkflowLoopEngineTests.swift */; };
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
+		2F5359E511FD212D9A8FA5C7 /* WorkTaskCoordinator+Planning.swift in Sources */ = {isa = PBXBuildFile; fileRef = A805010ED0624FCE443AFAE0 /* WorkTaskCoordinator+Planning.swift */; };
 		341BA0217D7DFD0145AEA798 /* WorktreeGroupStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */; };
 		3892A4BF97056EF35B9D44D5 /* WorkflowDefinitionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B33A787767060CC02E5FEED /* WorkflowDefinitionModelTests.swift */; };
 		38930EE65673143BCB4DA932 /* WorkflowAgentLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D29F2625E4A58FAD88F2E813 /* WorkflowAgentLaunchTests.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
 		3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC9411B19B7913605A851B1 /* TodosView.swift */; };
+		3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */; };
 		4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */; };
 		42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */; };
 		449E2BD69F4AAAFC69ADBDE3 /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565AC0451DC45348A309739E /* TerminalSurface.swift */; };
@@ -112,8 +114,10 @@
 		D721AE67CC20BCF6875E9FAD /* TerminalManager+Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740FCA94FE463D89AE57E377 /* TerminalManager+Launcher.swift */; };
 		D7D5424146FF5FC63D80A95A /* WorkflowSidebarActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EDF16FBC75746AC81828EF2 /* WorkflowSidebarActionCard.swift */; };
 		D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */; };
+		DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */; };
 		DC8D4F1CE85F602F5BE3B1AC /* WorktreeHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB5272D378BC91AF7A25A0E9 /* WorktreeHooks.swift */; };
 		DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946872F556F95BBB45E91EBD /* AppNotifications.swift */; };
+		DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */; };
 		E1E15B0EAE5B230942FBCC4C /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E4F120F042C2615893DCE6 /* TaskDetailView.swift */; };
 		E3FFB76D4901447D99D5DBDE /* WorkTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */; };
 		E530FCEFAEF4E0DA7061AAFD /* WorkflowDefinitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AD4F89CD8F9026008E0C9D /* WorkflowDefinitionTests.swift */; };
@@ -190,6 +194,8 @@
 		740FCA94FE463D89AE57E377 /* TerminalManager+Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Launcher.swift"; sourceTree = "<group>"; };
 		755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSAppearance+IsDark.swift"; sourceTree = "<group>"; };
 		7862270D9FA477C155E4EB09 /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
+		7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcutsTests.swift; sourceTree = "<group>"; };
+		7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomPanelActionTests.swift; sourceTree = "<group>"; };
 		819821F4A2EB895AB2B55BA7 /* WorkTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskTests.swift; sourceTree = "<group>"; };
 		83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeHooksTests.swift; sourceTree = "<group>"; };
 		85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
@@ -210,6 +216,7 @@
 		A289D16C8729AD679B9C0921 /* PromptListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptListView.swift; sourceTree = "<group>"; };
 		A348415668FA1864F0472086 /* WorkflowEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorView.swift; sourceTree = "<group>"; };
 		A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearwayApp.swift; sourceTree = "<group>"; };
+		A805010ED0624FCE443AFAE0 /* WorkTaskCoordinator+Planning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkTaskCoordinator+Planning.swift"; sourceTree = "<group>"; };
 		A914B06E28671FA54FAF04B0 /* WorkflowLoopEngineHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngineHarnessTests.swift; sourceTree = "<group>"; };
 		AA925629DB815AC555414676 /* Todo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Todo.swift; sourceTree = "<group>"; };
 		ADD413DCDFE98EF635534720 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -241,6 +248,7 @@
 		D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerTests.swift; sourceTree = "<group>"; };
 		D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngine.swift; sourceTree = "<group>"; };
 		D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Clearway-Bridging-Header.h"; sourceTree = "<group>"; };
+		DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcuts.swift; sourceTree = "<group>"; };
 		DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutopilotButton.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunchAgentTests.swift; sourceTree = "<group>"; };
@@ -298,6 +306,8 @@
 			children = (
 				E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */,
 				5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */,
+				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
+				7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */,
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
 				87D53B2248C692859A82CD26 /* GitResolverTests.swift */,
 				BE877D844360476C671BE156 /* MarkdownRendererTests.swift */,
@@ -344,6 +354,7 @@
 			children = (
 				85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */,
 				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
+				DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
 				DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */,
 				C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */,
@@ -406,6 +417,7 @@
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
+				A805010ED0624FCE443AFAE0 /* WorkTaskCoordinator+Planning.swift */,
 				C5C8AA92A771207842664E33 /* WorkTaskCoordinator+WorkflowEngine.swift */,
 				904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */,
 				519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */,
@@ -709,6 +721,7 @@
 			files = (
 				75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */,
 				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
+				DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
 				5BF10077D36A2C58F0D94233 /* AutopilotButton.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,
@@ -767,6 +780,7 @@
 				3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */,
 				2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */,
 				0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */,
+				2F5359E511FD212D9A8FA5C7 /* WorkTaskCoordinator+Planning.swift in Sources */,
 				5D43934B5DF65154C540BDBE /* WorkTaskCoordinator+WorkflowEngine.swift in Sources */,
 				228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */,
 				4F05B35AB55CF4803117305E /* WorkTaskListView.swift in Sources */,
@@ -796,6 +810,8 @@
 			files = (
 				A78C71F92E45362EFDFE4BAA /* AgentLaunchAgentTests.swift in Sources */,
 				1AFDAD7162258B079BBC3B49 /* AgentLaunchModelTests.swift in Sources */,
+				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,
+				DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */,
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
 				4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */,
 				92367EB2512A0164CC0984DE /* MarkdownRendererTests.swift in Sources */,
