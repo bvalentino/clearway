@@ -125,7 +125,7 @@ private func workflowAgentPicker(_ command: Binding<String>, accessibilityLabel:
 /// What happens to a value the allowlist rejects — stated rather than merely flagged, because the
 /// fall-through is otherwise silent at launch. `nil` for `Default` and for any allowlisted agent,
 /// a path to one included (that launches verbatim, so it is honored and reads unflagged).
-private func workflowAgentWarning(_ command: String, ignoredFallback: String) -> String? {
+func workflowAgentWarning(_ command: String, ignoredFallback: String) -> String? {
     let trimmed = command.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty, !isAllowlistedAgentCommand(trimmed) else { return nil }
     return "Ignored — \(ignoredFallback) is used"

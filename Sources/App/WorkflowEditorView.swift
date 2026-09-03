@@ -172,7 +172,7 @@ struct WorkflowEditorView: View {
             )
         } else {
             VStack(spacing: 0) {
-                agentEntry
+                if hasPersistableWorkflow { agentEntry }
                 planningEntry
                 listOrEmpty
             }
@@ -195,6 +195,14 @@ struct WorkflowEditorView: View {
     }
 
     // MARK: - Pinned agent entry
+
+    /// Whether `performSave` would keep a file at all. The workflow-wide agent hides below this bar
+    /// because the same save deletes the file instead of writing it, so the picker would take a
+    /// value it silently discards — and, on a hand-authored agent-only file, delete it on the first
+    /// touch.
+    private var hasPersistableWorkflow: Bool {
+        !model.actions.isEmpty || model.planning != nil
+    }
 
     /// The pinned "Agent" row above Planning: the workflow-wide `agent.command` every entry that
     /// names none inherits. An inline picker rather than a card — there is nothing to push a detail

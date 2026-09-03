@@ -73,7 +73,6 @@ final class AgentLaunchAgentTests: XCTestCase {
         XCTAssertEqual(resolve(entry: "  codex  ", workflow: nil), "codex")
     }
 
-    /// Any whitespace-bearing value fails the last-path-component check, so flags never survive.
     func testOffAllowlistEntryFallsThroughToTheWorkflowAgent() {
         for command in ["aider", "npx claude", "claude --foo", "env FOO=1 claude", "claude-code"] {
             XCTAssertEqual(resolve(entry: command, workflow: "codex"), "codex",
@@ -101,17 +100,32 @@ final class AgentLaunchAgentTests: XCTestCase {
         XCTAssertEqual(resolve(entry: nil, workflow: nil), "aider")
     }
 
-    // MARK: - Composition with the model flag
+    // MARK: - Whitespace never matches
 
-    func testAnEntryAgentCarriesItsOwnModelFlag() {
-        defaults.set("claude", forKey: SettingsKey.mainTerminalCommand)
-        let command = resolve(entry: "codex", workflow: nil)
-        XCTAssertEqual(applyModel(to: command, model: "gpt-5.4-codex"), "codex --model gpt-5.4-codex")
+    /// The launch expands the command unquoted, so a value carrying whitespace would word-split into
+    /// argv. Every case here ends in an allowlisted path component, which is what a last-path-component
+    /// check alone would admit: a space-bearing path launches broken, and the rest smuggle flags or
+    /// swap the executable outright.
+    func testWhitespaceBearingValueNeverMatches() {
+        defaults.set("grok", forKey: SettingsKey.mainTerminalCommand)
+        for command in ["/Users/me/My Tools/claude",
+                        "claude --dangerously-skip-permissions /claude",
+                        "echo pwned; /claude",
+                        "/opt/bin/claude\t/codex"] {
+            XCTAssertEqual(resolve(entry: command, workflow: nil), "grok",
+                           "\(command) carries whitespace and must fall through")
+            XCTAssertEqual(resolve(entry: nil, workflow: command), "grok",
+                           "\(command) carries whitespace and must fall through")
+        }
     }
 
-    func testAnInheritedAgentStillCarriesTheEntryModel() {
-        defaults.set("claude", forKey: SettingsKey.mainTerminalCommand)
-        let command = resolve(entry: nil, workflow: nil)
-        XCTAssertEqual(applyModel(to: command, model: "opus"), "claude --model opus")
+    /// The gate and `applyModel`'s own gate must agree, or an admitted command silently loses its
+    /// `--model` flag: `acceptsModelFlag` tests the *first* whitespace-separated token, so a
+    /// whitespace-bearing value that the allowlist let through would fail it.
+    func testEveryAdmittedCommandStillCarriesItsModelFlag() {
+        for command in ["codex", "/opt/homebrew/bin/claude", "./grok"] {
+            let resolved = resolve(entry: command, workflow: nil)
+            XCTAssertEqual(applyModel(to: resolved, model: "opus"), "\(command) --model opus")
+        }
     }
 }

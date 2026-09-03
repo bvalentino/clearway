@@ -118,7 +118,7 @@ The match is on the **last path component**, so `/opt/homebrew/bin/claude` count
 
 `command` and `model` are independent: an entry may set either, both, or neither, and a step that names its own agent still gets its own `--model` flag.
 
-> **Breaking change.** `agent.command` used to be free text and was launched verbatim, so `"claude --dangerously-skip-permissions"` worked. It no longer does — a value carrying flags is not one of the three agents, so it is ignored and Settings → Main Terminal is used instead. Move the flags to Settings → Main Terminal.
+> **Breaking change.** `agent.command` used to be free text and was launched verbatim, so `"claude --dangerously-skip-permissions"` worked. It no longer does — a value carrying flags is not one of the three agents, so it is ignored and Settings → Main Terminal is used instead. To keep flags, point `command` at an absolute path to a wrapper script named after one of the three agents — `/Users/me/bin/claude`, holding `exec claude --dangerously-skip-permissions "$@"`. The match is on the last path component, so the wrapper is admitted and launched verbatim.
 
 ### Hooks
 

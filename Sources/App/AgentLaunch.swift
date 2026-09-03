@@ -12,7 +12,8 @@ let agentAllowlist = ["claude", "grok", "codex"]
 /// agent can never smuggle flags. Shared with the workflow editor, which flags a failing value
 /// inline rather than letting it vanish at launch.
 func isAllowlistedAgentCommand(_ command: String) -> Bool {
-    agentAllowlist.contains((command as NSString).lastPathComponent)
+    !command.contains(where: \.isWhitespace)
+        && agentAllowlist.contains((command as NSString).lastPathComponent)
 }
 
 /// Returned **verbatim** (minus surrounding whitespace) — the last path component gates the check,

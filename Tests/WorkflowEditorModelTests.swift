@@ -594,4 +594,25 @@ final class WorkflowEditorModelTests: XCTestCase {
         XCTAssertEqual(Set(slugs).count, slugs.count, "every generated slug is unique")
         assertValid(model)
     }
+
+    // MARK: - Agent warning
+
+    /// The editor's flag is the only place a dropped agent value surfaces — the launch itself falls
+    /// through in silence — so it is what makes the workflow-wide breaking change loud rather than
+    /// quiet.
+    func testAgentWarningNamesTheAgentThatRunsInstead() {
+        XCTAssertEqual(workflowAgentWarning("aider", ignoredFallback: "claude"),
+                       "Ignored — claude is used")
+        XCTAssertEqual(workflowAgentWarning("claude --dangerously-skip-permissions",
+                                            ignoredFallback: "codex"),
+                       "Ignored — codex is used")
+    }
+
+    /// A value the launch honors must read unflagged, a pinned path included — it launches verbatim.
+    func testAgentWarningIsAbsentForAnHonoredValue() {
+        for command in ["", "  ", "claude", "grok", "codex", "/opt/homebrew/bin/claude", "./codex"] {
+            XCTAssertNil(workflowAgentWarning(command, ignoredFallback: "claude"),
+                         "\(command) is honored at launch and must not be flagged")
+        }
+    }
 }

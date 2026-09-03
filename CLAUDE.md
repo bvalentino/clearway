@@ -154,7 +154,9 @@ prevent. So `runWorkflowAction` stamps the whole resolved command onto `Terminal
 `PromptLauncherView(command:)` (the placeholder) and the submit — so the launcher never understates
 what it will run. Nothing else stamps it, so a plain Cmd+T tab still falls back to Main Terminal and
 launches bare even while step-badged, and the value dies with the tab. **Run in Current Terminal**
-carries no model — it pastes into a live agent, and there is no launch to flag.
+carries neither model nor agent — it pastes into whichever agent the active tab is already
+running, so a `codex` step run that way lands in a live `claude`. There is no launch to resolve or
+flag.
 
 A stamped tab is also **exempt from the Main Terminal "None" shortcut**. `appendLauncherTab` normally
 promotes straight to a login shell when `mainCommandProvider() == nil`, which would discard the stamp
@@ -182,8 +184,13 @@ walks four levels and takes the first that yields an agent:
 Levels 1–2 are gated by `agentAllowlist` (`claude`, `grok`, `codex`), matched on the value's **last
 path component** — so `/opt/homebrew/bin/claude` is admitted and **launched verbatim**, never
 rewritten to a bare `claude` (the last component gates the check, never the launch, matching
-`acceptsModelFlag`, which also tests the last component and never rewrites). Anything carrying
-whitespace therefore never matches, so an allowlisted agent can never smuggle flags. A *relative*
+`acceptsModelFlag`, which also tests the last component and never rewrites). The whitespace check
+runs **before** the path check and is what makes the rest true: `lastPathComponent` splits on `/`
+alone, so without it `/Users/me/My Tools/claude` and `claude --dangerously-skip-permissions /claude`
+both pass — the first launches broken (the command expands unquoted and word-splits) and the second
+smuggles the flags the allowlist exists to exclude. It is also what keeps the two gates agreeing:
+`acceptsModelFlag` tests the *first* whitespace-separated token, so a whitespace-bearing value that
+slipped through here would silently lose its `--model`. A *relative*
 path (`./claude`) is admitted the same way and runs from the worktree; deliberately not tightened,
 since the repo-authored file already runs arbitrary shell through `hooks.after_create` (see **No
 trust gate**) — a rule here would guard a door standing next to an open one.
@@ -196,6 +203,11 @@ Three invariants hold this together:
 - **Level 3 is deliberately ungated.** The Settings picker already constrains it, and gating it would
   disturb the Cmd+T "None" login-shell path (`appendLauncherTab` promotes to a login shell on a `nil`
   command).
+- **The editor's pinned Agent row hides below the save bar.** `performSave` deletes the file when it
+  would hold neither actions nor planning, so a workflow-wide agent set on an empty editor would be
+  discarded — and, on a hand-authored agent-only file, would delete it on the first touch. The row
+  renders only when there is something to persist, matching the actions header, which is likewise
+  hidden in the empty state.
 - **`agentAllowlist` and `agentsAcceptingModelFlag` stay separate lists** even though both hold the
   same three names: one says what Clearway may *launch* — it is the single source for both the
   Settings → Main Terminal picker's rows and the editor's Agent pickers — the other what accepts
