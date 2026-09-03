@@ -109,9 +109,8 @@ struct ContentView: View {
         case .secondaryTerminal:
             return PanelToggle(isVisible: secondaryVisible, toggle: toggleAndFocusSecondary)
         case .planningTerminal:
-            guard let taskId = selectedTaskId else { return nil }
+            guard let taskId = selectedTaskId, let app = ghosttyApp.app else { return nil }
             return PanelToggle(isVisible: terminalManager.isTaskTerminalVisible(for: taskId)) {
-                guard let app = ghosttyApp.app else { return }
                 workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
             }
         case .noPanel:
