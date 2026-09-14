@@ -423,7 +423,7 @@ extension WorkTaskCoordinator {
             // Seed `status` only when it isn't already a real action — a mid-loop worktree we're here
             // solely to backfill `autopilot` for keeps its place (the guard let it through on the flag).
             // A **hidden** task is a shadow: no task is associated with the worktree yet, so it gets no
-            // step until `exposeTask` associates one and calls back here.
+            // step until the aside's Create Task surfaces it.
             if definition.actions[updated.status] == nil && !updated.hidden { updated.status = definition.start }
             // Default autopilot on **only when the task has content** to work on — a manually-created
             // worktree with a blank TASK.md starts paused (`false`, not `nil`, since the engine treats a

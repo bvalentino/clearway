@@ -8,17 +8,10 @@ struct TaskAsideView: View {
     @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
-    let worktreeId: String
     let projectPath: String
 
     private var task: WorkTask? {
         workTaskManager.task(forWorktree: worktreeBranch)
-    }
-
-    /// The validated `WORKFLOW.json`, or `nil` for a project without one — the single gate the step
-    /// cards and the autopilot row below them share, so the two can never drift apart.
-    private var workflowDefinition: WorkflowDefinition? {
-        workTaskCoordinator.isWorkflowJSONProject ? workTaskCoordinator.workflowDefinition : nil
     }
 
     var body: some View {
@@ -37,98 +30,38 @@ struct TaskAsideView: View {
     // MARK: - Task Content
 
     private func taskContent(_ task: WorkTask) -> some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if task.hidden {
-                        createTaskPlaceholder(for: task)
-                    } else {
-                        WorkTaskCard(
-                            task: task,
-                            showStatusBadge: false,
-                            showContextMenu: false,
-                            onEdit: { openTaskWindow(task) }
-                        )
-                    }
-
-                    if let definition = workflowDefinition {
-                        Divider()
-                        workflowActionCards(for: task, definition: definition)
-                    }
-
-                    // Agent metadata (show for tasks that have been worked on; never for placeholders)
-                    if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
-                        WorkTaskAgentMetadata(task: task)
-                    }
-                }
-                .padding(16)
-            }
-
-            // Outside the ScrollView so it stays reachable however many step cards there are.
-            if workflowDefinition != nil {
-                AutopilotButton(worktreeBranch: worktreeBranch, worktreeId: worktreeId)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-            }
-        }
-    }
-
-    /// The worktree's journey through `WORKFLOW.json`: one card per action in flow order, each showing
-    /// its derived progress (completed / current / next / upcoming) and a "more" menu that steers or
-    /// runs that step. All three menu items pause autopilot — manual per-card control and the loop are
-    /// mutually exclusive. Replaces the old single Status picker + play button; shown only for a valid
-    /// JSON-workflow project, so non-JSON projects show no status UI at all.
-    private func workflowActionCards(for task: WorkTask, definition: WorkflowDefinition) -> some View {
-        VStack(spacing: 8) {
-            ForEach(definition.actionProgress(currentStatus: task.status, completed: task.completed == true), id: \.slug) { progress in
-                if let action = definition.actions[progress.slug] {
-                    WorkflowSidebarActionCard(
-                        name: action.name,
-                        instructions: action.instructions,
-                        state: progress.state,
-                        countdown: countdown(for: progress.slug),
-                        onSetCurrent: {
-                            workTaskCoordinator.setWorkflowActionCurrent(task, to: progress.slug)
-                        },
-                        onRunInCurrentTerminal: {
-                            workTaskCoordinator.runWorkflowAction(
-                                forBranch: worktreeBranch, slug: progress.slug, inNewTerminal: false
-                            )
-                        },
-                        onRunInNewTerminal: {
-                            workTaskCoordinator.runWorkflowAction(
-                                forBranch: worktreeBranch, slug: progress.slug, inNewTerminal: true
-                            )
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if task.hidden {
+                    createTaskPlaceholder(for: task)
+                } else {
+                    WorkTaskCard(
+                        task: task,
+                        showStatusBadge: false,
+                        showContextMenu: false,
+                        onEdit: { openTaskWindow(task) }
                     )
                 }
-            }
-        }
-    }
 
-    /// The countdown descriptor for an action card, or `nil` unless this exact action has a pending
-    /// auto-run countdown. By countdown time the agent already wrote the new status, so the imminent
-    /// action is the `.current` card; the card itself only honors a countdown in that state. Pause
-    /// reuses the coordinator's `pauseFromCountdown` (cancel + existing autopilot-pause).
-    private func countdown(for slug: String) -> WorkflowSidebarActionCard.Countdown? {
-        guard let pending = workTaskCoordinator.workflowCountdown(forBranch: worktreeBranch),
-              pending.slug == slug else { return nil }
-        return WorkflowSidebarActionCard.Countdown(deadline: pending.deadline) {
-            workTaskCoordinator.pauseFromCountdown(forBranch: worktreeBranch)
+                // Agent metadata (show for tasks that have been worked on; never for placeholders)
+                if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
+                    WorkTaskAgentMetadata(task: task)
+                }
+            }
+            .padding(16)
         }
     }
 
     // MARK: - Create Task CTA
 
-    /// Replaces the task card when the linked task is still a hidden placeholder. The status
-    /// picker below stays live — users can track state without surfacing the task in Planning.
+    /// Replaces the task card when the linked task is still a hidden placeholder.
     private func createTaskPlaceholder(for task: WorkTask) -> some View {
         VStack(spacing: 10) {
             Text("No task for this worktree")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
-                openTaskWindow(workTaskCoordinator.exposeTask(task, forBranch: worktreeBranch))
+                openTaskWindow(workTaskManager.expose(task))
             } label: {
                 Label("Create Task", systemImage: "plus")
             }
@@ -145,7 +78,7 @@ struct TaskAsideView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
-                if let created = workTaskCoordinator.createTask(forBranch: worktreeBranch) {
+                if let created = workTaskManager.createExposedTask(forBranch: worktreeBranch) {
                     openTaskWindow(created)
                 }
             } label: {

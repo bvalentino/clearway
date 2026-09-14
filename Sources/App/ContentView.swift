@@ -889,7 +889,6 @@ struct ContentView: View {
                                     if let selected = selectedWorktree, let branch = selected.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            worktreeId: selected.id,
                                             projectPath: worktreeManager.projectPath
                                         )
                                     }

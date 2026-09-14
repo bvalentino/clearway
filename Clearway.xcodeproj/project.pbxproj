@@ -56,7 +56,6 @@
 		580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867076303E561F4171EF4C92 /* PreviewCSS.swift */; };
 		583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */; };
 		589AE0BF3BF6D3BEAEF84E23 /* WorkflowCompletionHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E44995D0B46DA43D1AB997D8 /* WorkflowCompletionHarnessTests.swift */; };
-		5BF10077D36A2C58F0D94233 /* AutopilotButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */; };
 		5D43934B5DF65154C540BDBE /* WorkTaskCoordinator+WorkflowEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C8AA92A771207842664E33 /* WorkTaskCoordinator+WorkflowEngine.swift */; };
 		63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E372333888BC8E073569810 /* PromptManagerTests.swift */; };
 		641841E20D13715149CA3EEF /* Ghostty.Shell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733E42F6C068BE314FAD921E /* Ghostty.Shell.swift */; };
@@ -109,7 +108,6 @@
 		D0D9853E698401494E0E656D /* ShellPathStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */; };
 		D33FDF25047407F4E8B60584 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C4ECCB3CFD45DB93164068 /* TerminalManager.swift */; };
 		D721AE67CC20BCF6875E9FAD /* TerminalManager+Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740FCA94FE463D89AE57E377 /* TerminalManager+Launcher.swift */; };
-		D7D5424146FF5FC63D80A95A /* WorkflowSidebarActionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EDF16FBC75746AC81828EF2 /* WorkflowSidebarActionCard.swift */; };
 		D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */; };
 		DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */; };
 		DC8D4F1CE85F602F5BE3B1AC /* WorktreeHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB5272D378BC91AF7A25A0E9 /* WorktreeHooks.swift */; };
@@ -161,7 +159,6 @@
 		285166667E4C68C074F90329 /* ShellEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironmentTests.swift; sourceTree = "<group>"; };
 		2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
 		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
-		2EDF16FBC75746AC81828EF2 /* WorkflowSidebarActionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowSidebarActionCard.swift; sourceTree = "<group>"; };
 		3E00D38FF787B79BF5C000ED /* Clearway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clearway.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
 		3E72B54161DD09066136784D /* ShellPathResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathResolver.swift; sourceTree = "<group>"; };
@@ -243,7 +240,6 @@
 		D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowLoopEngine.swift; sourceTree = "<group>"; };
 		D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Clearway-Bridging-Header.h"; sourceTree = "<group>"; };
 		DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcuts.swift; sourceTree = "<group>"; };
-		DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutopilotButton.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E13A887930C91FF03A713B5D /* PlanningLaunchCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningLaunchCommandTests.swift; sourceTree = "<group>"; };
 		E14D5AE9DB7F84FA87AA9C39 /* WorkflowAgentSupersedeHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowAgentSupersedeHarnessTests.swift; sourceTree = "<group>"; };
@@ -350,7 +346,6 @@
 				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
 				DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
-				DD492D2A416045AC811EB1D5 /* AutopilotButton.swift */,
 				C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */,
 				9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */,
 				6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */,
@@ -404,7 +399,6 @@
 				9EC9411B19B7913605A851B1 /* TodosView.swift */,
 				BF0D1CD2D79BEEEAAEFF6827 /* WorkflowDefinition.swift */,
 				D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */,
-				2EDF16FBC75746AC81828EF2 /* WorkflowSidebarActionCard.swift */,
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
@@ -714,7 +708,6 @@
 				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
 				DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
-				5BF10077D36A2C58F0D94233 /* AutopilotButton.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,
 				463BA801BBC392709E59B997 /* CaffeineManager.swift in Sources */,
 				583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */,
@@ -781,7 +774,6 @@
 				E772C9D9941AAB1C3AC399DF /* WorkTaskWindow.swift in Sources */,
 				E8EAF268017850EBA6E1A550 /* WorkflowDefinition.swift in Sources */,
 				80D8530FF01D5366C39C1FCF /* WorkflowLoopEngine.swift in Sources */,
-				D7D5424146FF5FC63D80A95A /* WorkflowSidebarActionCard.swift in Sources */,
 				EBE18373B5AC1A72F2197FCF /* Worktree.swift in Sources */,
 				4C1B01303EA21622302D3B3B /* WorktreeGroup.swift in Sources */,
 				151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */,

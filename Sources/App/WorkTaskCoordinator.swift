@@ -414,23 +414,4 @@ extension WorkTaskCoordinator {
         guard workTaskManager.task(forWorktree: branch) == nil else { return }
         workTaskManager.createShadowTask(forBranch: branch)
     }
-
-    /// Associates a task with `branch`: surfaces the shadow, then seeds — associating is what makes
-    /// a worktree workflow-eligible, so the seed that gives it its first step belongs here rather
-    /// than at each call site. The seed re-reads `hidden` from disk, so the order is load-bearing.
-    @MainActor
-    @discardableResult
-    func exposeTask(_ task: WorkTask, forBranch branch: String) -> WorkTask {
-        let exposed = workTaskManager.expose(task)
-        seedWorkflowStatus(forBranch: branch)
-        return workTaskManager.task(forWorktree: branch) ?? exposed
-    }
-
-    /// `exposeTask` for a worktree with no task MD at all: creates an exposed task, then seeds.
-    @MainActor
-    func createTask(forBranch branch: String) -> WorkTask? {
-        guard let created = workTaskManager.createExposedTask(forBranch: branch) else { return nil }
-        seedWorkflowStatus(forBranch: branch)
-        return workTaskManager.task(forWorktree: branch) ?? created
-    }
 }
