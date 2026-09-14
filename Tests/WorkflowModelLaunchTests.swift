@@ -2,9 +2,9 @@ import XCTest
 import GhosttyKit
 @testable import Clearway
 
-/// Per-entry `model` at the launch sites the coordinator owns: `performLaunch` (autopilot),
-/// `planningAgentCommand` (Plan), and the command a step's "Run in New Terminal" stamps onto its
-/// launcher tab. `applyModel`'s own per-agent matrix is `AgentLaunchModelTests`' subject; here the
+/// Per-entry `model` at the launch sites the coordinator owns: `performLaunch` (autopilot) and the
+/// command a step's "Run in New Terminal" stamps onto its launcher tab.
+/// `applyModel`'s own per-agent matrix is `AgentLaunchModelTests`' subject; here the
 /// question is only whether each site reads the right entry's model and pairs it with the right
 /// agent.
 @MainActor
@@ -12,13 +12,12 @@ final class WorkflowModelLaunchTests: WorkflowHarnessTestCase {
 
     // MARK: - Per-entry model
 
-    /// A workflow whose `test` action and planning entry both name a model.
+    /// A workflow whose `test` action names a model.
     private func writeModelledWorkflow() throws {
         try writeWorkflowJSON("""
         {
           "version": 1,
           "start": "implement",
-          "planning": { "instructions": "Plan.", "model": "fable" },
           "actions": {
             "implement": { "name": "Implement", "instructions": "Implement.", "routes": { "success": "test" } },
             "test": { "name": "Test", "instructions": "Test.", "model": "sonnet", "routes": { "success": "review" } },
@@ -84,41 +83,6 @@ final class WorkflowModelLaunchTests: WorkflowHarnessTestCase {
 
         XCTAssertEqual(try capturedLaunchCommand(branch: "agent-override-run", mainTerminal: "claude"),
                        "codex --model gpt-5.4-codex")
-    }
-
-    func testPlanningCommandHonorsPlanningModel() throws {
-        try writeModelledWorkflow()
-        let branch = "planning-model"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        try withMainTerminalCommand("claude") {
-            XCTAssertEqual(coordinator.planningAgentCommand, "claude --model fable")
-        }
-        try withMainTerminalCommand("aider") {
-            XCTAssertEqual(coordinator.planningAgentCommand, "aider",
-                           "an unverified agent never receives the flag")
-        }
-    }
-
-    func testPlanningCommandUnchangedWithoutPlanningModel() throws {
-        try writeWorkflowJSON("""
-        {
-          "version": 1,
-          "start": "implement",
-          "planning": { "instructions": "Plan." },
-          "actions": {
-            "implement": { "name": "Implement", "instructions": "Implement." }
-          }
-        }
-        """)
-        let branch = "planning-no-model"
-        let worktreePath = try writeWorktreeTask(branch: branch, status: "implement")
-        let coordinator = makeCoordinator(branch: branch, worktreePath: worktreePath)
-
-        try withMainTerminalCommand("claude") {
-            XCTAssertEqual(coordinator.planningAgentCommand, "claude")
-        }
     }
 
     // MARK: - Run in New Terminal

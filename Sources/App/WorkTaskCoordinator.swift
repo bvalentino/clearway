@@ -164,28 +164,7 @@ class WorkTaskCoordinator: ObservableObject {
         if raw != rawWorkflowDefinition { rawWorkflowDefinition = raw }
     }
 
-    /// The planning instruction template from `WORKFLOW.json`'s `planning` object, or `nil` when
-    /// none is set. Read from the non-validated raw cache so a planning-only file (no actions) still
-    /// surfaces planning. Drives the Plan button's label and its rendered prompt.
-    var planningInstructions: String? {
-        rawWorkflowDefinition?.planning?.instructions
-    }
-
-    /// The agent command the manual Plan step launches — `planning.command` when it names an
-    /// allowlisted agent, else `WORKFLOW.json` `agent.command`, else Settings → Main Terminal, else
-    /// `SettingsManager.defaultMainTerminalCommand` (see `resolveAgentCommand`), carrying
-    /// `planning.model` (see `applyModel`).
-    var planningAgentCommand: String {
-        applyModel(
-            to: resolveAgentCommand(
-                entryCommand: rawWorkflowDefinition?.planning?.command,
-                workflowCommand: rawWorkflowDefinition?.agent.command
-            ),
-            model: rawWorkflowDefinition?.planning?.model
-        )
-    }
-
-    /// Command for workflow-loop agent launches — same resolution as Plan, carrying the action's
+    /// Command for workflow-loop agent launches, carrying the action's
     /// own `command` and `model`. The single helper both action launch sites (autopilot and
     /// "Run in New Terminal") route through, so a step's model always travels with the agent it was
     /// authored against.

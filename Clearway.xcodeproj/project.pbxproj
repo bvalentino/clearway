@@ -42,7 +42,6 @@
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
 		3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC9411B19B7913605A851B1 /* TodosView.swift */; };
 		3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */; };
-		4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */; };
 		42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */; };
 		449E2BD69F4AAAFC69ADBDE3 /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565AC0451DC45348A309739E /* TerminalSurface.swift */; };
 		44C8206EE4CA6D3A6A82875A /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86F03706FEA2A1FDBB4B3BFC /* MarkdownEditorView.swift */; };
@@ -84,7 +83,6 @@
 		80D8530FF01D5366C39C1FCF /* WorkflowLoopEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38DCDB1432A22C6A45C2B46 /* WorkflowLoopEngine.swift */; };
 		81EF1B0856D4F302835AC01A /* ShellPathResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E72B54161DD09066136784D /* ShellPathResolver.swift */; };
 		8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */; };
-		8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */; };
 		8F86E5A8BC2C125266589818 /* ShellPathValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */; };
 		92367EB2512A0164CC0984DE /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE877D844360476C671BE156 /* MarkdownRendererTests.swift */; };
 		94E634B515C7B773A791EF1A /* MainTerminalTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */; };
@@ -159,7 +157,6 @@
 		17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewHelpers.swift; sourceTree = "<group>"; };
 		1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinatorTests.swift; sourceTree = "<group>"; };
 		1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
-		1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningConfigTests.swift; sourceTree = "<group>"; };
 		267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupManagerTests.swift; sourceTree = "<group>"; };
 		285166667E4C68C074F90329 /* ShellEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironmentTests.swift; sourceTree = "<group>"; };
 		2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
@@ -228,7 +225,6 @@
 		B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupStoreTests.swift; sourceTree = "<group>"; };
 		B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathResolverTests.swift; sourceTree = "<group>"; };
-		BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningConfig.swift; sourceTree = "<group>"; };
 		BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeTests.swift; sourceTree = "<group>"; };
 		BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		BE877D844360476C671BE156 /* MarkdownRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRendererTests.swift; sourceTree = "<group>"; };
@@ -309,7 +305,6 @@
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
 				87D53B2248C692859A82CD26 /* GitResolverTests.swift */,
 				BE877D844360476C671BE156 /* MarkdownRendererTests.swift */,
-				1ED5E5DE8DC9657EFE0D4B73 /* PlanningConfigTests.swift */,
 				E13A887930C91FF03A713B5D /* PlanningLaunchCommandTests.swift */,
 				2E372333888BC8E073569810 /* PromptManagerTests.swift */,
 				4E883DF88CE18CD54F66E35A /* RAIICleanupTests.swift */,
@@ -375,7 +370,6 @@
 				5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */,
 				755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */,
 				6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */,
-				BBDD4B66A2E58EF07F84154D /* PlanningConfig.swift */,
 				867076303E561F4171EF4C92 /* PreviewCSS.swift */,
 				179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */,
 				2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */,
@@ -744,7 +738,6 @@
 				7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */,
 				2FC531EDD2252FCF9B20819A /* NotificationObservation.swift in Sources */,
 				18557154406E93AAE978B5BE /* PanelCommands.swift in Sources */,
-				8BB1718FAC646B81A3A56D99 /* PlanningConfig.swift in Sources */,
 				580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */,
 				D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */,
 				42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */,
@@ -810,7 +803,6 @@
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
 				4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */,
 				92367EB2512A0164CC0984DE /* MarkdownRendererTests.swift in Sources */,
-				4209E4A0676FD2F6B72F4998 /* PlanningConfigTests.swift in Sources */,
 				72FBB203CBB1C80A49488D9C /* PlanningLaunchCommandTests.swift in Sources */,
 				63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */,
 				529CD9416FA04353F48A455C /* RAIICleanupTests.swift in Sources */,

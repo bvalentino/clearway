@@ -102,8 +102,6 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
             XCTAssertEqual(result, .launched(slug: "test"))
             XCTAssertEqual(captured, "grok",
                            "empty WORKFLOW agent.command must resolve to Main Terminal at launch")
-            XCTAssertEqual(coordinator.planningAgentCommand, "grok",
-                           "Plan uses the same resolution as the workflow loop")
         }
     }
 
@@ -135,7 +133,6 @@ final class WorkflowLoopEngineHarnessTests: WorkflowHarnessTestCase {
             XCTAssertEqual(result, .launched(slug: "test"))
             XCTAssertEqual(captured, "codex",
                            "explicit WORKFLOW agent.command must win over Main Terminal")
-            XCTAssertEqual(coordinator.planningAgentCommand, "codex")
         }
     }
 
