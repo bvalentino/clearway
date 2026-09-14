@@ -411,3 +411,29 @@ Key patterns:
 - Surface userdata is set via `ghostty_surface_config_s.userdata` and retrieved via `ghostty_surface_userdata()`
 - Key input uses `ghostty_input_key_s` with `keycode` (macOS virtual key code), not a key enum
 - Mods use `GHOSTTY_MODS_*` constants (e.g. `GHOSTTY_MODS_SHIFT`, `GHOSTTY_MODS_CTRL`)
+
+## Pipeline
+
+How the `/work` pipeline runs in this repo. Irrelevant outside it.
+
+### Regression check vs. full gate
+
+One command serves both — `./scripts/ci.sh` is the only runner of the test suite, and it runs
+`xcodegen generate`, without which added or deleted Swift files are invisible to the build.
+
+| Step | Command | What it is |
+| --- | --- | --- |
+| Every `build` task, and `simplify` | `./scripts/ci.sh` | Regression check |
+| `sign-off`, once | `./scripts/ci.sh` | Full gate |
+
+### Merge model
+
+The pipeline never merges; the operator merges by hand once CI is green. Squash and rebase merges
+are allowed, merge commits disabled, branch deletion on merge on. Auto-merge is disabled at the repo
+level, so there is no command to enable it. The `Main` ruleset blocks only deletion and
+non-fast-forward pushes — GitHub requires no status check, so `.github/workflows/ci.yml` (jobs
+`SwiftLint`, `Build & Test`) gates by convention, not enforcement.
+
+`ci.sh` does not itself refuse on a dirty tree, so before any CI stamp or sign-off run
+`git status --porcelain` and report untracked/ignored files; they block sign-off. Expect the
+un-gitignored `default.profraw` noted above after any Debug launch.
