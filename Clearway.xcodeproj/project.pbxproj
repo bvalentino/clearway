@@ -19,7 +19,6 @@
 		1727A54CCA2B65EC1F18B9C5 /* Todo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA925629DB815AC555414676 /* Todo.swift */; };
 		18557154406E93AAE978B5BE /* PanelCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */; };
 		1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */; };
-		1AFDAD7162258B079BBC3B49 /* AgentLaunchModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */; };
 		1D79BDC62A43580E0D889E6C /* GitResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF04318569BD95EFE4C470CA /* GitResolver.swift */; };
 		227AAB3A6CC265B56E4E61BB /* WorktreeGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2AB2AB726BE02766D5A27D /* WorktreeGroupStore.swift */; };
 		228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */; };
@@ -82,7 +81,6 @@
 		9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */; };
 		9C5DCA7C8D021A775B94678A /* ShellPathValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB28BB9D069A601AE8E718 /* ShellPathValidationTests.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
-		A78C71F92E45362EFDFE4BAA /* AgentLaunchAgentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */; };
 		A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */; };
 		AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */; };
 		AC4FAE844570FB2DCAEB8A37 /* PromptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A15AF63CD7636A38973624 /* PromptManager.swift */; };
@@ -162,7 +160,6 @@
 		565AC0451DC45348A309739E /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
 		5A687B79E4CF9B494E2A6391 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationObservation.swift; sourceTree = "<group>"; };
-		5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunchModelTests.swift; sourceTree = "<group>"; };
 		6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelCommands.swift; sourceTree = "<group>"; };
 		62E65C09069869291224DF1D /* TodosPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosPanelView.swift; sourceTree = "<group>"; };
 		664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathStoreTests.swift; sourceTree = "<group>"; };
@@ -220,7 +217,6 @@
 		DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcuts.swift; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
 		E13A887930C91FF03A713B5D /* PlanningLaunchCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningLaunchCommandTests.swift; sourceTree = "<group>"; };
-		E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLaunchAgentTests.swift; sourceTree = "<group>"; };
 		E3193EB27B18ECBEDF1F126F /* TerminalManager+Panels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Panels.swift"; sourceTree = "<group>"; };
 		E4FED179216122D158BE6A56 /* PromptDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptDetailView.swift; sourceTree = "<group>"; };
 		E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTerminalSheet.swift; sourceTree = "<group>"; };
@@ -268,8 +264,6 @@
 		3AD21F46AF733A8FE1DF029C /* Tests */ = {
 			isa = PBXGroup;
 			children = (
-				E219F3B877E5C802710DE038 /* AgentLaunchAgentTests.swift */,
-				5EFF05D1A64B225B92BDF4C4 /* AgentLaunchModelTests.swift */,
 				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
 				7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */,
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
@@ -746,8 +740,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A78C71F92E45362EFDFE4BAA /* AgentLaunchAgentTests.swift in Sources */,
-				1AFDAD7162258B079BBC3B49 /* AgentLaunchModelTests.swift in Sources */,
 				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,
 				DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */,
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
