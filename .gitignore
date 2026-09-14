@@ -12,18 +12,12 @@ Resources/git-dist
 # OS
 .DS_Store
 
-# Worktree (ignore worktree directories, keep scripts)
+# Worktrees
 .worktrees/*/
+.workspaces/*/
 
 # Ghostty build output (built from submodule)
 ghostty/macos/GhosttyKit.xcframework/
 ghostty/zig-out/
 ghostty/zig-cache/
 ghostty/.zig-cache/
-
-# Clearway
-.clearway/
-.my-dev.json
-
-# Claude
-.claude/settings.local.json
