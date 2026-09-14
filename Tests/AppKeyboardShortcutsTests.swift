@@ -126,9 +126,8 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertFalse(claims([.command, .control], "2"))
     }
 
-    /// Ctrl+3 reached the Workflow sidebar destination before the workflow engine was removed.
-    /// Nothing declares it now, so claiming it would take a key from the shell and answer it
-    /// with nothing.
+    /// Ctrl+3 reached a third sidebar destination that the app no longer has. Nothing declares
+    /// it now, so claiming it would take a key from the shell and answer it with nothing.
     func testRetiredControlDigitThreeIsNotClaimed() {
         XCTAssertFalse(claims([.control], "3"))
     }

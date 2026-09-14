@@ -507,16 +507,20 @@ git ls-files -z | grep -zv '^ghostty/' \
 ```
 
 returns only: `.github/workflows/ci.yml` and `.github/workflows/build-ghosttykit.yml` (GitHub Actions'
-own `${{ github.workflow }}` and the directory name), `scripts/ci.sh:2`, `CLAUDE.md`'s `## Pipeline`
-section, and this plan plus its spec. And
+own `${{ github.workflow }}` and the directory name), `scripts/ci.sh:2`, the two lines of `CLAUDE.md`
+that name `.github/workflows/ci.yml` by path (`## Verifying a change` and `## Pipeline`),
+`Tests/WorkTaskTests.swift`'s `testRetiredFieldsAreDroppedOnReserialize` (which must name the retired
+`autopilot` / `completed` / `error_message` keys to assert they are dropped), and this plan plus its
+spec. And
 
 ```bash
 git ls-files -z -- Sources Tests | xargs -0 grep -nE \
   'resolveAgentCommand|applyModel|isModelValueSafe|isAllowlistedAgentCommand|agentsAcceptingModelFlag|PlanningConfig|planningInstructions|chainCommands|terminateSurface|freshStatus|onTasksReloaded|onClearwayChanged|setAgentSurface|agentSurfaces|skipAutoRestart|onMainTabClosed|legacyOrdered|error_message|errorMessage|seedWorkflowStatus|hasContent'
 ```
 
-returns only `WorkTaskAgentMetadata.hasContent(for:)` and its call sites — check that one by hand
-rather than trusting the regex.
+returns only `WorkTaskAgentMetadata.hasContent(for:)` and its call sites, plus
+`testRetiredFieldsAreDroppedOnReserialize`'s `error_message` — check both by hand rather than trusting
+the regex.
 
 **Verified by:** `./scripts/ci.sh` green, plus both greps above.
 
@@ -938,3 +942,65 @@ constructions remain the standing compile-time pin on the initializer's shape.
 **Task-scoped grep:**
 `git ls-files -- Sources Tests | xargs grep -nE 'launcherCommand|skipAutoRestart|onMainTabClosed|terminateSurface|launchAgentTab'`
 returns nothing.
+
+### T10: Rewrite the docs and clear the grep audit
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `README.md` | `## Task workflows (.clearway/WORKFLOW.json)` and all six subsections (lines 56–166) replaced by a four-paragraph `## Tasks` section carrying the three rehomed facts |
+| `CLAUDE.md` | `## Workflow engine` through `### Loop guard / stopping a step` (lines 166–394) deleted; `Sources/App/` bullet retitled off "workflow logic"; the `AppKeyboardShortcuts.swift` bullet's retired-pin list gained ⌃3 and now states the `"1"…"2"` claim range; the `WorkTaskCoordinator` bullet rewritten; two new bullets added for `AgentLaunch.swift` and `TerminalManager.appendLauncherTab` |
+| `Tests/AppKeyboardShortcutsTests.swift` | `testRetiredControlDigitThreeIsNotClaimed`'s doc comment reworded off the deleted sidebar destination's name (T7's follow-up) |
+| `docs/superpowers/specs/2026-09-14-remove-workflows.md` | Audit allow-list gains `Tests/WorkTaskTests.swift` and covers `CLAUDE.md`'s two `.github/workflows/ci.yml` path mentions; the untracked-paths paragraph corrected — `project.pbxproj` is tracked (T1's follow-up) |
+| `docs/superpowers/plans/2026-09-14-remove-workflows.md` | T10's two acceptance greps restated to match the corrected allow-list; this build log |
+
+**Evidence**
+
+A documentation task with one test-comment reword: nothing here can pass before the change and fail
+after it, so no regression test was written. The acceptance criterion is the audit itself, run after
+the last edit:
+
+```
+$ git ls-files -z | grep -zv '^ghostty/' | xargs -0 grep -nE \
+    'workflow|Workflow|WORKFLOW|autopilot|Autopilot|stepSlug|launcherCommand|runningAction'
+.github/workflows/build-ghosttykit.yml:9:  group: ${{ github.workflow }}-${{ github.ref }}
+.github/workflows/ci.yml:9:  group: ${{ github.workflow }}-${{ github.ref }}
+CLAUDE.md:34:  … the same gate `.github/workflows/ci.yml` applies to a PR …
+CLAUDE.md:223:  … so `.github/workflows/ci.yml` (jobs …
+Tests/WorkTaskTests.swift:87,101,120   (testRetiredFieldsAreDroppedOnReserialize)
+scripts/ci.sh:2:# … Mirrors .github/workflows/ci.yml.
+docs/superpowers/{specs,plans}/2026-09-14-remove-workflows.md   (this spec and plan)
+```
+
+Every line is allow-listed. The narrower sweep returns only
+`WorkTaskAgentMetadata.hasContent(for:)` (declaration plus its three call sites in `TaskAsideView`,
+`TaskDetailView` and `WorkTaskWindow`) and the same `error_message` line of
+`testRetiredFieldsAreDroppedOnReserialize`; both were checked by hand, not by the regex.
+
+**Deviations from the plan**
+
+- **Two audit hits the spec's allow-list did not anticipate**, both legitimate, so the allow-list was
+  corrected rather than the code: `Tests/WorkTaskTests.swift`'s decision-2 pin must name the three
+  retired frontmatter keys to assert they are dropped (T7's follow-up), and `CLAUDE.md:34` names
+  `.github/workflows/ci.yml` from `## Verifying a change`, outside the `## Pipeline` section the
+  spec named.
+- **The spec's claim that `Clearway.xcodeproj/project.pbxproj` is untracked was corrected** (T1's
+  follow-up). It is tracked, and therefore inside the broad audit — it contains no hit, since
+  `xcodegen generate` dropped the deleted files' entries.
+- **The `WorkTaskCoordinator` bullet was rewritten, not just retitled.** It read "Agent and terminal
+  launch logic lives on `WorkTaskCoordinator`" — the coordinator launches no agent now, and views
+  call `TerminalManager` directly for terminals. The bullet keeps its principle (a view resolves
+  nothing and awaits nothing, it calls a coordinator method) and states what starting a task actually
+  does, per `startTask` / `completePendingLaunch`.
+- `buildAgentPromptCommand`'s rehomed note states the ARG_MAX ceiling as the source's own doc comment
+  has it (the prompt becomes **one argv element**, so a prompt near ~1 MB fails), rather than the
+  deleted section's framing.
+- The Concurrency section's `[weak self]` bullet still names `WorkTaskCoordinator`'s
+  `.ghosttyChildExited` leak. Left as written: it is a past-tense lesson about a closure shape, the
+  section is explicitly out of scope for this task, and the notification itself survives
+  (`HookTerminalView`, `Ghostty.App`).
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 304 tests, with 0 failures (0 unexpected)`.
+`git status --porcelain` shows only this task's five modified files; no untracked files, and
+`project.pbxproj` unchanged (no file was added or deleted).
