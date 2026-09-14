@@ -794,10 +794,8 @@ struct ContentView: View {
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
-                                    let launcherCommand = activeTab.launcherCommand
-                                        ?? settings.resolvedMainTerminalCommand
                                     PromptLauncherView(
-                                        command: launcherCommand,
+                                        command: settings.resolvedMainTerminalCommand,
                                         autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
                                         draft: Binding(
                                             get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
@@ -810,7 +808,7 @@ struct ContentView: View {
                                                     tabId: activeTab.id,
                                                     in: worktreeId,
                                                     app: app,
-                                                    command: launcherCommand,
+                                                    command: settings.resolvedMainTerminalCommand,
                                                     prompt: prompt
                                                 )
                                             }

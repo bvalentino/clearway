@@ -893,3 +893,48 @@ coverage of `buildAgentPromptCommand`.
 **Task-scoped grep:**
 `git ls-files -- Sources Tests | xargs grep -nE 'resolveAgentCommand|applyModel|isModelValueSafe|isAllowlistedAgentCommand|agentsAcceptingModelFlag|acceptsModelFlag|chainCommands'`
 returns nothing.
+
+### T9: Remove the terminal layer's workflow seams
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalTab.swift` | `launcherCommand` property and its init parameter removed; the initializer is now `init(id:kind:)` |
+| `Sources/App/TerminalManager.swift` | `skipAutoRestart`, `onMainTabClosed`, `launchAgentTab`, `activeInitialTabId` and `initialTabIds` removed; the private `makeTab` wrapper removed and its four call sites inlined to `TerminalTab(id: UUID(), kind:)`; `appendLauncherTab` lost its `command:` parameter and the `&& command == nil` clause in the login-shell promotion gate; the three comments describing the agent-surface bailout and the stamped-tab exemption removed; `closeMainTab`'s doc comment renumbered |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | `terminateSurface` and the `// MARK: - Agent surface teardown` heading removed |
+| `Sources/App/ContentView.swift` | The `activeTab.launcherCommand ?? …` local removed; `PromptLauncherView(command:)` and the submit both read `settings.resolvedMainTerminalCommand` directly |
+| `Tests/TerminalTabKindTests.swift` | `testLauncherCommandIsUnsetUnlessStamped` and its `// MARK: - Launcher command` heading removed |
+
+**Evidence**
+
+A pure deletion with no behavioural branch left to exercise, so no regression test was written: there
+is nothing that could pass before the change and fail after it. The one gate that changed shape —
+`appendLauncherTab`'s login-shell promotion — is behaviourally identical, since `command` was already
+`nil` at every surviving call site, so `mainCommandProvider() == nil && command == nil` and
+`mainCommandProvider() == nil` decide the same way. The compiler is the bar for the removals:
+`launcherCommand`, `skipAutoRestart`, `onMainTabClosed`, `launchAgentTab` and `terminateSurface` no
+longer exist, so any surviving reader is a build error, and `TerminalTabKindTests`' five `TerminalTab`
+constructions remain the standing compile-time pin on the initializer's shape.
+
+**Deviations from the plan**
+
+- **`launchAgentTab` was deleted here**, as T6's and T8's Follow-ups asked. It was callerless in
+  `Sources` and is not on the plan's T9 list. Its private helper `activeInitialTabId` and the
+  `initialTabIds` dictionary went with it: `launchAgentTab` was the only reader of the
+  "pristine initial tab" concept, leaving a stored dictionary written at pane creation and read
+  nowhere.
+- **The private `makeTab` wrapper was deleted, not just its `launcherCommand:` parameter.** T2 left it
+  stamping only `launcherCommand` and already ignoring its `in worktreeId:` argument; removing the last
+  stamp reduced it to `TerminalTab(id: UUID(), kind: kind)` with a parameter it never read. Its doc
+  comment's invariant ("every tab-creating path goes through here") existed to guarantee the stamp, so
+  it died with it. The four call sites construct the tab directly.
+- `closeMainTab` and `closeWorktree` collapsed their `if let removedSurface = …` / `guard let surface = …`
+  bindings to `surface?.closeSurface()`: the binding existed to pass the surface to `onMainTabClosed`
+  before closing it.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 304 tests, with 0 failures (0 unexpected)`.
+
+**Task-scoped grep:**
+`git ls-files -- Sources Tests | xargs grep -nE 'launcherCommand|skipAutoRestart|onMainTabClosed|terminateSurface|launchAgentTab'`
+returns nothing.

@@ -29,19 +29,9 @@ struct TerminalTab {
     let id: UUID
     var kind: Kind
 
-    /// The command this launcher submits to, when it must differ from Settings → Main Terminal.
-    /// Stamped only by a step's "Run in New Terminal", with the workflow's own resolved agent command
-    /// and the step's model already applied — the two must travel together, since a model is authored
-    /// against one agent and appending it to another breaks the launch. Nil everywhere else, so a
-    /// plain Cmd+T tab falls back to Main Terminal and launches bare even while its worktree sits on
-    /// a modelled step. Riding on the tab rather than a side table means it dies with the tab and
-    /// needs no teardown of its own.
-    let launcherCommand: String?
-
-    init(id: UUID, kind: Kind, launcherCommand: String? = nil) {
+    init(id: UUID, kind: Kind) {
         self.id = id
         self.kind = kind
-        self.launcherCommand = launcherCommand
     }
 
     /// The live surface for this tab, or nil if the tab is a launcher.
