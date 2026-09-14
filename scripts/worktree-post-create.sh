@@ -11,10 +11,6 @@ rm -rf ghostty
 cp -r "$PRIMARY_WORKTREE/ghostty" .
 rm -f ghostty/.git
 
-# Symlink local config files so worktrees share settings with primary
-echo "Symlinking files from primary"
-ln -sf "$PRIMARY_WORKTREE/.claude/settings.local.json" .claude/settings.local.json
-
 # Ensure BuildInfo.generated.swift exists so xcodegen includes it
 echo "Ensuring BuildInfo.generated.swift exists for xcodegen"
 BUILDINFO="Sources/App/BuildInfo.generated.swift"
