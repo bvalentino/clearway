@@ -114,13 +114,6 @@ struct ProjectContentView: View {
             .environmentObject(groupManager)
             .focusedSceneObject(groupManager)
             .onAppear {
-                // Wire up agent surface check so TerminalManager skips auto-restart for agent surfaces
-                terminalManager.skipAutoRestart = { [weak workTaskCoordinator] surface in
-                    workTaskCoordinator?.isAgentSurface(surface) ?? false
-                }
-                terminalManager.onMainTabClosed = { [weak workTaskCoordinator] surface in
-                    workTaskCoordinator?.handleMainTabClosed(surface)
-                }
                 promptManager.startWatching()
             }
             .onChange(of: settings.promptsDirectory) { newValue in

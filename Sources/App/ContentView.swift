@@ -301,17 +301,10 @@ struct ContentView: View {
 
             detailSelection = .worktree(wt)
 
-            // The agent launches immediately, decoupled from the after_create hook: it never waits
-            // for the hook and a failing hook can't block it. `completePendingLaunch` relocated
-            // TASK.md into the worktree; a JSON project's seed writes `status = start` — the engine's
-            // ONLY write to `status` — and the loop engine launches the agent. A non-JSON project no-ops.
-            workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
-
-            // The hook runs in parallel in the secondary terminal, reusing the persistent login
-            // shell so its output survives to a usable prompt (no blocking modal, no respawn).
+            // The hook runs in the secondary terminal, reusing the persistent login shell so its
+            // output survives to a usable prompt (no blocking modal, no respawn).
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
-            let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
-            if let cmd = WorktreeHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
+            if let cmd = projectHookCmd, let app = ghosttyApp.app {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
@@ -378,10 +371,6 @@ struct ContentView: View {
             // the command at runtime immediately skips the prompt screen on new tabs.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
-
-            // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
-            // can launch agent surfaces without the per-call app argument.
-            workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
@@ -671,10 +660,9 @@ struct ContentView: View {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
         let isSelected = selectedWorktree?.id == worktree.id
-        let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in
+        let doRemove = { [weak worktreeManager] in
             guard let worktreeManager else { return }
             if isSelected { self.selectFallback() }
-            workTaskCoordinator?.handleWorktreeRemoved(branch: branch)
             // Close surfaces before triggering the worktree removal. This sends SIGHUP
             // immediately and ensures deinit is a no-op when SwiftUI tears down the views.
             // closeWorktree removes the pane from the dict first so the restart observer
