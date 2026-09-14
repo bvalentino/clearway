@@ -699,3 +699,46 @@ re-read past, so it was not carried over. The compiler is the bar for the remova
 **Task-scoped grep:**
 `git ls-files -- Sources Tests | xargs grep -n 'AutopilotButton\|WorkflowSidebarActionCard\|CountdownRing\|exposeTask'`
 returns nothing.
+
+### T5: Remove the workflow-derived status gates
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `WorkTaskCard.isTerminalAction` and its now-unread `workTaskCoordinator` `@EnvironmentObject` removed; the badge construction drops the argument; `WorkTaskStatusBadge.isTerminalAction` and the `badgeColor(for:isTerminalAction:)` parameter removed, `default:` arm now plain `.green`; both doc comments rewritten |
+| `Sources/App/ContentViewHelpers.swift` | `resolveSidePanelTab` lost its `isWorkflowJSONProject` parameter and branch; its doc comment and `SidePanelTab.available`'s reworded off the workflow loop |
+| `Sources/App/ContentView.swift` | `isWorkflowJSONProject:` argument dropped from `restoreSidePanelTab`; `availableSidePanelTabs`' doc comment reworded |
+| `Tests/SidePanelTabTests.swift` | Gate-only tests deleted or re-expressed against the status rule; `isWorkflowJSONProject:` dropped from every call |
+
+**Evidence**
+
+A pure removal of two gates, so no regression test was written: nothing could pass before the change
+and fail after it. The compiler is the bar for the signature changes — `resolveSidePanelTab`'s
+parameter and both `isTerminalAction` declarations no longer exist, so any surviving reader is a build
+error. The surviving resolution rules are pinned by the rewritten `SidePanelTabTests` (ten tests, all
+green), and the badge's surviving colours by its explicit switch arms.
+
+**Deviations from the plan**
+
+- `WorkTaskCard`'s `@EnvironmentObject private var workTaskCoordinator` was dropped: `isTerminalAction`
+  was its only reader. The plan did not list it, but it became dead because of this task.
+- `testMainClampsJSONDefaultToTodos` was re-expressed as `testMainClampsInProgressDefaultToTodos`
+  rather than deleted. Its assertion — main never lands on `.task` even when the default rule would
+  pick it — outlives the gate, and no other test exercises `available.contains(.task)` with
+  `isMain: true` and a status that would otherwise select `.task`.
+- `testStoredTabBeatsJSONProjectRule` and `testInvalidStoredRawValueFallsThrough` were re-expressed
+  against `taskStatus: in_progress`, not the plan's `"build"`: with the gate gone a `"build"` status
+  fires no rule at all, so both tests would have been vacuous.
+- `testNonJSONInProgressSelectsTask` and `testNonJSONNonInProgressPreservesCurrentDemotingTask` were
+  renamed (`testInProgressSelectsTask`, `testNonInProgressPreservesCurrentDemotingTask`) — there is no
+  JSON/non-JSON distinction left to name.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 482 tests, with 0 failures (0 unexpected)`.
+
+**Task-scoped grep:**
+`git ls-files -- Sources Tests | xargs grep -n 'isWorkflowJSONProject\|isTerminalAction'` returns no
+`isTerminalAction` at all, and `isWorkflowJSONProject` only inside the engine and its tests:
+`WorkTaskCoordinator.swift` (the declaration + its refresh), `WorkTaskCoordinator+WorkflowEngine.swift`,
+`WorkTaskManager.swift` (two doc comments), `WorkTaskCoordinatorTests.swift` and
+`WorkflowLoopEngineHarnessTests.swift` — all removed by T6/T7.

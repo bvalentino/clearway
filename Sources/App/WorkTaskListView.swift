@@ -265,18 +265,6 @@ struct WorkTaskCard: View {
     var onStartNow: (() -> Void)?
     var onReadyToStart: (() -> Void)?
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
-
-    /// Whether the task sits on a **defined, routeless** WORKFLOW.json action — the derived "done"
-    /// end-state of the loop. Drives the badge's terminal coloring so a finished loop doesn't read
-    /// as "active green". Reads the coordinator's cached definition (no per-render disk load);
-    /// `false` for legacy projects (`nil` definition) and for unknown slugs (a halted/off-graph
-    /// value isn't "done", so it keeps the running fallback).
-    private var isTerminalAction: Bool {
-        workTaskCoordinator.workflowDefinition.map {
-            $0.actions[task.status] != nil && $0.isTerminal(task.status)
-        } ?? false
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -288,7 +276,7 @@ struct WorkTaskCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if showStatusBadge {
                     Spacer()
-                    WorkTaskStatusBadge(status: task.status, isTerminalAction: isTerminalAction)
+                    WorkTaskStatusBadge(status: task.status)
                 }
             }
 
@@ -361,11 +349,6 @@ private struct WorkTaskRow: View {
 
 struct WorkTaskStatusBadge: View {
     let status: String
-    /// Whether `status` is a defined, routeless WORKFLOW.json action (the loop's derived "done").
-    /// Supplied by the caller (the badge stays environment-free) so a terminal action gets the
-    /// done-style secondary color instead of the running-green fallback. `false` for legacy
-    /// projects and reserved/legacy slugs, whose colors come from the explicit switch arms.
-    var isTerminalAction: Bool = false
     @State private var pulsing = false
 
     var body: some View {
@@ -388,15 +371,13 @@ struct WorkTaskStatusBadge: View {
         .fontWeight(.medium)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .foregroundStyle(Self.badgeColor(for: status, isTerminalAction: isTerminalAction))
-        .background(Self.badgeColor(for: status, isTerminalAction: isTerminalAction).opacity(0.12), in: Capsule())
+        .foregroundStyle(Self.badgeColor(for: status))
+        .background(Self.badgeColor(for: status).opacity(0.12), in: Capsule())
     }
 
-    /// Accent color for a status slug. Known reserved/legacy slugs keep their existing colors. An
-    /// arbitrary action slug is colored by loop position: a **terminal** (routeless) action is the
-    /// loop's derived "done", so it matches the legacy `done` secondary; anything else falls back
-    /// to the running-state accent (mid-loop actions are by definition in flight).
-    static func badgeColor(for status: String, isTerminalAction: Bool = false) -> Color {
+    /// Accent color for a status slug. Known reserved/legacy slugs keep their existing colors; an
+    /// arbitrary slug falls back to the running-state accent.
+    static func badgeColor(for status: String) -> Color {
         switch status {
         case WorkTask.ReservedStatus.new: return .blue
         case WorkTask.ReservedStatus.readyToStart: return .indigo
@@ -405,7 +386,7 @@ struct WorkTaskStatusBadge: View {
         case WorkTask.ReservedStatus.readyForReview: return .orange
         case WorkTask.ReservedStatus.done: return .secondary
         case WorkTask.ReservedStatus.canceled: return .red
-        default: return isTerminalAction ? .secondary : .green
+        default: return .green
         }
     }
 }

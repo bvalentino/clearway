@@ -33,8 +33,8 @@ enum SidePanelTab: String, CaseIterable {
     case todos = "Todos"
     case prompts = "Prompts"
 
-    /// Tabs available on a worktree. The main branch never drives a workflow loop, so it has no
-    /// Task tab; every other worktree gets all tabs.
+    /// Tabs available on a worktree. The main branch carries no task, so it has no Task tab;
+    /// every other worktree gets all tabs.
     static func available(isMain: Bool) -> [SidePanelTab] {
         isMain ? allCases.filter { $0 != .task } : allCases
     }
@@ -42,19 +42,14 @@ enum SidePanelTab: String, CaseIterable {
 
 /// Resolves which side panel tab to show when a worktree is opened.
 ///
-/// A stored per-worktree tab wins (if still available); otherwise a JSON-workflow project
-/// defaults to `.task`; otherwise the legacy `in_progress` status selects `.task`; otherwise
-/// the current tab is kept (demoting `.task` to `.todos`). On main, `.task` is unavailable,
-/// so none of the `.task` paths fire.
-func resolveSidePanelTab(stored: String?, isWorkflowJSONProject: Bool,
-                         taskStatus: String?, current: SidePanelTab,
-                         isMain: Bool) -> SidePanelTab {
+/// A stored per-worktree tab wins (if still available); otherwise an `in_progress` status
+/// selects `.task`; otherwise the current tab is kept (demoting `.task` to `.todos`). On main,
+/// `.task` is unavailable, so neither `.task` path fires.
+func resolveSidePanelTab(stored: String?, taskStatus: String?,
+                         current: SidePanelTab, isMain: Bool) -> SidePanelTab {
     let available = SidePanelTab.available(isMain: isMain)
     if let stored, let tab = SidePanelTab(rawValue: stored), available.contains(tab) { return tab }
-    if available.contains(.task) {
-        if isWorkflowJSONProject { return .task }
-        if taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
-    }
+    if available.contains(.task), taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
     return current == .task ? .todos : current
 }
 
