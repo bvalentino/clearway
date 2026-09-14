@@ -6,52 +6,24 @@ import Foundation
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
-    /// The task's current state. A plain slug string: the reserved backlog markers
-    /// (`new` / `ready_to_start`), a user-defined action slug from `WORKFLOW.json` while a
-    /// loop runs, or one of the legacy fixed states used by the `WORKFLOW.md` path. Display
-    /// labels come from `WorkTask.displayLabel(for:)`.
+    /// The task's current state. A plain slug string: a reserved backlog marker
+    /// (`new` / `ready_to_start`), one of the fixed states, or an arbitrary slug left by an
+    /// external writer. Display labels come from `WorkTask.displayLabel(for:)`.
     var status: String
     var worktree: String?
     var createdAt: Date
     var body: String
 
     var attempt: Int?
-    var errorMessage: String?
 
     /// When true, the task is a shadow task for a worktree — it tracks state but
     /// stays out of the Planning backlog until the user exposes it.
     var hidden: Bool = false
 
-    /// Per-worktree autopilot flag for the `WORKFLOW.json` loop engine. `true` = the loop
-    /// auto-advances; `false` = paused (a running step finishes, but nothing new launches);
-    /// `nil` = not applicable (a legacy `WORKFLOW.md` project, which has no autopilot). Defaulted
-    /// to `true` at worktree creation **only** for projects with a valid `WORKFLOW.json`, so legacy
-    /// task files never gain the field and stay byte-for-byte identical. Serialized only when set,
-    /// mirroring how `worktree`/`hidden` are emitted only when meaningful.
-    var autopilot: Bool?
-
-    /// Whether the `WORKFLOW.json` loop has genuinely finished — set to `true` by the agent of a
-    /// **terminal** action via the completion injection contract, persisted to `TASK.md`. Modeled
-    /// exactly like `autopilot`: an optional Bool serialized only when set, so legacy / non-JSON
-    /// task files never gain the field. This is the **deliberate** completion signal that separates
-    /// a genuine finish from the terminal agent crashing — the engine reacts by pausing autopilot
-    /// and launching nothing further. Cleared (back to `nil`) when the loop is re-driven.
-    var completed: Bool?
-
-    /// Whether the task carries any author-provided content for an agent to act on — a non-empty
-    /// title or body. A freshly-created manual worktree's shadow task (empty title *and* body) has
-    /// none, so the workflow loop must not auto-run an agent against its blank `TASK.md`, and the
-    /// autopilot button is disabled until the user gives it something to do.
-    var hasContent: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
     /// a namespace — it has no cases, so it can never be instantiated; the values are plain
-    /// `static let` strings. The first two are reserved backlog markers (pre-worktree). The
-    /// remainder are legacy fixed states used **only** by the `WORKFLOW.md` path; the new
-    /// `WORKFLOW.json` engine uses arbitrary action slugs instead.
+    /// `static let` strings. The first two are reserved backlog markers (pre-worktree); the
+    /// remainder are the fixed states a task moves through once it has a worktree.
     enum ReservedStatus {
         // Reserved backlog markers (pre-worktree).
         static let new = "new"
@@ -60,23 +32,17 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         /// The backlog markers as a set — the shared source the slug generator and validator check.
         static let backlogMarkers: Set<String> = [new, readyToStart]
 
-        // Legacy fixed middle/terminal states — used only by the legacy WORKFLOW.md path.
+        // Fixed middle/terminal states.
         static let inProgress = "in_progress"
         static let qa = "qa"
         static let readyForReview = "ready_for_review"
         static let done = "done"
         static let canceled = "canceled"
-
-        /// The legacy status slugs in display order. Drives the legacy `WORKFLOW.md` template
-        /// variables (`status.<slug>`); the new engine doesn't enumerate states.
-        static let legacyOrdered: [String] = [
-            new, readyToStart, inProgress, qa, readyForReview, done, canceled,
-        ]
     }
 
     /// Migrates a legacy status value to its current slug. Older task files used `open`,
-    /// `started`, and `stopped`; everything else passes through unchanged so arbitrary
-    /// `WORKFLOW.json` action slugs round-trip verbatim.
+    /// `started`, and `stopped`; everything else passes through unchanged so an arbitrary
+    /// slug round-trips verbatim.
     static func migrateStatus(_ rawValue: String) -> String {
         switch rawValue {
         case "open": return ReservedStatus.new
@@ -135,15 +101,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // Planning task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
         if let attempt { lines.append("attempt: \(attempt)") }
-        if let errorMessage { lines.append("error_message: \(YAML.quote(errorMessage))") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
-        // Emit autopilot only when set — a legacy (non-JSON-workflow) task has no autopilot, so
-        // its file stays byte-for-byte identical. Present means the JSON engine owns this worktree.
-        if let autopilot { lines.append("autopilot: \(autopilot)") }
-        // Emit completed only when set, mirroring autopilot — a never-completed or non-JSON task
-        // omits the line entirely, so clearing completion (write `nil`) restores that exact shape.
-        if let completed { lines.append("completed: \(completed)") }
         return lines.joined(separator: "\n")
     }
 
@@ -229,14 +188,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         var task = WorkTask(id: resolvedId, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
         task.attempt = fields["attempt"].flatMap { Int($0) }
-        task.errorMessage = fields["error_message"]
         task.hidden = fields["hidden"] == "true"
-        // Autopilot is tri-state: an absent line is `nil` (legacy / not applicable), so back-compat
-        // files without the field parse cleanly; `true`/`false` map to the explicit flag.
-        task.autopilot = fields["autopilot"].map { $0 == "true" }
-        // Completed is tri-state like autopilot: an absent line is `nil` (never completed / not
-        // applicable), so back-compat files without the field parse cleanly.
-        task.completed = fields["completed"].map { $0 == "true" }
         return task
     }
 

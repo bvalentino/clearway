@@ -551,8 +551,6 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let path = manager.filePath(for: seed)
         try planned.serialized().write(toFile: path, atomically: true, encoding: .utf8)
 
-        var reloadedCallbacks = 0
-        manager.onTasksReloaded = { _ in reloadedCallbacks += 1 }
         manager.reloadFromDisk()
 
         guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else {
@@ -561,28 +559,6 @@ final class WorkTaskManagerTests: TempRootTestCase {
         XCTAssertEqual(pool.title, "Planned title")
         XCTAssertEqual(pool.body, "Full planned brief with acceptance criteria.")
         XCTAssertEqual(pool.status, WorkTask.ReservedStatus.readyToStart)
-        // Central-only tasks have no worktree — onTasksReloaded is skipped when branch set is empty.
-        XCTAssertEqual(reloadedCallbacks, 0)
-    }
-
-    /// Pure no-op reload does not fire onTasksReloaded (no needless engine churn).
-    func testReloadNoOpDoesNotFireOnTasksReloaded() throws {
-        let worktreeTask = WorkTask(
-            id: UUID(),
-            title: "Stable",
-            status: "spec",
-            worktree: "feature/noop"
-        )
-        let worktreePath = try seedWorktreeTask(dir: "wt-noop", worktreeTask)
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        manager.worktreeResolver = { [(branch: "feature/noop", path: worktreePath)] }
-        manager.setWatchedWorktrees([worktreePath])
-
-        var reloadedCallbacks = 0
-        manager.onTasksReloaded = { _ in reloadedCallbacks += 1 }
-        manager.reloadFromDisk()
-        manager.reloadFromDisk()
-        XCTAssertEqual(reloadedCallbacks, 0, "identical pool must not re-notify the engine")
     }
 
     /// External rewrite of an open worktree TASK.md status is adopted by the pool after reload.
@@ -604,51 +580,13 @@ final class WorkTaskManagerTests: TempRootTestCase {
         }
         try advanced.serialized().write(toFile: manager.filePath(for: pooled), atomically: true, encoding: .utf8)
 
-        var reloadedBranches: [String] = []
-        manager.onTasksReloaded = { branches in reloadedBranches = branches }
         manager.reloadFromDisk()
 
         XCTAssertEqual(manager.task(forWorktree: "feature/status")?.status, "work_breakdown")
         XCTAssertEqual(manager.task(forWorktree: "feature/status")?.body, "Expanded brief")
-        XCTAssertTrue(reloadedBranches.contains("feature/status"))
     }
 
     // MARK: - Field writers re-base by id
-
-    /// setAutopilot with a stale full snapshot must not clobber fresher title/body/status on disk.
-    func testSetAutopilotWithStaleSnapshotPreservesDiskContent() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = manager.createTask(title: "Original") else {
-            XCTFail("createTask returned nil"); return
-        }
-        manager.updateFields(id: seed.id) {
-            $0.title = "Agent expanded title"
-            $0.body = "Agent expanded body"
-            $0.status = "work_breakdown"
-            $0.autopilot = true
-        }
-
-        var stale = seed
-        stale.title = "Original"
-        stale.body = ""
-        stale.status = "spec"
-        stale.autopilot = true
-        manager.setAutopilot(stale, to: false)
-
-        guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else {
-            XCTFail("Task missing"); return
-        }
-        XCTAssertEqual(pool.autopilot, false)
-        XCTAssertEqual(pool.title, "Agent expanded title")
-        XCTAssertEqual(pool.body, "Agent expanded body")
-        XCTAssertEqual(pool.status, "work_breakdown")
-
-        let disk = try String(contentsOfFile: manager.filePath(for: pool), encoding: .utf8)
-        let reparsed = WorkTask.parse(from: disk, id: seed.id, createdAt: seed.createdAt)
-        XCTAssertEqual(reparsed?.title, "Agent expanded title")
-        XCTAssertEqual(reparsed?.status, "work_breakdown")
-        XCTAssertEqual(reparsed?.autopilot, false)
-    }
 
     /// setStatus with a stale snapshot only changes status; title/body stay from disk base.
     func testSetStatusWithStaleSnapshotPreservesDiskContent() throws {

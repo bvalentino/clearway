@@ -47,7 +47,7 @@ final class WorkTaskTests: XCTestCase {
     }
 
     /// An arbitrary action slug (not a reserved/legacy constant) must serialize and parse back
-    /// verbatim — this is what lets a `WORKFLOW.json` engine sit `status` on any action.
+    /// verbatim — an external writer may sit `status` on any slug it likes.
     func testArbitrarySlugRoundTrips() throws {
         let task = WorkTask(id: UUID(), title: "Loop step", status: "review", worktree: "feature/loop")
 
@@ -84,88 +84,46 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(WorkTask.displayLabel(for: "_"), "_", "a slug with no words falls back to the raw value")
     }
 
-    /// The `autopilot` flag is tri-state and round-trips through serialize → parse:
-    ///   - present `true`  → emits `autopilot: true`, parses back to `true`
-    ///   - present `false` → emits `autopilot: false`, parses back to `false`
-    ///   - absent (`nil`)  → emits no line (back-compat / legacy), parses back to `nil`
-    func testAutopilotRoundTrips() throws {
-        // Present true.
-        var on = WorkTask(id: UUID(), title: "On", status: "implement", worktree: "feature/x")
-        on.autopilot = true
-        let onSerialized = on.serialized()
-        XCTAssertTrue(onSerialized.contains("autopilot: true"), "autopilot:true must serialize")
-        XCTAssertEqual(WorkTask.parse(from: onSerialized, id: on.id, createdAt: Date())?.autopilot, true)
-
-        // Present false.
-        var off = WorkTask(id: UUID(), title: "Off", status: "implement", worktree: "feature/y")
-        off.autopilot = false
-        let offSerialized = off.serialized()
-        XCTAssertTrue(offSerialized.contains("autopilot: false"), "autopilot:false must serialize")
-        XCTAssertEqual(WorkTask.parse(from: offSerialized, id: off.id, createdAt: Date())?.autopilot, false)
-
-        // Absent — a legacy task never gains the field and parses back to nil.
-        let legacy = WorkTask(id: UUID(), title: "Legacy", status: WorkTask.ReservedStatus.new, worktree: nil)
-        let legacySerialized = legacy.serialized()
-        XCTAssertFalse(legacySerialized.contains("autopilot"), "an absent autopilot must not emit a line")
-        XCTAssertNil(WorkTask.parse(from: legacySerialized, id: legacy.id, createdAt: Date())?.autopilot)
-    }
-
-    /// The `completed` flag is tri-state and round-trips through serialize → parse, modeled exactly
-    /// like `autopilot`:
-    ///   - present `true`  → emits `completed: true`, parses back to `true`
-    ///   - present `false` → emits `completed: false`, parses back to `false`
-    ///   - absent (`nil`)  → emits no line (back-compat / legacy), parses back to `nil`
-    func testCompletedRoundTrips() throws {
-        // Present true.
-        var done = WorkTask(id: UUID(), title: "Done", status: "review", worktree: "feature/x")
-        done.completed = true
-        let doneSerialized = done.serialized()
-        XCTAssertTrue(doneSerialized.contains("completed: true"), "completed:true must serialize")
-        XCTAssertEqual(WorkTask.parse(from: doneSerialized, id: done.id, createdAt: Date())?.completed, true)
-
-        // Present false.
-        var notDone = WorkTask(id: UUID(), title: "Not done", status: "review", worktree: "feature/y")
-        notDone.completed = false
-        let notDoneSerialized = notDone.serialized()
-        XCTAssertTrue(notDoneSerialized.contains("completed: false"), "completed:false must serialize")
-        XCTAssertEqual(WorkTask.parse(from: notDoneSerialized, id: notDone.id, createdAt: Date())?.completed, false)
-
-        // Absent — a legacy task never gains the field and parses back to nil.
-        let legacy = WorkTask(id: UUID(), title: "Legacy", status: WorkTask.ReservedStatus.new, worktree: nil)
-        let legacySerialized = legacy.serialized()
-        XCTAssertFalse(legacySerialized.contains("completed"), "an absent completed must not emit a line")
-        XCTAssertNil(WorkTask.parse(from: legacySerialized, id: legacy.id, createdAt: Date())?.completed)
-    }
-
-    /// A back-compat file written before the `completed` field existed must parse cleanly to a
-    /// `nil` completed — its absence is "never completed", not "completed: false".
-    func testFileWithoutCompletedFieldParsesToNil() throws {
+    /// The retired `autopilot` / `completed` / `error_message` fields are no longer part of the
+    /// model: a `TASK.md` still carrying them parses, and re-serializing drops all three while
+    /// preserving every other field.
+    func testRetiredFieldsAreDroppedOnReserialize() throws {
+        let id = UUID()
         let legacy = """
         ---
-        id: \(UUID().uuidString)
-        title: "No completed"
+        id: \(id.uuidString)
+        title: "Carried over"
         status: review
         worktree: "feature/legacy"
+        attempt: 2
+        error_message: "agent halted"
+        hidden: true
         autopilot: true
+        completed: false
         ---
-        """
-        XCTAssertNil(WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())?.completed,
-                     "a file without the field parses to nil, not false")
-    }
 
-    /// A back-compat file written before the `autopilot` field existed must parse cleanly to a
-    /// `nil` autopilot — its absence is "not applicable", not "off".
-    func testFileWithoutAutopilotFieldParsesToNil() throws {
-        let legacy = """
-        ---
-        id: \(UUID().uuidString)
-        title: "No autopilot"
-        status: in_progress
-        worktree: "feature/legacy"
-        ---
+        Body text
         """
-        XCTAssertNil(WorkTask.parse(from: legacy, id: UUID(), createdAt: Date())?.autopilot,
-                     "a file without the field parses to nil, not false")
+
+        guard let parsed = WorkTask.parse(from: legacy, id: UUID(), createdAt: Date()) else {
+            XCTFail("a file carrying the retired fields must still parse"); return
+        }
+        XCTAssertEqual(parsed.id, id)
+        XCTAssertEqual(parsed.title, "Carried over")
+        XCTAssertEqual(parsed.status, "review")
+        XCTAssertEqual(parsed.worktree, "feature/legacy")
+        XCTAssertEqual(parsed.attempt, 2)
+        XCTAssertTrue(parsed.hidden)
+        XCTAssertEqual(parsed.body, "Body text")
+
+        let reserialized = parsed.serialized()
+        XCTAssertFalse(reserialized.contains("autopilot"), "autopilot must not be re-emitted")
+        XCTAssertFalse(reserialized.contains("completed"), "completed must not be re-emitted")
+        XCTAssertFalse(reserialized.contains("error_message"), "error_message must not be re-emitted")
+        XCTAssertTrue(reserialized.contains("attempt: 2"))
+        XCTAssertTrue(reserialized.contains("hidden: true"))
+        XCTAssertTrue(reserialized.contains("status: review"))
+        XCTAssertTrue(reserialized.contains("worktree: \"feature/legacy\""))
     }
 
     /// A malformed frontmatter `id` must not crash parsing — it falls back to the filename UUID.

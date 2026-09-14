@@ -42,7 +42,7 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         XCTAssertTrue(adopted, "pool must adopt atomic central rewrite via watcher (no reloadFromDisk)")
     }
 
-    /// External atomic rewrite of an open worktree TASK.md updates status and notifies the engine.
+    /// External atomic rewrite of an open worktree TASK.md updates the pool's status and body.
     func testWatcherAdoptsAtomicWorktreeStatusRewrite() async throws {
         let id = UUID()
         let worktreeTask = WorkTask(id: id, title: "In flight", status: "spec", worktree: "feature/watch")
@@ -52,9 +52,6 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         manager.worktreeResolver = { [(branch: "feature/watch", path: worktreePath)] }
         manager.setWatchedWorktrees([worktreePath])
         XCTAssertEqual(manager.task(forWorktree: "feature/watch")?.status, "spec")
-
-        var notifiedBranches: [String] = []
-        manager.onTasksReloaded = { branches in notifiedBranches = branches }
 
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -71,10 +68,6 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         }
         XCTAssertTrue(adopted, "pool must adopt worktree status via watcher")
         XCTAssertEqual(manager.task(forWorktree: "feature/watch")?.body, "Expanded on disk")
-        XCTAssertTrue(
-            notifiedBranches.contains("feature/watch"),
-            "onTasksReloaded must fire so the engine re-evaluates"
-        )
     }
 
     /// After an atomic replace kills the watched inode, a second write must still be seen

@@ -11,14 +11,7 @@ class WorkTaskManager: ObservableObject {
 
     let projectPath: String
     let tasksDirectory: String
-    /// The project root's `.clearway/` directory (parent of `tasks/`). This is where `WORKFLOW.json`
-    /// lives, so it's watched separately from `tasks/`: the central watcher is on `tasks/` and the
-    /// per-worktree watchers are on each *worktree's* `.clearway/`, none of which see a WORKFLOW.json
-    /// add/remove/edit in the project root unless the main worktree happens to be opened. Without this
-    /// watcher the cached `isWorkflowJSONProject` gate would go stale on a runtime WORKFLOW.json change.
-    private let rootClearwayDirectory: String
     private var watcherSource: DispatchSourceFileSystemObject?
-    private var rootClearwayWatcherSource: DispatchSourceFileSystemObject?
     private var pendingReload: ScheduledWork?
 
     /// `.clearway` watchers for opened worktrees, keyed by the watched directory path. Only
@@ -38,30 +31,11 @@ class WorkTaskManager: ObservableObject {
     /// which yields central-only behavior — the shape unit tests exercise.
     var worktreeResolver: @MainActor () -> [(branch: String, path: String)] = { [] }
 
-    /// Invoked after every `reload()` that changes the pool, with the branches of all
-    /// worktree-linked tasks. The `WorkTaskCoordinator` sets this to drive the `WORKFLOW.json`
-    /// loop engine off the existing debounced `TASK.md` watcher: each changed `TASK.md` re-merges
-    /// the pool, then the engine re-evaluates `status` per worktree (idempotent — a no-op when the
-    /// written status already equals the running action). Defaults to a no-op so the legacy path
-    /// and unit tests are unaffected.
-    var onTasksReloaded: @MainActor (_ worktreeBranches: [String]) -> Void = { _ in }
-
-    /// Invoked on **every** `.clearway/` change the watchers see — *unconditionally*, before the
-    /// pool-changed / worktree-linked guards that gate `onTasksReloaded`. The coordinator uses this to
-    /// refresh its cached `isWorkflowJSONProject` gate + `WorkflowDefinition` cache, which must track a
-    /// runtime `WORKFLOW.json` add/remove/edit even when no task changed (the file's presence is what
-    /// flips the gate, and that change touches no `TASK.md`). Deliberately decoupled from the engine
-    /// advance (`onTasksReloaded`) so a pure no-change reload refreshes the gate without driving a
-    /// (would-be-idempotent, but needless) loop re-evaluation. Defaults to a no-op for unit tests.
-    var onClearwayChanged: @MainActor () -> Void = { }
-
     init(projectPath: String) {
         self.projectPath = projectPath
         self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".clearway/tasks")
-        self.rootClearwayDirectory = (projectPath as NSString).appendingPathComponent(".clearway")
         reload()
         watchDirectory()
-        watchRootClearway()
     }
 
     /// Absolute path to a branch's live worktree, or nil when the branch has no worktree.
@@ -119,7 +93,6 @@ class WorkTaskManager: ObservableObject {
 
     nonisolated deinit {
         watcherSource?.cancel()
-        rootClearwayWatcherSource?.cancel()
         worktreeWatchers.values.forEach { $0.cancel() }
         taskFileWatchers.values.forEach { $0.cancel() }
     }
@@ -267,30 +240,6 @@ class WorkTaskManager: ObservableObject {
         updateFields(id: task.id) { $0.status = status }
     }
 
-    /// Reads a worktree task's `status` **fresh from its `TASK.md` on disk**, bypassing the
-    /// in-memory pool — which lags disk by the watcher's debounce. Used by the engine's
-    /// pause-on-agent-death check (`pauseIfAgentDiedMidStep`) to distinguish "the agent died
-    /// mid-step" (disk status still equals the action that was running) from "the agent wrote its
-    /// advance and exited before the debounced reload landed" (disk status already moved on). The
-    /// read is race-free for that purpose: a process that has already exited can't write afterwards.
-    /// `nil` when the branch has no live worktree or its `TASK.md` doesn't parse.
-    func freshStatus(forWorktree branch: String) -> String? {
-        guard let path = worktreePath(forBranch: branch) else { return nil }
-        return loadTask(
-            atPath: Self.taskMarkdownPath(inWorktree: path),
-            fallbackId: UUID(),
-            requireFrontmatterID: false
-        )?.status
-    }
-
-    /// Writes the `autopilot` flag into the task's `.clearway/TASK.md` (the single field-write
-    /// path the task aside's autopilot row drives). Clearway is the writer for this field; the
-    /// loop engine's watcher then enacts the flip (enable → resume, disable → pause). Unlike
-    /// `status`, `autopilot` is Clearway-owned, so this write is allowed. No-op on no change.
-    func setAutopilot(_ task: WorkTask, to autopilot: Bool) {
-        updateFields(id: task.id) { $0.autopilot = autopilot }
-    }
-
     /// Forces a merge-load from disk into the pool. Production relies on watchers; tests use
     /// this to assert adoption without waiting on debounce timing.
     func reloadFromDisk() {
@@ -349,10 +298,6 @@ class WorkTaskManager: ObservableObject {
         guard let data = task.serialized().data(using: .utf8) else { return }
         fm.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
         if watcherSource == nil { watchDirectory() }
-        // A central-backlog write creates `.clearway/` if it was absent; re-arm the root watcher so a
-        // later WORKFLOW.json drop in a brand-new project is still seen (same re-arm the central
-        // watcher does above). Cheap no-op once armed.
-        if rootClearwayWatcherSource == nil { watchRootClearway() }
     }
 
     /// Merge-loads the single task pool from two sources: the central backlog (`<UUID>.md`)
@@ -384,28 +329,14 @@ class WorkTaskManager: ObservableObject {
             }
         }
 
-        // Refresh the coordinator's cached WORKFLOW.json gate on *every* reload — unconditionally,
-        // before the pool-changed guard below. A WORKFLOW.json add/remove/edit changes no `TASK.md`,
-        // so it never trips the `sorted != tasks` guard; firing here (decoupled from the engine
-        // advance in `onTasksReloaded`) is what keeps the gate from going stale on a runtime change.
-        onClearwayChanged()
-
         // Newest first
         let sorted = byId.values.sorted { $0.createdAt > $1.createdAt }
-        // Always re-arm per-file watchers — even on a no-op content reload an atomic rewrite can
-        // replace the inode under a path, leaving a dead file watcher if we only sync on change.
-        let poolChanged = sorted != tasks
-        if poolChanged {
+        if sorted != tasks {
             tasks = sorted
         }
+        // Always re-arm per-file watchers — even on a no-op content reload an atomic rewrite can
+        // replace the inode under a path, leaving a dead file watcher if we only sync on change.
         syncTaskFileWatchers()
-
-        guard poolChanged else { return }
-
-        // Drive the loop engine off the same reload the watcher already debounces. Only worktree-
-        // linked tasks can be in a running loop, so that's the set the engine re-evaluates.
-        let branches = sorted.compactMap(\.worktree)
-        if !branches.isEmpty { onTasksReloaded(branches) }
     }
 
     /// Watches each known task file so in-place content edits fire a reload. Directory watchers
@@ -508,16 +439,6 @@ class WorkTaskManager: ObservableObject {
     private func watchDirectory() {
         watcherSource?.cancel()
         watcherSource = makeWatcher(forPath: tasksDirectory)
-    }
-
-    /// Watches the project root's `.clearway/` directory so a `WORKFLOW.json` add/remove/edit fires a
-    /// reload (which re-runs the always-fired `onClearwayChanged` gate refresh). Reuses the same
-    /// debounced `makeWatcher`/`scheduleReload` pattern as the central watcher — `nil` until the
-    /// directory exists, then re-armed from `write` (which creates `.clearway/` on the first task
-    /// write) so a project that has no `.clearway/` yet still picks one up the moment one appears.
-    private func watchRootClearway() {
-        rootClearwayWatcherSource?.cancel()
-        rootClearwayWatcherSource = makeWatcher(forPath: rootClearwayDirectory)
     }
 
     /// Directory watcher → debounced pool reload. Nil when the path does not exist yet

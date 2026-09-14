@@ -804,3 +804,58 @@ is a build error.
 returns one line: `WorkTaskManager.swift:51`, a doc comment on `onClearwayChanged` naming the
 `WorkflowDefinition` cache. T7 deletes that property outright, so the prose dies with it — the same
 call T5 made for the `isWorkflowJSONProject` mentions it left behind.
+
+### T7: Strip autopilot, completed and error_message from the task model, manager and metadata view
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTask.swift` | `errorMessage`, `autopilot`, `completed`, `hasContent` and `ReservedStatus.legacyOrdered` removed, with their three `frontmatterLines()` emissions and three `parse` assignments; the `status`, `ReservedStatus` and `migrateStatus` doc comments rewritten off `WORKFLOW.json` / `WORKFLOW.md` |
+| `Sources/App/WorkTaskManager.swift` | `onTasksReloaded`, `onClearwayChanged`, `freshStatus`, `setAutopilot`, `rootClearwayDirectory`, `rootClearwayWatcherSource`, `watchRootClearway()` and its `init` / `write()` / `deinit` sites removed; `reload()`'s two firings and its `poolChanged` local removed |
+| `Sources/App/WorkTaskAgentMetadata.swift` | `hasContent(for:)` reduced to the attempt check; the error `Text` and the single-child `HStack` removed; doc comment updated |
+| `Tests/WorkTaskTests.swift` | Four autopilot/completed round-trip tests deleted; new `testRetiredFieldsAreDroppedOnReserialize`; `testArbitrarySlugRoundTrips`' comment reworded |
+| `Tests/WorkTaskManagerTests.swift` | `testSetAutopilotWithStaleSnapshotPreservesDiskContent` and `testReloadNoOpDoesNotFireOnTasksReloaded` deleted; the two `onTasksReloaded` observers dropped, leaving each test on its `manager.tasks` assertions |
+| `Tests/WorkTaskManagerWatcherTests.swift` | `testWatcherAdoptsAtomicWorktreeStatusRewrite` rebased off `onTasksReloaded` onto its existing `waitUntil` on `manager.task(forWorktree:)`; its doc comment updated |
+
+**Evidence: the decision-2 pin watched failing against the unfixed model**
+
+With `HEAD:Sources/App/WorkTask.swift` restored and
+`-only-testing:ClearwayTests/WorkTaskTests`:
+
+```
+Tests/WorkTaskTests.swift:120: error: -[ClearwayTests.WorkTaskTests testRetiredFieldsAreDroppedOnReserialize] : XCTAssertFalse failed - autopilot must not be re-emitted
+Tests/WorkTaskTests.swift:121: error: -[ClearwayTests.WorkTaskTests testRetiredFieldsAreDroppedOnReserialize] : XCTAssertFalse failed - completed must not be re-emitted
+Tests/WorkTaskTests.swift:122: error: -[ClearwayTests.WorkTaskTests testRetiredFieldsAreDroppedOnReserialize] : XCTAssertFalse failed - error_message must not be re-emitted
+** TEST FAILED **
+```
+
+The stripped model was restored immediately afterwards. The rest of the task is deletion, for which
+the compiler is the bar.
+
+**The `tasks/` watcher re-arm was checked, as the plan required.** `write()` still carries
+`if watcherSource == nil { watchDirectory() }`; only the root `.clearway/` re-arm beside it went.
+`WorkTaskManagerWatcherTests` (three tests, all green) still covers the debounced reload, the
+per-worktree watcher and the per-file re-arm after an atomic replace.
+
+**Deviations from the plan**
+
+- The plan named only the `status` doc comment for rewriting. `ReservedStatus`' own doc and
+  `migrateStatus`' both named `WORKFLOW.md` / `WORKFLOW.json` too, and `legacyOrdered`'s deletion took
+  the "legacy" framing of the fixed states with it, so all three were reworded — the same
+  task-scoped prose sweep T5 and T6 made.
+- `reload()`'s `poolChanged` local was folded back into `if sorted != tasks`. It existed only to gate
+  the `onTasksReloaded` firing after `syncTaskFileWatchers()`; with that firing gone it had one
+  reader. The "always re-arm per-file watchers" comment moved down to sit on the call it explains.
+- `WorkTaskAgentMetadata`'s `VStack` was kept rather than collapsed. It is no longer single-child by
+  accident — it is the row's layout with one optional child, and `hasContent(for:)` is what stops it
+  rendering empty.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 332 tests, with 0 failures (0 unexpected)`.
+
+**Task-scoped grep:**
+`git ls-files -- Sources Tests | xargs grep -nE 'autopilot|Autopilot|errorMessage|error_message|onTasksReloaded|onClearwayChanged|freshStatus|legacyOrdered'`
+returns only `Tests/WorkTaskTests.swift`'s new decision-2 pin, which must name the three retired
+fields to assert they are dropped. T10's audit regex covers those words — see Follow-ups there.
+`hasContent` returns only the surviving static `WorkTaskAgentMetadata.hasContent(for:)` and its three
+call sites.
