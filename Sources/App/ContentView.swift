@@ -18,7 +18,6 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 enum DetailSelection: Hashable {
     case planning
     case prompts
-    case workflow
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -33,7 +32,7 @@ enum DetailSelection: Hashable {
         switch selection {
         case .worktree: return .secondaryTerminal
         case .planning: return .planningTerminal
-        case .prompts, .workflow, .none: return .noPanel
+        case .prompts, .none: return .noPanel
         }
     }
 }
@@ -372,9 +371,6 @@ struct ContentView: View {
                 .hidden()
             Button("") { detailSelection = .prompts }
                 .keyboardShortcut("2", modifiers: .control)
-                .hidden()
-            Button("") { detailSelection = .workflow }
-                .keyboardShortcut("3", modifiers: .control)
                 .hidden()
         }
         .onAppear {
@@ -920,8 +916,6 @@ struct ContentView: View {
                         )
                     }
                 }
-            } else if detailSelection == .workflow {
-                WorkflowEditorView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 if let promptId = selectedPromptId {
                     PromptDetailView(promptId: promptId, editorMode: $promptEditorMode, newlyCreatedPromptId: $newlyCreatedPromptId).id(promptId)

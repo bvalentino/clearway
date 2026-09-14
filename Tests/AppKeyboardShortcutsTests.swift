@@ -54,17 +54,18 @@ final class AppKeyboardShortcutsTests: XCTestCase {
 
     func testControlDigitIsClaimed() {
         XCTAssertTrue(claims([.control], "1"))
-        XCTAssertTrue(claims([.control], "3"))
+        XCTAssertTrue(claims([.control], "2"))
         XCTAssertFalse(claims([.control, .command], "1"), "Ctrl+digit requires no Command")
         XCTAssertFalse(claims([.control], "a"))
         XCTAssertFalse(claims([.command], "1"))
     }
 
     /// The claim stops at the last sidebar destination that exists. A claimed digit with no handler
-    /// is taken from the shell and answered by nobody, so Ctrl+4…9 and Ctrl+0 stay the terminal's —
+    /// is taken from the shell and answered by nobody, so Ctrl+3…9 and Ctrl+0 stay the terminal's —
     /// they are real control codes there (Ctrl+6 is vim's `CTRL-^`).
     func testControlDigitBeyondTheSidebarDestinationsIsNotClaimed() {
         XCTAssertFalse(claims([.control], "0"))
+        XCTAssertFalse(claims([.control], "3"))
         XCTAssertFalse(claims([.control], "4"))
         XCTAssertFalse(claims([.control], "6"))
         XCTAssertFalse(claims([.control], "9"))
@@ -125,6 +126,13 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertFalse(claims([.command, .control], "2"))
     }
 
+    /// Ctrl+3 reached the Workflow sidebar destination before the workflow engine was removed.
+    /// Nothing declares it now, so claiming it would take a key from the shell and answer it
+    /// with nothing.
+    func testRetiredControlDigitThreeIsNotClaimed() {
+        XCTAssertFalse(claims([.control], "3"))
+    }
+
     /// Replacing SwiftUI's `.sidebar` command group leaves macOS's own Enter/Exit Full Screen item
     /// standing, so the app declares no full-screen shortcut and must claim none — a claimed combo
     /// with no handler is taken from the shell and dropped.
@@ -134,10 +142,10 @@ final class AppKeyboardShortcutsTests: XCTestCase {
 
     /// Unlike every other clause, Ctrl+digit tolerates a stray Shift or Option. Pins that shape
     /// against being folded into the `switch` below it as `case [.control]`, which every other
-    /// assertion here would still pass while Ctrl+Shift+3 stopped reaching the sidebar.
+    /// assertion here would still pass while Ctrl+Shift+2 stopped reaching the sidebar.
     func testControlDigitToleratesStrayShiftOrOption() {
-        XCTAssertTrue(claims([.control, .shift], "3"))
-        XCTAssertTrue(claims([.control, .option], "3"))
+        XCTAssertTrue(claims([.control, .shift], "2"))
+        XCTAssertTrue(claims([.control, .option], "2"))
     }
 
     func testNilCharactersAreNotClaimed() {

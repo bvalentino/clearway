@@ -528,3 +528,43 @@ rather than trusting the regex.
 | `xcodegen generate` is skipped, so deleted files still build. | High | Every task's regression check is `./scripts/ci.sh`, which runs it. Never a hand-written `xcodebuild` line. |
 | T7's `WorkTaskManager` surgery takes out the `tasks/` watcher re-arm along with the root `.clearway/` one. | High | T7 names the check explicitly, and the rebased `WorkTaskManagerWatcherTests` cover the debounced reload. |
 | `git status` goes dirty from `default.profraw` after any Debug launch (it is not gitignored). | Low | Read the list before staging; never `git add -A`. |
+
+## Build log
+
+### T1: Retire the Workflow sidebar destination and the WORKFLOW.json editor
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkflowEditorView.swift` | Deleted |
+| `Sources/App/WorkflowEditorModel.swift` | Deleted |
+| `Sources/App/WorkflowEditorDetailForms.swift` | Deleted |
+| `Sources/App/WorkflowActionCard.swift` | Deleted (took `PressableCardButtonStyle` with it) |
+| `Tests/WorkflowEditorModelTests.swift` | Deleted |
+| `Sources/App/SidebarView.swift` | `workflowRow` and its list-body reference removed |
+| `Sources/App/ContentView.swift` | `DetailSelection.workflow`, its `.noPanel` arm, the hidden Ctrl+3 button and the `.workflow` detail branch removed |
+| `Sources/App/AppKeyboardShortcuts.swift` | Ctrl+digit claim narrowed from `"1"…"3"` to `"1"…"2"`; comment updated |
+| `Sources/App/WorkflowSidebarActionCard.swift` | Doc comment no longer names the deleted `WorkflowActionCard` |
+| `Tests/AppKeyboardShortcutsTests.swift` | `testControlDigitIsClaimed` asserts `"2"`; `testControlDigitToleratesStrayShiftOrOption` uses `"2"`; `testControlDigitBeyondTheSidebarDestinationsIsNotClaimed` gained `"3"`; new `testRetiredControlDigitThreeIsNotClaimed` pin |
+| `Tests/BottomPanelActionTests.swift` | `action(.workflow)` dropped |
+
+**Evidence: the Ctrl+3 pins watched failing against the unfixed claim range**
+
+With `scalar <= "3"` temporarily restored in `AppKeyboardShortcuts.swift` and
+`-only-testing:ClearwayTests/AppKeyboardShortcutsTests`:
+
+```
+Tests/AppKeyboardShortcutsTests.swift:68: error: -[ClearwayTests.AppKeyboardShortcutsTests testControlDigitBeyondTheSidebarDestinationsIsNotClaimed] : XCTAssertFalse failed
+Tests/AppKeyboardShortcutsTests.swift:133: error: -[ClearwayTests.AppKeyboardShortcutsTests testRetiredControlDigitThreeIsNotClaimed] : XCTAssertFalse failed
+```
+
+The range was restored to `"1"…"2"` immediately afterwards.
+
+**Deviations from the plan:** none.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 502 tests, with 0 failures (0 unexpected)`.
+
+**Task-scoped grep:**
+`git ls-files -- Sources Tests | xargs grep -n 'WorkflowEditor\|PressableCardButtonStyle\|DetailSelection.workflow'`
+returns nothing.

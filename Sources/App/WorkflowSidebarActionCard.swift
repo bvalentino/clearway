@@ -4,8 +4,7 @@ import SwiftUI
 /// the action's name, a prompt preview, and a state glyph reflecting its place in the journey
 /// (completed / current / next / upcoming), plus a trailing ellipsis "more" menu (no chevron) whose
 /// three items the parent wires. Pure presentation: it reaches into no coordinator or manager — the
-/// parent injects the state and the action closures. Distinct from the editor's `WorkflowActionCard`
-/// (which carries edit/reorder/chevron affordances the sidebar deliberately omits).
+/// parent injects the state and the action closures.
 struct WorkflowSidebarActionCard: View {
     let name: String
     let instructions: String
