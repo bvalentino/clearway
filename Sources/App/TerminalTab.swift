@@ -29,11 +29,6 @@ struct TerminalTab {
     let id: UUID
     var kind: Kind
 
-    /// The workflow action slug this tab was opened under, or nil outside a workflow step. Riding
-    /// on the tab is what makes it survive `promoteLauncher`, which mutates `kind` in place. `let`
-    /// because the tag is historical — it records creation and never tracks the worktree's step.
-    let stepSlug: String?
-
     /// The command this launcher submits to, when it must differ from Settings → Main Terminal.
     /// Stamped only by a step's "Run in New Terminal", with the workflow's own resolved agent command
     /// and the step's model already applied — the two must travel together, since a model is authored
@@ -43,10 +38,9 @@ struct TerminalTab {
     /// needs no teardown of its own.
     let launcherCommand: String?
 
-    init(id: UUID, kind: Kind, stepSlug: String?, launcherCommand: String? = nil) {
+    init(id: UUID, kind: Kind, launcherCommand: String? = nil) {
         self.id = id
         self.kind = kind
-        self.stepSlug = stepSlug
         self.launcherCommand = launcherCommand
     }
 

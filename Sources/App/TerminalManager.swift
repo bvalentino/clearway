@@ -173,25 +173,13 @@ class TerminalManager: ObservableObject {
     /// creation so manual Cmd+J toggles afterwards are preserved.
     var openSecondaryOnStartProvider: () -> Bool = { false }
 
-    /// The workflow step a worktree currently sits on (an action slug), or nil. Wired from
-    /// `ContentView` to `WorkTaskCoordinator.currentWorkflowStep(forWorktree:)`. The default
-    /// leaves every tab untagged, which is what a project without a JSON workflow gets.
-    var currentWorkflowStepProvider: (String) -> String? = { _ in nil }
-
-    /// A new main tab, stamped at birth with the step its worktree is on so the strip can badge
-    /// it. Every tab-creating path goes through here, so no caller can forget the stamp and no
-    /// launch path needs to pass its slug in — each writes `status` before creating its tab.
+    /// A new main tab. Every tab-creating path goes through here.
     private func makeTab(
         _ kind: TerminalTab.Kind,
         in worktreeId: String,
         launcherCommand: String? = nil
     ) -> TerminalTab {
-        TerminalTab(
-            id: UUID(),
-            kind: kind,
-            stepSlug: currentWorkflowStepProvider(worktreeId),
-            launcherCommand: launcherCommand
-        )
+        TerminalTab(id: UUID(), kind: kind, launcherCommand: launcherCommand)
     }
 
     /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary
