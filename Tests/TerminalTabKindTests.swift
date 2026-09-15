@@ -3,7 +3,7 @@ import XCTest
 
 final class TerminalTabKindTests: XCTestCase {
     func testLauncherTabHasNilSurfaceAndReportsLauncher() {
-        let tab = TerminalTab(id: UUID(), kind: .launcher, stepSlug: nil)
+        let tab = TerminalTab(id: UUID(), kind: .launcher)
         XCTAssertTrue(tab.isLauncher)
         XCTAssertNil(tab.surface)
     }
@@ -12,14 +12,14 @@ final class TerminalTabKindTests: XCTestCase {
         // We can't cheaply construct a real SurfaceView in tests (needs ghostty_app_t),
         // so exercise the Kind enum via a raw assertion: the launcher case is distinct
         // from the surface case even without instantiation.
-        let launcher = TerminalTab(id: UUID(), kind: .launcher, stepSlug: nil)
+        let launcher = TerminalTab(id: UUID(), kind: .launcher)
         if case .surface = launcher.kind {
             XCTFail("launcher should not match .surface case")
         }
     }
 
     func testMainTerminalActiveSurfaceIsNilForLauncherActive() {
-        let launcher = TerminalTab(id: UUID(), kind: .launcher, stepSlug: nil)
+        let launcher = TerminalTab(id: UUID(), kind: .launcher)
         let terminal = MainTerminal(tabs: [launcher], activeId: launcher.id)
         XCTAssertNil(terminal.activeSurface)
         XCTAssertEqual(terminal.activeTab?.id, launcher.id)
@@ -29,7 +29,7 @@ final class TerminalTabKindTests: XCTestCase {
     /// because `canSend` gated on `activeSurface != nil`. `sendToActiveMainTab`
     /// accepts launcher tabs (it seeds the draft), so the UI gate must too.
     func testMainTerminalHasActiveTabIsTrueForLauncher() {
-        let launcher = TerminalTab(id: UUID(), kind: .launcher, stepSlug: nil)
+        let launcher = TerminalTab(id: UUID(), kind: .launcher)
         let terminal = MainTerminal(tabs: [launcher], activeId: launcher.id)
         XCTAssertTrue(terminal.hasActiveTab)
         XCTAssertNil(terminal.activeSurface)
@@ -38,25 +38,6 @@ final class TerminalTabKindTests: XCTestCase {
     func testMainTerminalHasActiveTabIsFalseWhenEmpty() {
         let terminal = MainTerminal(tabs: [], activeId: nil)
         XCTAssertFalse(terminal.hasActiveTab)
-    }
-
-    // MARK: - Launcher command
-
-    /// The initializer defaults the stamp to nil, so a caller that omits it — every path but a step's
-    /// "Run in New Terminal" — leaves the tab on Main Terminal. That those other paths do omit it is
-    /// not pinned here: `makeTab` is private and every tab-creating path needs a live
-    /// `ghostty_app_t`. What the stamp resolves to is `WorkflowModelLaunchTests`' subject.
-    func testLauncherCommandIsUnsetUnlessStamped() {
-        XCTAssertNil(TerminalTab(id: UUID(), kind: .launcher, stepSlug: "review").launcherCommand)
-        XCTAssertEqual(
-            TerminalTab(
-                id: UUID(),
-                kind: .launcher,
-                stepSlug: "review",
-                launcherCommand: "codex --model gpt-5.4-codex"
-            ).launcherCommand,
-            "codex --model gpt-5.4-codex"
-        )
     }
 
     // MARK: - Launcher draft append

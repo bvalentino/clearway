@@ -50,19 +50,6 @@ enum YAML {
         return String(text[range])
     }
 
-    /// Replaces the body portion of a frontmatter-tagged document while preserving the
-    /// frontmatter block verbatim. Ensures the result keeps the canonical `\n\n`
-    /// separator between the closing `---` and the body. When no well-formed frontmatter
-    /// is present, returns the new body as-is.
-    static func replacingBody(in text: String, with newBody: String) -> String {
-        guard let range = bodyRange(in: text) else { return newBody }
-        let before = text[..<range.lowerBound]
-        let trailingNewlines = before.reversed().prefix(while: { $0 == "\n" }).count
-        let needed = newBody.isEmpty ? 0 : max(0, 2 - trailingNewlines)
-        let separator = String(repeating: "\n", count: needed)
-        return text.replacingCharacters(in: range, with: separator + newBody)
-    }
-
     /// Character range covering the body (after closing `---` and optional blank separator).
     /// Returns nil when the document has no valid frontmatter delimiters.
     private static func bodyRange(in text: String) -> Range<String.Index>? {

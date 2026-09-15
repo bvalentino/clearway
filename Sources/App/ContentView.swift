@@ -18,7 +18,6 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 enum DetailSelection: Hashable {
     case planning
     case prompts
-    case workflow
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -33,7 +32,7 @@ enum DetailSelection: Hashable {
         switch selection {
         case .worktree: return .secondaryTerminal
         case .planning: return .planningTerminal
-        case .prompts, .workflow, .none: return .noPanel
+        case .prompts, .none: return .noPanel
         }
     }
 }
@@ -298,21 +297,14 @@ struct ContentView: View {
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
-            workTaskCoordinator.ensureShadowTask(forBranch: branch)
+            workTaskManager.createShadowTask(forBranch: branch)
 
             detailSelection = .worktree(wt)
 
-            // The agent launches immediately, decoupled from the after_create hook: it never waits
-            // for the hook and a failing hook can't block it. `completePendingLaunch` relocated
-            // TASK.md into the worktree; a JSON project's seed writes `status = start` — the engine's
-            // ONLY write to `status` — and the loop engine launches the agent. A non-JSON project no-ops.
-            workTaskCoordinator.seedWorkflowStatus(forBranch: branch)
-
-            // The hook runs in parallel in the secondary terminal, reusing the persistent login
-            // shell so its output survives to a usable prompt (no blocking modal, no respawn).
+            // The hook runs in the secondary terminal, reusing the persistent login shell so its
+            // output survives to a usable prompt (no blocking modal, no respawn).
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
-            let workflowHookCmd = workTaskCoordinator.workflowAfterCreateHook()
-            if let cmd = WorktreeHooks.chainCommands(projectHookCmd, workflowHookCmd), let app = ghosttyApp.app {
+            if let cmd = projectHookCmd, let app = ghosttyApp.app {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
@@ -373,22 +365,12 @@ struct ContentView: View {
             Button("") { detailSelection = .prompts }
                 .keyboardShortcut("2", modifiers: .control)
                 .hidden()
-            Button("") { detailSelection = .workflow }
-                .keyboardShortcut("3", modifiers: .control)
-                .hidden()
         }
         .onAppear {
             // Route the launcher decision through the live SettingsManager so clearing
             // the command at runtime immediately skips the prompt screen on new tabs.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
-            terminalManager.currentWorkflowStepProvider = { [weak workTaskCoordinator] in
-                workTaskCoordinator?.currentWorkflowStep(forWorktree: $0)
-            }
-
-            // Supply the live Ghostty app handle so the watcher-driven WORKFLOW.json loop engine
-            // can launch agent surfaces without the per-call app argument.
-            workTaskCoordinator.appProvider = { [ghosttyApp] in ghosttyApp.app }
 
             claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
@@ -480,8 +462,8 @@ struct ContentView: View {
 
     /// Tabs available for the current worktree. On a real worktree the Task tab is always
     /// present; when no (visible) task is linked, `TaskAsideView` renders a Create-Task CTA
-    /// instead of the task card. The main branch never drives a workflow loop, so its Task
-    /// tab is dropped — todos/prompts remain.
+    /// instead of the task card. The main branch is never a task's worktree, so its Task tab is
+    /// dropped — todos/prompts remain.
     private var availableSidePanelTabs: [SidePanelTab] {
         SidePanelTab.available(isMain: selectedWorktree?.isMain == true)
     }
@@ -612,7 +594,6 @@ struct ContentView: View {
         let status = worktree.branch.flatMap { workTaskManager.task(forWorktree: $0)?.status }
         sidePanelTab = resolveSidePanelTab(
             stored: terminalManager.sidePanelTab(for: worktree.id),
-            isWorkflowJSONProject: workTaskCoordinator.isWorkflowJSONProject,
             taskStatus: status, current: sidePanelTab, isMain: worktree.isMain)
     }
 
@@ -679,10 +660,9 @@ struct ContentView: View {
         guard let branch = worktree.branch, let worktreePath = worktree.path else { return }
 
         let isSelected = selectedWorktree?.id == worktree.id
-        let doRemove = { [weak worktreeManager, weak workTaskCoordinator] in
+        let doRemove = { [weak worktreeManager] in
             guard let worktreeManager else { return }
             if isSelected { self.selectFallback() }
-            workTaskCoordinator?.handleWorktreeRemoved(branch: branch)
             // Close surfaces before triggering the worktree removal. This sends SIGHUP
             // immediately and ensures deinit is a no-op when SwiftUI tears down the views.
             // closeWorktree removes the pane from the dict first so the restart observer
@@ -703,8 +683,7 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.startTask(task, app: app))
+        handleStartResult(workTaskCoordinator.startTask(task))
     }
 
     private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {
@@ -814,10 +793,8 @@ struct ContentView: View {
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
-                                    let launcherCommand = activeTab.launcherCommand
-                                        ?? settings.resolvedMainTerminalCommand
                                     PromptLauncherView(
-                                        command: launcherCommand,
+                                        command: settings.resolvedMainTerminalCommand,
                                         autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
                                         draft: Binding(
                                             get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
@@ -830,7 +807,7 @@ struct ContentView: View {
                                                     tabId: activeTab.id,
                                                     in: worktreeId,
                                                     app: app,
-                                                    command: launcherCommand,
+                                                    command: settings.resolvedMainTerminalCommand,
                                                     prompt: prompt
                                                 )
                                             }
@@ -896,7 +873,6 @@ struct ContentView: View {
                                     if let selected = selectedWorktree, let branch = selected.branch {
                                         TaskAsideView(
                                             worktreeBranch: branch,
-                                            worktreeId: selected.id,
                                             projectPath: worktreeManager.projectPath
                                         )
                                     }
@@ -920,8 +896,6 @@ struct ContentView: View {
                         )
                     }
                 }
-            } else if detailSelection == .workflow {
-                WorkflowEditorView(projectPath: worktreeManager.projectPath)
             } else if detailSelection == .prompts {
                 if let promptId = selectedPromptId {
                     PromptDetailView(promptId: promptId, editorMode: $promptEditorMode, newlyCreatedPromptId: $newlyCreatedPromptId).id(promptId)

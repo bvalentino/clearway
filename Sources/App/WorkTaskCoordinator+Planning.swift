@@ -1,23 +1,17 @@
-import AppKit
+import Foundation
 import GhosttyKit
-import os
-
-private let planLogger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "app.getclearway.mac",
-    category: "plan"
-)
 
 extension WorkTaskCoordinator {
 
-    /// Toggles the planning terminal: hides it when open, otherwise opens it running the planning
-    /// agent (or the bare Main Terminal command, or a plain shell).
+    /// Toggles the planning terminal: hides it when open, otherwise opens it running the Main
+    /// Terminal command (or a plain shell).
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
     /// toolbar button `false`, so a click never steals focus. Focus lands after the launch's
     /// `await` rather than on the keypress: the resolved shell PATH is unbounded on a session's
     /// first call.
     func planTask(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
-        guard let task = workTaskManager.tasks.first(where: { $0.id == taskId }) else { return }
+        guard workTaskManager.tasks.contains(where: { $0.id == taskId }) else { return }
         let projectPath = worktreeManager.projectPath
 
         if terminalManager.isTaskTerminalVisible(for: taskId) {
@@ -25,7 +19,7 @@ extension WorkTaskCoordinator {
             return
         }
 
-        if let makeCommand = planningLaunchCommand(for: task) {
+        if let makeCommand = planningLaunchCommand() {
             guard terminalManager.beginTaskLaunch(for: taskId) else { return }
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
@@ -47,27 +41,7 @@ extension WorkTaskCoordinator {
     /// The command the planning terminal runs, as a function of the resolved shell PATH — deferred
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.
-    func planningLaunchCommand(for task: WorkTask) -> ((String) -> String)? {
-        if let instructions = planningInstructions {
-            let prompt = PlanningConfig.renderPlanningPrompt(
-                instructions: instructions,
-                task: task,
-                taskPath: workTaskManager.filePath(for: task)
-            )
-            let agentCmd = planningAgentCommand
-            return { path in
-                let launch = buildAgentPromptCommand(
-                    agentCommand: agentCmd,
-                    prompt: prompt,
-                    path: path,
-                    filePrefix: "clearway-plan"
-                )
-                planLogger.info("plan agent=\(agentCmd, privacy: .public) promptFile=\(launch.promptFile, privacy: .public)")
-                planLogger.debug("plan command: \(launch.command, privacy: .public)")
-                return launch.command
-            }
-        }
-
+    func planningLaunchCommand() -> ((String) -> String)? {
         // The same seam the launcher asks "is a main terminal command configured, or do we drop
         // straight to a login shell?" — trimmed, and nil when the setting is blank.
         guard let command = terminalManager.mainCommandProvider() else { return nil }

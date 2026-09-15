@@ -277,37 +277,17 @@ struct WorkTaskWindow: View {
 
     @ViewBuilder
     private var primaryActionButton: some View {
-        if let task {
-            switch task.status {
-            case WorkTask.ReservedStatus.new:
-                Menu("Start Now") {
-                    Button("Ready to Start") {
-                        saveNow()
-                        workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.readyToStart)
-                    }
-                } primaryAction: {
-                    saveAndPost(WorkTaskNotification.start)
-                }
-                .applyPrimaryActionStyle()
-            case WorkTask.ReservedStatus.readyToStart:
-                Menu("Ready to Start") {
-                    Button("Cancel Ready to Start") {
-                        saveNow()
-                        workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.new)
-                    }
-                } primaryAction: {
-                    saveAndPost(WorkTaskNotification.start)
-                }
-                .applyPrimaryActionStyle()
-            default:
-                EmptyView()
+        if task?.status == WorkTask.ReservedStatus.new {
+            Button("Start Now") {
+                saveAndStart()
             }
+            .applyPrimaryActionStyle()
         }
     }
 
     // MARK: - Helpers
 
-    private func saveAndPost(_ name: Notification.Name) {
+    private func saveAndStart() {
         saveNow()
         guard let task else { return }
         let projectPath = workTaskManager.projectPath
@@ -315,7 +295,7 @@ struct WorkTaskWindow: View {
         // Async so the notification fires after the window closes.
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: name,
+                name: WorkTaskNotification.start,
                 object: projectPath,
                 userInfo: [WorkTaskNotification.taskKey: task]
             )

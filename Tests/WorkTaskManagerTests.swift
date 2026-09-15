@@ -81,7 +81,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         }
 
         XCTAssertTrue(shadow.hidden)
-        XCTAssertEqual(shadow.status, WorkTask.ReservedStatus.inProgress, ".new / .readyToStart are planning-only; worktree tasks start in-progress")
+        XCTAssertEqual(shadow.status, WorkTask.ReservedStatus.inProgress, ".new is planning-only; worktree tasks start in-progress")
         XCTAssertEqual(shadow.worktree, "feature/alpha")
         XCTAssertEqual(shadow.title, "", "placeholder tasks have no title until the user fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == shadow.id }))
@@ -246,20 +246,20 @@ final class WorkTaskManagerTests: TempRootTestCase {
 
     /// Changing status on a placeholder task must persist without flipping `hidden` — the user
     /// can track worktree state without surfacing it in Planning.
-    func testSetStatusOnHiddenTaskPreservesHiddenFlag() throws {
+    func testStatusWriteOnHiddenTaskPreservesHiddenFlag() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
 
         guard let shadow = manager.createShadowTask(forBranch: "feature/state") else {
             XCTFail("createShadowTask returned nil")
             return
         }
-        manager.setStatus(shadow, to: WorkTask.ReservedStatus.qa)
+        manager.updateFields(id: shadow.id) { $0.status = "review" }
 
         guard let reloaded = manager.tasks.first(where: { $0.id == shadow.id }) else {
-            XCTFail("Task missing after setStatus")
+            XCTFail("Task missing after the status write")
             return
         }
-        XCTAssertEqual(reloaded.status, WorkTask.ReservedStatus.qa)
+        XCTAssertEqual(reloaded.status, "review")
         XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
     }
 
@@ -516,7 +516,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let novelTask = WorkTask(
             id: UUID(),
             title: "Brand New",
-            status: WorkTask.ReservedStatus.readyToStart,
+            status: "review",
             worktree: nil,
             body: "Fallback body"
         )
@@ -527,7 +527,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let diskContent = try String(contentsOfFile: diskPath, encoding: .utf8)
         let reparsed = WorkTask.parse(from: diskContent, id: novelTask.id, createdAt: novelTask.createdAt)
         XCTAssertEqual(reparsed?.title, "Brand New")
-        XCTAssertEqual(reparsed?.status, WorkTask.ReservedStatus.readyToStart)
+        XCTAssertEqual(reparsed?.status, "review")
         XCTAssertEqual(reparsed?.body, "Fallback body")
     }
 
@@ -547,12 +547,10 @@ final class WorkTaskManagerTests: TempRootTestCase {
         var planned = seed
         planned.title = "Planned title"
         planned.body = "Full planned brief with acceptance criteria."
-        planned.status = WorkTask.ReservedStatus.readyToStart
+        planned.status = WorkTask.ReservedStatus.inProgress
         let path = manager.filePath(for: seed)
         try planned.serialized().write(toFile: path, atomically: true, encoding: .utf8)
 
-        var reloadedCallbacks = 0
-        manager.onTasksReloaded = { _ in reloadedCallbacks += 1 }
         manager.reloadFromDisk()
 
         guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else {
@@ -560,29 +558,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         }
         XCTAssertEqual(pool.title, "Planned title")
         XCTAssertEqual(pool.body, "Full planned brief with acceptance criteria.")
-        XCTAssertEqual(pool.status, WorkTask.ReservedStatus.readyToStart)
-        // Central-only tasks have no worktree — onTasksReloaded is skipped when branch set is empty.
-        XCTAssertEqual(reloadedCallbacks, 0)
-    }
-
-    /// Pure no-op reload does not fire onTasksReloaded (no needless engine churn).
-    func testReloadNoOpDoesNotFireOnTasksReloaded() throws {
-        let worktreeTask = WorkTask(
-            id: UUID(),
-            title: "Stable",
-            status: "spec",
-            worktree: "feature/noop"
-        )
-        let worktreePath = try seedWorktreeTask(dir: "wt-noop", worktreeTask)
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        manager.worktreeResolver = { [(branch: "feature/noop", path: worktreePath)] }
-        manager.setWatchedWorktrees([worktreePath])
-
-        var reloadedCallbacks = 0
-        manager.onTasksReloaded = { _ in reloadedCallbacks += 1 }
-        manager.reloadFromDisk()
-        manager.reloadFromDisk()
-        XCTAssertEqual(reloadedCallbacks, 0, "identical pool must not re-notify the engine")
+        XCTAssertEqual(pool.status, WorkTask.ReservedStatus.inProgress)
     }
 
     /// External rewrite of an open worktree TASK.md status is adopted by the pool after reload.
@@ -604,77 +580,13 @@ final class WorkTaskManagerTests: TempRootTestCase {
         }
         try advanced.serialized().write(toFile: manager.filePath(for: pooled), atomically: true, encoding: .utf8)
 
-        var reloadedBranches: [String] = []
-        manager.onTasksReloaded = { branches in reloadedBranches = branches }
         manager.reloadFromDisk()
 
         XCTAssertEqual(manager.task(forWorktree: "feature/status")?.status, "work_breakdown")
         XCTAssertEqual(manager.task(forWorktree: "feature/status")?.body, "Expanded brief")
-        XCTAssertTrue(reloadedBranches.contains("feature/status"))
     }
 
     // MARK: - Field writers re-base by id
-
-    /// setAutopilot with a stale full snapshot must not clobber fresher title/body/status on disk.
-    func testSetAutopilotWithStaleSnapshotPreservesDiskContent() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = manager.createTask(title: "Original") else {
-            XCTFail("createTask returned nil"); return
-        }
-        manager.updateFields(id: seed.id) {
-            $0.title = "Agent expanded title"
-            $0.body = "Agent expanded body"
-            $0.status = "work_breakdown"
-            $0.autopilot = true
-        }
-
-        var stale = seed
-        stale.title = "Original"
-        stale.body = ""
-        stale.status = "spec"
-        stale.autopilot = true
-        manager.setAutopilot(stale, to: false)
-
-        guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else {
-            XCTFail("Task missing"); return
-        }
-        XCTAssertEqual(pool.autopilot, false)
-        XCTAssertEqual(pool.title, "Agent expanded title")
-        XCTAssertEqual(pool.body, "Agent expanded body")
-        XCTAssertEqual(pool.status, "work_breakdown")
-
-        let disk = try String(contentsOfFile: manager.filePath(for: pool), encoding: .utf8)
-        let reparsed = WorkTask.parse(from: disk, id: seed.id, createdAt: seed.createdAt)
-        XCTAssertEqual(reparsed?.title, "Agent expanded title")
-        XCTAssertEqual(reparsed?.status, "work_breakdown")
-        XCTAssertEqual(reparsed?.autopilot, false)
-    }
-
-    /// setStatus with a stale snapshot only changes status; title/body stay from disk base.
-    func testSetStatusWithStaleSnapshotPreservesDiskContent() throws {
-        let manager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = manager.createTask(title: "Original") else {
-            XCTFail("createTask returned nil"); return
-        }
-        manager.updateFields(id: seed.id) {
-            $0.title = "Fresh title"
-            $0.body = "Fresh body"
-            $0.status = WorkTask.ReservedStatus.inProgress
-        }
-
-        var stale = seed
-        stale.title = "Original"
-        stale.body = ""
-        stale.status = WorkTask.ReservedStatus.new
-        manager.setStatus(stale, to: WorkTask.ReservedStatus.qa)
-
-        guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else {
-            XCTFail("Task missing"); return
-        }
-        XCTAssertEqual(pool.status, WorkTask.ReservedStatus.qa)
-        XCTAssertEqual(pool.title, "Fresh title")
-        XCTAssertEqual(pool.body, "Fresh body")
-    }
 
     /// applyEditorBuffer re-bases system fields from disk so a lagging pool cannot re-publish
     /// a pre-agent status over a newer file.

@@ -2,10 +2,8 @@ import SwiftUI
 
 // MARK: - Chip subviews
 
-/// A tab chip: an optional workflow step badge, the title, and the close button that appears on
-/// hover or while active.
+/// A tab chip: the title and the close button that appears on hover or while active.
 private struct TabChip: View {
-    let stepName: String?
     let title: String
     let isActive: Bool
     let onActivate: () -> Void
@@ -17,10 +15,6 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if let stepName {
-                WorkflowStepBadge(name: stepName, tint: isActive ? .white : .primary)
-            }
-
             Text(title)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -67,7 +61,6 @@ private struct TabChip: View {
 /// Scoping `@ObservedObject` here prevents whole-strip rebuilds on every title update.
 private struct TerminalTabChip: View {
     @ObservedObject var surface: Ghostty.SurfaceView
-    let stepName: String?
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -76,7 +69,6 @@ private struct TerminalTabChip: View {
 
     var body: some View {
         TabChip(
-            stepName: stepName,
             title: surface.title.isEmpty ? "Terminal" : surface.title,
             isActive: isActive,
             onActivate: onActivate,
@@ -97,7 +89,6 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var worktreeManager: WorktreeManager
-    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
@@ -134,37 +125,32 @@ struct MainTerminalTabStrip: View {
 
     private static let chipMinWidth: CGFloat = 140
 
-    /// A badged chip spends width on the step name before the title gets any, so the strip
-    /// widens its chips whenever a workflow step is on screen.
-    private static let badgedChipMinWidth: CGFloat = 200
-
     private var tabsContainer: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
         let activeId = terminalManager.mainActiveTabId(for: worktreeId)
-        let minWidth = tabs.contains(where: { $0.stepSlug != nil }) ? Self.badgedChipMinWidth : Self.chipMinWidth
         return ViewThatFits(in: .horizontal) {
-            equalWidthLayout(tabs: tabs, activeId: activeId, minWidth: minWidth)
-            scrollableLayout(tabs: tabs, activeId: activeId, minWidth: minWidth)
+            equalWidthLayout(tabs: tabs, activeId: activeId)
+            scrollableLayout(tabs: tabs, activeId: activeId)
         }
         .frame(height: 28)
     }
 
-    private func equalWidthLayout(tabs: [TerminalTab], activeId: UUID?, minWidth: CGFloat) -> some View {
+    private func equalWidthLayout(tabs: [TerminalTab], activeId: UUID?) -> some View {
         HStack(spacing: 4) {
             ForEach(tabs, id: \.id) { tab in
                 chip(for: tab, isActive: tab.id == activeId)
-                    .frame(minWidth: minWidth, maxWidth: .infinity)
+                    .frame(minWidth: Self.chipMinWidth, maxWidth: .infinity)
             }
         }
     }
 
-    private func scrollableLayout(tabs: [TerminalTab], activeId: UUID?, minWidth: CGFloat) -> some View {
+    private func scrollableLayout(tabs: [TerminalTab], activeId: UUID?) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(tabs, id: \.id) { tab in
                         chip(for: tab, isActive: tab.id == activeId)
-                            .frame(width: minWidth)
+                            .frame(width: Self.chipMinWidth)
                             .id(tab.id)
                     }
                 }
@@ -198,13 +184,6 @@ struct MainTerminalTabStrip: View {
         .disabled(ghosttyApp.app == nil)
     }
 
-    /// The action's current name from `WORKFLOW.json`, so a rename shows up without touching the
-    /// tab, falling back to the frozen slug's humanized form.
-    private func stepName(for tab: TerminalTab) -> String? {
-        guard let slug = tab.stepSlug else { return nil }
-        return workTaskCoordinator.workflowActionName(slug) ?? WorkTask.displayLabel(for: slug)
-    }
-
     @ViewBuilder
     private func chip(for tab: TerminalTab, isActive: Bool) -> some View {
         let onActivate = { terminalManager.activateMainTab(id: tab.id, in: worktreeId) }
@@ -223,7 +202,6 @@ struct MainTerminalTabStrip: View {
         switch tab.kind {
         case .launcher:
             TabChip(
-                stepName: stepName(for: tab),
                 title: "New Tab",
                 isActive: isActive,
                 onActivate: onActivate,
@@ -234,7 +212,6 @@ struct MainTerminalTabStrip: View {
         case .surface(let surface):
             TerminalTabChip(
                 surface: surface,
-                stepName: stepName(for: tab),
                 isActive: isActive,
                 onActivate: onActivate,
                 onClose: onClose,
