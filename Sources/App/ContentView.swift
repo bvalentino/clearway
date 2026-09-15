@@ -196,7 +196,10 @@ struct ContentView: View {
             HookTerminalSheet(hook: hook)
         }
         .toolbar {
-            if selectedWorktree != nil {
+            if let runWorktree = selectedWorktree {
+                ToolbarItem(placement: .primaryAction) {
+                    RunCommandMenu(worktree: runWorktree)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showRemoveConfirmation = true
