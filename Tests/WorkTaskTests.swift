@@ -68,6 +68,28 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(WorkTask.migrateStatus("review"), "review", "arbitrary slugs pass through unchanged")
     }
 
+    /// The retired `ready_to_start` marker migrates back to `new` on parse and writes through on
+    /// the next save, so a task last written by a version that still had the Ready to Start toggle
+    /// is startable again instead of sitting on a slug **Start Now** ignores.
+    func testRetiredReadyToStartMigratesToNew() throws {
+        XCTAssertEqual(WorkTask.migrateStatus("ready_to_start"), WorkTask.ReservedStatus.new)
+
+        let id = UUID()
+        let legacy = """
+        ---
+        id: \(id.uuidString)
+        title: "Queued"
+        status: ready_to_start
+        ---
+
+        Body text
+        """
+
+        let parsed = try XCTUnwrap(WorkTask.parse(from: legacy, id: id, createdAt: Date()))
+        XCTAssertEqual(parsed.status, WorkTask.ReservedStatus.new)
+        XCTAssertTrue(parsed.serialized().contains("status: new"), "the migrated slug must write through")
+    }
+
     /// The retired `autopilot` / `completed` / `error_message` fields are no longer part of the
     /// model: a `TASK.md` still carrying them parses, and re-serializing drops all three while
     /// preserving every other field.

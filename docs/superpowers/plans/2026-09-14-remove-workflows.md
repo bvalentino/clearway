@@ -579,6 +579,7 @@ state Clearway can write. Recorded in the spec as decision 13.
 **Known consequence (accepted, decision 13):** a pre-existing `TASK.md` on `ready_to_start` is no
 longer a startable status, so the list's **Start Now** — enabled for any task without a worktree —
 silently no-ops on it. This is already the behaviour for every other unknown slug under decision 2.
+*Reversed by C6 (decision 17): the slug now migrates to `new` on load, so such a task starts again.*
 
 **Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 303 tests, with 0 failures (0 unexpected)`.
 `git status --porcelain` clean apart from the files above.
@@ -669,6 +670,36 @@ future base-branch/fetch feature.
 `Executed 302 tests, with 0 failures (0 unexpected)` (303 minus the deleted `testDisplayLabels`).
 `git status --porcelain` shows only the eleven modified files above plus this plan; no untracked
 files, and `project.pbxproj` unchanged (no file was added or deleted).
+
+### C6: Migrate the retired `ready_to_start` slug to `new` (review decision 17)
+
+**Requested:** a `TASK.md` written by v1.9.4 with `status: ready_to_start` was permanently unstartable
+with no feedback — **Start Now** renders enabled, `startTask` returns `.ignored` on a status that is
+neither `new` nor `canceled`, and the badge C1 relied on to at least show the state was deleted by C3.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTask.swift` | `migrateStatus` gains `case "ready_to_start": return ReservedStatus.new`, beside the existing `open` / `started` / `stopped` arms; its doc comment now says "retired" rather than "legacy" and records why the slug maps onto the backlog marker |
+| `Tests/WorkTaskTests.swift` | New `testRetiredReadyToStartMigratesToNew`, beside `testLegacyStatusValuesMigrate`: asserts the mapping directly and that a `TASK.md` carrying the slug parses as `new` and re-serializes as `status: new` |
+
+**Evidence.** The arm was removed and the new test run against the unfixed code:
+
+```
+Test Case '-[ClearwayTests.WorkTaskTests testRetiredReadyToStartMigratesToNew]' started.
+Tests/WorkTaskTests.swift:75: error: XCTAssertEqual failed: ("ready_to_start") is not equal to ("new")
+Tests/WorkTaskTests.swift:89: error: XCTAssertEqual failed: ("ready_to_start") is not equal to ("new")
+Tests/WorkTaskTests.swift:90: error: XCTAssertTrue failed - the migrated slug must write through
+```
+
+The arm was then restored and the test passes.
+
+**No doc edit was needed.** `README.md`'s `## Tasks` section and `CLAUDE.md`'s `WorkTaskCoordinator`
+bullet describe what Clearway writes and that status is never rendered; neither states the old
+"unstartable" behaviour, which lived only in the spec's decision 13 and C1's known-consequence note.
+Both now carry a pointer to decision 17.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 306 tests, with 0 failures (0 unexpected)`.
+`git status --porcelain` clean apart from the four files above.
 
 ## Build log
 

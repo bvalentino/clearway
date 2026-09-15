@@ -35,14 +35,17 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         static let canceled = "canceled"
     }
 
-    /// Migrates a legacy status value to its current slug. Older task files used `open`,
-    /// `started`, and `stopped`; everything else passes through unchanged so an arbitrary
-    /// slug round-trips verbatim.
+    /// Migrates a retired status value to its current slug. Older task files used `open`,
+    /// `started`, `stopped` and `ready_to_start`; everything else passes through unchanged so
+    /// an arbitrary slug round-trips verbatim. `ready_to_start` maps back onto the backlog
+    /// marker it stood in front of, so a task last written by a version that still had the
+    /// Ready to Start toggle stays startable.
     static func migrateStatus(_ rawValue: String) -> String {
         switch rawValue {
         case "open": return ReservedStatus.new
         case "started": return ReservedStatus.inProgress
         case "stopped": return ReservedStatus.canceled
+        case "ready_to_start": return ReservedStatus.new
         default: return rawValue
         }
     }
