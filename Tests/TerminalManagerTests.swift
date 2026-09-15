@@ -268,6 +268,25 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
     }
 
+    // MARK: - launcherAgents
+
+    /// A per-tab agent override outlives nothing: tab ids are recycled, so every site that
+    /// drops a launcher draft must drop the override too, or a new tab inherits the agent of
+    /// a dead one. `closeAllSurfaces` is the one such site reachable without a live
+    /// `ghostty_app_t`; the other four are pinned by the grep parity check in the build log.
+    func test_closeAllSurfaces_clearsLauncherAgents() {
+        let manager = TerminalManager()
+        let tabId = UUID()
+        manager.launcherAgents[tabId] = "grok"
+        manager.launcherDrafts[tabId] = "draft"
+
+        manager.closeAllSurfaces()
+
+        XCTAssertNil(manager.launcherAgents[tabId],
+                     "a stale agent override would address the next tab with this id to the wrong agent")
+        XCTAssertNil(manager.launcherDrafts[tabId])
+    }
+
     // MARK: - beginTaskLaunch
 
     /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else

@@ -797,8 +797,12 @@ struct ContentView: View {
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
+                                    // Resolved once: rendering one agent's name while submitting to
+                                    // another is the failure this single binding rules out.
+                                    let launcherAgent = terminalManager.launcherAgents[activeTab.id]
+                                        ?? settings.resolvedMainTerminalCommand
                                     PromptLauncherView(
-                                        command: settings.resolvedMainTerminalCommand,
+                                        command: launcherAgent,
                                         autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
                                         draft: Binding(
                                             get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
@@ -811,7 +815,7 @@ struct ContentView: View {
                                                     tabId: activeTab.id,
                                                     in: worktreeId,
                                                     app: app,
-                                                    command: settings.resolvedMainTerminalCommand,
+                                                    command: launcherAgent,
                                                     prompt: prompt
                                                 )
                                             }

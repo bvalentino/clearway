@@ -106,6 +106,7 @@ class TerminalManager: ObservableObject {
         taskTerminalVisible.removeAll()
         taskTerminalHeights.removeAll()
         launcherDrafts.removeAll()
+        launcherAgents.removeAll()
     }
 
     private func handleDesktopNotification(from surface: Ghostty.SurfaceView) {
@@ -204,6 +205,12 @@ class TerminalManager: ObservableObject {
     /// explicitly so the launcher view re-renders and pushes the new text in.
     var launcherDrafts: [UUID: String] = [:]
 
+    /// Per-launcher-tab agent override. A tab with an entry here addresses its prompt to that
+    /// agent instead of Settings → Main Terminal. Keyed and cleared exactly like `launcherDrafts`,
+    /// and not `@Published` for the same reason: it is written alongside an explicit
+    /// `objectWillChange.send()`.
+    var launcherAgents: [UUID: String] = [:]
+
     /// One-shot signal: the id of a launcher tab that was *explicitly created* (Cmd+T)
     /// and should focus its prompt input on mount. Set in `appendLauncherTab`, read by
     /// `PromptLauncherView` via `ContentView`, and cleared once consumed. Plain selection
@@ -252,10 +259,15 @@ class TerminalManager: ObservableObject {
     ///
     /// Creates the pane on-the-fly when it doesn't exist yet. Returns the new tab's id
     /// so callers can later promote it.
+    ///
+    /// `agentOverride` addresses the new tab to a specific agent instead of
+    /// Settings → Main Terminal, and keeps it a launcher even when that setting is "None" —
+    /// otherwise the agent would be swallowed into a bare login shell.
     @discardableResult
-    func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t) -> UUID {
+    func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t, agentOverride: String? = nil) -> UUID {
         let key = worktree.id
         let newTab = TerminalTab(id: UUID(), kind: .launcher)
+        launcherAgents[newTab.id] = agentOverride
 
         if panes[key] != nil {
             panes[key]!.main.tabs.append(newTab)
@@ -271,12 +283,12 @@ class TerminalManager: ObservableObject {
             setInitialPanelVisibility(for: key, worktree: worktree)
         }
 
-        // No main command configured → promote immediately to a login shell (which
+        // No agent for this tab, from either source → promote immediately to a login shell (which
         // focuses via `promoteLauncher`). Otherwise the tab stays a launcher, so signal its
         // view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
         // `pendingFocusTabId` isn't `@Published`, so it must be set *before* the
         // `objectWillChange.send()` below to be visible in the resulting render pass.
-        if mainCommandProvider() == nil {
+        if agentOverride == nil, mainCommandProvider() == nil {
             promoteLauncher(tabId: newTab.id, in: key, app: app)
         } else {
             pendingFocusTabId = newTab.id
@@ -324,6 +336,7 @@ class TerminalManager: ObservableObject {
         panes[worktreeId]!.main.tabs[tabIndex].kind = .surface(newSurface)
         panes[worktreeId]!.main.activeId = tabId
         launcherDrafts.removeValue(forKey: tabId)
+        launcherAgents.removeValue(forKey: tabId)
         // Promotion focuses the new surface directly, so any pending launcher-focus
         // signal for this tab is now moot — drop it so it can't dangle (e.g. the
         // `appendShellTab` path sets it, then promotes here with no launcher to consume it).
@@ -362,6 +375,7 @@ class TerminalManager: ObservableObject {
 
         panes[worktreeId]!.main.tabs.remove(at: tabIndex)
         launcherDrafts.removeValue(forKey: id)
+        launcherAgents.removeValue(forKey: id)
 
         let wasActive = panes[worktreeId]?.main.activeId == id
         var newActiveSurface: Ghostty.SurfaceView?
@@ -456,7 +470,10 @@ class TerminalManager: ObservableObject {
     /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
         if let pane = panes[worktreeId] {
-            for tab in pane.main.tabs { launcherDrafts.removeValue(forKey: tab.id) }
+            for tab in pane.main.tabs {
+                launcherDrafts.removeValue(forKey: tab.id)
+                launcherAgents.removeValue(forKey: tab.id)
+            }
         }
         panes.removeValue(forKey: worktreeId)
         cleanupState(for: worktreeId)
@@ -483,6 +500,7 @@ class TerminalManager: ObservableObject {
         cleanupState(for: worktreeId)
         for tab in pane.main.tabs {
             launcherDrafts.removeValue(forKey: tab.id)
+            launcherAgents.removeValue(forKey: tab.id)
             tab.surface?.closeSurface()
         }
         pane.secondary.closeSurface()

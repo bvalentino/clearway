@@ -661,3 +661,53 @@ assertion made false; it now says "Ctrl+4…9".
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 336 tests, 0 failures; SwiftLint clean.
 `git status --porcelain` before the commit showed only the three paths above plus the plan document;
 no `default.profraw` (no Debug launch).
+
+### T6: Per-tab agent override on launcher tabs
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `launcherAgents: [UUID: String]` beside `launcherDrafts`; `appendLauncherTab(for:app:agentOverride:)`; the promote-to-shell branch gated on `agentOverride == nil`; the override cleared at all five `launcherDrafts` sites |
+| `Sources/App/ContentView.swift` | The launcher branch resolves `launcherAgent` once and passes it to both `PromptLauncherView(command:)` and the `promoteLauncherToAgent(command:)` call |
+| `Tests/TerminalManagerTests.swift` | `test_closeAllSurfaces_clearsLauncherAgents` |
+
+**Evidence.** The test written before the property existed, run on unmodified `TerminalManager.swift`:
+
+```
+Testing failed:
+	Value of type 'TerminalManager' has no member 'launcherAgents'
+❌ Tests/TerminalManagerTests.swift:280:17: value of type 'TerminalManager' has no member 'launcherAgents'
+        manager.launcherAgents[tabId] = "grok"
+Executed 0 tests — Testing cancelled because the build failed.
+```
+
+`closeAllSurfaces` is the only one of the five clear sites reachable from XCTest: the other four
+need a pane, and a pane needs a real `ghostty_app_t`. The plan's grep parity check covers the rest
+and passes — five `removeValue`/`removeAll` calls each, paired on adjacent lines:
+
+```
+108: launcherDrafts.removeAll()          109: launcherAgents.removeAll()
+338: launcherDrafts.removeValue(tabId)   339: launcherAgents.removeValue(tabId)
+377: launcherDrafts.removeValue(id)      378: launcherAgents.removeValue(id)
+474: launcherDrafts.removeValue(tab.id)  475: launcherAgents.removeValue(tab.id)
+502: launcherDrafts.removeValue(tab.id)  503: launcherAgents.removeValue(tab.id)
+```
+
+**Deviations from the plan.** Two, both narrowing.
+
+1. The plan said to record `launcherAgents[newTab.id] = agentOverride` only when the override is
+   non-`nil`. The assignment is unconditional instead: assigning `nil` to a `Dictionary` subscript
+   removes the key, and the key is a freshly minted `UUID` with nothing to remove, so the branch
+   would have been dead code.
+2. The plan named the new parameter's effect but not the comment above the promote branch, which
+   read "No main command configured → promote immediately to a login shell" and became false with
+   the second term added. It now reads "No agent for this tab, from either source".
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 337 tests, 0 failures; SwiftLint clean.
+`git status --porcelain` before the commit showed only the three paths above plus this plan
+document; no `default.profraw` (no Debug launch).
+
+**Not verified here.** The plan's two manual runs (⌘T with Settings → Main Terminal set to an agent,
+and set to "None") are handed to the operator. Nothing in the tree passes an `agentOverride` yet, so
+the only behaviour a manual run can check is that the nil path is unchanged.
