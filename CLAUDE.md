@@ -176,6 +176,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - `TerminalManager.appendLauncherTab` promotes the new tab straight to a login shell when
     `mainCommandProvider() == nil` — Settings → Main Terminal set to "None". Otherwise the tab stays a
     launcher and its view focuses the prompt input.
+  - `SavedCommandStore.swift` owns `~/.clearway/commands.json`, the one global list of saved
+    commands. Array order **is** display order — nothing sorts it, and a reorder rewrites the file.
+    There is deliberately no watcher: the app is the only writer and `SavedCommandManager` is
+    process-wide, so the case a watcher would cover cannot arise.
   - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
     installs a new source over the old one without cancelling it, so the old cancel handler never
     runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the
