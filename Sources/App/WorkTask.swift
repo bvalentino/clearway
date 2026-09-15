@@ -17,7 +17,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var attempt: Int?
 
     /// When true, the task is a shadow task for a worktree — it tracks state but
-    /// stays out of the Planning backlog until the user exposes it.
+    /// stays out of the Tasks backlog until the user exposes it.
     var hidden: Bool = false
 
     /// Namespace for the `status` slug constants Clearway knows by name. This is an `enum` used
@@ -70,7 +70,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status)")
         // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
-        // Planning task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
+        // task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
         if let attempt { lines.append("attempt: \(attempt)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.

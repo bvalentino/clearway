@@ -16,7 +16,7 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 
 /// What the detail pane is showing.
 enum DetailSelection: Hashable {
-    case planning
+    case tasks
     case prompts
     case worktree(Worktree)
 
@@ -31,7 +31,7 @@ enum DetailSelection: Hashable {
     static func bottomPanelAction(for selection: DetailSelection?) -> BottomPanelAction {
         switch selection {
         case .worktree: return .secondaryTerminal
-        case .planning: return .planningTerminal
+        case .tasks: return .taskTerminal
         case .prompts, .none: return .noPanel
         }
     }
@@ -40,7 +40,7 @@ enum DetailSelection: Hashable {
 /// The bottom panel a destination hosts, if any.
 enum BottomPanelAction: Equatable {
     case secondaryTerminal
-    case planningTerminal
+    case taskTerminal
     case noPanel
 }
 
@@ -62,8 +62,8 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
-    @State private var detailSelection: DetailSelection? = .planning
-    @State private var sidebarSelection: DetailSelection? = .planning
+    @State private var detailSelection: DetailSelection? = .tasks
+    @State private var sidebarSelection: DetailSelection? = .tasks
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
     @State private var sidebarArrowKeyInFlight = false
     @State private var sidebarKeyMonitor: Any?
@@ -107,10 +107,10 @@ struct ContentView: View {
         switch DetailSelection.bottomPanelAction(for: detailSelection) {
         case .secondaryTerminal:
             return PanelToggle(isVisible: secondaryVisible, toggle: toggleAndFocusSecondary)
-        case .planningTerminal:
+        case .taskTerminal:
             guard let taskId = selectedTaskId, let app = ghosttyApp.app else { return nil }
             return PanelToggle(isVisible: terminalManager.isTaskTerminalVisible(for: taskId)) {
-                workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
+                workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app, focusOnReveal: true)
             }
         case .noPanel:
             return nil
@@ -142,12 +142,12 @@ struct ContentView: View {
     }
 
     /// Action exposed via `focusedSceneValue` so the File > New Task menu item
-    /// creates a task and navigates to it in Planning.
+    /// creates a task and navigates to it in Tasks.
     private var newTaskAction: (() -> Void)? {
         return { [workTaskManager] in
             guard let task = workTaskManager.createTask() else { return }
-            // Write synchronously so Planning mounts with the new selection in one render pass.
-            detailSelection = .planning
+            // Write synchronously so Tasks mounts with the new selection in one render pass.
+            detailSelection = .tasks
             selectedTaskId = task.id
             newlyCreatedTaskId = task.id   // one-shot focus signal (creation only)
         }
@@ -259,7 +259,7 @@ struct ContentView: View {
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
             if sidebarSelection != new { sidebarSelection = new }
-            if old == .planning || old == .prompts {
+            if old == .tasks || old == .prompts {
                 commitListsColumnWidth()
             }
             if new?.worktree == nil && terminalManager.activeSurfaceId != nil {
@@ -359,7 +359,7 @@ struct ContentView: View {
             }
 
             // Ctrl+N: select top-level sidebar destinations
-            Button("") { detailSelection = .planning }
+            Button("") { detailSelection = .tasks }
                 .keyboardShortcut("1", modifiers: .control)
                 .hidden()
             Button("") { detailSelection = .prompts }
@@ -420,7 +420,7 @@ struct ContentView: View {
             installMainTerminalKeyMonitor()
         }
         .onDisappear {
-            if detailSelection == .planning || detailSelection == .prompts {
+            if detailSelection == .tasks || detailSelection == .prompts {
                 commitListsColumnWidth()
             }
             pendingRefresh?.cancel()
@@ -599,7 +599,7 @@ struct ContentView: View {
 
     /// Persists the current lists-column width to both `@State` and `UserDefaults`.
     ///
-    /// This must be called **only at commit points** — navigating away from Planning/Prompts,
+    /// This must be called **only at commit points** — navigating away from Tasks/Prompts,
     /// or `.onDisappear`. Do NOT call from `columnWidthReader` or any other live geometry
     /// callback. The `ideal:` parameter of `.navigationSplitViewColumnWidth` re-seeds the
     /// column to that value whenever the modifier is re-evaluated with a changed value, so
@@ -628,7 +628,7 @@ struct ContentView: View {
         if let mainWt = worktreeManager.worktrees.first(where: \.isMain) {
             detailSelection = .worktree(mainWt)
         } else {
-            detailSelection = .planning
+            detailSelection = .tasks
         }
     }
 
@@ -719,7 +719,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var contentColumn: some View {
-        if detailSelection == .planning {
+        if detailSelection == .tasks {
             WorkTaskListView(
                 selection: $selectedTaskId,
                 editorMode: $taskEditorMode,
@@ -902,7 +902,7 @@ struct ContentView: View {
                 } else {
                     detailPlaceholder("Select a prompt")
                 }
-            } else if detailSelection == .planning {
+            } else if detailSelection == .tasks {
                 if let taskId = selectedTaskId {
                     TaskDetailView(taskId: taskId, editorMode: $taskEditorMode, newlyCreatedTaskId: $newlyCreatedTaskId).id(taskId)
                 } else {

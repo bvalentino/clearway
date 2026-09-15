@@ -70,7 +70,7 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $sidebarSelection) {
-            planningRow
+            tasksRow
             promptsRow
             defaultWorktreeSection
             ForEach(groupManager.groups) { group in
@@ -184,10 +184,10 @@ struct SidebarView: View {
 
     // MARK: - Sections
 
-    private var planningRow: some View {
+    private var tasksRow: some View {
         let icon = workTaskManager.tasks.contains(where: { $0.worktree == nil }) ? "tray.full" : "tray"
-        return destinationRow("Planning", systemImage: icon, shortcutHint: "⌃1")
-            .tag(DetailSelection.planning)
+        return destinationRow("Tasks", systemImage: icon, shortcutHint: "⌃1")
+            .tag(DetailSelection.tasks)
     }
 
     private var promptsRow: some View {

@@ -1,21 +1,21 @@
 import XCTest
 @testable import Clearway
 
-/// Pins `planningLaunchCommand`, the choice behind both doors onto the planning terminal (the Plan
-/// icon and Cmd+J): the bare Main Terminal command, or a plain shell. `planTask` itself is
-/// unreachable from XCTest — it takes a non-optional `ghostty_app_t` — so this helper is the whole
-/// testable surface of the launch.
+/// Pins `taskTerminalLaunchCommand`, the choice behind both doors onto the task terminal (the
+/// toolbar toggle and Cmd+J): the bare Main Terminal command, or a plain shell. `toggleTaskTerminal`
+/// itself is unreachable from XCTest — it takes a non-optional `ghostty_app_t` — so this helper is
+/// the whole testable surface of the launch.
 @MainActor
-final class PlanningLaunchCommandTests: TempRootTestCase {
+final class TaskTerminalLaunchCommandTests: TempRootTestCase {
 
-    override static var tempRootPrefix: String { "clearway-planning-launch" }
+    override static var tempRootPrefix: String { "clearway-task-terminal-launch" }
 
     /// A Main Terminal command is set: it runs bare, exactly as `buildBareCommand` builds it.
     func testBareMainTerminalCommandWhenConfigured() throws {
         let coordinator = makeCoordinator()
         coordinator.terminalManager.mainCommandProvider = { "claude" }
 
-        let makeCommand = try XCTUnwrap(coordinator.planningLaunchCommand())
+        let makeCommand = try XCTUnwrap(coordinator.taskTerminalLaunchCommand())
         let command = makeCommand("/usr/bin:/bin")
 
         XCTAssertEqual(
@@ -33,6 +33,6 @@ final class PlanningLaunchCommandTests: TempRootTestCase {
         let coordinator = makeCoordinator()
         coordinator.terminalManager.mainCommandProvider = { nil }
 
-        XCTAssertNil(coordinator.planningLaunchCommand())
+        XCTAssertNil(coordinator.taskTerminalLaunchCommand())
     }
 }

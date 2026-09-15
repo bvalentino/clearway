@@ -161,9 +161,9 @@ struct TaskDetailView: View {
                 pendingSave?.cancel()
                 saveNow()
             }
-            .onReceive(NotificationCenter.default.publisher(for: WorkTaskNotification.planningTerminalOpened)) { note in
+            .onReceive(NotificationCenter.default.publisher(for: WorkTaskNotification.taskTerminalOpened)) { note in
                 guard note.object as? UUID == taskId else { return }
-                // Show the rendered task beside the planning terminal, but only
+                // Show the rendered task beside the task terminal, but only
                 // when there's content to preview (mirrors the empty-body guard).
                 if !previewMarkdown.isEmpty {
                     editorMode = .preview

@@ -20,8 +20,8 @@ final class BottomPanelActionTests: XCTestCase {
         XCTAssertEqual(action(.worktree(wt)), .secondaryTerminal)
     }
 
-    func testPlanningHostsThePlanningTerminal() {
-        XCTAssertEqual(action(.planning), .planningTerminal)
+    func testTasksHostTheTaskTerminal() {
+        XCTAssertEqual(action(.tasks), .taskTerminal)
     }
 
     func testDestinationsWithoutABottomPanelGetNothing() {
