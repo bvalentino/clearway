@@ -300,3 +300,41 @@ it and the file is clean again.
 (306 at base, +7 from this task). Run after the last edit. `git status --porcelain` shows only
 `Sources/App/Worktree.swift`, `Tests/WorktreeTests.swift` and the two untracked doc files this commit
 adds; no `default.profraw` (no Debug launch was made).
+
+### T2: `showDetachedWorktrees` preference and its Settings row
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SettingsManager.swift` | `SettingsKey.showDetachedWorktrees = "clearway.showDetachedWorktrees"` added to the enum; `@Published var showDetachedWorktrees: Bool` with a `didSet` write placed directly below `openSecondaryOnStart`; `init(defaults:)` reads it back as `object(forKey:) as? Bool ?? false`. Mirrors `openSecondaryOnStart` line for line. |
+| `Sources/App/SettingsView.swift` | One `Toggle("Show detached worktrees", isOn:)` appended to `Section("Appearance")`, below "Open secondary terminal on start". No footer, no helper text, no new section; the `.frame(width: 450, height: 420)` is untouched. |
+| `Tests/SettingsManagerTests.swift` | `// MARK: - Show detached worktrees` block with the default / persists-across-instances / turned-back-off trio, against the per-test injected suite. |
+
+**Evidence**
+
+The property was first landed with an empty `didSet`, so the RED was an assertion failure rather than
+a compile error. `./scripts/ci.sh` against that stub, exit 65:
+
+```
+Test Suite 'SettingsManagerTests' started at 2026-09-15 00:31:18.272.
+    ✖ test_showDetachedWorktrees_persistsAcrossInstances, XCTAssertTrue failed
+Executed 15 tests, with 1 failure (0 unexpected) in 1.596 (1.604) seconds
+Executed 316 tests, with 1 failure (0 unexpected) in 34.879 (35.044) seconds
+```
+
+`test_showDetachedWorktrees_defaultsToFalse` and `test_showDetachedWorktrees_canBeTurnedBackOff` pass
+against that stub by construction — a value that is never written always reads back false. They pin
+the default and the clear-on-false path against a future `didSet` that writes only the true case, so
+they are guards, not watched failures, and the plan asks for all three.
+
+**Deviations**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0, SwiftLint clean, build succeeded, `Executed 316 tests, with 0 failures`
+(313 after T1, +3 from this task). Run after the last edit. `git status --porcelain` shows only
+`Sources/App/SettingsManager.swift`, `Sources/App/SettingsView.swift` and
+`Tests/SettingsManagerTests.swift`; no `default.profraw` (no Debug launch was made).

@@ -104,4 +104,28 @@ final class SettingsManagerTests: XCTestCase {
         let second = SettingsManager(defaults: defaults)
         XCTAssertFalse(second.openSecondaryOnStart)
     }
+
+    // MARK: - Show detached worktrees
+
+    func test_showDetachedWorktrees_defaultsToFalse() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertFalse(manager.showDetachedWorktrees)
+    }
+
+    func test_showDetachedWorktrees_persistsAcrossInstances() {
+        let first = SettingsManager(defaults: defaults)
+        first.showDetachedWorktrees = true
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertTrue(second.showDetachedWorktrees)
+    }
+
+    func test_showDetachedWorktrees_canBeTurnedBackOff() {
+        let first = SettingsManager(defaults: defaults)
+        first.showDetachedWorktrees = true
+        first.showDetachedWorktrees = false
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertFalse(second.showDetachedWorktrees)
+    }
 }
