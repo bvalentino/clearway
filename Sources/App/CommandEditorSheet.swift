@@ -36,19 +36,19 @@ struct CommandEditorSheet: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                field("Name") {
-                    TextField("", text: $name)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                field("Kind") {
-                    Picker("Kind", selection: $kind) {
+                field("Command kind") {
+                    Picker("Command kind", selection: $kind) {
                         ForEach(SavedCommand.Kind.allCases, id: \.self) { option in
                             Text(option.title).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                }
+
+                field("Menu label") {
+                    TextField("", text: $name)
+                        .textFieldStyle(.roundedBorder)
                 }
 
                 if kind == .agent {
@@ -62,21 +62,13 @@ struct CommandEditorSheet: View {
                     }
                 }
 
-                // A terminal command is one shell line by construction — `sendCommand` keeps only
-                // the first — so only the agent prompt gets a multi-line editor.
                 field(kind == .terminal ? "Command" : "Prompt") {
-                    if kind == .terminal {
-                        TextField("", text: $text)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.callout.monospaced())
-                    } else {
-                        TextEditor(text: $text)
-                            .font(.callout)
-                            .frame(height: 120)
-                            .padding(4)
-                            .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
-                    }
+                    TextEditor(text: $text)
+                        .font(kind == .terminal ? .callout.monospaced() : .callout)
+                        .frame(height: 120)
+                        .padding(4)
+                        .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
                 }
 
                 Toggle("Append Enter to run immediately", isOn: $autoRun)

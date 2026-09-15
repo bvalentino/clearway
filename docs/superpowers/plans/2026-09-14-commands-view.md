@@ -464,6 +464,26 @@ no gate. That changes nothing in this plan but the timing constant; say so in th
 None for the operator. The spec's one open question (injection readiness) is assigned to T7, which
 settles it empirically and reports what it found.
 
+## Changelog
+
+Operator change requests raised after the seven plan tasks were committed. Each is part of the
+intended behaviour; no later stage should revert one as unintentional.
+
+### C1: Command editor sheet field order and controls (after T7, commit `c36eae7`)
+
+Requested by the operator from a hands-on check of the sheet. `Sources/App/CommandEditorSheet.swift`:
+
+1. The kind picker is the **first** field and is labelled **"Command kind"** (was second, "Kind").
+2. The name field is labelled **"Menu label"** (was "Name"). The stored property stays `name`.
+3. The command text control is a multi-line `TextEditor` for **both** kinds, at the same 120 pt
+   height for each, so the sheet does not resize when the kind changes. Terminal text keeps its
+   monospaced font; the agent prompt keeps `.callout`. The comment justifying the single-line
+   terminal field is removed — it is no longer true.
+
+Run semantics for a multi-line terminal command are deliberately **unchanged** here:
+`RunCommandMenu.run` and `Ghostty.SurfaceView.sendCommand` are untouched, and the operator is
+deciding that separately. Recorded as decision 22 in the spec.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules

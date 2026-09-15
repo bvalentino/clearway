@@ -36,6 +36,7 @@ worktree toolbar beside Archive / secondary terminal / aside.
 | 19 | What happens to a corrupt or unreadable `commands.json`? | Log a warning and load as empty, mirroring `WorktreeGroupStore.load` (`WorktreeGroupStore.swift:64-70`). The file is only rewritten when the user next changes something, so a transient read failure does not destroy data on its own. | Spec author |
 | 20 | Does anything migrate? | No. There is no prior commands storage and no prior on-disk format. A missing file is the empty list. | Spec author |
 | 21 | Does the worktree aside panel get a Commands tab? | No. `SidePanelTab` (`ContentViewHelpers.swift:31-41`) keeps Task / Todos / Prompts. The brief asks for a sidebar destination and a toolbar dropdown; an aside tab is neither. | Spec author |
+| 22 | How is the editor sheet laid out? | Kind first, labelled "Command kind"; then "Menu label" (the `name` field); then Agent for the agent kind; then the command or prompt text as a multi-line `TextEditor` for **both** kinds at one fixed height, so the sheet does not resize when the kind changes. Supersedes the build-stage assumption that a terminal command is one shell line and needs only a `TextField`. Run semantics are unchanged — `RunCommandMenu.run` and `sendCommand` still send one line — and what a multi-line terminal command should do is a separate decision. Raised from a hands-on check after T7; see the plan's Changelog C1. | Operator |
 
 ## Assumptions
 
