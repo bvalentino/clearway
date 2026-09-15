@@ -3,14 +3,14 @@ import GhosttyKit
 
 extension WorkTaskCoordinator {
 
-    /// Toggles the planning terminal: hides it when open, otherwise opens it running the Main
+    /// Toggles the task terminal: hides it when open, otherwise opens it running the Main
     /// Terminal command (or a plain shell).
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
     /// toolbar button `false`, so a click never steals focus. Focus lands after the launch's
     /// `await` rather than on the keypress: the resolved shell PATH is unbounded on a session's
     /// first call.
-    func planTask(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
+    func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
         guard workTaskManager.tasks.contains(where: { $0.id == taskId }) else { return }
         let projectPath = worktreeManager.projectPath
 
@@ -19,7 +19,7 @@ extension WorkTaskCoordinator {
             return
         }
 
-        if let makeCommand = planningLaunchCommand() {
+        if let makeCommand = taskTerminalLaunchCommand() {
             guard terminalManager.beginTaskLaunch(for: taskId) else { return }
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
@@ -38,10 +38,10 @@ extension WorkTaskCoordinator {
         NotificationCenter.default.post(name: WorkTaskNotification.planningTerminalOpened, object: taskId)
     }
 
-    /// The command the planning terminal runs, as a function of the resolved shell PATH — deferred
+    /// The command the task terminal runs, as a function of the resolved shell PATH — deferred
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.
-    func planningLaunchCommand() -> ((String) -> String)? {
+    func taskTerminalLaunchCommand() -> ((String) -> String)? {
         // The same seam the launcher asks "is a main terminal command configured, or do we drop
         // straight to a login shell?" — trimmed, and nil when the setting is blank.
         guard let command = terminalManager.mainCommandProvider() else { return nil }

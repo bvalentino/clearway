@@ -110,7 +110,7 @@ struct ContentView: View {
         case .taskTerminal:
             guard let taskId = selectedTaskId, let app = ghosttyApp.app else { return nil }
             return PanelToggle(isVisible: terminalManager.isTaskTerminalVisible(for: taskId)) {
-                workTaskCoordinator.planTask(taskId: taskId, app: app, focusOnReveal: true)
+                workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app, focusOnReveal: true)
             }
         case .noPanel:
             return nil

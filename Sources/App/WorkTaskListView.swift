@@ -99,11 +99,11 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button(action: planTask) {
+                Button(action: toggleTaskTerminal) {
                     Image(systemName: "rectangle.bottomhalf.inset.filled")
                         .opacity(taskTerminalOpen ? 1 : 0.5)
                 }
-                .help(taskTerminalOpen ? "Hide planning terminal" : "Show planning terminal")
+                .help(taskTerminalOpen ? "Hide terminal" : "Show terminal")
                 .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
             }
 
@@ -219,9 +219,9 @@ struct WorkTaskListView: View {
         return terminalManager.isTaskTerminalVisible(for: id)
     }
 
-    private func planTask() {
+    private func toggleTaskTerminal() {
         guard let id = selection, let app = ghosttyApp.app else { return }
-        workTaskCoordinator.planTask(taskId: id, app: app)
+        workTaskCoordinator.toggleTaskTerminal(taskId: id, app: app)
     }
 
     private func confirmDeleteTask(_ task: WorkTask) {
