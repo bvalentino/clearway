@@ -7,8 +7,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
     /// The task's current state. A plain slug string: the reserved backlog marker `new`,
-    /// one of the fixed states, or an arbitrary slug left by an external writer.
-    /// Display labels come from `WorkTask.displayLabel(for:)`.
+    /// one of the fixed states, or an arbitrary slug left by an external writer. Clearway
+    /// writes it and carries it through a round-trip, but never renders it.
     var status: String
     var worktree: String?
     var createdAt: Date
@@ -20,19 +20,18 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     /// stays out of the Planning backlog until the user exposes it.
     var hidden: Bool = false
 
-    /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
-    /// a namespace — it has no cases, so it can never be instantiated; the values are plain
-    /// `static let` strings. The first is the reserved backlog marker (pre-worktree); the
-    /// remainder are the fixed states a task moves through once it has a worktree.
+    /// Namespace for the `status` slug constants Clearway knows by name. This is an `enum` used
+    /// purely as a namespace — it has no cases, so it can never be instantiated; the values are
+    /// plain `static let` strings.
     enum ReservedStatus {
         /// Reserved backlog marker (pre-worktree).
         static let new = "new"
 
-        // Fixed middle/terminal states.
+        /// What a task carries once it has a worktree.
         static let inProgress = "in_progress"
-        static let qa = "qa"
-        static let readyForReview = "ready_for_review"
-        static let done = "done"
+
+        /// Read-only: nothing writes it any more. `migrateStatus` maps the legacy `stopped` onto
+        /// it, and `startTask` reads it to allow a restart.
         static let canceled = "canceled"
     }
 
@@ -46,31 +45,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         case "stopped": return ReservedStatus.canceled
         default: return rawValue
         }
-    }
-
-    /// Human-readable label for a status slug. The known reserved/legacy slugs map to their
-    /// existing labels; an arbitrary slug (e.g. `ready_for_review`-style snake_case) is
-    /// humanized (`review` → "Review", `run_tests` → "Run Tests").
-    static func displayLabel(for status: String) -> String {
-        switch status {
-        case ReservedStatus.new: return "New"
-        case ReservedStatus.inProgress: return "In Progress"
-        case ReservedStatus.qa: return "QA"
-        case ReservedStatus.readyForReview: return "Ready for Review"
-        case ReservedStatus.done: return "Done"
-        case ReservedStatus.canceled: return "Canceled"
-        default: return humanize(status)
-        }
-    }
-
-    /// Turns an arbitrary slug into a Title Cased label (`run_tests`/`run-tests` → "Run Tests").
-    /// Falls back to the raw slug when it has no word characters to capitalize.
-    private static func humanize(_ slug: String) -> String {
-        let words = slug
-            .split(whereSeparator: { $0 == "_" || $0 == "-" || $0 == " " })
-            .filter { !$0.isEmpty }
-        guard !words.isEmpty else { return slug }
-        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
     init(id: UUID = UUID(), title: String, status: String = ReservedStatus.new, worktree: String? = nil, body: String = "") {
@@ -110,7 +84,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         return result
     }
 
-    // MARK: - Title Sync Helpers
+    // MARK: - Title Parsing
 
     /// Finds the `title:` line inside the YAML frontmatter and returns the unquoted value.
     /// When the text has no `---` delimiters, falls back to scanning the whole input
@@ -125,20 +99,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             return YAML.unquote(value)
         }
         return nil
-    }
-
-    /// Finds the first `title:` line inside the YAML frontmatter and replaces its value with
-    /// `YAML.quote(newTitle)`. When the text has no `---` delimiters, falls back to the whole
-    /// input (supports bare frontmatter). Returns the input unchanged if no `title:` line is found.
-    static func replacingTitle(in text: String, with newTitle: String) -> String {
-        var lines = text.components(separatedBy: "\n")
-        for index in frontmatterScanRange(in: lines) {
-            let trimmed = lines[index].trimmingCharacters(in: .init(charactersIn: " \t"))
-            guard trimmed.hasPrefix("title:") else { continue }
-            lines[index] = "title: \(YAML.quote(newTitle))"
-            return lines.joined(separator: "\n")
-        }
-        return text
     }
 
     /// Line-index range to scan for frontmatter fields. When the document starts with `---`

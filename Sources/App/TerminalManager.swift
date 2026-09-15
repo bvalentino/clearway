@@ -248,29 +248,6 @@ class TerminalManager: ObservableObject {
         panes[worktreeId]?.main.activeId
     }
 
-    /// Append a plain shell tab (no command) to the given worktree's main terminal and activate it.
-    ///
-    /// Uses `Ghostty.SurfaceView(app, workingDirectory:)` (pattern 1 — login shell).
-    /// Working directory resolves as: active tab's `pwd` → active tab's `initialWorkingDirectory` →
-    /// secondary surface's `initialWorkingDirectory` (worktree root). The secondary fallback
-    /// ensures `+` in the zero-tab state opens at the worktree root rather than `$HOME`.
-    /// Returns `nil` if the pane does not exist.
-    @discardableResult
-    func newShellTab(for worktreeId: String, app: ghostty_app_t) -> Ghostty.SurfaceView? {
-        guard let pane = panes[worktreeId] else { return nil }
-        let activeTab = pane.main.activeTab
-        let dir = activeTab?.surface?.pwd
-            ?? activeTab?.surface?.initialWorkingDirectory
-            ?? pane.secondary.initialWorkingDirectory
-        let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
-        let newTab = TerminalTab(id: UUID(), kind: .surface(newSurface))
-        panes[worktreeId]!.main.tabs.append(newTab)
-        panes[worktreeId]!.main.activeId = newTab.id
-        objectWillChange.send()
-        transferFirstResponder(to: newSurface)
-        return newSurface
-    }
-
     /// Append a new launcher tab (no process) to the given worktree's main terminal and activate it.
     ///
     /// Creates the pane on-the-fly when it doesn't exist yet. Returns the new tab's id

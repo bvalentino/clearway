@@ -34,11 +34,7 @@ struct TaskAsideView: View {
                 if task.hidden {
                     createTaskPlaceholder(for: task)
                 } else {
-                    WorkTaskCard(
-                        task: task,
-                        showStatusBadge: false,
-                        onEdit: { openTaskWindow(task) }
-                    )
+                    WorkTaskCard(task: task, onEdit: { openTaskWindow(task) })
                 }
 
                 if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {

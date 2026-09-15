@@ -253,13 +253,13 @@ final class WorkTaskManagerTests: TempRootTestCase {
             XCTFail("createShadowTask returned nil")
             return
         }
-        manager.updateFields(id: shadow.id) { $0.status = WorkTask.ReservedStatus.qa }
+        manager.updateFields(id: shadow.id) { $0.status = "review" }
 
         guard let reloaded = manager.tasks.first(where: { $0.id == shadow.id }) else {
             XCTFail("Task missing after the status write")
             return
         }
-        XCTAssertEqual(reloaded.status, WorkTask.ReservedStatus.qa)
+        XCTAssertEqual(reloaded.status, "review")
         XCTAssertTrue(reloaded.hidden, "hidden must survive a status change")
     }
 
@@ -516,7 +516,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let novelTask = WorkTask(
             id: UUID(),
             title: "Brand New",
-            status: WorkTask.ReservedStatus.qa,
+            status: "review",
             worktree: nil,
             body: "Fallback body"
         )
@@ -527,7 +527,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let diskContent = try String(contentsOfFile: diskPath, encoding: .utf8)
         let reparsed = WorkTask.parse(from: diskContent, id: novelTask.id, createdAt: novelTask.createdAt)
         XCTAssertEqual(reparsed?.title, "Brand New")
-        XCTAssertEqual(reparsed?.status, WorkTask.ReservedStatus.qa)
+        XCTAssertEqual(reparsed?.status, "review")
         XCTAssertEqual(reparsed?.body, "Fallback body")
     }
 

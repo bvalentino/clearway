@@ -245,22 +245,15 @@ struct WorkTaskListView: View {
 
 struct WorkTaskCard: View {
     let task: WorkTask
-    var showStatusBadge: Bool = true
     var onEdit: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(task.title.isEmpty ? "Untitled" : task.title)
-                    .font(.headline)
-                    .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if showStatusBadge {
-                    Spacer()
-                    WorkTaskStatusBadge(status: task.status)
-                }
-            }
+            Text(task.title.isEmpty ? "Untitled" : task.title)
+                .font(.headline)
+                .foregroundStyle(task.title.isEmpty ? .secondary : .primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text(task.createdAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
@@ -300,47 +293,5 @@ private struct WorkTaskRow: View {
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 5)
-    }
-}
-
-// MARK: - Status Badge
-
-struct WorkTaskStatusBadge: View {
-    let status: String
-    @State private var pulsing = false
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if status == WorkTask.ReservedStatus.inProgress {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 6, height: 6)
-                    .scaleEffect(pulsing ? 1.3 : 1.0)
-                    .opacity(pulsing ? 0.6 : 1.0)
-                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulsing)
-                    .onAppear { pulsing = true }
-            }
-            Text(WorkTask.displayLabel(for: status))
-        }
-        .font(.caption2)
-        .fontWeight(.medium)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .foregroundStyle(Self.badgeColor(for: status))
-        .background(Self.badgeColor(for: status).opacity(0.12), in: Capsule())
-    }
-
-    /// Accent color for a status slug. Known reserved/legacy slugs keep their existing colors; an
-    /// arbitrary slug falls back to the running-state accent.
-    static func badgeColor(for status: String) -> Color {
-        switch status {
-        case WorkTask.ReservedStatus.new: return .blue
-        case WorkTask.ReservedStatus.inProgress: return .green
-        case WorkTask.ReservedStatus.qa: return .purple
-        case WorkTask.ReservedStatus.readyForReview: return .orange
-        case WorkTask.ReservedStatus.done: return .secondary
-        case WorkTask.ReservedStatus.canceled: return .red
-        default: return .green
-        }
     }
 }

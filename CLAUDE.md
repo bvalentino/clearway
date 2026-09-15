@@ -154,11 +154,13 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `ghostty_app_new` still leaves the task list rendering and setting a selection.
     `newTabAction` / `newShellTabAction` still split the two and are the known exceptions.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
-    and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`,
-    `ensureShadowTask`). This is what lets one behavior carry several entry points without the
-    decision being written once per door. Starting a task creates — or focuses — the worktree,
-    relocates its `TASK.md` into it and writes `status = in_progress`; **Clearway launches no agent
-    of its own**, and nothing advances the status afterwards.
+    and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
+    what lets one behavior carry several entry points without the decision being written once per
+    door. Starting a task creates — or focuses — the worktree, relocates its `TASK.md` into it and
+    writes `status = in_progress`; **Clearway launches no agent of its own**, and nothing advances
+    the status afterwards. `status` is frontmatter Clearway writes and round-trips but **never
+    renders** — there is no badge and no label table, so an unrecognized slug needs no handling
+    beyond being carried through untouched.
   - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `grok`, `codex`) has exactly one reader: it
     renders Settings → Main Terminal's picker rows in `SettingsView`. No launch is gated against it,
     so adding a name there only offers it in the picker.

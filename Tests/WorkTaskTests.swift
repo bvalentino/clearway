@@ -68,21 +68,6 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(WorkTask.migrateStatus("review"), "review", "arbitrary slugs pass through unchanged")
     }
 
-    /// Display labels: known reserved/legacy slugs keep their human labels; an arbitrary slug
-    /// is humanized; a value with no word characters falls back to the raw slug.
-    func testDisplayLabels() throws {
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.new), "New")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.inProgress), "In Progress")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.qa), "QA")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.readyForReview), "Ready for Review")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.done), "Done")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.canceled), "Canceled")
-        XCTAssertEqual(WorkTask.displayLabel(for: "review"), "Review")
-        XCTAssertEqual(WorkTask.displayLabel(for: "run_tests"), "Run Tests")
-        XCTAssertEqual(WorkTask.displayLabel(for: "run-tests"), "Run Tests")
-        XCTAssertEqual(WorkTask.displayLabel(for: "_"), "_", "a slug with no words falls back to the raw value")
-    }
-
     /// The retired `autopilot` / `completed` / `error_message` fields are no longer part of the
     /// model: a `TASK.md` still carrying them parses, and re-serializing drops all three while
     /// preserving every other field.

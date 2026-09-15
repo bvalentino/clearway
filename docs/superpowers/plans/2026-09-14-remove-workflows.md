@@ -600,6 +600,75 @@ Ordering only — no item, label, gate or action changed.
 
 **Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 303 tests, with 0 failures (0 unexpected)`.
 
+### C3: Delete the task status badge and its labels (after the simplify pass, review decision 14)
+
+**Requested:** a task's status is never rendered anywhere, so the badge and the label table should
+go. Recorded in the spec as decision 14, which supersedes decisions 1 and 2 where they said the
+badges and the humanized labels stay (both old rows now carry a pointer to it).
+
+`status` remains a frontmatter field Clearway writes (`new` on create, `in_progress` on Start Now)
+and round-trips verbatim; with nothing displaying it, an unknown slug needs no label and is simply
+carried through. `canceled` keeps its readers (`migrateStatus`'s legacy `stopped` mapping and
+`startTask`'s restart-after-cancel arm) and stays; `inProgress` and `new` are written in production
+and stay. `qa`, `readyForReview` and `done` had no reader outside the deleted label/colour tables.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `WorkTaskStatusBadge` and its `badgeColor(for:)` deleted with the `// MARK: - Status Badge` section; `WorkTaskCard.showStatusBadge` deleted and the title `HStack` (a `Spacer` + badge holder with nothing left to hold) collapsed to the bare title `Text` |
+| `Sources/App/TaskAsideView.swift` | The card call loses `showStatusBadge: false` and fits on one line |
+| `Sources/App/WorkTask.swift` | `displayLabel(for:)` and `humanize(_:)` deleted; `ReservedStatus.qa` / `.readyForReview` / `.done` deleted; the `status` property doc and the `ReservedStatus` doc reworded — `canceled` is now documented as read-only |
+| `README.md` | `## Tasks` no longer says the task "moves to *In Progress*" (a rendered label); it names the `status` frontmatter value and states that status is never shown in the app |
+| `CLAUDE.md` | The `WorkTaskCoordinator` bullet gained the same fact, so a future reader does not add handling for an unrecognized slug |
+| `Tests/WorkTaskTests.swift` | `testDisplayLabels` deleted — it pinned only the deleted labels |
+| `Tests/WorkTaskManagerTests.swift` | Four `.qa` stand-ins (arbitrary non-default statuses in `testStatusWriteOnHiddenTaskPreservesHiddenFlag` and `testApplyEditorBufferFallsBackWhenNoExistingTask`) become the literal `"review"`, which also exercises the carried-through-untouched contract |
+
+**Deviations**
+
+- **`WorkTaskCard`'s title `HStack` was removed, not just emptied.** With the badge branch gone it
+  wrapped one `Text` and a now-unreachable `Spacer`; the `VStack` already carries the leading
+  alignment.
+- **The `.qa` test stand-ins became a string literal, not another `ReservedStatus`.** Both tests want
+  "some status that is not the default", and a literal says that without implying the value is one
+  Clearway knows.
+
+### C4: Delete the vestigial Ghostty guard on Start Now (review decision 15)
+
+**Requested:** `ContentView.startWorkTask`'s `guard ghosttyApp.app != nil else { return }` is the last
+trace of `startTask` taking a `ghostty_app_t`. The simplify pass reduced it to an argument-free
+readiness check, but `startTask` neither takes nor touches a terminal, so the guard only made Start
+Now silently no-op when the app handle failed to build. Recorded in the spec as decision 15.
+
+| File | State |
+| --- | --- |
+| `Sources/App/ContentView.swift` | The guard deleted; `startWorkTask` is now the single `handleStartResult(workTaskCoordinator.startTask(task))` call |
+
+`ghosttyApp` keeps other readers in the same file (`newTabAction`, `newShellTabAction`, the
+before-remove hook sheet), so nothing else was pulled out with it. No comment was left about the
+future base-branch/fetch feature.
+
+### C5: Remove pre-existing dead code (review decision 16)
+
+**Requested:** three declarations the review verified as callerless. Each was re-verified by grep over
+`Sources/` and `Tests/` immediately before deletion — every hit was the declaration itself.
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `newShellTab(for:app:)` deleted. Distinct from the live `appendShellTab`, which is what `ContentView.newShellTabAction` calls — so `CLAUDE.md`'s `newTabAction` / `newShellTabAction` line needed no change |
+| `Sources/App/YAMLHelpers.swift` | `replacingBody(in:with:)` deleted; its `bodyRange(in:)` helper stays, still read by `bodyText(in:)` |
+| `Sources/App/WorkTask.swift` | `replacingTitle(in:with:)` deleted; `frontmatterScanRange` stays, still read by `parseTitle`, and the `// MARK: - Title Sync Helpers` header became `// MARK: - Title Parsing` since nothing syncs a title back any more |
+
+**Deviations**
+
+- **One further stale doc line was corrected**, outside the three items: `CLAUDE.md`'s
+  `WorkTaskCoordinator` bullet still listed `ensureShadowTask` as a coordinator method, which the
+  simplify pass deleted (views call `workTaskManager.createShadowTask` directly). Fixing a doc that
+  names a symbol this branch removed is in the same spirit, and reverts nothing recorded above.
+
+**Gate for C3–C5:** `./scripts/ci.sh` after the last edit — passed, exit 0.
+`Executed 302 tests, with 0 failures (0 unexpected)` (303 minus the deleted `testDisplayLabels`).
+`git status --porcelain` shows only the eleven modified files above plus this plan; no untracked
+files, and `project.pbxproj` unchanged (no file was added or deleted).
+
 ## Build log
 
 ### T1: Retire the Workflow sidebar destination and the WORKFLOW.json editor
@@ -1104,12 +1173,13 @@ only to feed the menu's Delete item are gone; the aside's card renders unchanged
   `badgeColor`'s six arms and `displayLabel`/`humanize`. Its only construction sits behind
   `WorkTaskCard.showStatusBadge`, whose one caller passes `false`. This is **pre-existing on `main`**
   (same shape there), and decision 1 records that the status badges and legacy fixed-state labels
-  stay. Removing it is a behaviour change, not a simplification.
+  stay. Removing it is a behaviour change, not a simplification. *Superseded: the operator settled
+  this as decision 14 in the review; removed in C3.*
 - **`WorkTaskCoordinator` is an `ObservableObject` with no `@Published` members.** True, but the
   conformance is the vehicle for `@StateObject` / `@EnvironmentObject` injection; replacing it needs
   a custom `EnvironmentKey`, which is more indirection, not less.
 - **`TerminalManager.newShellTab` has no callers** — already callerless on `main`, so not this
-  branch's residue.
+  branch's residue. *Superseded: decision 16; removed in C5.*
 - **`TaskAsideView`'s two Create Task CTAs are near-duplicates** — also pre-existing.
 - **The Ctrl+3 not-claimed assertion appears twice** — both copies are recorded in T1's Build log
   (one is the range boundary, one the retired-shortcut pin), so neither is accidental.

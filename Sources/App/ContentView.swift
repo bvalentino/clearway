@@ -683,7 +683,6 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        guard ghosttyApp.app != nil else { return }
         handleStartResult(workTaskCoordinator.startTask(task))
     }
 
