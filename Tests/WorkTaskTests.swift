@@ -17,8 +17,8 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(reparsed?.id, original.id, "frontmatter id must take precedence over the caller-supplied id")
     }
 
-    /// A backlog task (no worktree) serializes without a `worktree:` line — Planning tasks aren't
-    /// cluttered with `worktree: null` — and still round-trips to a nil worktree.
+    /// A backlog task (no worktree) serializes without a `worktree:` line — so it isn't cluttered
+    /// with `worktree: null` — and still round-trips to a nil worktree.
     func testBacklogTaskOmitsWorktreeLine() throws {
         let backlog = WorkTask(id: UUID(), title: "Backlog", status: WorkTask.ReservedStatus.new, worktree: nil)
 

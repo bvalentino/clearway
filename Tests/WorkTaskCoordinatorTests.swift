@@ -98,7 +98,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
             $0.status = WorkTask.ReservedStatus.new
         }
 
-        // Whatever ran in the planning terminal rewrote the central file.
+        // Whatever ran in the task terminal rewrote the central file.
         var planned = seed
         planned.title = "Post-plan title"
         planned.body = "Full planned brief."

@@ -365,3 +365,48 @@ build succeeded, `Executed 306 tests, with 0 failures (0 unexpected)` — the sa
 3. Behaviour unchanged: still exactly one poster (`WorkTaskCoordinator+TaskTerminal.swift:38`) and
    one observer (`TaskDetailView.swift:164`); the observer still guards on
    `note.object as? UUID == taskId` and still gates on `!previewMarkdown.isEmpty`.
+
+### T4: Finish the prose in Tests and CLAUDE.md
+
+| File | State |
+| --- | --- |
+| `Tests/WorkTaskCoordinatorTests.swift` | `:101` "ran in the planning terminal" → "ran in the task terminal". The `"Pre-plan draft"` / `"Post-plan title"` / `"Full planned brief."` fixtures and the `:89` doc comment's "pre-plan … post-plan" are untouched (decision 7). |
+| `Tests/TerminalManagerTests.swift` | `:273` "A plan launch" → "A task-terminal launch". The three-line doc comment was rewrapped so no line grows past the file's ~100-column convention. |
+| `Tests/WorkTaskManagerTests.swift` | `:84` assertion *message* "`.new` is planning-only" → "`.new` is backlog-only" (decision 9); the assertion itself is byte-identical. `:248` "surfacing it in Planning" → "in Tasks". |
+| `Tests/WorkTaskTests.swift` | `:20-21` doc comment reworded off "Planning tasks aren't cluttered" — see the deviation below. |
+| `Sources/App/WorkTask.swift` | `:72-73` the doubled "backlog" from T3 tightened — see the deviation below. |
+| `CLAUDE.md` | `:152` "the Planning bottom panel needs `ghosttyApp.app`" → "the Tasks bottom panel needs `ghosttyApp.app`". |
+
+**Evidence.** Comment-only edits plus one assertion-message string: there is no behaviour to regress
+and therefore no regression test to watch fail. The compiler is not an oracle for prose either, so
+the guarantee comes from the diff being closed under inspection — `git diff -U0` is six hunks, every
+changed line a `//`, `///` or Markdown line except `WorkTaskManagerTests.swift:84`, whose change is
+confined to the string literal inside `XCTAssertEqual`'s message argument. The five protected
+fixture strings from decision 7 were re-grepped after the edits and all 24 occurrences across
+`TaskEditorBuffersTests`, `WorkTaskCoordinatorTests`, `WorkTaskManagerTests` and
+`WorkTaskManagerWatcherTests` are byte-identical to base.
+
+**Deviations from the plan.** Two, both wording:
+
+1. `Sources/App/WorkTask.swift:72-73` is not in T4's file list. T3's edit left the sentence saying
+   "backlog" twice — "an absent line means backlog (no worktree), so a fresh **backlog** task isn't
+   cluttered…" — where the second use restates the clause that just defined it. Dropped to "so a
+   fresh task isn't cluttered", which keeps decision 9's word exactly once, where it does work.
+2. `Tests/WorkTaskTests.swift:20` was planned as "Planning tasks aren't cluttered" → "backlog tasks
+   aren't cluttered". That produces the same repetition: the sentence already opens "A backlog task
+   (no worktree) serializes without a `worktree:` line". Written as "— so it isn't cluttered with
+   `worktree: null` —" instead. Decision 9's intent is satisfied (the sentence names the pool as
+   "backlog", once, and never says "Planning"); only the second mention is elided.
+
+**Gate.** `./scripts/ci.sh` — exit 0, run after the last edit. `xcodegen generate`, SwiftLint clean
+(no violations reported), build succeeded, `Executed 306 tests, with 0 failures (0 unexpected)` — the
+same 306 as T1–T3. `git status --porcelain` shows only the six files above; no untracked
+`default.profraw`.
+
+**Acceptance criteria.** All met.
+1. `git ls-files -- Sources Tests | xargs grep -ni 'planning\|planTask'` returns nothing (exit 1),
+   and `git ls-files -- Sources Tests | grep -i planning` returns nothing — closing spec success
+   criteria 3 and 4.
+2. `grep -n 'Planning' CLAUDE.md` returns nothing.
+3. The five decision-7 fixture strings are byte-identical to base; no assertion, fixture or test name
+   changed. `git diff --stat` is 6 files, 10 insertions, 10 deletions.

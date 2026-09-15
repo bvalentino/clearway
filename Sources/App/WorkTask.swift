@@ -70,7 +70,7 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         lines.append("title: \(YAML.quote(title))")
         lines.append("status: \(status)")
         // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
-        // backlog task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
+        // task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
         if let attempt { lines.append("attempt: \(attempt)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.

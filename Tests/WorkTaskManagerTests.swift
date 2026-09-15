@@ -81,7 +81,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
         }
 
         XCTAssertTrue(shadow.hidden)
-        XCTAssertEqual(shadow.status, WorkTask.ReservedStatus.inProgress, ".new is planning-only; worktree tasks start in-progress")
+        XCTAssertEqual(shadow.status, WorkTask.ReservedStatus.inProgress, ".new is backlog-only; worktree tasks start in-progress")
         XCTAssertEqual(shadow.worktree, "feature/alpha")
         XCTAssertEqual(shadow.title, "", "placeholder tasks have no title until the user fills it in")
         XCTAssertTrue(manager.tasks.contains(where: { $0.id == shadow.id }))
@@ -245,7 +245,7 @@ final class WorkTaskManagerTests: TempRootTestCase {
     }
 
     /// Changing status on a placeholder task must persist without flipping `hidden` — the user
-    /// can track worktree state without surfacing it in Planning.
+    /// can track worktree state without surfacing it in Tasks.
     func testStatusWriteOnHiddenTaskPreservesHiddenFlag() throws {
         let manager = WorkTaskManager(projectPath: tempRoot)
 

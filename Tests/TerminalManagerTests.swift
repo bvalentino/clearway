@@ -270,9 +270,9 @@ final class TerminalManagerTests: XCTestCase {
 
     // MARK: - beginTaskLaunch
 
-    /// A plan launch awaits the resolved PATH before it has a surface, so nothing else marks the
-    /// task as busy for that window. A second press must lose the claim rather than start a second
-    /// agent — on a machine whose first resolution blocks, that window is seconds long.
+    /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else
+    /// marks the task as busy for that window. A second press must lose the claim rather than start
+    /// a second agent — on a machine whose first resolution blocks, that window is seconds long.
     func test_beginTaskLaunch_secondClaimIsRefusedUntilTheFirstEnds() {
         let manager = TerminalManager()
         let task = UUID()
