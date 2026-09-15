@@ -327,3 +327,41 @@ untracked `default.profraw`.
 5. Behaviour unchanged: the `focusOnReveal: Bool = false` default, the `beginTaskLaunch` /
    `endTaskLaunch` bracketing, the `mainCommandProvider()` nil-check and every call site's arguments
    are byte-identical apart from the two names.
+
+### T3: Rename the notification constant and finish the Sources prose
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskWindow.swift` | `planningTerminalOpened` → `taskTerminalOpened`, constant and raw string together (`Notification.Name("taskTerminalOpened")`). Doc comment says "task terminal". |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | The single poster at `:38` reads `WorkTaskNotification.taskTerminalOpened`. Nothing else in the file moved. |
+| `Sources/App/TaskDetailView.swift` | The single `.onReceive` publisher reads the renamed constant; the comment says "beside the task terminal". The `note.object as? UUID == taskId` guard and the `!previewMarkdown.isEmpty` gate are byte-identical. |
+| `Sources/App/WorkTask.swift` | `:20` "out of the Planning backlog" → "out of the Tasks backlog" (names the destination); `:73` "a fresh Planning task" → "a fresh backlog task" (names the pool — decision 9). |
+| `Sources/App/WorkTaskManager.swift` | `:131` "without cluttering Planning" → "Tasks"; `:134` "reserved for Planning (pre-worktree)" → "reserved for Tasks (pre-worktree)". |
+
+The constant rename was applied with a word-boundary `perl -pi -e` across exactly the three files
+that mention it, the raw string with a separate literal substitution, so the two could not drift
+apart. Every replacement is shorter than what it replaced, so no line could cross SwiftLint's limit.
+
+**Evidence.** A pure rename with no new behaviour, so there is no regression test to watch fail —
+the compiler is the oracle, as in T1 and T2. `WorkTaskNotification.taskTerminalOpened` is referenced
+from two files other than its declaration, so a missed reference is a build error rather than a
+silent behaviour change. The one thing the compiler could not catch — the constant and its raw
+string drifting apart — is settled by the diff: both lines changed in the same hunk, and
+`grep -rn 'planningTerminalOpened' Sources Tests` returns nothing.
+
+Note the notification is posted and observed in-process only, so the raw-string change carries no
+compatibility risk (spec assumption 2).
+
+**Deviations from the plan.** None.
+
+**Gate.** `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint clean (no violations),
+build succeeded, `Executed 306 tests, with 0 failures (0 unexpected)` — the same 306 as T1 and T2.
+`git status --porcelain` shows only the five files above; no untracked `default.profraw`.
+
+**Acceptance criteria.** All met.
+1. `grep -rn 'planningTerminalOpened' Sources Tests` returns nothing and the raw value is
+   `"taskTerminalOpened"`; the constant and its string changed together.
+2. `git ls-files -- Sources | xargs grep -ni 'planning\|planTask'` returns nothing.
+3. Behaviour unchanged: still exactly one poster (`WorkTaskCoordinator+TaskTerminal.swift:38`) and
+   one observer (`TaskDetailView.swift:164`); the observer still guards on
+   `note.object as? UUID == taskId` and still gates on `!previewMarkdown.isEmpty`.

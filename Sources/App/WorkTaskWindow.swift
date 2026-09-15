@@ -13,9 +13,9 @@ enum WorkTaskNotification {
     static let start = Notification.Name("startWorkTask")
     static let openWorktree = Notification.Name("openWorkTaskWorktree")
 
-    /// Posted when the planning terminal is opened for a task so the inline editor
+    /// Posted when the task terminal is opened for a task so the inline editor
     /// can switch to preview beside it. The object is the task UUID.
-    static let planningTerminalOpened = Notification.Name("planningTerminalOpened")
+    static let taskTerminalOpened = Notification.Name("taskTerminalOpened")
 
     /// Key used in notification userInfo to pass the WorkTask value.
     static let taskKey = "task"

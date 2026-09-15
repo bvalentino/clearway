@@ -35,7 +35,7 @@ extension WorkTaskCoordinator {
 
         // The editor owns the live (possibly unsaved) body buffer, so it decides whether there's
         // anything to show beside the terminal.
-        NotificationCenter.default.post(name: WorkTaskNotification.planningTerminalOpened, object: taskId)
+        NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)
     }
 
     /// The command the task terminal runs, as a function of the resolved shell PATH — deferred
