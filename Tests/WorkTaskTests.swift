@@ -72,7 +72,6 @@ final class WorkTaskTests: XCTestCase {
     /// is humanized; a value with no word characters falls back to the raw slug.
     func testDisplayLabels() throws {
         XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.new), "New")
-        XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.readyToStart), "Ready to Start")
         XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.inProgress), "In Progress")
         XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.qa), "QA")
         XCTAssertEqual(WorkTask.displayLabel(for: WorkTask.ReservedStatus.readyForReview), "Ready for Review")

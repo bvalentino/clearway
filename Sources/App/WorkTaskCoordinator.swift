@@ -32,7 +32,6 @@ class WorkTaskCoordinator: ObservableObject {
         // title/body would otherwise clobber a completed Plan write on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
         guard current.status == WorkTask.ReservedStatus.new
-                || current.status == WorkTask.ReservedStatus.readyToStart
                 || current.status == WorkTask.ReservedStatus.canceled else { return .ignored }
 
         // Starting a task creates (or focuses) its worktree. Clearway launches no agent of its own.

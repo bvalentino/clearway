@@ -27,8 +27,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         guard let seed = taskManager.createTask(title: "Ship it") else {
             XCTFail("createTask returned nil"); return
         }
-        taskManager.updateFields(id: seed.id) { $0.status = WorkTask.ReservedStatus.readyToStart }
-
         let result = makeCoordinator(taskManager).startTask(seed, app: dummyApp)
         guard case .createWorktree = result else {
             XCTFail("expected createWorktree, got \(result)"); return
@@ -49,14 +47,14 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         }
         taskManager.updateFields(id: seed.id) {
             $0.body = "Short draft"
-            $0.status = WorkTask.ReservedStatus.readyToStart
+            $0.status = WorkTask.ReservedStatus.new
         }
 
         // Plan agent rewrote the central file.
         var planned = seed
         planned.title = "Post-plan title"
         planned.body = "Full planned brief."
-        planned.status = WorkTask.ReservedStatus.readyToStart
+        planned.status = WorkTask.ReservedStatus.new
         try planned.serialized().write(
             toFile: taskManager.filePath(for: seed),
             atomically: true,
@@ -70,7 +68,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         var staleSnapshot = seed
         staleSnapshot.title = "Pre-plan draft"
         staleSnapshot.body = "Short draft"
-        staleSnapshot.status = WorkTask.ReservedStatus.readyToStart
+        staleSnapshot.status = WorkTask.ReservedStatus.new
 
         let result = coordinator.startTask(staleSnapshot, app: dummyApp)
         guard case .createWorktree(let branch) = result else {

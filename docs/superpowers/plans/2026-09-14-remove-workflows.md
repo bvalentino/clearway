@@ -8,8 +8,9 @@ there; read it before starting a task, and read this file for what your task is 
 
 ## Architecture decisions carried from the spec
 
-1. **Start Now writes `status = in_progress`.** No status picker is restored anywhere; the Ready to
-   Start toggle, the status badges and the legacy fixed-state labels all stay. (Decision 1)
+1. **Start Now writes `status = in_progress`.** No status picker is restored anywhere; the status
+   badges and the legacy fixed-state labels stay. (Decision 1. The Ready to Start toggle was kept
+   through T1–T10 and removed afterwards — decision 13, changelog C1.)
 2. **`autopilot`, `completed` and `error_message` leave the model and the frontmatter**, so they
    vanish from a `TASK.md` on its next write. An unknown status slug is displayed as-is via
    `humanize`; `.clearway/WORKFLOW.json` is simply never read again — no warning, no migration, no
@@ -532,6 +533,54 @@ the regex.
 | `xcodegen generate` is skipped, so deleted files still build. | High | Every task's regression check is `./scripts/ci.sh`, which runs it. Never a hand-written `xcodebuild` line. |
 | T7's `WorkTaskManager` surgery takes out the `tasks/` watcher re-arm along with the root `.clearway/` one. | High | T7 names the check explicitly, and the rebased `WorkTaskManagerWatcherTests` cover the debounced reload. |
 | `git status` goes dirty from `default.profraw` after any Debug launch (it is not gitignored). | Low | Read the list before staging; never `git add -A`. |
+
+## Changelog
+
+Changes the operator requested after the ten plan tasks landed. They are not plan tasks; they are
+recorded here so no later step reverts them as unintentional.
+
+### C1: Remove the Ready to Start toggle (after T10, commit 343940a)
+
+**Requested:** "let's also remove the Ready to Start button when planning a task."
+
+Backlog tasks now go straight to `in_progress` via **Start Now**; `ready_to_start` is no longer a
+state Clearway can write. Recorded in the spec as decision 13.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | Toolbar toggle deleted (the `ToolbarItemGroup` collapses to a single `ToolbarItem` holding Start Now); the backlog row's context-menu item deleted; `WorkTaskCard.onReadyToStart` and its menu item deleted and the surviving Start Now gate narrowed to `.new`; `WorkTaskRow`'s readiness checkmark, `WorkTaskStatusBadge`'s checkmark branch and the `.indigo` `badgeColor` arm deleted |
+| `Sources/App/WorkTaskWindow.swift` | `primaryActionButton`'s two-case `switch` of `Menu`s collapsed to one plain `Start Now` button shown on `.new` |
+| `Sources/App/WorkTask.swift` | `ReservedStatus.readyToStart`, `ReservedStatus.backlogMarkers` (its only remaining reader) and the `displayLabel` case deleted; the `status` and `ReservedStatus` doc comments reworded to one backlog marker |
+| `Sources/App/WorkTaskCoordinator.swift` | `startTask`'s status gate drops its `readyToStart` arm (`new` or `canceled` remain) |
+| `Sources/App/WorkTaskManager.swift` | `setStatus(_:to:)` deleted — a one-line wrapper over `updateFields(id:)` whose four production callers were all Ready to Start writers; `createShadowTask`'s doc comment reworded |
+| `Tests/WorkTaskCoordinatorTests.swift` | Four `readyToStart` seeds become `.new` (one drops entirely — `createTask` already yields `new`) |
+| `Tests/WorkTaskManagerTests.swift` | `testSetStatusOnHiddenTaskPreservesHiddenFlag` renamed and rebased onto `updateFields`; `testSetStatusWithStaleSnapshotPreservesDiskContent` deleted with its subject; three `readyToStart` stand-ins become `.qa` / `.inProgress` |
+| `Tests/WorkTaskManagerWatcherTests.swift` | `readyToStart` stand-in becomes `.inProgress` |
+| `Tests/WorkTaskTests.swift` | The `readyToStart` `displayLabel` assertion deleted with the label |
+
+**Deviations**
+
+- **`setStatus` was removed, not just left callerless.** Its four production callers (two in
+  `WorkTaskListView`, two in `WorkTaskWindow`) were all Ready to Start writers, so it would have
+  survived only for tests. The spec's objective bar ("no dead seam") covers it; `updateFields(id:)`
+  is the surviving writer and already has its own coverage.
+- **`ReservedStatus.backlogMarkers` was removed.** It already had zero readers (engine residue —
+  the `WORKFLOW.json` slug validator), and its definition referenced `readyToStart`, so removing the
+  slug forced the decision.
+- **`testSetStatusWithStaleSnapshotPreservesDiskContent` was deleted rather than rebased.** Its
+  subject was `setStatus(_ task:)` taking a *snapshot*; `updateFields(id:)` takes an id, so there is
+  no stale snapshot left to rebase from. The rebase-by-id contract stays covered by
+  `testApplyEditorBufferRebasesSystemFieldsFromDisk`.
+- **No doc edit was needed.** `README.md`'s `## Tasks` section (written by T10) already describes
+  Start Now as the only path out of the backlog and never mentions Ready to Start; `CLAUDE.md` never
+  did.
+
+**Known consequence (accepted, decision 13):** a pre-existing `TASK.md` on `ready_to_start` is no
+longer a startable status, so the list's **Start Now** — enabled for any task without a worktree —
+silently no-ops on it. This is already the behaviour for every other unknown slug under decision 2.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 303 tests, with 0 failures (0 unexpected)`.
+`git status --porcelain` clean apart from the files above.
 
 ## Build log
 

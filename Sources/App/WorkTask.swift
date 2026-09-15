@@ -6,9 +6,9 @@ import Foundation
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
-    /// The task's current state. A plain slug string: a reserved backlog marker
-    /// (`new` / `ready_to_start`), one of the fixed states, or an arbitrary slug left by an
-    /// external writer. Display labels come from `WorkTask.displayLabel(for:)`.
+    /// The task's current state. A plain slug string: the reserved backlog marker `new`,
+    /// one of the fixed states, or an arbitrary slug left by an external writer.
+    /// Display labels come from `WorkTask.displayLabel(for:)`.
     var status: String
     var worktree: String?
     var createdAt: Date
@@ -22,15 +22,11 @@ struct WorkTask: Identifiable, Equatable, Hashable {
 
     /// Namespace for the well-known `status` slug constants. This is an `enum` used purely as
     /// a namespace — it has no cases, so it can never be instantiated; the values are plain
-    /// `static let` strings. The first two are reserved backlog markers (pre-worktree); the
+    /// `static let` strings. The first is the reserved backlog marker (pre-worktree); the
     /// remainder are the fixed states a task moves through once it has a worktree.
     enum ReservedStatus {
-        // Reserved backlog markers (pre-worktree).
+        /// Reserved backlog marker (pre-worktree).
         static let new = "new"
-        static let readyToStart = "ready_to_start"
-
-        /// The backlog markers as a set — the shared source the slug generator and validator check.
-        static let backlogMarkers: Set<String> = [new, readyToStart]
 
         // Fixed middle/terminal states.
         static let inProgress = "in_progress"
@@ -58,7 +54,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     static func displayLabel(for status: String) -> String {
         switch status {
         case ReservedStatus.new: return "New"
-        case ReservedStatus.readyToStart: return "Ready to Start"
         case ReservedStatus.inProgress: return "In Progress"
         case ReservedStatus.qa: return "QA"
         case ReservedStatus.readyForReview: return "Ready for Review"

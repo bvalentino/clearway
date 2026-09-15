@@ -27,7 +27,7 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         var planned = seed
         planned.title = "Planned via watcher"
         planned.body = "Agent wrote this atomically."
-        planned.status = WorkTask.ReservedStatus.readyToStart
+        planned.status = WorkTask.ReservedStatus.inProgress
         let path = manager.filePath(for: seed)
         try planned.serialized()
             .data(using: .utf8)!
@@ -37,7 +37,7 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
             guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else { return false }
             return pool.title == "Planned via watcher"
                 && pool.body == "Agent wrote this atomically."
-                && pool.status == WorkTask.ReservedStatus.readyToStart
+                && pool.status == WorkTask.ReservedStatus.inProgress
         }
         XCTAssertTrue(adopted, "pool must adopt atomic central rewrite via watcher (no reloadFromDisk)")
     }

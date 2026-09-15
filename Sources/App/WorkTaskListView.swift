@@ -62,16 +62,7 @@ struct WorkTaskListView: View {
             .padding(12)
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                let isReady = selectedTask?.status == WorkTask.ReservedStatus.readyToStart
-                Button {
-                    guard let task = selectedTask else { return }
-                    workTaskManager.setStatus(task, to: isReady ? WorkTask.ReservedStatus.new : WorkTask.ReservedStatus.readyToStart)
-                } label: {
-                    Label("Ready to Start", systemImage: isReady ? "checkmark.circle.fill" : "checkmark.circle")
-                }
-                .disabled(selectedTask == nil || selectedTask?.worktree != nil)
-
+            ToolbarItem(placement: .primaryAction) {
                 Button("Start Now") {
                     if let task = selectedTask { startTask(task) }
                 }
@@ -202,11 +193,6 @@ struct WorkTaskListView: View {
                         Button { startTask(task) } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
-                        if task.status == WorkTask.ReservedStatus.new {
-                            Button { workTaskManager.setStatus(task, to: WorkTask.ReservedStatus.readyToStart) } label: {
-                                Label("Ready to Start", systemImage: "clock.arrow.circlepath")
-                            }
-                        }
                         Divider()
                         Button(role: .destructive) {
                             selection = task.id
@@ -263,7 +249,6 @@ struct WorkTaskCard: View {
     var showContextMenu: Bool = true
     var onEdit: () -> Void
     var onStartNow: (() -> Void)?
-    var onReadyToStart: (() -> Void)?
     @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
@@ -290,14 +275,9 @@ struct WorkTaskCard: View {
         .contentShape(Rectangle())
         .onTapGesture { onEdit() }
         .contextMenu(showContextMenu ? ContextMenu {
-            if let onStartNow, task.status == WorkTask.ReservedStatus.new || task.status == WorkTask.ReservedStatus.readyToStart {
+            if let onStartNow, task.status == WorkTask.ReservedStatus.new {
                 Button { onStartNow() } label: {
                     Label("Start Now", systemImage: "play.fill")
-                }
-            }
-            if let onReadyToStart, task.status == WorkTask.ReservedStatus.new {
-                Button { onReadyToStart() } label: {
-                    Label("Ready to Start", systemImage: "clock.arrow.circlepath")
                 }
             }
             Divider()
@@ -330,11 +310,6 @@ private struct WorkTaskRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if task.status == WorkTask.ReservedStatus.readyToStart {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .help("Ready to Start")
-                }
             }
             Text(task.createdAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
@@ -353,10 +328,7 @@ struct WorkTaskStatusBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if status == WorkTask.ReservedStatus.readyToStart {
-                Image(systemName: "checkmark")
-                    .font(.caption2.weight(.bold))
-            } else if status == WorkTask.ReservedStatus.inProgress {
+            if status == WorkTask.ReservedStatus.inProgress {
                 Circle()
                     .fill(.green)
                     .frame(width: 6, height: 6)
@@ -380,7 +352,6 @@ struct WorkTaskStatusBadge: View {
     static func badgeColor(for status: String) -> Color {
         switch status {
         case WorkTask.ReservedStatus.new: return .blue
-        case WorkTask.ReservedStatus.readyToStart: return .indigo
         case WorkTask.ReservedStatus.inProgress: return .green
         case WorkTask.ReservedStatus.qa: return .purple
         case WorkTask.ReservedStatus.readyForReview: return .orange
