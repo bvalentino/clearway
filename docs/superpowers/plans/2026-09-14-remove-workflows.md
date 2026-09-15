@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-14
 **Base:** 92f0e661ccf2a880fd4e982e33df1184d7d7d9fc
+**PR:** #214
 
 Breaks down `docs/superpowers/specs/2026-09-14-remove-workflows.md`. Every design decision is settled
 there; read it before starting a task, and read this file for what your task is and how it is checked.

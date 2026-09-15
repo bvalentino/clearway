@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-14
 **Base:** 92f0e661ccf2a880fd4e982e33df1184d7d7d9fc
+**PR:** #214
 
 Clearway currently ships an agent orchestration engine: a project drops a `.clearway/WORKFLOW.json`
 describing a graph of actions, and Clearway watches each worktree's `TASK.md`, launches an agent per
