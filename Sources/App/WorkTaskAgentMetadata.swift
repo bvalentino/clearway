@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Displays agent metadata for a task: the attempt count.
-/// Shared between `TaskAsideView` (aside panel) and `WorkTaskWindow` (task editor window).
+/// Displays a task's attempt count. Shared between `TaskAsideView` (aside panel) and
+/// `WorkTaskWindow` (task editor window), both of which gate on `hasContent(for:)`.
 struct WorkTaskAgentMetadata: View {
     let task: WorkTask
 
@@ -10,12 +10,8 @@ struct WorkTaskAgentMetadata: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let attempt = task.attempt, attempt > 0 {
-                Label("Attempt \(attempt + 1)", systemImage: "arrow.counterclockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        Label("Attempt \((task.attempt ?? 0) + 1)", systemImage: "arrow.counterclockwise")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }

@@ -38,4 +38,13 @@ class TempRootTestCase: XCTestCase {
         tempRoot = nil
         try await super.tearDown()
     }
+
+    /// A coordinator scoped to the scratch root, over a fresh manager unless one is supplied.
+    func makeCoordinator(_ taskManager: WorkTaskManager? = nil) -> WorkTaskCoordinator {
+        WorkTaskCoordinator(
+            workTaskManager: taskManager ?? WorkTaskManager(projectPath: tempRoot),
+            terminalManager: TerminalManager(),
+            worktreeManager: WorktreeManager(projectPath: tempRoot)
+        )
+    }
 }

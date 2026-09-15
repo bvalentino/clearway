@@ -49,8 +49,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     }
 
     /// Human-readable label for a status slug. The known reserved/legacy slugs map to their
-    /// existing labels; an arbitrary action slug (e.g. `ready_for_review`-style snake_case)
-    /// is humanized (`review` → "Review", `run_tests` → "Run Tests").
+    /// existing labels; an arbitrary slug (e.g. `ready_for_review`-style snake_case) is
+    /// humanized (`review` → "Review", `run_tests` → "Run Tests").
     static func displayLabel(for status: String) -> String {
         switch status {
         case ReservedStatus.new: return "New"

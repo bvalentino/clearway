@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The project home — a backlog showing tasks that need shaping or haven't started.
-/// Started/stopped/done tasks live in their worktree's aside panel.
+/// Once a task has a worktree it lives in that worktree's aside panel.
 struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
@@ -246,10 +246,7 @@ struct WorkTaskListView: View {
 struct WorkTaskCard: View {
     let task: WorkTask
     var showStatusBadge: Bool = true
-    var showContextMenu: Bool = true
     var onEdit: () -> Void
-    var onStartNow: (() -> Void)?
-    @EnvironmentObject private var workTaskManager: WorkTaskManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -274,21 +271,7 @@ struct WorkTaskCard: View {
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
         .onTapGesture { onEdit() }
-        .contextMenu(showContextMenu ? ContextMenu {
-            if let onStartNow, task.status == WorkTask.ReservedStatus.new {
-                Button { onStartNow() } label: {
-                    Label("Start Now", systemImage: "play.fill")
-                }
-            }
-            Divider()
-            Button(role: .destructive) {
-                workTaskManager.deleteTask(task)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        } : nil)
     }
-
 }
 
 // MARK: - Task Row (for List selection)

@@ -1071,3 +1071,52 @@ Every line is allow-listed. The narrower sweep returns only
 **Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 304 tests, with 0 failures (0 unexpected)`.
 `git status --porcelain` shows only this task's five modified files; no untracked files, and
 `project.pbxproj` unchanged (no file was added or deleted).
+
+### Simplify pass (after C2)
+
+`/simplify` over the branch's changes — quality only, no behaviour change. Four review angles were
+run in parallel; the findings below are the accepted intersection.
+
+**Operator-requested item.** `WorkTaskCard`'s context menu was dead — the only caller
+(`TaskAsideView`) passed `showContextMenu: false` and never passed `onStartNow`. The `.contextMenu`
+modifier, `showContextMenu`, `onStartNow` and the `@EnvironmentObject workTaskManager` that existed
+only to feed the menu's Delete item are gone; the aside's card renders unchanged.
+
+| File | What was simplified |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `WorkTaskCard`'s dead context menu and the three members that fed it; the type doc no longer names statuses nothing writes |
+| `Sources/App/TerminalManager.swift` | `appendMainTab` deleted — T9 removed its only caller (`launchAgentTab`), and its doc comment still named a `replaceMainSurface` that does not exist; `appendLauncherTab`'s doc no longer points at it |
+| `Sources/App/TerminalTab.swift` | Hand-written `init(id:kind:)` deleted — with `stepSlug`/`launcherCommand` gone it was byte-identical to the synthesized memberwise init |
+| `Sources/App/WorkTaskCoordinator.swift` | `startTask`'s unused `app: ghostty_app_t` parameter and the `import GhosttyKit` it alone required; `ensureShadowTask` deleted (a rename-only wrapper whose guard duplicated `createShadowTask`'s own idempotence); the trailing one-method `extension` folded back into the class |
+| `Sources/App/ContentView.swift` | `startWorkTask`'s `guard let app` became `guard ghosttyApp.app != nil` (readiness gate preserved, argument gone); the shadow-task call goes straight to `workTaskManager.createShadowTask` |
+| `Sources/App/TaskAsideView.swift` | Same direct manager call, so the now-unread `workTaskCoordinator` `@EnvironmentObject` went with it; the comment restating the adjacent `hasContent` gate removed |
+| `Sources/App/WorkTaskAgentMetadata.swift` | Body's `if let attempt, attempt > 0` deleted — every call site already gates on `hasContent(for:)`, so it could never be false; the single-child `VStack` went with it |
+| `Sources/App/WorkTaskWindow.swift` | `saveAndPost(_ name:)` → `saveAndStart()`; C1 left it with one caller passing one constant |
+| `Sources/App/WorkTaskCoordinator+Planning.swift` | `import AppKit` → `import Foundation`; T3 dropped `import os` with `planLogger` and left AppKit standing with no `NS*` use |
+| `Sources/App/WorkTask.swift` | `displayLabel`'s doc no longer calls the fallback "an arbitrary *action* slug" — `action` was the `WORKFLOW.json` term |
+| `Tests/TestHelpers.swift` | `makeCoordinator(_:)` hosted here; `WorkflowHarnessTestCase`'s deletion had left the same three-dependency construction copied into two test files |
+| `Tests/WorkTaskCoordinatorTests.swift` | Local builder, `dummyApp` fake pointer and `import GhosttyKit` removed with the parameter |
+| `Tests/PlanningLaunchCommandTests.swift` | Local builder removed; the `clearway-plan` assertion and the paragraph naming it deleted (T3 deleted that prefix, and the `XCTAssertEqual` against `buildBareCommand` already pins the whole command); `override class var` → `override static var`, the branch's only SwiftLint warning |
+
+**Findings deliberately skipped**
+
+- **`WorkTaskStatusBadge` is unreachable in production**, and with it `showStatusBadge`,
+  `badgeColor`'s six arms and `displayLabel`/`humanize`. Its only construction sits behind
+  `WorkTaskCard.showStatusBadge`, whose one caller passes `false`. This is **pre-existing on `main`**
+  (same shape there), and decision 1 records that the status badges and legacy fixed-state labels
+  stay. Removing it is a behaviour change, not a simplification.
+- **`WorkTaskCoordinator` is an `ObservableObject` with no `@Published` members.** True, but the
+  conformance is the vehicle for `@StateObject` / `@EnvironmentObject` injection; replacing it needs
+  a custom `EnvironmentKey`, which is more indirection, not less.
+- **`TerminalManager.newShellTab` has no callers** — already callerless on `main`, so not this
+  branch's residue.
+- **`TaskAsideView`'s two Create Task CTAs are near-duplicates** — also pre-existing.
+- **The Ctrl+3 not-claimed assertion appears twice** — both copies are recorded in T1's Build log
+  (one is the range boundary, one the retired-shortcut pin), so neither is accidental.
+- **`buildAgentPromptCommand`'s `filePrefix` default is unused in production.** A default parameter
+  serving callers that do not care is not speculative generality; four tests read it.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0, zero warnings.
+`Executed 303 tests, with 0 failures (0 unexpected)`. `git status --porcelain` shows only the
+thirteen modified files above; no untracked files, and `project.pbxproj` unchanged (no file was
+added or deleted).

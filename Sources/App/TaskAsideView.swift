@@ -4,7 +4,6 @@ import SwiftUI
 /// Shows a clickable task card that opens the full task window.
 struct TaskAsideView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @Environment(\.openWindow) private var openWindow
 
     let worktreeBranch: String
@@ -23,8 +22,8 @@ struct TaskAsideView: View {
             }
         }
         // Ensure every worktree has a persistent (possibly hidden) task so status changes
-        // have somewhere to land. The coordinator no-ops when a task already links the branch.
-        .onAppear { workTaskCoordinator.ensureShadowTask(forBranch: worktreeBranch) }
+        // have somewhere to land. `createShadowTask` is idempotent.
+        .onAppear { workTaskManager.createShadowTask(forBranch: worktreeBranch) }
     }
 
     // MARK: - Task Content
@@ -38,12 +37,10 @@ struct TaskAsideView: View {
                     WorkTaskCard(
                         task: task,
                         showStatusBadge: false,
-                        showContextMenu: false,
                         onEdit: { openTaskWindow(task) }
                     )
                 }
 
-                // Agent metadata (show for tasks that have been worked on; never for placeholders)
                 if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
                     WorkTaskAgentMetadata(task: task)
                 }

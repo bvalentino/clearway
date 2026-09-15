@@ -29,11 +29,6 @@ struct TerminalTab {
     let id: UUID
     var kind: Kind
 
-    init(id: UUID, kind: Kind) {
-        self.id = id
-        self.kind = kind
-    }
-
     /// The live surface for this tab, or nil if the tab is a launcher.
     var surface: Ghostty.SurfaceView? {
         if case .surface(let s) = kind { return s }

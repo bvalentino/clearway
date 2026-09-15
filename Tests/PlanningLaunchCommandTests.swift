@@ -8,21 +8,9 @@ import XCTest
 @MainActor
 final class PlanningLaunchCommandTests: TempRootTestCase {
 
-    override class var tempRootPrefix: String { "clearway-planning-launch" }
+    override static var tempRootPrefix: String { "clearway-planning-launch" }
 
-    /// A coordinator scoped to the scratch root. The launch reads nothing but the terminal manager's
-    /// `mainCommandProvider`, so no task or worktree fixture is needed.
-    private func makeCoordinator() -> WorkTaskCoordinator {
-        WorkTaskCoordinator(
-            workTaskManager: WorkTaskManager(projectPath: tempRoot),
-            terminalManager: TerminalManager(),
-            worktreeManager: WorktreeManager(projectPath: tempRoot)
-        )
-    }
-
-    /// A Main Terminal command is set: it runs bare, with no prompt file. Guards against this branch
-    /// regressing to the prompt-file recipe, which would launch the agent against a `$2` that was
-    /// never written.
+    /// A Main Terminal command is set: it runs bare, exactly as `buildBareCommand` builds it.
     func testBareMainTerminalCommandWhenConfigured() throws {
         let coordinator = makeCoordinator()
         coordinator.terminalManager.mainCommandProvider = { "claude" }
@@ -34,7 +22,6 @@ final class PlanningLaunchCommandTests: TempRootTestCase {
             command,
             coordinator.terminalManager.buildBareCommand(agentCommand: "claude", path: "/usr/bin:/bin")
         )
-        XCTAssertFalse(command.contains("clearway-plan"), "a bare command carries no prompt file")
     }
 
     /// Nothing configured at all: no launch to build, so the panel opens on a plain shell. The

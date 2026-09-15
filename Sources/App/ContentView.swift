@@ -297,7 +297,7 @@ struct ContentView: View {
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
-            workTaskCoordinator.ensureShadowTask(forBranch: branch)
+            workTaskManager.createShadowTask(forBranch: branch)
 
             detailSelection = .worktree(wt)
 
@@ -683,8 +683,8 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        guard let app = ghosttyApp.app else { return }
-        handleStartResult(workTaskCoordinator.startTask(task, app: app))
+        guard ghosttyApp.app != nil else { return }
+        handleStartResult(workTaskCoordinator.startTask(task))
     }
 
     private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {

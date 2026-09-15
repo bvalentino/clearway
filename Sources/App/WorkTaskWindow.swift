@@ -279,7 +279,7 @@ struct WorkTaskWindow: View {
     private var primaryActionButton: some View {
         if task?.status == WorkTask.ReservedStatus.new {
             Button("Start Now") {
-                saveAndPost(WorkTaskNotification.start)
+                saveAndStart()
             }
             .applyPrimaryActionStyle()
         }
@@ -287,7 +287,7 @@ struct WorkTaskWindow: View {
 
     // MARK: - Helpers
 
-    private func saveAndPost(_ name: Notification.Name) {
+    private func saveAndStart() {
         saveNow()
         guard let task else { return }
         let projectPath = workTaskManager.projectPath
@@ -295,7 +295,7 @@ struct WorkTaskWindow: View {
         // Async so the notification fires after the window closes.
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: name,
+                name: WorkTaskNotification.start,
                 object: projectPath,
                 userInfo: [WorkTaskNotification.taskKey: task]
             )

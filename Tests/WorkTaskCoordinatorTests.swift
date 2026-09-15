@@ -1,5 +1,4 @@
 import XCTest
-import GhosttyKit
 @testable import Clearway
 
 /// Behavioral contract for `WorkTaskCoordinator.startTask`: it resolves the task fresh from disk,
@@ -7,17 +6,6 @@ import GhosttyKit
 /// launches no agent of its own, so `in_progress` is the whole of the status advance a start performs.
 @MainActor
 final class WorkTaskCoordinatorTests: TempRootTestCase {
-
-    /// `ghostty_app_t` is unused on the create path; never dereferenced.
-    private let dummyApp: ghostty_app_t = UnsafeMutableRawPointer(bitPattern: 0x1)!
-
-    private func makeCoordinator(_ taskManager: WorkTaskManager) -> WorkTaskCoordinator {
-        WorkTaskCoordinator(
-            workTaskManager: taskManager,
-            terminalManager: TerminalManager(),
-            worktreeManager: WorktreeManager(projectPath: tempRoot)
-        )
-    }
 
     // MARK: - Start Now status
 
@@ -27,7 +15,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         guard let seed = taskManager.createTask(title: "Ship it") else {
             XCTFail("createTask returned nil"); return
         }
-        let result = makeCoordinator(taskManager).startTask(seed, app: dummyApp)
+        let result = makeCoordinator(taskManager).startTask(seed)
         guard case .createWorktree = result else {
             XCTFail("expected createWorktree, got \(result)"); return
         }
@@ -70,7 +58,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         staleSnapshot.body = "Short draft"
         staleSnapshot.status = WorkTask.ReservedStatus.new
 
-        let result = coordinator.startTask(staleSnapshot, app: dummyApp)
+        let result = coordinator.startTask(staleSnapshot)
         guard case .createWorktree(let branch) = result else {
             XCTFail("expected createWorktree, got \(result)"); return
         }
