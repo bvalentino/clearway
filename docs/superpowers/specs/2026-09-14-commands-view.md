@@ -37,6 +37,7 @@ worktree toolbar beside Archive / secondary terminal / aside.
 | 20 | Does anything migrate? | No. There is no prior commands storage and no prior on-disk format. A missing file is the empty list. | Spec author |
 | 21 | Does the worktree aside panel get a Commands tab? | No. `SidePanelTab` (`ContentViewHelpers.swift:31-41`) keeps Task / Todos / Prompts. The brief asks for a sidebar destination and a toolbar dropdown; an aside tab is neither. | Spec author |
 | 22 | How is the editor sheet laid out? | Kind first, labelled "Command kind"; then "Menu label" (the `name` field); then Agent for the agent kind; then the command or prompt text as a multi-line `TextEditor` for **both** kinds at one fixed height, so the sheet does not resize when the kind changes. Supersedes the build-stage assumption that a terminal command is one shell line and needs only a `TextField`. Run semantics are unchanged — `RunCommandMenu.run` and `sendCommand` still send one line — and what a multi-line terminal command should do is a separate decision. Raised from a hands-on check after T7; see the plan's Changelog C1. | Operator |
+| 23 | What does a multi-line terminal command do? | It is sent verbatim: every embedded newline is an Enter, so the lines run in order in the user's own shell. "Append Enter to run immediately" governs the **trailing** Enter alone — on, the last line runs too; off, it stays staged and editable on the prompt. Single-line behaviour is unchanged, and agent commands are unaffected. Supersedes decision 22's "run semantics are unchanged" and the plan's decision 11. Raised from a hands-on check after C1; see the plan's Changelog C2. | Operator |
 
 ## Assumptions
 
@@ -183,6 +184,7 @@ Changed:
 | `Sources/App/AppKeyboardShortcuts.swift` | Ctrl+digit claim widens to `"1"…"3"`; the comment naming "two destinations" follows. |
 | `Sources/App/TerminalManager.swift` | `agentOverride` parameter on `appendLauncherTab`; `launcherAgents` storage and its three clear sites. |
 | `Sources/App/ClearwayApp.swift` | `@StateObject` `SavedCommandManager` + `.environmentObject` on the project `WindowGroup`. |
+| `Sources/Ghostty/Ghostty.SurfaceView.swift` | `sendLines(_:runsLastLine:)`, the line-at-a-time primitive decision 23 needs. |
 | `Tests/AppKeyboardShortcutsTests.swift`, `Tests/BottomPanelActionTests.swift` | See Tests above. |
 | `CLAUDE.md` | The two `AppKeyboardShortcuts` sentences describing ⌃3's retirement and the `"1"…"2"` span; a short note on where commands live. |
 

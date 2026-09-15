@@ -41,17 +41,13 @@ extension RunCommandMenu {
         terminalManager: TerminalManager
     ) {
         switch CommandLaunch.launch(for: command) {
-        case .shell(let text, let execute):
+        case .shell(let send):
             let tabId = terminalManager.appendShellTab(for: worktree, app: app)
             guard let surface = terminalManager.mainTabs(for: worktree.id)
                 .first(where: { $0.id == tabId })?.surface else { return }
             Task { @MainActor in
                 await awaitShellPrompt(on: surface)
-                if execute {
-                    surface.sendCommand(text)
-                } else {
-                    surface.sendText(text)
-                }
+                surface.sendLines(send.lines, runsLastLine: send.runsLastLine)
             }
 
         case .agent(let agent, let prompt, let submit):

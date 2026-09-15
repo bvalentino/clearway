@@ -484,6 +484,39 @@ Run semantics for a multi-line terminal command are deliberately **unchanged** h
 `RunCommandMenu.run` and `Ghostty.SurfaceView.sendCommand` are untouched, and the operator is
 deciding that separately. Recorded as decision 22 in the spec.
 
+### C2: Multi-line terminal commands run line by line (after C1, commit `2f94443`)
+
+The separate decision C1 deferred, taken by the operator from a hands-on check. A multi-line
+terminal command is sent verbatim: every embedded newline is an Enter, so the lines run in order in
+the user's own shell. "Append Enter to run immediately" governs the **trailing** Enter alone — on,
+the last line runs too; off, it stays staged and editable on the prompt. Single-line behaviour is
+unchanged. Agent commands are untouched: `buildAgentPromptCommand` already hands the prompt over as
+one argv element.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommand.swift` | New `ShellSend` (`lines`, `runsLastLine`) carries the rule; `CommandLaunch.shell` takes one instead of `(text:execute:)`. |
+| `Sources/Ghostty/Ghostty.SurfaceView.swift` | New `sendLines(_:runsLastLine:)`. `sendCommand` and `sendPaste` untouched. |
+| `Sources/App/RunCommandMenu.swift` | The `.shell` arm is one `surface.sendLines(...)` call; the `execute` branch is gone. |
+| `Tests/SavedCommandTests.swift` | Six new `ShellSend` tests; the four existing resolver assertions read `lines` / `runsLastLine`. |
+
+**Why not change `sendCommand`.** It has one other caller — `TerminalManager.sendToActiveMainTab`
+with `asCommand: true`, reached from `TodosPanelView.sendTodoToTerminal`. Its trim-to-first-line is
+what keeps a pasted multi-line todo subject from executing itself, so it stays as it is and
+`RunCommandMenu` stops routing through it.
+
+**Why line-at-a-time, not one paste.** `ghostty_surface_text` is a paste (`Surface.zig:3234-3243`:
+"if bracketed mode is on this will do a bracketed paste"), so a block with newlines in it lands
+staged whole on one prompt — with auto-run off *both* lines would be staged, not just the last. One
+`sendText` per line with an Enter between them is what makes a newline an Enter.
+
+**Normalisation.** `\r\n` and a bare `\r` become `\n` first, so neither arrives as a second Enter;
+then the whole string is trimmed of surrounding whitespace and newlines. The trim subsumes "strip
+one trailing newline" and keeps the auto-run-on single-line path byte-identical to the old
+`sendCommand`. It also makes the auto-run-**off** single-line path trim, which it did not before —
+that path used to send the raw string. Deliberate: the old asymmetry was accidental, and leading or
+trailing spaces on a staged prompt line are invisible.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -784,3 +817,43 @@ the toolbar; see the Accessibility note above for what was substituted and why.
 
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 337 tests, 0 failures. `git status --porcelain`
 before the commit showed only the four paths above; no `default.profraw`.
+
+### C2: Multi-line terminal commands run line by line
+
+**What landed.** The file table is in Changelog C2 above.
+
+**Evidence — the watched failure.** With `ShellSend.init` temporarily keeping only the first line
+(the old `sendCommand` rule expressed in the new type), `./scripts/ci.sh` was red, exit 65:
+
+```
+✖ testMultiLineTerminalCommandSplitsIntoOneLinePerEnter, XCTAssertEqual failed:
+  ("Optional(["cd /tmp"])") is not equal to ("Optional(["cd /tmp", "pwd"])")
+✖ testMultiLineTerminalCommandWithoutAutoRunStagesOnlyItsLastLine, XCTAssertEqual failed:
+  ("Optional(["cd /tmp"])") is not equal to ("Optional(["cd /tmp", "pwd"])")
+✖ testTrailingNewlineDoesNotBecomeAnEmptyLastLine, XCTAssertEqual failed:
+  ("Optional(["cd /tmp"])") is not equal to ("Optional(["cd /tmp", "pwd"])")
+✖ testCarriageReturnsNormaliseToOneLineBreak, XCTAssertEqual failed:
+  ("Optional(["cd /tmp"])") is not equal to ("Optional(["cd /tmp", "pwd", "ls"])")
+✖ testInteriorBlankLineSurvives, XCTAssertEqual failed:
+  ("Optional(["cd /tmp"])") is not equal to ("Optional(["cd /tmp", "", "pwd"])")
+Executed 343 tests, with 5 failures
+```
+
+**Evidence — the running app.** The toolbar still cannot be driven here (no Accessibility
+permission; see T7), so the same substitute was used: a temporary in-app probe calling the real
+`RunCommandMenu.run`, reading the surface back with `ghostty_surface_read_text` and proving
+execution through the filesystem. The probe was deleted before this commit; its source and raw log
+are in the session scratchpad, not the repo. Run against `./scripts/build.sh` + `./scripts/run.sh`,
+worktree `…/bvalentino/clearway`:
+
+| Run | Command text | Result |
+| --- | --- | --- |
+| M1 — 2 lines, auto-run **on** | `cd /tmp` ⏎ `pwd >> out.txt` | `out.txt` = `/tmp`. Screen: `➜ clearway cd /tmp // ➜ /tmp pwd >> … // ➜ /tmp` — both lines ran, in order, in the same shell |
+| M2 — 2 lines, auto-run **off** | `cd /tmp` ⏎ `pwd >> out2.txt` | `out2.txt` never created: the first line ran (prompt is now `/tmp`), the last is staged. Appending ` # edited` + Enter then wrote `/tmp` — staged **and** editable |
+| M3 — 1 line, auto-run **on** | `echo M3 >> out.txt` | Ran exactly once. Unchanged |
+| M4 — `\r\n` + trailing `\n` | `cd /tmp` ⏎ `pwd >> out.txt` | `out.txt` gained `/tmp`; screen shows two prompt lines and no stray empty Enter |
+| M5 — 1 line, auto-run **off** | `echo M5 >> out.txt` | Staged on the prompt, nothing ran. Unchanged |
+
+**Deviations from the plan.** None. C2 is an operator change request, not a plan task.
+
+**Gate.** `./scripts/ci.sh` — see the commit; `git status --porcelain` was empty afterwards.

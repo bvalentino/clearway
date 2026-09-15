@@ -437,6 +437,22 @@ extension Ghostty {
             }
         }
 
+        /// Send each line as its own paste, with Enter after every one of them except the last,
+        /// which gets an Enter only when `runsLastLine`.
+        ///
+        /// Line-at-a-time rather than one multi-line paste: under bracketed paste a block with
+        /// newlines in it stages whole on one prompt, whereas a line followed by Enter runs. The
+        /// caller decides what a line is — see ``ShellSend``.
+        func sendLines(_ lines: [String], runsLastLine: Bool) {
+            guard let last = lines.last else { return }
+            for line in lines.dropLast() {
+                sendText(line)
+                sendEnter()
+            }
+            sendText(last)
+            if runsLastLine { sendEnter() }
+        }
+
         /// Send a command string followed by Enter to the terminal.
         func sendCommand(_ command: String) {
             let trimmed = command

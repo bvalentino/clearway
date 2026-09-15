@@ -60,14 +60,65 @@ final class SavedCommandTests: XCTestCase {
 
     // MARK: - Launch resolver
 
+    private func shellSend(
+        for command: SavedCommand,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> ShellSend? {
+        guard case let .shell(send) = CommandLaunch.launch(for: command) else {
+            XCTFail("expected a shell launch", file: file, line: line)
+            return nil
+        }
+        return send
+    }
+
     func testTerminalCommandWithAutoRunExecutes() {
         let command = makeCommand(kind: .terminal, text: "bin/dev", autoRun: true)
-        XCTAssertEqual(CommandLaunch.launch(for: command), .shell(text: "bin/dev", execute: true))
+        XCTAssertEqual(shellSend(for: command)?.lines, ["bin/dev"])
+        XCTAssertEqual(shellSend(for: command)?.runsLastLine, true)
     }
 
     func testTerminalCommandWithoutAutoRunIsStaged() {
         let command = makeCommand(kind: .terminal, text: "bin/dev", autoRun: false)
-        XCTAssertEqual(CommandLaunch.launch(for: command), .shell(text: "bin/dev", execute: false))
+        XCTAssertEqual(shellSend(for: command)?.lines, ["bin/dev"])
+        XCTAssertEqual(shellSend(for: command)?.runsLastLine, false)
+    }
+
+    /// Every newline is an Enter, so the lines run in order; the toggle governs the last one alone.
+    func testMultiLineTerminalCommandSplitsIntoOneLinePerEnter() {
+        let command = makeCommand(kind: .terminal, text: "cd /tmp\npwd", autoRun: true)
+        XCTAssertEqual(shellSend(for: command)?.lines, ["cd /tmp", "pwd"])
+        XCTAssertEqual(shellSend(for: command)?.runsLastLine, true)
+    }
+
+    func testMultiLineTerminalCommandWithoutAutoRunStagesOnlyItsLastLine() {
+        let command = makeCommand(kind: .terminal, text: "cd /tmp\npwd", autoRun: false)
+        XCTAssertEqual(shellSend(for: command)?.lines, ["cd /tmp", "pwd"])
+        XCTAssertEqual(shellSend(for: command)?.runsLastLine, false)
+    }
+
+    /// A `\r\n` pasted into the editor must not arrive as two Enters.
+    func testCarriageReturnsNormaliseToOneLineBreak() {
+        let command = makeCommand(kind: .terminal, text: "cd /tmp\r\npwd\rls")
+        XCTAssertEqual(shellSend(for: command)?.lines, ["cd /tmp", "pwd", "ls"])
+    }
+
+    /// A trailing newline would otherwise stage an empty line instead of the last real one.
+    func testTrailingNewlineDoesNotBecomeAnEmptyLastLine() {
+        let command = makeCommand(kind: .terminal, text: "cd /tmp\npwd\n", autoRun: false)
+        XCTAssertEqual(shellSend(for: command)?.lines, ["cd /tmp", "pwd"])
+    }
+
+    /// A blank line inside the text is a real Enter on an empty prompt, and is kept.
+    func testInteriorBlankLineSurvives() {
+        let command = makeCommand(kind: .terminal, text: "cd /tmp\n\npwd")
+        XCTAssertEqual(shellSend(for: command)?.lines, ["cd /tmp", "", "pwd"])
+    }
+
+    /// Nothing to type — the surface skips it, exactly as the old first-line guard did.
+    func testWhitespaceOnlyTerminalCommandSendsNothing() {
+        let command = makeCommand(kind: .terminal, text: "  \n\n ")
+        XCTAssertEqual(shellSend(for: command)?.lines, [])
     }
 
     func testAgentCommandWithAutoRunSubmits() {
@@ -98,7 +149,7 @@ final class SavedCommandTests: XCTestCase {
     /// A terminal command's `agent` field is inert — it survives editing but never reaches a launch.
     func testTerminalCommandIgnoresItsAgentField() {
         let command = makeCommand(kind: .terminal, text: "bin/dev", agent: "grok", autoRun: true)
-        XCTAssertEqual(CommandLaunch.launch(for: command), .shell(text: "bin/dev", execute: true))
+        XCTAssertEqual(shellSend(for: command)?.lines, ["bin/dev"])
     }
 
     // MARK: - Decoding
