@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-14
 **Base:** b049206589b9eb8e94a0630de38c7e3cebf5a1db
+**PR:** #215
 
 The sidebar's first destination is still called "Planning", a name from the era when Clearway ran a
 planning agent ahead of the work. PR #214 removed the workflow engine and that agent; what is left

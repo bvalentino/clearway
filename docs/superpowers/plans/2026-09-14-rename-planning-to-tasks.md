@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-14
 **Base:** b049206589b9eb8e94a0630de38c7e3cebf5a1db
+**PR:** #215
 
 Breaks down `docs/superpowers/specs/2026-09-14-rename-planning-to-tasks.md`. Every design decision is
 settled there; read it before starting a task, and read this file for what your task is and how it is
@@ -410,3 +411,13 @@ same 306 as T1–T3. `git status --porcelain` shows only the six files above; no
 2. `grep -n 'Planning' CLAUDE.md` returns nothing.
 3. The five decision-7 fixture strings are byte-identical to base; no assertion, fixture or test name
    changed. `git diff --stat` is 6 files, 10 insertions, 10 deletions.
+
+### Simplify
+
+`/simplify` over `b049206...HEAD` (reuse, simplification, efficiency, altitude) found nothing to
+apply: the two findings raised — the coordinator's `toggleTaskTerminal` sharing a name with
+`TerminalManager.toggleTaskTerminal`, and the unqualified "Hide terminal" / "Show terminal" tooltip —
+are both already settled in the spec (decisions 4 and 2), so no code changed.
+
+**Gate.** `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint clean, build succeeded,
+`Executed 306 tests, with 0 failures (0 unexpected)`.
