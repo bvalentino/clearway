@@ -462,8 +462,8 @@ struct ContentView: View {
 
     /// Tabs available for the current worktree. On a real worktree the Task tab is always
     /// present; when no (visible) task is linked, `TaskAsideView` renders a Create-Task CTA
-    /// instead of the task card. The main branch carries no task, so its Task tab is dropped —
-    /// todos/prompts remain.
+    /// instead of the task card. The main branch is never a task's worktree, so its Task tab is
+    /// dropped — todos/prompts remain.
     private var availableSidePanelTabs: [SidePanelTab] {
         SidePanelTab.available(isMain: selectedWorktree?.isMain == true)
     }

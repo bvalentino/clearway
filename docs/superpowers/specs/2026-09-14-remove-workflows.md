@@ -72,7 +72,11 @@ is a direct read or grep of the repo (no probe scripts were written, into the re
 11. **The root `.clearway/` watcher exists only for `WORKFLOW.json`.** `WorkTaskManager.swift:14-21`
     documents it as such; `rootClearwayDirectory` (`:61`) is watched by `watchRootClearway()` (`:518`),
     re-armed at `:355`, cancelled at `:122`. The central `tasks/` watcher (`:509`) and the per-worktree
-    `.clearway/` watchers are separate and survive.
+    `.clearway/` watchers are separate and survive. Its handler was the shared debounced `reload()`,
+    though, so removing it also gives up one thing beyond the gate refresh: a `TASK.md` appearing in
+    the **project root's** `.clearway/` while the main worktree is not open in the terminal pane no
+    longer triggers a reload, since `setWatchedWorktrees` only covers opened worktrees. Accepted —
+    the same gap already existed for every unopened non-main worktree.
 12. **`WorkTaskCoordinator.agentSurfaces` and friends are populated only by the engine.**
     `setAgentSurface` is called once, at `WorkTaskCoordinator+WorkflowEngine.swift:651`;
     `agentSurfaceIdentities` is inserted into once, at `:652`; `launchPromptFiles` once, at `:653`.

@@ -99,6 +99,17 @@ final class TerminalManagerTests: XCTestCase {
                        "must not pipe prompt into agent stdin; got: \(launch.command)")
     }
 
+    /// `$1` must stay bare in the recipe. Quoting it would make a multi-word command
+    /// (`claude --model sonnet`) be looked up as one filename, so the launch would fail.
+    func test_buildAgentPromptCommand_leavesTheAgentCommandExpansionUnquoted() {
+        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
+        defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
+        XCTAssertTrue(launch.command.contains("; $1 \""),
+                      "the agent command must expand unquoted; got: \(launch.command)")
+        XCTAssertFalse(launch.command.contains("\"$1\""),
+                       "quoting $1 would run a multi-word command as one binary name; got: \(launch.command)")
+    }
+
     /// The builder must export the PATH it was given, not one it reads for itself: the
     /// caller is the only place that knows whether a resolution has completed.
     func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() {

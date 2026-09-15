@@ -55,7 +55,7 @@ Configuration is in `.swiftlint.yml`.
 
 ## Tasks
 
-Clearway keeps a task backlog per project. **Start Now** on a task creates its worktree (or focuses the existing one), moves the task's `TASK.md` into it, and runs the project's after-create hook in the worktree's secondary terminal. The task's `status` frontmatter becomes `in_progress` and stays there: Clearway launches no agent of its own, and nothing advances the status for you. Status is never shown in the app — it is there for whatever reads the file.
+Clearway keeps a task backlog per project. **Start Now** on a task creates its worktree, moves the task's `TASK.md` into it, and runs the project's after-create hook in the worktree's secondary terminal. The task's `status` frontmatter becomes `in_progress` and stays there: Clearway launches no agent of its own, and nothing advances the status for you. (If the task's branch already has a worktree, Start Now just focuses it.) Status is never shown in the app — it is there for whatever reads the file.
 
 Terminal tabs start on whatever Settings → Main Terminal names. The agent CLIs Clearway knows are `claude`, `grok` and `codex`; picking *None* opens a plain login shell instead.
 

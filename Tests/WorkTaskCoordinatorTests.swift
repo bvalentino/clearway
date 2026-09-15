@@ -24,6 +24,66 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
                        "Start Now advances a backlog task to in_progress")
     }
 
+    /// Restarting a canceled task counts the attempt and puts it back on `in_progress`.
+    /// `attempt` is the sole input to the surviving agent-metadata row, so a lost increment
+    /// would silently stop that row rendering.
+    func testStartTaskCountsTheAttemptWhenRestartingACanceledTask() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Retry me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        taskManager.updateFields(id: seed.id) { $0.status = WorkTask.ReservedStatus.canceled }
+        guard let canceled = taskManager.freshTask(id: seed.id) else {
+            XCTFail("task missing after cancel"); return
+        }
+
+        guard case .createWorktree = makeCoordinator(taskManager).startTask(canceled) else {
+            XCTFail("expected createWorktree"); return
+        }
+
+        let restarted = taskManager.freshTask(id: seed.id)
+        XCTAssertEqual(restarted?.status, WorkTask.ReservedStatus.inProgress)
+        XCTAssertEqual(restarted?.attempt, 1, "a restart counts the attempt")
+    }
+
+    // MARK: - Pending launch
+
+    /// `completePendingLaunch` relocates only for the branch it is holding, and consumes the
+    /// pending launch so a later worktree creation cannot move the file a second time.
+    func testCompletePendingLaunchRelocatesOnlyForTheBranchItIsHolding() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Relocate me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        guard case .createWorktree(let branch) = coordinator.startTask(seed) else {
+            XCTFail("expected createWorktree"); return
+        }
+        let centralPath = taskManager.filePath(for: seed)
+
+        let otherPath = (tempRoot as NSString).appendingPathComponent("wt-other")
+        coordinator.completePendingLaunch(
+            branch: "unrelated",
+            worktree: makeWorktree(branch: "unrelated", path: otherPath)
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: centralPath),
+                      "an unrelated branch must not relocate this task")
+        XCTAssertNotNil(coordinator.pendingLaunch, "an unrelated branch must not consume the pending launch")
+
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
+        coordinator.completePendingLaunch(
+            branch: branch,
+            worktree: makeWorktree(branch: branch, path: worktreePath)
+        )
+        XCTAssertNil(coordinator.pendingLaunch, "the matching branch consumes the pending launch")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: centralPath),
+                       "the central file moves into the worktree")
+        let taskMd = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd),
+                      "the task lands at the worktree's TASK.md")
+    }
+
     // MARK: - Start Now freshness
 
     /// startTask must re-resolve by id so a pre-plan UI snapshot cannot clobber post-plan disk
@@ -38,7 +98,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
             $0.status = WorkTask.ReservedStatus.new
         }
 
-        // Plan agent rewrote the central file.
+        // Whatever ran in the planning terminal rewrote the central file.
         var planned = seed
         planned.title = "Post-plan title"
         planned.body = "Full planned brief."

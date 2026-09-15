@@ -27,8 +27,8 @@ class WorkTaskCoordinator: ObservableObject {
     }
 
     func startTask(_ task: WorkTask) -> StartResult {
-        // Content authority is disk/pool by id — never the UI-captured snapshot (pre-plan
-        // title/body would otherwise clobber a completed Plan write on the bookkeeping save).
+        // Content authority is disk/pool by id — never the UI-captured snapshot (a stale title/body
+        // would otherwise clobber whatever the planning terminal just wrote, on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
         guard current.status == WorkTask.ReservedStatus.new
                 || current.status == WorkTask.ReservedStatus.canceled else { return .ignored }

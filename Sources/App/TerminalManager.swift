@@ -253,11 +253,7 @@ class TerminalManager: ObservableObject {
     /// Creates the pane on-the-fly when it doesn't exist yet. Returns the new tab's id
     /// so callers can later promote it.
     @discardableResult
-    func appendLauncherTab(
-        for worktree: Worktree,
-        app: ghostty_app_t,
-        projectPath: String? = nil
-    ) -> UUID {
+    func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t) -> UUID {
         let key = worktree.id
         let newTab = TerminalTab(id: UUID(), kind: .launcher)
 
@@ -266,8 +262,7 @@ class TerminalManager: ObservableObject {
             panes[key]!.main.activeId = newTab.id
         } else {
             ghosttyApp = app
-            let dir = worktree.path ?? projectPath
-            let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
+            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path)
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
@@ -297,8 +292,8 @@ class TerminalManager: ObservableObject {
     /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher`.
     /// Used by the Cmd+Shift+T shortcut.
     @discardableResult
-    func appendShellTab(for worktree: Worktree, app: ghostty_app_t, projectPath: String? = nil) -> UUID {
-        let id = appendLauncherTab(for: worktree, app: app, projectPath: projectPath)
+    func appendShellTab(for worktree: Worktree, app: ghostty_app_t) -> UUID {
+        let id = appendLauncherTab(for: worktree, app: app)
         promoteLauncher(tabId: id, in: worktree.id, app: app)
         return id
     }

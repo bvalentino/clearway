@@ -33,8 +33,8 @@ enum SidePanelTab: String, CaseIterable {
     case todos = "Todos"
     case prompts = "Prompts"
 
-    /// Tabs available on a worktree. The main branch carries no task, so it has no Task tab;
-    /// every other worktree gets all tabs.
+    /// Tabs available on a worktree. The main branch is never a task's worktree, so it has no
+    /// Task tab; every other worktree gets all tabs.
     static func available(isMain: Bool) -> [SidePanelTab] {
         isMain ? allCases.filter { $0 != .task } : allCases
     }
