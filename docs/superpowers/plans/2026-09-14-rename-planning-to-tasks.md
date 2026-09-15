@@ -243,3 +243,40 @@ As the spec's Out of scope section states: no behaviour change of any kind, no `
 edits to `docs/superpowers/specs/2026-09-14-remove-workflows.md` or its plan, no renaming of the
 "plan"/"planned" test fixture strings, no other `WorkTaskCoordinator` member, and no work on the
 `WorktreeGroupStore.openFileWatcher` fd leak.
+
+## Build log
+
+### T1: Rename the sidebar destination to Tasks
+
+| File | State |
+| --- | --- |
+| `Sources/App/ContentView.swift` | `DetailSelection.planning` → `.tasks` (declaration + 10 references), `BottomPanelAction.planningTerminal` → `.taskTerminal` (declaration + 2 references), prose "Planning" → "Tasks" at the `newTaskAction` doc comment, the synchronous-write comment, and the `commitListsColumnWidth` doc comment. `planTask` call at `:113` left for T2. |
+| `Sources/App/SidebarView.swift` | `planningRow` → `tasksRow` (declaration + `body` reference), label `"Planning"` → `"Tasks"`, `.tag(DetailSelection.tasks)`. Icon logic and `⌃1` hint unchanged. |
+| `Tests/BottomPanelActionTests.swift` | `testPlanningHostsThePlanningTerminal` → `testTasksHostTheTaskTerminal`; body `XCTAssertEqual(action(.tasks), .taskTerminal)`. |
+
+Renames were applied per identifier with word-boundary `perl -pi -e`, `planningTerminal` before
+`planning`, so no textual over-reach. Every replacement string is shorter than what it replaced, so
+no line could cross SwiftLint's length limit.
+
+**Evidence.** This task is a pure rename with no new behaviour, so there is no regression test to
+watch fail: the compiler is the oracle. `DetailSelection` is exhaustively switched in
+`bottomPanelAction(for:)` and matched in eight `ContentView` sites, so a missed reference is a build
+error rather than a silent behaviour change. `BottomPanelActionTests` continues to pin the
+`.tasks → .taskTerminal` mapping, which is the only rule the rename could have disturbed.
+
+**Deviations from the plan.** None to the diff. One environment deviation: the worktree had never
+been provisioned — `ghostty/` was an empty, uninitialized submodule directory, so the first
+`./scripts/ci.sh` failed with `Unable to resolve module dependency: 'GhosttyKit'` before compiling
+any Swift. Fixed by running the project's own `./scripts/worktree-post-create.sh`, which copies the
+primary worktree's built `ghostty/` in and writes the gitignored `BuildInfo.generated.swift`. No
+tracked file was touched by it.
+
+**Gate.** `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint clean (no violations),
+build succeeded, `Executed 306 tests, with 0 failures (0 unexpected)`.
+
+**Acceptance criteria.** All met.
+1. Sidebar's first row reads "Tasks" with the same `tray`/`tray.full` logic and `⌃1` hint.
+2. `grep -ni 'planning' Sources/App/ContentView.swift Sources/App/SidebarView.swift Tests/BottomPanelActionTests.swift`
+   returns nothing; `grep -n 'planTask' Sources/App/ContentView.swift` returns only `:113`.
+3. `DetailSelection` is still `Hashable`-only with the same three cases and `bottomPanelAction(for:)`
+   maps the same selections to the same panels.
