@@ -24,6 +24,14 @@ struct Worktree: Identifiable, Hashable {
     var canRemove: Bool { headStatus == .attached }
     var canFetchPR: Bool { headStatus == .attached }
 
+    /// Hide bare-detached worktrees unless they are main, have open terminals, or are opted into.
+    static func visible(_ worktrees: [Worktree], showingDetached: Bool, openIds: [String]) -> [Worktree] {
+        guard !showingDetached else { return worktrees }
+        return worktrees.filter { worktree in
+            worktree.headStatus != .detached || worktree.isMain || openIds.contains(worktree.id)
+        }
+    }
+
     /// Sort worktrees: main first, then open (by open order), then closed (alphabetical).
     static func sorted(_ worktrees: [Worktree], openIds: [String]) -> [Worktree] {
         let openOrder = Dictionary(uniqueKeysWithValues: openIds.enumerated().map { ($1, $0) })

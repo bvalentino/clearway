@@ -148,6 +148,79 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(sorted[1].branch, "closed")
     }
 
+    // MARK: - Visibility
+
+    private func makeDetached(path: String, isMain: Bool = false) -> Worktree {
+        makeWorktree(branch: nil, path: path, isMain: isMain, headStatus: .detached)
+    }
+
+    func testVisibilityHidesClosedDetachedWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/detached")],
+            showingDetached: false,
+            openIds: []
+        )
+        XCTAssertTrue(visible.isEmpty)
+    }
+
+    func testVisibilityKeepsRebasingWorktree() {
+        let rebasing = makeWorktree(branch: "feature", path: "/tmp/rebasing", headStatus: .rebasing)
+        let visible = Worktree.visible([rebasing], showingDetached: false, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/rebasing"])
+    }
+
+    func testVisibilityKeepsBisectingWorktree() {
+        let bisecting = makeWorktree(branch: "feature", path: "/tmp/bisecting", headStatus: .bisecting)
+        let visible = Worktree.visible([bisecting], showingDetached: false, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/bisecting"])
+    }
+
+    func testVisibilityKeepsOpenDetachedWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/detached")],
+            showingDetached: false,
+            openIds: ["/tmp/detached"]
+        )
+        XCTAssertEqual(visible.map(\.id), ["/tmp/detached"])
+    }
+
+    func testVisibilityKeepsDetachedMainWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/main", isMain: true)],
+            showingDetached: false,
+            openIds: []
+        )
+        XCTAssertEqual(visible.map(\.id), ["/tmp/main"])
+    }
+
+    func testVisibilityPassesWholeListThroughWhenShowingDetached() {
+        let worktrees = [
+            makeDetached(path: "/tmp/detached"),
+            makeWorktree(branch: "main", path: "/tmp/main", isMain: true),
+            makeWorktree(branch: "feature", path: "/tmp/feature"),
+        ]
+        let visible = Worktree.visible(worktrees, showingDetached: true, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/detached", "/tmp/main", "/tmp/feature"])
+    }
+
+    func testVisibilityKeepsAttachedWorktreeInEveryCombination() {
+        let attached = makeWorktree(branch: "feature", path: "/tmp/feature")
+        for showingDetached in [true, false] {
+            for openIds in [[], ["/tmp/feature"]] {
+                let visible = Worktree.visible(
+                    [attached],
+                    showingDetached: showingDetached,
+                    openIds: openIds
+                )
+                XCTAssertEqual(
+                    visible.map(\.id),
+                    ["/tmp/feature"],
+                    "showingDetached: \(showingDetached), openIds: \(openIds)"
+                )
+            }
+        }
+    }
+
     // MARK: - Gitdir Resolver
 
     var tempDir: URL?
