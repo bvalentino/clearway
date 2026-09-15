@@ -30,12 +30,12 @@ enum AppKeyboardShortcuts {
     static func claims(flags: NSEvent.ModifierFlags, chars: String?, keyCode: UInt16) -> Bool {
         let letter = chars?.lowercased()
 
-        // Ctrl+1…2 → sidebar destinations. Deliberately tolerates a stray Shift or Option. The range
+        // Ctrl+1…3 → sidebar destinations. Deliberately tolerates a stray Shift or Option. The range
         // stops at the last destination that exists: claiming a digit no handler answers would take
         // it from the shell and do nothing with it.
         if flags.contains(.control) && !flags.contains(.command),
            let chars, chars.count == 1,
-           let scalar = chars.unicodeScalars.first, scalar >= "1" && scalar <= "2" {
+           let scalar = chars.unicodeScalars.first, scalar >= "1" && scalar <= "3" {
             return true
         }
 

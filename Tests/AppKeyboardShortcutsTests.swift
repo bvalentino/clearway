@@ -55,17 +55,17 @@ final class AppKeyboardShortcutsTests: XCTestCase {
     func testControlDigitIsClaimed() {
         XCTAssertTrue(claims([.control], "1"))
         XCTAssertTrue(claims([.control], "2"))
+        XCTAssertTrue(claims([.control], "3"))
         XCTAssertFalse(claims([.control, .command], "1"), "Ctrl+digit requires no Command")
         XCTAssertFalse(claims([.control], "a"))
         XCTAssertFalse(claims([.command], "1"))
     }
 
     /// The claim stops at the last sidebar destination that exists. A claimed digit with no handler
-    /// is taken from the shell and answered by nobody, so Ctrl+3…9 and Ctrl+0 stay the terminal's —
+    /// is taken from the shell and answered by nobody, so Ctrl+4…9 and Ctrl+0 stay the terminal's —
     /// they are real control codes there (Ctrl+6 is vim's `CTRL-^`).
     func testControlDigitBeyondTheSidebarDestinationsIsNotClaimed() {
         XCTAssertFalse(claims([.control], "0"))
-        XCTAssertFalse(claims([.control], "3"))
         XCTAssertFalse(claims([.control], "4"))
         XCTAssertFalse(claims([.control], "6"))
         XCTAssertFalse(claims([.control], "9"))
@@ -124,12 +124,6 @@ final class AppKeyboardShortcutsTests: XCTestCase {
     func testRetiredCommandControlDigitsAreNotClaimed() {
         XCTAssertFalse(claims([.command, .control], "3"))
         XCTAssertFalse(claims([.command, .control], "2"))
-    }
-
-    /// Ctrl+3 reached a third sidebar destination that the app no longer has. Nothing declares
-    /// it now, so claiming it would take a key from the shell and answer it with nothing.
-    func testRetiredControlDigitThreeIsNotClaimed() {
-        XCTAssertFalse(claims([.control], "3"))
     }
 
     /// Replacing SwiftUI's `.sidebar` command group leaves macOS's own Enter/Exit Full Screen item

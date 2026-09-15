@@ -631,3 +631,33 @@ in a row whose icon is replaced by a `⌃3` badge while Control is held.
 **Gate.** `./scripts/ci.sh` — passed, exit 0 (`set -euo pipefail`, final line `==> CI passed.`).
 337 tests, 0 failures; SwiftLint clean. `git status --porcelain` before the commit showed only the
 three paths above — no `default.profraw` (no Debug launch), no `project.pbxproj` diff (no new files).
+
+### T5: Claim ⌃3 from focused terminal surfaces
+
+**What landed.**
+
+| Path | State |
+| --- | --- |
+| `Sources/App/AppKeyboardShortcuts.swift` | The Ctrl+digit scalar range widened from `"1"…"2"` to `"1"…"3"`, and the comment above it from "Ctrl+1…2" to "Ctrl+1…3". Nothing else in the table changed. |
+| `Tests/AppKeyboardShortcutsTests.swift` | `testControlDigitIsClaimed` gained `XCTAssertTrue(claims([.control], "3"))`; `testControlDigitBeyondTheSidebarDestinationsIsNotClaimed` dropped its `"3"` assertion and its doc comment now reads "Ctrl+4…9"; `testRetiredControlDigitThreeIsNotClaimed` and its doc comment removed. `testRetiredCommandControlDigitsAreNotClaimed` untouched — ⌘⌃3 is the retired aside combo and stays unclaimed. |
+| `CLAUDE.md` | Retired-pin list is now `(⌘⌃2, ⌘⌃3)`; the claim spans `"1"…"3"` over the sidebar's three destinations; the "⌃3 is retired with no alias" clause is gone. The `PanelCommands` ⌘⌃3 line is unedited. |
+
+**Evidence.** `./scripts/ci.sh` with the tests updated and `AppKeyboardShortcuts.swift` still at its
+unwidened `"1"…"2"` range:
+
+```
+Test Suite 'AppKeyboardShortcutsTests' started at 2026-09-15 00:32:16.820.
+    ✖ testControlDigitIsClaimed, XCTAssertTrue failed
+Executed 336 tests, with 1 failure (0 unexpected) in 36.792 (36.969) seconds
+Test Suite 'All tests' failed
+```
+
+The range widened, the same run passes.
+
+**Deviations from the plan.** None. One line beyond the plan's list: the doc comment on
+`testControlDigitBeyondTheSidebarDestinationsIsNotClaimed` said "Ctrl+3…9", which the dropped
+assertion made false; it now says "Ctrl+4…9".
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 336 tests, 0 failures; SwiftLint clean.
+`git status --porcelain` before the commit showed only the three paths above plus the plan document;
+no `default.profraw` (no Debug launch).

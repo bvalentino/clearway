@@ -132,9 +132,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     before the main menu, so menu shortcuts need an entry too). Claim **exactly** what the app
     handles: a claimed combo no handler answers is taken from the shell and then dropped.
     A shortcut Clearway itself retires gets a not-claimed pin in `AppKeyboardShortcutsTests`
-    (⌘⌃2, ⌘⌃3, ⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
-    app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"2"` —
-    the sidebar's two destinations — and ⌃3 is retired with no alias.
+    (⌘⌃2, ⌘⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
+    app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"3"` —
+    the sidebar's three destinations.
   - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
     aside ⌥⌘B, each a `PanelToggle` (`isVisible` + `toggle`) that `ContentView` publishes as a
     focused **scene** value. A `nil` value greys the item out, which is also how all three grey out
