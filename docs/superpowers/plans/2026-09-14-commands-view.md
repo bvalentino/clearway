@@ -600,3 +600,34 @@ The guard restored, the same command passes.
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 337 tests, 0 failures. `swiftlint lint --quiet`: no
 output (0 errors, 0 warnings). `git status --porcelain` before the commit showed only the six paths
 above; no `default.profraw` (no Debug launch).
+
+### T4: The Commands sidebar destination
+
+**What landed.**
+
+| Path | State |
+| --- | --- |
+| `Sources/App/ContentView.swift` | `case commands` on `DetailSelection`; `.commands` added to the existing `.noPanel` arm of `bottomPanelAction(for:)`; a hidden ⌃3 button after the ⌃2 one; an `else if detailSelection == .commands { CommandsView() }` branch at the end of `detailView`'s `.ready` case. `contentColumn` untouched — its `else` already collapses to width 0. |
+| `Sources/App/SidebarView.swift` | `commandsRow` (`destinationRow("Commands", systemImage: "bolt", shortcutHint: "⌃3")`, tagged `.commands`) below `promptsRow`, and listed after it in `body`. |
+| `Tests/BottomPanelActionTests.swift` | `XCTAssertEqual(action(.commands), .noPanel)` in `testDestinationsWithoutABottomPanelGetNothing`. |
+
+**Evidence.** `./scripts/ci.sh` with both source files reverted to HEAD and only the test assertion
+present:
+
+```
+❌ Tests/BottomPanelActionTests.swift:29:32: type 'DetailSelection?' has no member 'commands'
+        XCTAssertEqual(action(.commands), .noPanel)
+	Testing cancelled because the build failed.
+** TEST FAILED **
+```
+
+The sources restored, the same run passes. (The sources were copied aside and back, not stashed or
+`git checkout`ed.)
+
+**Deviations from the plan.** None. One choice the plan left open: the SF Symbol is `bolt`, not
+`command`. Both were offered; `command` is the ⌘ glyph, which would read as a Command-key shortcut
+in a row whose icon is replaced by a `⌃3` badge while Control is held.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0 (`set -euo pipefail`, final line `==> CI passed.`).
+337 tests, 0 failures; SwiftLint clean. `git status --porcelain` before the commit showed only the
+three paths above — no `default.profraw` (no Debug launch), no `project.pbxproj` diff (no new files).

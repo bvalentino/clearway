@@ -18,6 +18,7 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 enum DetailSelection: Hashable {
     case tasks
     case prompts
+    case commands
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -32,7 +33,7 @@ enum DetailSelection: Hashable {
         switch selection {
         case .worktree: return .secondaryTerminal
         case .tasks: return .taskTerminal
-        case .prompts, .none: return .noPanel
+        case .prompts, .commands, .none: return .noPanel
         }
     }
 }
@@ -364,6 +365,9 @@ struct ContentView: View {
                 .hidden()
             Button("") { detailSelection = .prompts }
                 .keyboardShortcut("2", modifiers: .control)
+                .hidden()
+            Button("") { detailSelection = .commands }
+                .keyboardShortcut("3", modifiers: .control)
                 .hidden()
         }
         .onAppear {
@@ -908,6 +912,8 @@ struct ContentView: View {
                 } else {
                     detailPlaceholder("Select a task")
                 }
+            } else if detailSelection == .commands {
+                CommandsView()
             }
         }
     }
