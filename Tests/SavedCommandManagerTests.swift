@@ -59,6 +59,19 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [])
     }
 
+    /// Every project window asks the process-wide manager to load; only the first read happens, so a
+    /// window opened while another window's save is still in flight cannot revert the live list.
+    func testASecondLoadDoesNotRereadTheFile() async throws {
+        let existing = makeCommand(name: "Dev")
+        try await store.save([existing])
+        await manager.load()
+
+        try await store.save([])
+        await manager.load()
+
+        XCTAssertEqual(manager.commands, [existing])
+    }
+
     // MARK: - Mutations
 
     func testAddAppendsAndPersists() async {

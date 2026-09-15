@@ -14,11 +14,19 @@ final class SavedCommandManager: ObservableObject {
     /// The save in flight, if any. Each new save awaits it before writing.
     private var pendingSave: Task<Void, Never>?
 
+    /// Set before the read starts, so a second window's `.task` cannot race the first one's.
+    private var hasLoaded = false
+
     init(store: SavedCommandStore = SavedCommandStore()) {
         self.store = store
     }
 
+    /// Reads the file once per process. Every project window asks, and only the first one reads:
+    /// a later read could land while a save from another window is still in flight and replace the
+    /// live list with the pre-save file. There is no reload path — the app is the only writer.
     func load() async {
+        guard !hasLoaded else { return }
+        hasLoaded = true
         commands = await store.load()
     }
 
