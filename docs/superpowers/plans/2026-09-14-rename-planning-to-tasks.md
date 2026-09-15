@@ -1,0 +1,245 @@
+# Plan: Rename Planning to Tasks
+
+**Date:** 2026-09-14
+**Base:** b049206589b9eb8e94a0630de38c7e3cebf5a1db
+
+Breaks down `docs/superpowers/specs/2026-09-14-rename-planning-to-tasks.md`. Every design decision is
+settled there; read it before starting a task, and read this file for what your task is and how it is
+checked.
+
+## Architecture decisions carried from the spec
+
+1. **Pure rename.** No behaviour, no persisted format, no keyboard shortcut changes. A diff that
+   changes what the app does is a defect. (Spec, Out of scope)
+2. **The terminal's noun is `taskTerminal`**, the vocabulary `TerminalManager` already uses
+   (`isTaskTerminalVisible`, `toggleTaskTerminal`, `openTaskTerminalWithCommand`). (Decision 3)
+3. **`WorkTaskCoordinator.planTask` becomes `toggleTaskTerminal(taskId:app:focusOnReveal:)`** and
+   `WorkTaskListView.planTask()` becomes `toggleTaskTerminal()`. The name repeating
+   `TerminalManager.toggleTaskTerminal(for:app:projectPath:)` is correct — every call site is
+   qualified by its receiver. (Decisions 4, 5)
+4. **The notification's raw string changes with its constant**: `Notification.Name("planningTerminalOpened")`
+   → `Notification.Name("taskTerminalOpened")`. One poster, one observer, never crosses a process or
+   disk boundary. (Decision 6, assumption 2)
+5. **`DetailSelection.planning` → `.tasks` is free**: the enum is `Hashable` only, never `Codable`,
+   and lives in two `@State` properties. (Decision 7, assumption 1)
+6. **The toolbar tooltip drops the qualifier**: "Show terminal" / "Hide terminal", not "Show task
+   terminal" — the button sits in the task list's own toolbar. (Decision 2)
+7. **Test fixture strings containing "plan"/"planned" are not renamed.** `"Pre-plan draft"`,
+   `"Post-plan title"`, `"Planned title"`, `"Full planned brief."`, `"Planned via watcher"` are
+   payloads describing an agent having planned a task, not references to the destination. Doc
+   comments in those same files that name the *terminal* or the *destination* are in scope.
+   (Decision 8)
+8. **"Backlog", not "Tasks", where the prose names the pre-worktree pool.** "a fresh Planning task" →
+   "a fresh backlog task"; "`.new` is planning-only" → "`.new` is backlog-only". "Tasks" only where
+   the sentence names the destination. (Decision 9)
+9. **`project.yml` is not edited.** Sources are globbed by directory, so the two file renames need
+   only `xcodegen generate`, which `./scripts/ci.sh` runs. (Assumption 4)
+10. **`docs/superpowers/` records for #214 are not edited.** Shipped documents, never touched after
+    merge. (Decision 10)
+11. **`AppKeyboardShortcuts` is untouched.** The Ctrl+digit claim matches scalars `"1"…"2"` and names
+    no destination. No new retired-shortcut pin. (Decision 11, assumption 6)
+
+## Regression check
+
+Every task's check is the project's one runner:
+
+```bash
+./scripts/ci.sh
+```
+
+It runs `xcodegen generate` (without which the two renamed files are invisible to the build),
+SwiftLint, the build and the full test suite. Do not hand-write an `xcodebuild` line.
+
+## Dependency graph
+
+```
+T1 (sidebar destination)  ──┐
+                            ├── independent, any order
+T2 (coordinator + list view, incl. both file renames)
+        │
+        └── T3 (notification constant + remaining Sources prose)
+                    │
+T4 (Tests prose + CLAUDE.md) ── independent of all three
+```
+
+T3 edits `Sources/App/WorkTaskCoordinator+TaskTerminal.swift`, which only exists after T2 does the
+`git mv`. T1 and T4 depend on nothing. Each task leaves the tree compiling and the suite green.
+
+### T1: Rename the sidebar destination to Tasks
+
+**Files:** `Sources/App/ContentView.swift`, `Sources/App/SidebarView.swift`,
+`Tests/BottomPanelActionTests.swift`
+
+**What it does.** Renames the two `ContentView` enum cases and every reference, retitles the sidebar
+row, and updates the `ContentView` prose that names the destination.
+
+- `Sources/App/ContentView.swift`: `DetailSelection.planning` → `.tasks` (declared `:19`; referenced
+  `:34`, `:65`, `:66`, `:150`, `:262`, `:362`, `:423`, `:631`, `:722`, `:905`).
+  `BottomPanelAction.planningTerminal` → `.taskTerminal` (declared `:43`; referenced `:34`, `:110`).
+  Prose: `:145` "navigates to it in Planning" → "in Tasks"; `:149` "so Planning mounts" → "so Tasks
+  mounts"; `:602` "navigating away from Planning/Prompts" → "away from Tasks/Prompts". (`:614`
+  already says Tasks.)
+- `Sources/App/SidebarView.swift`: `planningRow` → `tasksRow` (`:73`, `:187`); the user-visible label
+  `destinationRow("Planning", …)` → `"Tasks"` (`:189`); `.tag(DetailSelection.tasks)` (`:190`). The
+  icon logic and the `⌃1` hint are unchanged.
+- `Tests/BottomPanelActionTests.swift`: `testPlanningHostsThePlanningTerminal` →
+  `testTasksHostTheTaskTerminal` (`:23`); body becomes
+  `XCTAssertEqual(action(.tasks), .taskTerminal)` (`:24`).
+
+Do **not** touch `planTask`, `planningLaunchCommand` or `planningTerminalOpened` here; those are T2
+and T3. `ContentView.swift:113` still reads `workTaskCoordinator.planTask(…)` after this task.
+
+**Acceptance criteria.**
+1. The sidebar's first row reads "Tasks", with the same `tray`/`tray.full` icon logic and `⌃1` hint.
+2. No occurrence of `planning` remains in `SidebarView.swift`, `BottomPanelActionTests.swift`, or in
+   `ContentView.swift` outside line `:113`'s `planTask` call.
+3. Behaviour is unchanged: the enum is still `Hashable`-only with the same three cases, and
+   `bottomPanelAction(for:)` still maps the same selections to the same panels.
+
+**Verification.**
+- `./scripts/ci.sh` passes (`BottomPanelActionTests` included).
+- `grep -ni 'planning' Sources/App/SidebarView.swift Tests/BottomPanelActionTests.swift` returns
+  nothing.
+- `grep -ni 'planning' Sources/App/ContentView.swift` returns nothing (the surviving `:113` match is
+  `planTask`, which that grep does not hit).
+
+### T2: Rename the coordinator and list-view entry points onto the task terminal
+
+**Files:** `Sources/App/WorkTaskCoordinator+Planning.swift` (renamed),
+`Tests/PlanningLaunchCommandTests.swift` (renamed), `Sources/App/ContentView.swift`,
+`Sources/App/WorkTaskListView.swift`, `Sources/App/WorkTaskCoordinator.swift`
+
+**What it does.** Renames both files with `git mv` so history follows, renames the two coordinator
+members and the list view's private forwarder, and rewords the toolbar tooltip.
+
+- `git mv Sources/App/WorkTaskCoordinator+Planning.swift Sources/App/WorkTaskCoordinator+TaskTerminal.swift`
+  and `git mv Tests/PlanningLaunchCommandTests.swift Tests/TaskTerminalLaunchCommandTests.swift`. No
+  `project.yml` edit; `./scripts/ci.sh` runs `xcodegen generate`.
+- In the renamed source file: `planTask(taskId:app:focusOnReveal:)` →
+  `toggleTaskTerminal(taskId:app:focusOnReveal:)` (`:13`); `planningLaunchCommand()` →
+  `taskTerminalLaunchCommand()` (declared `:44`, called `:22`). Doc comments at `:6` ("Toggles the
+  planning terminal") and `:41` ("The command the planning terminal runs") say "task terminal".
+  Leave the `WorkTaskNotification.planningTerminalOpened` post at `:38` alone — that is T3.
+- `Sources/App/ContentView.swift:113`: `workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app, focusOnReveal: true)`.
+- `Sources/App/WorkTaskListView.swift`: `Button(action: toggleTaskTerminal)` (`:102`); `.help` becomes
+  `taskTerminalOpen ? "Hide terminal" : "Show terminal"` (`:106`); `private func planTask()` →
+  `private func toggleTaskTerminal()` (`:222`), forwarding to
+  `workTaskCoordinator.toggleTaskTerminal(taskId: id, app: app)` (`:224`). The existing private
+  `taskTerminalOpen` computed property is untouched and does not collide.
+- In the renamed test file: class `PlanningLaunchCommandTests` → `TaskTerminalLaunchCommandTests`
+  (`:9`); `tempRootPrefix` `"clearway-planning-launch"` → `"clearway-task-terminal-launch"` (`:11`);
+  both `coordinator.planningLaunchCommand()` calls (`:18`, `:36`) follow the rename; the doc comment
+  at `:4-7` is rewritten for the new names — it currently names "the planning terminal (the Plan icon
+  and Cmd+J)" and `planTask`, and the Plan icon no longer exists, so it should say the toolbar toggle
+  and ⌘J, and name `toggleTaskTerminal`.
+- `Sources/App/WorkTaskCoordinator.swift:31`: comment "whatever the planning terminal just wrote" →
+  "whatever the task terminal just wrote".
+
+**Acceptance criteria.**
+1. `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` and `Tests/TaskTerminalLaunchCommandTests.swift`
+   exist; the two old paths do not; `git status` shows renames, not add+delete.
+2. The only remaining `planning` match in the renamed source file is the notification post at `:38`.
+3. `grep -ni 'planning\|planTask' Sources/App/WorkTaskListView.swift Sources/App/WorkTaskCoordinator.swift Tests/TaskTerminalLaunchCommandTests.swift`
+   returns nothing, and `grep -n 'planTask' Sources/App/ContentView.swift` returns nothing.
+4. The toolbar button's tooltip reads "Hide terminal" when the terminal is open and "Show terminal"
+   when it is not.
+5. Behaviour is unchanged: the `focusOnReveal` defaults, the `beginTaskLaunch`/`endTaskLaunch`
+   bracketing, the `mainCommandProvider()` nil-check and the argument each call site passes are all
+   as before.
+
+**Verification.**
+- `./scripts/ci.sh` passes. `TaskTerminalLaunchCommandTests` must appear in the run — if the two
+  renamed files were invisible to the build, `xcodegen generate` did not pick them up.
+- `git status --porcelain` shows the two paths as `R`.
+
+**Depends on:** nothing (T1 is independent, but both touch `ContentView.swift`; run them in order to
+keep the diffs readable).
+
+### T3: Rename the notification constant and finish the Sources prose
+
+**Files:** `Sources/App/WorkTaskWindow.swift`, `Sources/App/TaskDetailView.swift`,
+`Sources/App/WorkTaskCoordinator+TaskTerminal.swift`, `Sources/App/WorkTask.swift`,
+`Sources/App/WorkTaskManager.swift`
+
+**What it does.** Renames the notification constant together with its raw string, updates its single
+poster and single observer, and clears the last `planning` doc comments in `Sources/`.
+
+- `Sources/App/WorkTaskWindow.swift`: `static let planningTerminalOpened = Notification.Name("planningTerminalOpened")`
+  → `static let taskTerminalOpened = Notification.Name("taskTerminalOpened")` (`:18`); the doc
+  comment at `:16` says "task terminal".
+- `Sources/App/WorkTaskCoordinator+TaskTerminal.swift:38`: the post uses
+  `WorkTaskNotification.taskTerminalOpened`.
+- `Sources/App/TaskDetailView.swift`: the `.onReceive` publisher reads
+  `WorkTaskNotification.taskTerminalOpened` (`:164`); the comment at `:166` says "beside the task
+  terminal".
+- `Sources/App/WorkTask.swift`: `:20` "stays out of the Planning backlog" → "out of the Tasks
+  backlog"; `:73` "Planning task isn't cluttered" → "backlog task isn't cluttered" (decision 9 —
+  this sentence names the pool).
+- `Sources/App/WorkTaskManager.swift`: `:131` "without cluttering Planning" → "without cluttering
+  Tasks"; `:134` "reserved for Planning (pre-worktree)" → "reserved for Tasks (pre-worktree)".
+
+**Acceptance criteria.**
+1. `grep -rn 'planningTerminalOpened' Sources Tests` returns nothing, and the new raw value is
+   `"taskTerminalOpened"` — the constant and its string change together.
+2. `git ls-files -- Sources | xargs grep -ni 'planning\|planTask'` returns nothing.
+3. Behaviour is unchanged: still exactly one poster and one observer, the observer still guards on
+   `note.object as? UUID == taskId` and still gates on `!previewMarkdown.isEmpty`.
+
+**Verification.**
+- `./scripts/ci.sh` passes.
+- Manual: open the per-task terminal on a task with a non-empty body and confirm the editor flips to
+  preview; open it on an empty-bodied task and confirm it does not.
+
+**Depends on:** T2 (the renamed source file must exist).
+
+### T4: Finish the prose in Tests and CLAUDE.md
+
+**Files:** `Tests/WorkTaskCoordinatorTests.swift`, `Tests/TerminalManagerTests.swift`,
+`Tests/WorkTaskManagerTests.swift`, `Tests/WorkTaskTests.swift`, `CLAUDE.md`
+
+**What it does.** Comment-only edits. No test body, no assertion and no fixture string changes.
+
+- `Tests/WorkTaskCoordinatorTests.swift:101`: "Whatever ran in the planning terminal" → "in the task
+  terminal". The `"Pre-plan draft"` / `"Post-plan title"` / `"Full planned brief."` fixtures at
+  `:93-146` and the `:89` doc comment's "pre-plan UI snapshot … post-plan disk" stay (decision 7).
+- `Tests/TerminalManagerTests.swift:273`: "A plan launch awaits the resolved PATH" → "A task-terminal
+  launch awaits the resolved PATH".
+- `Tests/WorkTaskManagerTests.swift`: `:84` the assertion *message* "`.new` is planning-only; worktree
+  tasks start in-progress" → "`.new` is backlog-only; worktree tasks start in-progress" (decision 9 —
+  the message text only; the assertion itself is unchanged). `:248` "without surfacing it in
+  Planning" → "in Tasks".
+- `Tests/WorkTaskTests.swift:20`: "Planning tasks aren't cluttered" → "backlog tasks aren't
+  cluttered" (decision 9).
+- `CLAUDE.md:152`: "the Planning bottom panel needs `ghosttyApp.app`" → "the Tasks bottom panel needs
+  `ghosttyApp.app`".
+
+**Acceptance criteria.**
+1. `git ls-files -- Sources Tests | xargs grep -ni 'planning\|planTask'` returns nothing, and no file
+   under `Sources/` or `Tests/` has "Planning" in its name (both spec success criteria 3 and 4 — this
+   is the task that closes them, given T1–T3 are in).
+2. `grep -n 'Planning' CLAUDE.md` returns nothing.
+3. The five "plan"-shaped fixture strings listed in decision 7 are byte-identical to base, and no
+   assertion, fixture or test name changed — only comment and message text.
+
+**Verification.**
+- `./scripts/ci.sh` passes.
+- `git diff --stat` for this task shows changes confined to the five files above, and
+  `git diff` shows only comment lines and one assertion-message string.
+
+**Depends on:** nothing.
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| A renamed file is invisible to the build because `xcodegen generate` did not run | Build or test host fails confusingly | T2's verification requires `TaskTerminalLaunchCommandTests` to appear in the `ci.sh` run; never hand-write an `xcodebuild` line |
+| A blind find-and-replace of `plan` renames the protected fixture strings | Silent churn, decision 7 violated | T4 pins those strings byte-identical as an acceptance criterion; the renames in T1–T3 are per-identifier, not textual |
+| A line grows past SwiftLint's limit when "planning" becomes the longer "task terminal" | Lint warning in new code | `ci.sh` runs SwiftLint; rewrap the comment rather than leaving a new warning |
+| `default.profraw` appears after a Debug launch and is not gitignored | Blocks sign-off | Run `git status --porcelain` before committing and never `git add -A` |
+
+## Out of scope
+
+As the spec's Out of scope section states: no behaviour change of any kind, no `project.yml` edit, no
+edits to `docs/superpowers/specs/2026-09-14-remove-workflows.md` or its plan, no renaming of the
+"plan"/"planned" test fixture strings, no other `WorkTaskCoordinator` member, and no work on the
+`WorktreeGroupStore.openFileWatcher` fd leak.
