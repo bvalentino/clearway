@@ -202,7 +202,7 @@ poster and single observer, and clears the last `planning` doc comments in `Sour
 
 - `Tests/WorkTaskCoordinatorTests.swift:101`: "Whatever ran in the planning terminal" → "in the task
   terminal". The `"Pre-plan draft"` / `"Post-plan title"` / `"Full planned brief."` fixtures at
-  `:93-146` and the `:89` doc comment's "pre-plan UI snapshot … post-plan disk" stay (decision 7).
+  `:93-146` and the `:89` doc comment's "pre-plan UI snapshot … post-plan disk" stay (decision 8).
 - `Tests/TerminalManagerTests.swift:273`: "A plan launch awaits the resolved PATH" → "A task-terminal
   launch awaits the resolved PATH".
 - `Tests/WorkTaskManagerTests.swift`: `:84` the assertion *message* "`.new` is planning-only; worktree
@@ -219,7 +219,7 @@ poster and single observer, and clears the last `planning` doc comments in `Sour
    under `Sources/` or `Tests/` has "Planning" in its name (both spec success criteria 3 and 4 — this
    is the task that closes them, given T1–T3 are in).
 2. `grep -n 'Planning' CLAUDE.md` returns nothing.
-3. The five "plan"-shaped fixture strings listed in decision 7 are byte-identical to base, and no
+3. The five "plan"-shaped fixture strings listed in decision 8 are byte-identical to base, and no
    assertion, fixture or test name changed — only comment and message text.
 
 **Verification.**
@@ -234,7 +234,7 @@ poster and single observer, and clears the last `planning` doc comments in `Sour
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | A renamed file is invisible to the build because `xcodegen generate` did not run | Build or test host fails confusingly | T2's verification requires `TaskTerminalLaunchCommandTests` to appear in the `ci.sh` run; never hand-write an `xcodebuild` line |
-| A blind find-and-replace of `plan` renames the protected fixture strings | Silent churn, decision 7 violated | T4 pins those strings byte-identical as an acceptance criterion; the renames in T1–T3 are per-identifier, not textual |
+| A blind find-and-replace of `plan` renames the protected fixture strings | Silent churn, decision 8 violated | T4 pins those strings byte-identical as an acceptance criterion; the renames in T1–T3 are per-identifier, not textual |
 | A line grows past SwiftLint's limit when "planning" becomes the longer "task terminal" | Lint warning in new code | `ci.sh` runs SwiftLint; rewrap the comment rather than leaving a new warning |
 | `default.profraw` appears after a Debug launch and is not gitignored | Blocks sign-off | Run `git status --porcelain` before committing and never `git add -A` |
 
@@ -371,7 +371,7 @@ build succeeded, `Executed 306 tests, with 0 failures (0 unexpected)` — the sa
 
 | File | State |
 | --- | --- |
-| `Tests/WorkTaskCoordinatorTests.swift` | `:101` "ran in the planning terminal" → "ran in the task terminal". The `"Pre-plan draft"` / `"Post-plan title"` / `"Full planned brief."` fixtures and the `:89` doc comment's "pre-plan … post-plan" are untouched (decision 7). |
+| `Tests/WorkTaskCoordinatorTests.swift` | `:101` "ran in the planning terminal" → "ran in the task terminal". The `"Pre-plan draft"` / `"Post-plan title"` / `"Full planned brief."` fixtures and the `:89` doc comment's "pre-plan … post-plan" are untouched (decision 8). |
 | `Tests/TerminalManagerTests.swift` | `:273` "A plan launch" → "A task-terminal launch". The three-line doc comment was rewrapped so no line grows past the file's ~100-column convention. |
 | `Tests/WorkTaskManagerTests.swift` | `:84` assertion *message* "`.new` is planning-only" → "`.new` is backlog-only" (decision 9); the assertion itself is byte-identical. `:248` "surfacing it in Planning" → "in Tasks". |
 | `Tests/WorkTaskTests.swift` | `:20-21` doc comment reworded off "Planning tasks aren't cluttered" — see the deviation below. |
@@ -383,7 +383,7 @@ and therefore no regression test to watch fail. The compiler is not an oracle fo
 the guarantee comes from the diff being closed under inspection — `git diff -U0` is six hunks, every
 changed line a `//`, `///` or Markdown line except `WorkTaskManagerTests.swift:84`, whose change is
 confined to the string literal inside `XCTAssertEqual`'s message argument. The five protected
-fixture strings from decision 7 were re-grepped after the edits and all 24 occurrences across
+fixture strings from decision 8 were re-grepped after the edits and all 24 occurrences across
 `TaskEditorBuffersTests`, `WorkTaskCoordinatorTests`, `WorkTaskManagerTests` and
 `WorkTaskManagerWatcherTests` are byte-identical to base.
 
@@ -421,3 +421,41 @@ are both already settled in the spec (decisions 4 and 2), so no code changed.
 
 **Gate.** `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint clean, build succeeded,
 `Executed 306 tests, with 0 failures (0 unexpected)`.
+
+### Review
+
+`/pr-review-toolkit:review-pr code tests errors types` over `b049206...HEAD`, four agents from fresh
+contexts. **No Critical and no in-scope Important findings.** The `code` pass returned nothing at any
+severity; `types` returned no Critical or Important.
+
+Independently re-verified: spec success criteria 3 and 4 hold
+(`git ls-files -- Sources Tests | xargs grep -ni 'planning\|planTask'` exits 1, no "Planning" filename),
+and repo-wide the only surviving matches are this change's own spec and plan. `project.pbxproj` swaps
+both renamed files in every `PBXBuildFile`, `PBXFileReference`, group and `Sources` build-phase
+section, so neither file was dropped from a target. `taskTerminalOpened` has one declaration, one
+poster and one observer; `DetailSelection` reaches no `Codable`, `AppStorage`, `SceneStorage` or
+`UserDefaults` path, so the case rename writes nothing to disk. `WorkTask.ReservedStatus` and
+`SidePanelTab.task`'s persisted `"Task"` rawValue are byte-identical to base.
+
+Three findings restated decisions the spec already settled — the coordinator/`TerminalManager`
+`toggleTaskTerminal` name (decision 4) and the unqualified tooltip (decision 2), the latter raised by
+both `errors` and `types`. The table wins; they are recorded as follow-ups below, not reopened.
+
+**Applied.** One fix, documentation only: five citations in this plan read "decision 7" where the
+spec numbers the protected-fixture-strings rule **8** (7 is the `DetailSelection`-persistence row), so
+an auditor following the reference landed on the wrong row. No Swift changed, so the gate recorded
+above still stands — `docs/` is outside the `Sources`/`Tests` globs in `project.yml`.
+
+**Follow-ups, each out of scope here because this task forbids behaviour changes.**
+
+1. The `.taskTerminal` `PanelToggle` gate (`ContentView.swift:111`) carries `selectedTaskId` and
+   `ghosttyApp.app` but not the task-existence check its action opens with
+   (`WorkTaskCoordinator+TaskTerminal.swift:14`), so after deleting the selected task — neither delete
+   handler at `WorkTaskListView.swift:141`/`:159` clears `selection` — ⌘J stays enabled and does
+   nothing. The toolbar door for the same action does gate on existence via `selectedTask`. Identical
+   at base `b049206`; the rename rewrote only the case label and the callee on those lines.
+2. `WorkTaskManager.deleteTask` (`:245`) drops the `removeItem` error with `try?` and no log, so a
+   failed delete dismisses the alert and the task returns on the next watcher pass.
+3. The sidebar destination "Tasks" and the worktree aside tab "Task"
+   (`ContentViewHelpers.swift:32`) now differ only by a plural. Retitling the aside is a migration,
+   not a rename: its rawValue is persisted through `setSidePanelTab` and parsed back by string.
