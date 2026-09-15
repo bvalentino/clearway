@@ -582,6 +582,24 @@ silently no-ops on it. This is already the behaviour for every other unknown slu
 **Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 303 tests, with 0 failures (0 unexpected)`.
 `git status --porcelain` clean apart from the files above.
 
+### C2: Move the overflow menu to the end of the task toolbar (after C1, commit 3ffdba7)
+
+**Requested:** "in planning, within a task, I see the 'Copy task' button, then ..., then 'Show/Hide
+planning terminal'. Let's move the ... to the end in that group."
+
+Ordering only — no item, label, gate or action changed.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | The `…` `ToolbarItem` moved below the planning-terminal `ToolbarItem`, so the primary-action order reads Start Now, Copy task, Show/Hide planning terminal, `…`, edit/preview picker |
+
+**Deviations**
+
+- **The `…` sits before the edit/preview picker, not after it.** "That group" is the three items the
+  operator named; the segmented picker is a separate control and stays last.
+
+**Gate:** `./scripts/ci.sh` — passed, exit 0. `Executed 303 tests, with 0 failures (0 unexpected)`.
+
 ## Build log
 
 ### T1: Retire the Workflow sidebar destination and the WORKFLOW.json editor

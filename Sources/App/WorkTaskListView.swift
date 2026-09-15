@@ -99,6 +99,15 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
+                Button(action: planTask) {
+                    Image(systemName: "rectangle.bottomhalf.inset.filled")
+                        .opacity(taskTerminalOpen ? 1 : 0.5)
+                }
+                .help(taskTerminalOpen ? "Hide planning terminal" : "Show planning terminal")
+                .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button(role: .destructive) {
                         if let task = selectedTask {
@@ -113,15 +122,6 @@ struct WorkTaskListView: View {
                 .menuIndicator(.hidden)
                 .help("More actions")
                 .disabled(selectedTask == nil)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: planTask) {
-                    Image(systemName: "rectangle.bottomhalf.inset.filled")
-                        .opacity(taskTerminalOpen ? 1 : 0.5)
-                }
-                .help(taskTerminalOpen ? "Hide planning terminal" : "Show planning terminal")
-                .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
             }
 
             ToolbarItem(placement: .primaryAction) {
