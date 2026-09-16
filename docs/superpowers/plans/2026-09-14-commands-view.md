@@ -531,6 +531,27 @@ items are unchanged, and so is the run action.
 a visible "Run command" label it restates it, which is the helper-text the project style rule
 refuses. Recorded as decision 24 in the spec.
 
+### C4: The Run dropdown is an icon button with no chevron (after C3, commit `3a16bdc`)
+
+Requested by the operator from a hands-on check of the worktree toolbar. **Supersedes C3.** The
+dropdown's visible content is the `play` icon again, the `.help("Run a saved command")` tooltip is
+back because an icon-only button needs it as its name, and the chevron SwiftUI's `Menu` draws is
+hidden with `.menuIndicator(.hidden)` so the control matches the neighbouring Archive, secondary
+terminal and aside icon buttons. The disabled gating and the menu items are unchanged, and so is the
+run action.
+
+| File | State |
+| --- | --- |
+| `Sources/App/RunCommandMenu.swift` | The `Menu`'s label is `Image(systemName: "play")`; `.menuIndicator(.hidden)` and `.help("Run a saved command")` sit above the existing `.disabled(...)`. Nothing else in the file changed. |
+
+**Why `.menuIndicator(.hidden)` alone.** Apple documents the modifier as "Sets the menu indicator
+visibility for controls within this view" (macOS 12.0+), and its own example is this exact shape — a
+plain `Menu` with an icon-only label plus `.menuIndicator(.hidden)`, captioned "creates a menu
+without an indicator". The neighbouring toolbar buttons declare no `.buttonStyle`, so no
+`.menuStyle(.button)` was added either; the toolbar's own styling is what they all share.
+
+**Not visually confirmed.** See the C4 build log section. Recorded as decision 25 in the spec.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -884,5 +905,28 @@ untouched.
 
 **Deviations from the plan.** The `.help` tooltip was removed alongside the icon — see Changelog C3
 and spec decision 24. C3 is an operator change request, not a plan task.
+
+**Gate.** `./scripts/ci.sh` — see the commit.
+
+### C4: The Run dropdown is an icon button with no chevron
+
+**What landed.** The file table is in Changelog C4 above.
+
+**Evidence.** No watched failure: the change is the `Menu`'s label view and two modifiers, and
+nothing in `Tests/` references the icon, the tooltip or the indicator. The suite gates it only as a
+regression check. The behavioural claim that `.menuIndicator(.hidden)` removes the chevron rests on
+Apple's own documentation for `View.menuIndicator(_:)`, quoted in Changelog C4, not on a local
+experiment.
+
+**The chevron was not confirmed visually.** `./scripts/build.sh` succeeded and `./scripts/run.sh`
+launched the app, but every screen capture failed with `could not create image from display`:
+`screencapture` needs Screen Recording permission, and the responsible app for this session is the
+`Clearway.app` Debug build in DerivedData that hosts the terminal Claude Code runs in — an unsigned
+local binary whose TCC grant would not survive a rebuild. `System Events` is likewise refused
+(`osascript is not allowed assistive access`), so the accessibility hierarchy could not be read
+either. So the rendered result — chevron gone, icon metrics matching the neighbouring buttons in
+both the enabled and the disabled state — is unverified and needs the operator's eyes.
+
+**Deviations from the plan.** C4 is an operator change request, not a plan task, and it reverses C3.
 
 **Gate.** `./scripts/ci.sh` — see the commit.
