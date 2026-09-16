@@ -517,6 +517,20 @@ one trailing newline" and keeps the auto-run-on single-line path byte-identical 
 that path used to send the raw string. Deliberate: the old asymmetry was accidental, and leading or
 trailing spaces on a staged prompt line are invisible.
 
+### C3: The Run dropdown shows a text label (after C2, commit `f721d95`)
+
+Requested by the operator from a hands-on check of the worktree toolbar. The dropdown's visible
+content is the text **"Run command"** instead of the `play` icon. The disabled gating and the menu
+items are unchanged, and so is the run action.
+
+| File | State |
+| --- | --- |
+| `Sources/App/RunCommandMenu.swift` | The `Menu`'s label is `Text("Run command")`; the `Image(systemName: "play")` and the `.help("Run a saved command")` modifier are gone. Nothing else in the file changed. |
+
+**Why the tooltip went too.** On an icon-only button `.help` carried the control's only name. Beside
+a visible "Run command" label it restates it, which is the helper-text the project style rule
+refuses. Recorded as decision 24 in the spec.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -857,3 +871,18 @@ worktree `…/bvalentino/clearway`:
 **Deviations from the plan.** None. C2 is an operator change request, not a plan task.
 
 **Gate.** `./scripts/ci.sh` — see the commit; `git status --porcelain` was empty afterwards.
+
+### C3: The Run dropdown shows a text label
+
+**What landed.** The file table is in Changelog C3 above.
+
+**Evidence.** No watched failure: the change is the `Menu`'s label view and nothing else. Nothing in
+`Tests/` referenced the icon or the tooltip (`grep -rn 'Run a saved command|systemName: "play"'
+Sources Tests docs CLAUDE.md` matched nothing after the edit), so the suite gates the change only as
+a regression check on the rest of the app. `SavedCommandTests` still covers the run action, which is
+untouched.
+
+**Deviations from the plan.** The `.help` tooltip was removed alongside the icon — see Changelog C3
+and spec decision 24. C3 is an operator change request, not a plan task.
+
+**Gate.** `./scripts/ci.sh` — see the commit.
