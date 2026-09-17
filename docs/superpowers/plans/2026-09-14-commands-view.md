@@ -552,6 +552,39 @@ without an indicator". The neighbouring toolbar buttons declare no `.buttonStyle
 
 **Not visually confirmed.** See the C4 build log section. Recorded as decision 25 in the spec.
 
+### C5: The four worktree toolbar buttons sit in four separate groups (after C4, commit `54a9e55`)
+
+Requested by the operator from a hands-on check of the worktree toolbar: "the top bar has all of
+these together in a single group: [run] [archive] [secondary terminal] [aside]. Can we have them all
+in different groups?" On macOS 26 adjacent toolbar items sharing one placement are drawn inside one
+Liquid Glass capsule, so all four read as a single control. A fixed `ToolbarSpacer` between each
+adjacent pair breaks that shared background into four.
+
+| File | State |
+| --- | --- |
+| `Sources/App/ContentView.swift` | Three `if #available(macOS 26, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }` entries in the `.toolbar` block, one between each adjacent pair of the four `.primaryAction` items. The items themselves, their order, their gating and the rest of the block are untouched. |
+
+**Why `ToolbarSpacer(.fixed)`.** Apple's *Adopting Liquid Glass* names the separation of a shared
+background as the spacer's job — "You can create a fixed spacer to separate items that share a
+background using these APIs:", and the SwiftUI API it then lists is `SpacerSizing.fixed` /
+`ToolbarSpacer`. `ToolbarSpacer`'s own reference adds: "A space item creates visual breaks in the
+toolbar between items. Spacers can have a standard fixed size or be flexible and push items apart."
+`.flexible` was rejected: it pushes the items to opposite ends of the toolbar rather than leaving
+them adjacent in four capsules.
+
+**Why not `ToolbarItemGroup` or `.sharedBackgroundVisibility`.** A `ToolbarItemGroup` is the opposite
+tool — it *shares* one background across its members, which is the state being removed.
+`.sharedBackgroundVisibility(.hidden)` removes an item's glass entirely, so the buttons would lose
+the capsule instead of each getting their own.
+
+**Why the availability guard.** `ToolbarSpacer` is macOS 26.0+
+(`MacOSX27.0.sdk/.../SwiftUI.swiftinterface:29520`: `@available(iOS 26.0, macOS 26.0, *)`) and the
+deployment target is macOS 13. `ToolbarContentBuilder.buildLimitedAvailability` exists from macOS
+14.5, so `if #available` inside the `.toolbar` block compiles; on macOS 13–25 the branch yields
+nothing and the toolbar is byte-for-byte what it was.
+
+Recorded as decision 26 in the spec.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -928,5 +961,31 @@ either. So the rendered result — chevron gone, icon metrics matching the neigh
 both the enabled and the disabled state — is unverified and needs the operator's eyes.
 
 **Deviations from the plan.** C4 is an operator change request, not a plan task, and it reverses C3.
+
+**Gate.** `./scripts/ci.sh` — see the commit.
+
+### C5: The four worktree toolbar buttons sit in four separate groups
+
+**What landed.** The file table is in Changelog C5 above.
+
+**Evidence.** No watched failure: the change adds three availability-gated spacers to a view's
+`.toolbar` block and touches no behaviour. Nothing in `Tests/` reaches the toolbar — `ContentView`
+needs a live `ghostty_app_t` to render at all — so the suite gates this only as a regression check.
+The behavioural claim rests on Apple's documentation, quoted in Changelog C5, not on a local
+experiment.
+
+The **no-worktree** case was confirmed at compile time rather than by eye: the three spacers live
+inside the same `if let runWorktree = selectedWorktree` block as the four items, so the builder wraps
+the whole seven-entry block in one `buildIf`. `./scripts/build.sh` succeeded, which is the proof the
+optional form typechecks; when `selectedWorktree` is `nil` the block yields `nil` and no toolbar item
+renders, exactly as before.
+
+**The grouping was not confirmed visually.** `./scripts/build.sh` succeeded and `./scripts/run.sh`
+launched the app, but this session has neither Screen Recording nor Accessibility permission, so no
+screenshot and no accessibility read is possible — the same limitation recorded under C4. The
+rendered result (four separate Liquid Glass capsules, spacing consistent with the system) is
+unverified and needs the operator's eyes.
+
+**Deviations from the plan.** C5 is an operator change request, not a plan task.
 
 **Gate.** `./scripts/ci.sh` — see the commit.
