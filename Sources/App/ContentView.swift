@@ -197,6 +197,14 @@ struct ContentView: View {
                             RunCommandMenu(worktree: runWorktree)
                         }
                         ToolbarGroupBreak()
+                        if !settings.openInApps.isEmpty, let path = currentWorktree?.path {
+                            ToolbarItem(placement: .primaryAction) {
+                                OpenInMenu(path: path) {
+                                    Text("Open in")
+                                }
+                            }
+                            ToolbarGroupBreak()
+                        }
                         ToolbarItem(placement: .primaryAction) {
                             Button {
                                 showRemoveConfirmation = true

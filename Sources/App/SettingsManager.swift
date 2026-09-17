@@ -8,6 +8,7 @@ enum SettingsKey {
     static let colorScheme = "clearway.colorScheme"
     static let openSecondaryOnStart = "clearway.openSecondaryOnStart"
     static let showDetachedWorktrees = "clearway.showDetachedWorktrees"
+    static let openInApps = "clearway.openInApps"
 }
 
 enum ColorSchemePreference: String, CaseIterable, Identifiable {
@@ -99,6 +100,18 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    /// The list a fresh install starts with, and what a missing or undecodable stored value falls
+    /// back to. An empty list is a legitimate stored value and never reaches this.
+    private nonisolated static var seedOpenInApps: [OpenInApp] {
+        [OpenInApp(kind: .builtIn(.finder), command: OpenInBuiltIn.finder.defaultCommand)]
+    }
+
+    @Published var openInApps: [OpenInApp] {
+        didSet {
+            persistOpenInApps()
+        }
+    }
+
     @Published var colorScheme: ColorSchemePreference {
         didSet {
             defaults.set(colorScheme.rawValue, forKey: SettingsKey.colorScheme)
@@ -115,7 +128,26 @@ class SettingsManager: ObservableObject {
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
-        // didSet doesn't fire during init, so mirror the initial value to NSApp here.
+        let storedData = defaults.data(forKey: SettingsKey.openInApps)
+        let decodedApps = storedData.flatMap { try? JSONDecoder().decode([OpenInApp].self, from: $0) }
+        self.openInApps = decodedApps ?? Self.seedOpenInApps
+        // didSet doesn't fire during init, so mirror the initial values out here.
         NSApp?.appearance = self.colorScheme.nsAppearance
+        // Seeded only for a genuinely absent key. A value that failed to decode is left where it
+        // is: overwriting it would destroy the user's list for good, where leaving it lets a build
+        // that understands the format read it back. Decision 9 asks for the reseed, not the write.
+        if storedData == nil {
+            persistOpenInApps()
+        } else if decodedApps == nil {
+            Ghostty.logger.error("SettingsManager: couldn't decode \(SettingsKey.openInApps); showing the seed")
+        }
+    }
+
+    private func persistOpenInApps() {
+        guard let data = try? JSONEncoder().encode(openInApps) else {
+            Ghostty.logger.error("SettingsManager: failed to encode openInApps; the edit will not survive relaunch")
+            return
+        }
+        defaults.set(data, forKey: SettingsKey.openInApps)
     }
 }

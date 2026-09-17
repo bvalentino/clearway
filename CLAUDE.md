@@ -212,6 +212,58 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     revert, merge and `git am`, which record no branch, so those rows keep the "(detached)" name and
     are hidden by nothing. Only rendering paths go through that method, and only they should:
     this is a display rule, not a change to what the app tracks.
+  - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
+    `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
+    launcher, the one menu view both entry points render, and the Settings section that edits the
+    list. The list lives on `SettingsManager.openInApps` as JSON in a single `UserDefaults` value; an
+    absent or undecodable key reseeds `[Finder]`, a stored `[]` stays genuinely empty. The seed is
+    **written back only for a genuinely absent key** — an undecodable value is left on disk, because
+    `Kind` is an associated-value enum whose synthesized JSON carries its case names and `_0` as
+    persisted form, so a rename or a version rollback makes the whole array throw and overwriting it
+    would destroy the user's list irrecoverably. `OpenInAppTests`' wire-format case decodes those
+    literal bytes; a round-trip test cannot catch a rename. It is a
+    preference, not a saved-command list, so it belongs there rather than in a `~/.clearway` JSON
+    file the way `SavedCommandStore` holds commands.
+    `buildOpenInScript` interpolates the command text **raw** and escapes only the appended folder —
+    the same contract as `WorktreeHooks.interpolated`: the command is the user's and the shell reads
+    it as typed. Do not "fix" this by escaping it; a command carrying flags or shell operators is the
+    point. The script carries no `export PATH=`: `process.environment =
+    ShellEnvironment.processEnvironment` already hands the child the resolved PATH, the way
+    `WorktreeManager.runCommand` does, so exporting it inside the script injected the same value
+    twice.
+    The launcher is `nonisolated` throughout and uses **no** `Process.terminationHandler`: that is a
+    bridged ObjC block property, so a `@convention(block)` literal written in a `@MainActor` member
+    traps the moment it is invoked off-main (see Concurrency above). The 2-second failure window is
+    a `Task.sleep` poll of `process.isRunning` on the cooperative pool — still running at the
+    deadline counts as launched, and the child is simply abandoned.
+    The child's stdout **and** stderr go to one **unlinked temp file**, never a `Pipe`. A pipe's
+    verdict arrives at EOF, and any grandchild inheriting the descriptor — the editor a command
+    backgrounds — holds the write end open for its whole life, so `readDataToEndOfFile()` hid the
+    shell's exit status behind it: a command like `myeditor &` failed in milliseconds and the user
+    saw no alert, while a `DispatchQueue.global` worker stayed parked for the editor's session
+    (libdispatch caps that pool, and `ShellPathStore` resolves PATH on the same queue and QoS, so
+    enough parked launches hung new launcher tabs with no diagnostic). Do not go back to a pipe:
+    a regular file has no 64KB buffer, so nothing has to be drained, and unlinking at once means
+    the space is reclaimed when the last descriptor closes. `standardInput` is `nullDevice` so a
+    command that reads stdin gets EOF instead of the app's.
+    A `run()` throw is about the working directory, not the command — the shell has not looked the
+    command up yet — so `spawnFailureMessage` names the folder rather than letting the alert's
+    "Couldn't open in Cursor" title imply the app is missing.
+    Both entry points — a `.primaryAction` item in `detailView`'s toolbar, in its own
+    `ToolbarGroupBreak` capsule beside Run, and `SidebarView`'s worktree context submenu — are gated
+    on a non-empty list **and** a non-nil worktree path, so emptying the list in Settings hides them.
+    Unlike `RunCommandMenu`, which stays visible and disabled, the toolbar item disappears: an empty
+    list is a configuration the user chose, not a momentarily unavailable action. The sidebar passes
+    the right-clicked worktree's path, not the selection's. The toolbar item is the **text** label
+    `Text("Open in")` with the system chevron and no `.help()` tooltip — the sidebar submenu carries
+    that same label, lowercase preposition included, the way Reveal in Finder does — while
+    `RunCommandMenu` beside it is icon-only — an operator decision, not drift. `play` names Run on its own;
+    `arrow.up.forward.app` does not name this action, so the row mixes one text item with icon items
+    on purpose. Do not "align" it back to an icon. The menu and the settings section are
+    separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
+    only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
+    needs a split first.
+    The menu claims **no** keyboard shortcut, so `AppKeyboardShortcuts` has no entry for it.
   - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
     installs a new source over the old one without cancelling it, so the old cancel handler never
     runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the
