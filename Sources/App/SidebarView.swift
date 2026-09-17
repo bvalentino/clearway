@@ -68,10 +68,7 @@ struct SidebarView: View {
             tasksRow
             promptsRow
             commandsRow
-            defaultWorktreeSection
-            ForEach(groupManager.groups) { group in
-                groupSection(group)
-            }
+            worktreeSections
         }
         .overlay(alignment: .bottomLeading) {
             caffeineButton
@@ -210,21 +207,53 @@ struct SidebarView: View {
         }
     }
 
-    private var defaultWorktreeSection: some View {
-        let rows = orderedWorktrees.filter { groupManager.groupId(for: $0.id) == nil }
+    @ViewBuilder
+    private var worktreeSections: some View {
+        switch groupManager.grouping {
+        case .group:
+            worktreesSection(
+                rows: orderedWorktrees.filter { groupManager.groupId(for: $0.id) == nil },
+                reorderable: true
+            )
+            ForEach(groupManager.groups) { group in
+                groupSection(group)
+            }
+        case .status:
+            worktreesSection(
+                rows: orderedWorktrees.filter { groupManager.status(for: $0.id) == nil },
+                reorderable: false
+            )
+            ForEach(WorktreeStatus.allCases) { status in
+                statusSection(status)
+            }
+        case .none:
+            worktreesSection(rows: orderedWorktrees, reorderable: false)
+        }
+    }
+
+    /// The "Worktrees" section. Its rows are whatever the current view mode leaves
+    /// unsectioned: the ungrouped ones in `.group`, the unstatused ones in `.status`,
+    /// every one of them in `.none`. Only `.group` reorders within it.
+    private func worktreesSection(rows: [Worktree], reorderable: Bool) -> some View {
         let titles = workTaskManager.titlesByBranch
         return Section {
             SearchField(text: $searchText, placeholder: "Filter")
                 .listRowInsets(EdgeInsets(top: 4, leading: -4, bottom: 4, trailing: -4))
                 .listRowSeparator(.hidden)
 
-            ForEach(rows) { wt in
-                worktreeRowView(for: wt, titles: titles, moveDisabled: wt.isMain || isSearching)
-            }
-            .onMove { from, to in
-                var reordered = rows
-                reordered.move(fromOffsets: from, toOffset: to)
-                groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
+            if reorderable {
+                ForEach(rows) { wt in
+                    worktreeRowView(for: wt, titles: titles, moveDisabled: wt.isMain || isSearching)
+                }
+                .onMove { from, to in
+                    var reordered = rows
+                    reordered.move(fromOffsets: from, toOffset: to)
+                    groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
+                }
+            } else {
+                ForEach(rows) { wt in
+                    worktreeRowView(for: wt, titles: titles, moveDisabled: true)
+                }
             }
 
             if worktreeManager.isLoading {
@@ -257,31 +286,60 @@ struct SidebarView: View {
                 .accessibilityLabel("Open debug terminal")
             }
         } header: {
-            HStack {
-                Text("Worktrees")
-                Spacer()
-                SidebarHeaderButton(systemImage: "arrow.clockwise") {
-                    worktreeManager.refresh()
-                }
-                .padding(.trailing, -6)
-
-                SidebarHeaderButton(systemImage: "gearshape") {
-                    activeSheet = .worktreeSettings
-                }
-                .padding(.trailing, -6)
-
-                SidebarHeaderButton(systemImage: "plus") {
-                    createWorktreeTargetGroupId = nil
-                    activeSheet = .createWorktree
-                }
-                .padding(.trailing, 6)
-            }
-            .background(defaultSectionTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
-            .dropDestination(for: String.self) { ids, _ in
-                dropIntoDefault(ids)
-                return true
-            } isTargeted: { defaultSectionTargeted = $0 }
+            worktreesSectionHeader
         }
+    }
+
+    private var worktreesSectionHeader: some View {
+        HStack {
+            Text("Worktrees")
+            Spacer()
+            SidebarHeaderButton(systemImage: "arrow.clockwise") {
+                worktreeManager.refresh()
+            }
+            .padding(.trailing, -6)
+
+            groupByMenu
+                .padding(.trailing, -6)
+
+            SidebarHeaderButton(systemImage: "plus") {
+                createWorktreeTargetGroupId = nil
+                activeSheet = .createWorktree
+            }
+            .padding(.trailing, 6)
+        }
+        .background(defaultSectionTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
+        .dropDestination(for: String.self) { ids, _ in
+            dropIntoDefault(ids)
+            return true
+        } isTargeted: { defaultSectionTargeted = $0 }
+    }
+
+    private var groupByMenu: some View {
+        Menu {
+            Picker("Group by", selection: Binding(
+                get: { groupManager.grouping },
+                set: { groupManager.setGrouping($0) }
+            )) {
+                ForEach(WorktreeGrouping.allCases) { grouping in
+                    Text(grouping.displayName).tag(grouping)
+                }
+            }
+            .pickerStyle(.inline)
+
+            Divider()
+
+            Button("Worktree Settings…") { activeSheet = .worktreeSettings }
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.body)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -315,6 +373,23 @@ struct SidebarView: View {
                     dropIntoGroup(ids, groupId: group.id)
                     return true
                 } isTargeted: { isGroupTargeted.wrappedValue = $0 }
+            }
+        }
+    }
+
+    /// One section per status in `.status` mode. All five render unfiltered, even when
+    /// empty; only an active filter with zero matches hides one, the rule groups follow.
+    @ViewBuilder
+    private func statusSection(_ status: WorktreeStatus) -> some View {
+        let rows = orderedWorktrees.filter { groupManager.status(for: $0.id) == status }
+        let titles = workTaskManager.titlesByBranch
+        if !(isSearching && rows.isEmpty) {
+            Section {
+                ForEach(rows) { wt in
+                    worktreeRowView(for: wt, titles: titles, moveDisabled: true)
+                }
+            } header: {
+                Text(status.displayName)
             }
         }
     }
@@ -411,7 +486,8 @@ struct SidebarView: View {
             subtitle: subtitle,
             hasNotification: hasNotification,
             isWorking: isWorking,
-            shortcutIndex: shortcut
+            shortcutIndex: shortcut,
+            status: groupManager.grouping == .status ? nil : groupManager.status(for: wt.id)
         )
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)

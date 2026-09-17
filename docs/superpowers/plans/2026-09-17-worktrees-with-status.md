@@ -674,3 +674,55 @@ None.
 `swiftlint lint --quiet` exits 0; the only two warnings are T4's pre-existing `file_length` and
 `type_body_length` on `Tests/WorktreeGroupManagerTests.swift`. Neither new nor changed file carries a
 `swiftlint:disable`.
+
+---
+
+### T6: Render the three view modes in the sidebar
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarView.swift` | 579 → 655 lines. `defaultWorktreeSection` becomes `worktreesSection(rows:reorderable:)`, driven by a new `@ViewBuilder var worktreeSections` that switches on `groupManager.grouping`. The header is lifted into `worktreesSectionHeader` and its gear into `groupByMenu`. New `statusSection(_:)`. `worktreeRowView` now passes `status:`. |
+
+`Clearway.xcodeproj/project.pbxproj` did not change: no file was added or removed.
+
+The Worktrees section's rows are the argument, so the mode decides them in one place —
+ungrouped in `.group`, unstatused in `.status`, all of them in `.none` — and the search field,
+loading block and error block stay in it in every mode. `reorderable` is the only other
+difference: `.onMove` is declared on the `.group` branch alone, so there is no reorder for
+`.status` or `.none` to disable. `moveDisabled` is left as T7 will find it.
+
+`groupByMenu` copies `GroupSectionHeader`'s borderless-menu-in-a-sidebar-header shape
+(`.menuStyle(.borderlessButton)`, `.menuIndicator(.hidden)`, `.fixedSize()`) rather than
+`SidebarHeaderButton`, which is a `Button` and cannot host a menu; the gear keeps
+`SidebarHeaderButton`'s label styling minus its hover state, exactly as the ellipsis menu does.
+The picker's selection binding writes through `setGrouping`, which already no-ops on an unchanged
+value.
+
+`statusSection` renders all five cases when unfiltered and hides one only under an active filter
+with zero rows — the same `if !(isSearching && rows.isEmpty)` shape `groupSection` uses.
+
+The badge is `groupManager.grouping == .status ? nil : groupManager.status(for: wt.id)`: the
+by-status sections already name it, and main can carry none.
+
+**Evidence**
+
+No new test. Every acceptance criterion here is SwiftUI view state — which section a row lands in,
+which header renders, which badge is passed — and none of it is reachable from XCTest, the reason
+the spec puts the decision rules on `WorktreeGroupManager` instead. The ordering and partition
+those sections read are already pinned by T4, and the existing suite passing is the proof the
+plan asks for, as it was for T5. The criteria are confirmed by hand against `./scripts/run.sh`.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — green after the last edit: `Executed 449 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `swiftlint lint --quiet` — exit 0; the only two warnings are T4's pre-existing
+`file_length` and `type_body_length` on `Tests/WorktreeGroupManagerTests.swift`. `SidebarView.swift`
+is 655 lines, under the 700-line warning, and carries no `swiftlint:disable`.
+`git status --porcelain` — only `Sources/App/SidebarView.swift` and this build log; no untracked
+files.
