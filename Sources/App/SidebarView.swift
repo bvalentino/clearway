@@ -16,6 +16,7 @@ struct SidebarView: View {
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
+    @EnvironmentObject private var settings: SettingsManager
     @Binding var sidebarSelection: DetailSelection?
     var ctrlHeld: Bool = false
     var onRemoveWorktree: ((Worktree) -> Void)?
@@ -42,6 +43,7 @@ struct SidebarView: View {
         let titles = workTaskManager.titlesByBranch
         return groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
+            showingDetached: settings.showDetachedWorktrees,
             openIds: terminalManager.openWorktreeIds
         ) { wt in
             guard isSearching else { return true }
@@ -64,6 +66,7 @@ struct SidebarView: View {
     private var sortedWorktrees: [Worktree] {
         groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
+            showingDetached: settings.showDetachedWorktrees,
             openIds: terminalManager.openWorktreeIds
         ) { _ in true }
     }
@@ -227,7 +230,6 @@ struct SidebarView: View {
                 worktreeRowView(for: wt, titles: titles, moveDisabled: wt.isMain || isSearching)
             }
             .onMove { from, to in
-                guard !isSearching else { return }
                 var reordered = rows
                 reordered.move(fromOffsets: from, toOffset: to)
                 groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
@@ -302,7 +304,6 @@ struct SidebarView: View {
                     worktreeRowView(for: wt, titles: titles, moveDisabled: isSearching)
                 }
                 .onMove { from, to in
-                    guard !isSearching else { return }
                     var reordered = rows
                     reordered.move(fromOffsets: from, toOffset: to)
                     groupManager.setGroupOrder(id: group.id, ids: reordered.map(\.id))

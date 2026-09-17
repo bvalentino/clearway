@@ -202,6 +202,16 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     commands. Array order **is** display order — nothing sorts it, and a reorder rewrites the file.
     There is deliberately no watcher: the app is the only writer and `SavedCommandManager` is
     process-wide, so the case a watcher would cover cannot arise.
+  - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
+    `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
+    badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached
+    worktree that is neither main nor open unless Settings → Appearance → Show detached worktrees is
+    on; a worktree whose HEAD is detached because a git operation is in progress never reaches it as
+    `.detached`, because `applyHeadResolution` has already rewritten it — to `.rebasing`/`.bisecting`
+    with the branch `WorktreeManager.inProgressOp` recovered, or to `.inProgress` for cherry-pick,
+    revert, merge and `git am`, which record no branch, so those rows keep the "(detached)" name and
+    are hidden by nothing. Only rendering paths go through that method, and only they should:
+    this is a display rule, not a change to what the app tracks.
   - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
     installs a new source over the old one without cancelling it, so the old cancel handler never
     runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the

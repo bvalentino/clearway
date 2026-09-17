@@ -148,6 +148,88 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(sorted[1].branch, "closed")
     }
 
+    // MARK: - Visibility
+
+    private func makeDetached(path: String, isMain: Bool = false) -> Worktree {
+        makeWorktree(branch: nil, path: path, isMain: isMain, headStatus: .detached)
+    }
+
+    func testVisibilityHidesClosedDetachedWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/detached")],
+            showingDetached: false,
+            openIds: []
+        )
+        XCTAssertTrue(visible.isEmpty)
+    }
+
+    func testVisibilityKeepsRebasingWorktree() {
+        let rebasing = makeWorktree(branch: "feature", path: "/tmp/rebasing", headStatus: .rebasing)
+        let visible = Worktree.visible([rebasing], showingDetached: false, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/rebasing"])
+    }
+
+    func testVisibilityKeepsBisectingWorktree() {
+        let bisecting = makeWorktree(branch: "feature", path: "/tmp/bisecting", headStatus: .bisecting)
+        let visible = Worktree.visible([bisecting], showingDetached: false, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/bisecting"])
+    }
+
+    func testVisibilityKeepsWorktreeWithOperationInProgress() {
+        let inProgress = makeWorktree(branch: nil, path: "/tmp/cherry-picking", headStatus: .inProgress)
+        let visible = Worktree.visible([inProgress], showingDetached: false, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/cherry-picking"])
+    }
+
+    func testVisibilityKeepsOpenDetachedWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/detached")],
+            showingDetached: false,
+            openIds: ["/tmp/detached"]
+        )
+        XCTAssertEqual(visible.map(\.id), ["/tmp/detached"])
+    }
+
+    func testVisibilityKeepsDetachedMainWorktree() {
+        let visible = Worktree.visible(
+            [makeDetached(path: "/tmp/main", isMain: true)],
+            showingDetached: false,
+            openIds: []
+        )
+        XCTAssertEqual(visible.map(\.id), ["/tmp/main"])
+    }
+
+    /// Every case above passes a one-element list, so none of them asks the filter to keep and
+    /// drop within a single call.
+    func testVisibilityKeepsEveryExemptShapeInOneCall() {
+        let worktrees = [
+            makeDetached(path: "/tmp/main", isMain: true),
+            makeDetached(path: "/tmp/open"),
+            makeDetached(path: "/tmp/stray"),
+            makeWorktree(branch: "rebasing", path: "/tmp/rebasing", headStatus: .rebasing),
+            makeWorktree(branch: "bisecting", path: "/tmp/bisecting", headStatus: .bisecting),
+            makeWorktree(branch: "feature", path: "/tmp/feature"),
+        ]
+
+        let visible = Worktree.visible(worktrees, showingDetached: false, openIds: ["/tmp/open"])
+
+        XCTAssertEqual(
+            visible.map(\.id),
+            ["/tmp/main", "/tmp/open", "/tmp/rebasing", "/tmp/bisecting", "/tmp/feature"],
+            "only the closed non-main bare-detached worktree is dropped, and order is preserved"
+        )
+    }
+
+    func testVisibilityPassesWholeListThroughWhenShowingDetached() {
+        let worktrees = [
+            makeDetached(path: "/tmp/detached"),
+            makeWorktree(branch: "main", path: "/tmp/main", isMain: true),
+            makeWorktree(branch: "feature", path: "/tmp/feature"),
+        ]
+        let visible = Worktree.visible(worktrees, showingDetached: true, openIds: [])
+        XCTAssertEqual(visible.map(\.id), ["/tmp/detached", "/tmp/main", "/tmp/feature"])
+    }
+
     // MARK: - Gitdir Resolver
 
     var tempDir: URL?
@@ -213,51 +295,93 @@ final class WorktreeTests: XCTestCase {
         FileManager.default.createFile(atPath: target.path, contents: contents.data(using: .utf8))
     }
 
-    func testBranchFromInProgressOpRecognizesRebaseMerge() throws {
+    func testInProgressOpRecognizesRebaseMerge() throws {
         let gitdir = try makeGitdir()
         try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/feature-x\n", in: gitdir)
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertEqual(result?.branch, "feature-x")
-        XCTAssertEqual(result?.status, .rebasing)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "feature-x")
+        XCTAssertEqual(op.status, .rebasing)
     }
 
-    func testBranchFromInProgressOpRecognizesRebaseApply() throws {
+    func testInProgressOpRecognizesRebaseApply() throws {
         let gitdir = try makeGitdir()
         try writeGitdirFile("rebase-apply/head-name", contents: "refs/heads/feature-y\n", in: gitdir)
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertEqual(result?.branch, "feature-y")
-        XCTAssertEqual(result?.status, .rebasing)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "feature-y")
+        XCTAssertEqual(op.status, .rebasing)
     }
 
-    func testBranchFromInProgressOpRecognizesBisect() throws {
+    func testInProgressOpRecognizesBisect() throws {
         let gitdir = try makeGitdir()
         try writeGitdirFile("BISECT_START", contents: "feature-z\n", in: gitdir)
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertEqual(result?.branch, "feature-z")
-        XCTAssertEqual(result?.status, .bisecting)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "feature-z")
+        XCTAssertEqual(op.status, .bisecting)
     }
 
-    func testBranchFromInProgressOpReturnsNilWhenNoState() throws {
+    func testInProgressOpRecognizesGitAm() throws {
         let gitdir = try makeGitdir()
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertNil(result)
+        try writeGitdirFile("rebase-apply/applying", contents: "", in: gitdir)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertNil(op.branch)
+        XCTAssertEqual(op.status, .inProgress)
     }
 
-    func testBranchFromInProgressOpPrefersRebaseMergeOverRebaseApply() throws {
+    func testInProgressOpRecognizesMerge() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("MERGE_HEAD", contents: "abc123\n", in: gitdir)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertNil(op.branch)
+        XCTAssertEqual(op.status, .inProgress)
+    }
+
+    func testInProgressOpRecognizesCherryPick() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("CHERRY_PICK_HEAD", contents: "abc123\n", in: gitdir)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertNil(op.branch)
+        XCTAssertEqual(op.status, .inProgress)
+    }
+
+    func testInProgressOpRecognizesRevert() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("REVERT_HEAD", contents: "abc123\n", in: gitdir)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertNil(op.branch)
+        XCTAssertEqual(op.status, .inProgress)
+    }
+
+    func testInProgressOpReturnsNilWhenNoState() throws {
+        let gitdir = try makeGitdir()
+        XCTAssertNil(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+    }
+
+    func testInProgressOpPrefersRebaseMergeOverRebaseApply() throws {
         let gitdir = try makeGitdir()
         try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/merge-branch\n", in: gitdir)
         try writeGitdirFile("rebase-apply/head-name", contents: "refs/heads/apply-branch\n", in: gitdir)
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertEqual(result?.branch, "merge-branch")
-        XCTAssertEqual(result?.status, .rebasing)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "merge-branch")
+        XCTAssertEqual(op.status, .rebasing)
     }
 
-    func testBranchFromInProgressOpTrimsTrailingWhitespace() throws {
+    /// An interactive rebase stopped on a conflict leaves CHERRY_PICK_HEAD next to the rebase
+    /// state, and `git status` reports the rebase. The recovered branch name must survive.
+    func testInProgressOpPrefersRebaseOverCherryPick() throws {
+        let gitdir = try makeGitdir()
+        try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/feature-r\n", in: gitdir)
+        try writeGitdirFile("CHERRY_PICK_HEAD", contents: "abc123\n", in: gitdir)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "feature-r")
+        XCTAssertEqual(op.status, .rebasing)
+    }
+
+    func testInProgressOpTrimsTrailingWhitespace() throws {
         let gitdir = try makeGitdir()
         try writeGitdirFile("rebase-merge/head-name", contents: "refs/heads/foo\n\n  ", in: gitdir)
-        let result = WorktreeManager.branchFromInProgressOp(gitdir: gitdir.path)
-        XCTAssertEqual(result?.branch, "foo")
-        XCTAssertEqual(result?.status, .rebasing)
+        let op = try XCTUnwrap(WorktreeManager.inProgressOp(gitdir: gitdir.path))
+        XCTAssertEqual(op.branch, "foo")
+        XCTAssertEqual(op.status, .rebasing)
     }
 
     // MARK: - Resolver Pipeline
@@ -324,5 +448,49 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(resolved[1].headStatus, .rebasing)
         XCTAssertEqual(resolved[1].path, featureWt.path)
         XCTAssertFalse(resolved[1].isMain)
+    }
+
+    func testParserAndResolverPipelineMarksCherryPickingWorktreeInProgress() throws {
+        let tmp = try XCTUnwrap(tempDir)
+
+        let mainRoot = tmp.appendingPathComponent("main")
+        let linkedGitdir = mainRoot
+            .appendingPathComponent(".git")
+            .appendingPathComponent("worktrees")
+            .appendingPathComponent("picked")
+        try FileManager.default.createDirectory(at: linkedGitdir, withIntermediateDirectories: true)
+        try writeGitdirFile("CHERRY_PICK_HEAD", contents: "abc123\n", in: linkedGitdir)
+
+        let pickedWt = tmp.appendingPathComponent("picked-wt")
+        try FileManager.default.createDirectory(at: pickedWt, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: pickedWt.appendingPathComponent(".git").path,
+            contents: Data("gitdir: \(linkedGitdir.path)\n".utf8)
+        )
+
+        let output = """
+        worktree \(mainRoot.path)
+        HEAD abc123
+        branch refs/heads/main
+
+        worktree \(pickedWt.path)
+        HEAD def456
+        detached
+
+        """
+
+        let resolved = WorktreeManager.applyHeadResolution(
+            to: WorktreeManager.parseWorktreeListOutput(output)
+        )
+
+        XCTAssertEqual(resolved.count, 2)
+        XCTAssertNil(resolved[1].branch)
+        XCTAssertEqual(resolved[1].displayName, "(detached)")
+        XCTAssertEqual(resolved[1].headStatus, .inProgress)
+        XCTAssertEqual(
+            Worktree.visible([resolved[1]], showingDetached: false, openIds: []).map(\.id),
+            [pickedWt.path],
+            "a worktree with a cherry-pick in progress is never hidden"
+        )
     }
 }

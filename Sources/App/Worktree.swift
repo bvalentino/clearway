@@ -7,6 +7,10 @@ enum HeadStatus {
     case attached
     case rebasing
     case bisecting
+    /// A git operation that records no branch name is in progress: cherry-pick, revert, merge or
+    /// `git am`. HEAD is detached, but not bare-detached, so the row stays as visible and as
+    /// unremovable as `.rebasing`/`.bisecting`.
+    case inProgress
     case detached
 }
 
@@ -23,6 +27,19 @@ struct Worktree: Identifiable, Hashable {
 
     var canRemove: Bool { headStatus == .attached }
     var canFetchPR: Bool { headStatus == .attached }
+
+    /// The rule `TerminalManager.isOpen` applies, lifted here so `visible` can reach it without
+    /// the manager. Widening "open" means widening it here, for both callers.
+    func isOpen(openIds: [String]) -> Bool {
+        isMain || openIds.contains(id)
+    }
+
+    static func visible(_ worktrees: [Worktree], showingDetached: Bool, openIds: [String]) -> [Worktree] {
+        guard !showingDetached else { return worktrees }
+        return worktrees.filter { worktree in
+            worktree.headStatus != .detached || worktree.isOpen(openIds: openIds)
+        }
+    }
 
     /// Sort worktrees: main first, then open (by open order), then closed (alphabetical).
     static func sorted(_ worktrees: [Worktree], openIds: [String]) -> [Worktree] {
@@ -188,7 +205,7 @@ class WorktreeManager: ObservableObject {
             return
         }
         guard wt.canRemove else {
-            self.error = "Cannot remove worktree while HEAD is not attached (rebase/bisect in progress)"
+            self.error = "Cannot remove worktree while HEAD is not attached (git operation in progress)"
             return
         }
         worktrees.removeAll { $0.branch == branch }
@@ -279,13 +296,22 @@ class WorktreeManager: ObservableObject {
         return URL(fileURLWithPath: pathPart, relativeTo: base).standardizedFileURL.path
     }
 
-    nonisolated static func branchFromInProgressOp(gitdir: String) -> (branch: String, status: HeadStatus)? {
-        let probes: [(String, HeadStatus)] = [
+    /// The git operation in progress in `gitdir`, if any, with the branch name the operation
+    /// recorded. The markers are git's own, as its shipped `git-prompt.sh` reads them; only rebase
+    /// and bisect record a branch, so the other four leave the row's "(detached)" display name and
+    /// it is `.inProgress` that keeps it out of `Worktree.visible`'s hidden set.
+    ///
+    /// The branch-recovering probes run first because a conflicted `rebase -i` leaves
+    /// `CHERRY_PICK_HEAD` beside its rebase state, and the branch is the better answer there.
+    /// `rebase-apply/applying` is what separates `git am` from `git rebase --apply`, which writes
+    /// `head-name` into the same directory.
+    nonisolated static func inProgressOp(gitdir: String) -> (branch: String?, status: HeadStatus)? {
+        let branchProbes: [(String, HeadStatus)] = [
             ("rebase-merge/head-name", .rebasing),
             ("rebase-apply/head-name", .rebasing),
             ("BISECT_START", .bisecting),
         ]
-        for (relative, status) in probes {
+        for (relative, status) in branchProbes {
             let path = (gitdir as NSString).appendingPathComponent(relative)
             guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
             var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -296,6 +322,19 @@ class WorktreeManager: ObservableObject {
                 return (name, status)
             }
         }
+
+        let branchlessMarkers = [
+            "rebase-apply/applying",
+            "MERGE_HEAD",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+        ]
+        for relative in branchlessMarkers {
+            let path = (gitdir as NSString).appendingPathComponent(relative)
+            if FileManager.default.fileExists(atPath: path) {
+                return (nil, .inProgress)
+            }
+        }
         return nil
     }
 
@@ -303,12 +342,12 @@ class WorktreeManager: ObservableObject {
         worktrees.map { wt in
             guard wt.headStatus == .detached, let path = wt.path else { return wt }
             guard let gitdir = gitdir(forWorktreeAt: path),
-                  let recovered = branchFromInProgressOp(gitdir: gitdir) else { return wt }
+                  let op = inProgressOp(gitdir: gitdir) else { return wt }
             return Worktree(
-                branch: recovered.branch,
+                branch: op.branch,
                 path: wt.path,
                 isMain: wt.isMain,
-                headStatus: recovered.status
+                headStatus: op.status
             )
         }
     }

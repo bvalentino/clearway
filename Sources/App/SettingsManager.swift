@@ -7,6 +7,7 @@ enum SettingsKey {
     static let promptsDirectory = "clearway.promptsDirectory"
     static let colorScheme = "clearway.colorScheme"
     static let openSecondaryOnStart = "clearway.openSecondaryOnStart"
+    static let showDetachedWorktrees = "clearway.showDetachedWorktrees"
 }
 
 enum ColorSchemePreference: String, CaseIterable, Identifiable {
@@ -80,6 +81,12 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var showDetachedWorktrees: Bool {
+        didSet {
+            defaults.set(showDetachedWorktrees, forKey: SettingsKey.showDetachedWorktrees)
+        }
+    }
+
     static let defaultPromptsDirectory = "~/.clearway/prompts"
 
     @Published var promptsDirectory: String {
@@ -104,6 +111,7 @@ class SettingsManager: ObservableObject {
         self.mainTerminalCommand = defaults.string(forKey: SettingsKey.mainTerminalCommand) ?? ""
         self.showFocusBorder = defaults.object(forKey: SettingsKey.showFocusBorder) as? Bool ?? true
         self.openSecondaryOnStart = defaults.object(forKey: SettingsKey.openSecondaryOnStart) as? Bool ?? false
+        self.showDetachedWorktrees = defaults.object(forKey: SettingsKey.showDetachedWorktrees) as? Bool ?? false
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
