@@ -92,6 +92,7 @@
 		9D63570CEEBD24A6E23A637D /* OpenInAppsSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1619E5B757A9C885392E313 /* OpenInAppsSettingsTests.swift */; };
 		9ECA5CFF97E74134CB98DF00 /* SavedCommandManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817FE51E6717FE77D1D2492E /* SavedCommandManager.swift */; };
 		9F0679943B3F29280ECD5474 /* OpenInAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8085B8AFE47063DF39964C /* OpenInAppLauncher.swift */; };
+		A339C206B98BF9EBC379258D /* WorktreeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */; };
 		A414031A15F3D086AC02BD9C /* OpenInAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579A3C4FCC4BBC0F1EA9B71E /* OpenInAppTests.swift */; };
 		A594DF0DFD5CE4A2CF336DE9 /* SavedCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D39D30CC314308803C5426 /* SavedCommand.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
@@ -164,6 +165,7 @@
 		2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
 		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
+		391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRow.swift; sourceTree = "<group>"; };
 		3D0E30A2C721296DD9587040 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		3E00D38FF787B79BF5C000ED /* Clearway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clearway.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
@@ -423,6 +425,7 @@
 				C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */,
 				AE2AB2AB726BE02766D5A27D /* WorktreeGroupStore.swift */,
 				FB5272D378BC91AF7A25A0E9 /* WorktreeHooks.swift */,
+				391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */,
 				F58C19D17C1DABAEC75CBD3C /* WorktreeSettingsSheet.swift */,
 				94271FFA38EBBE0DCCCC1E46 /* WorktreeStatus.swift */,
 				1138041E022C758DED6DA7B5 /* YAMLHelpers.swift */,
@@ -800,6 +803,7 @@
 				151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */,
 				227AAB3A6CC265B56E4E61BB /* WorktreeGroupStore.swift in Sources */,
 				DC8D4F1CE85F602F5BE3B1AC /* WorktreeHooks.swift in Sources */,
+				A339C206B98BF9EBC379258D /* WorktreeRow.swift in Sources */,
 				FC84DB412F8F1D534C971F05 /* WorktreeSettingsSheet.swift in Sources */,
 				3C936F7524C192582602BA02 /* WorktreeStatus.swift in Sources */,
 				ACD545748BD65DBB40766EAA /* YAMLHelpers.swift in Sources */,
