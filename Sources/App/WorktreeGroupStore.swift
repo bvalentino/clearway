@@ -8,8 +8,39 @@ import os
 struct WorktreeGroupsPayload: Codable, Equatable {
     var groups: [WorktreeGroup]
     var defaultOrder: [String]
+    var statuses: [String: WorktreeStatus]
+    var grouping: WorktreeGrouping
 
-    static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [])
+    static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [], statuses: [:], grouping: .group)
+
+    init(
+        groups: [WorktreeGroup],
+        defaultOrder: [String],
+        statuses: [String: WorktreeStatus] = [:],
+        grouping: WorktreeGrouping = .group
+    ) {
+        self.groups = groups
+        self.defaultOrder = defaultOrder
+        self.statuses = statuses
+        self.grouping = grouping
+    }
+
+    /// Decodes leniently so no file this app has ever written is rejected: `groups` and
+    /// `defaultOrder` stay required — their absence is what routes a legacy bare-array file to
+    /// the fallback in `load()` — while an absent or unrecognised `statuses` entry or `grouping`
+    /// slug degrades to the default instead of throwing and taking the whole payload, and with
+    /// it every group in the project, down with it.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        groups = try container.decode([WorktreeGroup].self, forKey: .groups)
+        defaultOrder = try container.decode([String].self, forKey: .defaultOrder)
+        statuses = try container
+            .decodeIfPresent([String: String].self, forKey: .statuses)?
+            .compactMapValues(WorktreeStatus.init(rawValue:)) ?? [:]
+        grouping = try container
+            .decodeIfPresent(String.self, forKey: .grouping)
+            .flatMap(WorktreeGrouping.init(rawValue:)) ?? .group
+    }
 }
 
 // MARK: - Store

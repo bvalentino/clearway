@@ -39,6 +39,106 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         XCTAssertEqual(decoded.first?.createdAt, original.createdAt)
     }
 
+    // MARK: - Payload wire format
+    //
+    // These cases assert over literal bytes rather than a round trip: a round trip
+    // cannot catch a renamed key or a renamed status slug, and a payload the decoder
+    // rejects makes load() reset to .empty, wiping every group in the project.
+
+    private static let groupJSON = """
+    {"id":"1D2C3B4A-0000-4000-8000-000000000001","name":"Feature","worktreeIds":["/a"],"createdAt":123456789}
+    """
+
+    private static func payloadJSON(extraKeys: String = "") -> Data {
+        Data("{\"groups\":[\(groupJSON)],\"defaultOrder\":[\"/a\",\"/b\"]\(extraKeys)}".utf8)
+    }
+
+    private func assertGroupsIntact(_ payload: WorktreeGroupsPayload, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(payload.groups.count, 1, file: file, line: line)
+        XCTAssertEqual(payload.groups.first?.name, "Feature", file: file, line: line)
+        XCTAssertEqual(payload.groups.first?.worktreeIds, ["/a"], file: file, line: line)
+        XCTAssertEqual(payload.defaultOrder, ["/a", "/b"], file: file, line: line)
+    }
+
+    func testDecodesFileWrittenBeforeStatusesExisted() throws {
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: Self.payloadJSON())
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.grouping, .group)
+    }
+
+    func testLoadKeepsGroupsOfFileWrittenBeforeStatusesExisted() async throws {
+        try writeGroupsFile(Self.payloadJSON())
+
+        let payload = await store.load()
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.grouping, .group)
+    }
+
+    func testDecodeDropsUnrecognisedStatusSlug() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"statuses\":{\"/a\":\"todo\",\"/b\":\"bogus\"}")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.statuses, ["/a": .todo])
+    }
+
+    func testDecodeFallsBackToGroupForUnrecognisedGroupingSlug() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"grouping\":\"bogus\"")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.grouping, .group)
+    }
+
+    func testDecodeReadsGroupingSlug() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"grouping\":\"status\"")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        XCTAssertEqual(payload.grouping, .status)
+    }
+
+    func testPayloadRoundTripsStatusesAndGrouping() throws {
+        let original = WorktreeGroupsPayload(
+            groups: [],
+            defaultOrder: ["/a"],
+            statuses: ["/a": .inReview, "/b": .onHold],
+            grouping: .none
+        )
+
+        let decoded = try JSONDecoder().decode(
+            WorktreeGroupsPayload.self,
+            from: JSONEncoder().encode(original)
+        )
+
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testLoadLegacyBareArrayFileKeepsGroups() async throws {
+        try writeGroupsFile(Data("[\(Self.groupJSON)]".utf8))
+
+        let payload = await store.load()
+
+        XCTAssertEqual(payload.groups.count, 1)
+        XCTAssertEqual(payload.groups.first?.name, "Feature")
+        XCTAssertEqual(payload.defaultOrder, [])
+        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.grouping, .group)
+    }
+
+    private func writeGroupsFile(_ data: Data) throws {
+        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
+        let groupsFile = (clearwayDir as NSString).appendingPathComponent("groups.json")
+        FileManager.default.createFile(atPath: groupsFile, contents: data)
+    }
+
     // MARK: - load() on missing file returns []
 
     func testLoadMissingFileReturnsEmpty() async {

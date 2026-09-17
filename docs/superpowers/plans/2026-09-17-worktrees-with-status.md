@@ -518,3 +518,49 @@ on. The file is additive and does not change what T2 is asked to assert.
 
 `./scripts/ci.sh` — green. `Executed 429 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 `swiftlint lint --quiet` — exit 0, no output.
+
+### T2: Widen `WorktreeGroupsPayload` with a lenient decoder
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupStore.swift` | `WorktreeGroupsPayload` gains `statuses: [String: WorktreeStatus]` and `grouping: WorktreeGrouping`, a memberwise `init` defaulting them to `[:]` / `.group`, and a hand-written lenient `init(from:)`. `encode(to:)` stays synthesised. `.empty` spells all four fields. Nothing else in the file changed — save, the watcher, the temp-file durability shape and the permissions are untouched. |
+| `Tests/WorktreeGroupStoreTests.swift` | Seven new cases over literal bytes plus a `writeGroupsFile` helper: pre-statuses file decodes and survives `load()`, unrecognised status slug dropped, unrecognised `grouping` slug falls back to `.group`, `"status"` reads back, encode/decode round trip, legacy bare-array file still keeps its groups. The five existing cases are untouched. |
+
+`Clearway.xcodeproj/project.pbxproj` did not change: no file was added or removed, so
+`xcodegen generate` produced no diff.
+
+**Evidence**
+
+The tests were added first, against a payload widened with the *synthesised* decoder, and the gate
+was run to watch them fail. The decisive one is the data-loss case — `load()` fell all the way
+through to `.empty`, losing the groups and the default order of a file written before this change:
+
+```
+✖ testLoadKeepsGroupsOfFileWrittenBeforeStatusesExisted, XCTAssertEqual failed: ("0") is not equal to ("1")
+✖ testLoadKeepsGroupsOfFileWrittenBeforeStatusesExisted, XCTAssertEqual failed: ("nil") is not equal to ("Optional("Feature")")
+✖ testLoadKeepsGroupsOfFileWrittenBeforeStatusesExisted, XCTAssertEqual failed: ("[]") is not equal to ("["/a", "/b"]")
+✖ testDecodesFileWrittenBeforeStatusesExisted, failed: caught error: "DecodingError.keyNotFound: Key 'statuses' not found in keyed decoding container."
+✖ testDecodeDropsUnrecognisedStatusSlug, failed: caught error: "DecodingError.dataCorrupted: Data was corrupted. Path: statuses./b. Debug description: Cannot initialize WorktreeStatus from invalid String value bogus"
+✖ testDecodeFallsBackToGroupForUnrecognisedGroupingSlug, failed: caught error: "DecodingError.keyNotFound: Key 'statuses' not found in keyed decoding container."
+✖ testDecodeReadsGroupingSlug, failed: caught error: "DecodingError.keyNotFound: Key 'statuses' not found in keyed decoding container."
+Executed 436 tests, with 8 failures (4 unexpected)
+```
+
+`testLoadLegacyBareArrayFileKeepsGroups` passed in that run too — the bare-array fallback was
+already catching its own case — so it is a pin on unchanged behaviour, not a watched failure.
+Adding the lenient `init(from:)` turned all of the above green with no other edit.
+
+**Deviations from the plan**
+
+None in the implementation. The plan named six acceptance criteria and no test for the legacy
+bare-array fallback; `testLoadLegacyBareArrayFileKeepsGroups` was added anyway, because the
+criterion "the existing legacy bare-array fallback … behaviours are unchanged" had nothing pinning
+it in this file.
+
+**Gate**
+
+`./scripts/ci.sh` — green after the last edit. `Executed 436 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `swiftlint lint --quiet` — exit 0, no output. `git status --porcelain` — only the
+two files above plus this build log; no untracked files.
