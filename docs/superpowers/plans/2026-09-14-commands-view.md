@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-15
 **Base:** d94b0b0f879606872a8b1a92e2f38ac144914339
+**PR:** #216
 
 Breaks down `docs/superpowers/specs/2026-09-14-commands-view.md`. Every design decision is settled
 there; read it before starting a task, and read this file for what your task is and how it is
@@ -1380,5 +1381,49 @@ Quality-only pass over the branch, no behaviour changed.
 - `RunCommandMenu.run(_:in:app:terminalManager:)` folds into the instance `run(_:)`: its second
   caller was the temporary probe from T7, and with that gone the static took four arguments to reach
   state the view already holds.
+
+**Gate.** `./scripts/ci.sh` — see the report.
+
+### Review fix
+
+Review of `a543cc2` found that the simplify pass broke a terminal command when Settings → Main
+Terminal is "None" (the default on a fresh profile). `appendShellTab` returned the result of a
+second `promoteLauncher` call, but with no main command `appendLauncherTab` has already promoted the
+new tab, so that call fails its `isLauncher` guard and returns `nil`. `RunCommandMenu.run`'s
+`.shell` arm then bails on `guard let surface` and the tab opens a login shell that is never typed
+into — the trap the plan's "Implementation notes" warned about.
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `appendShellTab` returns the surface looked up from the tab it just created, so both promote branches yield the same shape. |
+| `Sources/App/TodosPanelView.swift` | Stray blank line before the final `}` removed. |
+
+**Evidence.** No XCTest proof is possible: every path needs a real `ghostty_app_t`. Verified live
+instead, with a temporary in-app probe (never committed) that drives the real `RunCommandMenu` run
+action twice, once per Settings value, and reads the resulting tab's viewport back through
+`ghostty_surface_read_text`.
+
+Against the unfixed `appendShellTab`, with Main Terminal = None (`provider=nil`):
+
+```
+[4141ms] N tab isLauncher=false hasSurface=true out=
+[4141ms] N screen: Last login: Thu Sep 17 15:45:28 on tty?? // ➜  clearway git:(main)
+[8216ms] A tab isLauncher=false hasSurface=true out=A|
+[8216ms] A screen: ... // ➜  clearway echo A >> /tmp/fixprobe/out.txt // ➜  clearway git:(main)
+```
+
+The None tab has a live surface and an empty output file: the shell opened, the command never
+arrived. The agent case (`provider=Optional("claude")`) ran normally.
+
+With the fix, the same probe:
+
+```
+[4068ms] N tab isLauncher=false hasSurface=true out=N|
+[4068ms] N screen: ... // ➜  clearway echo N >> /tmp/fixprobe/out.txt // ➜  clearway git:(main)
+[8148ms] A tab isLauncher=false hasSurface=true out=N|A|
+[8149ms] A screen: ... // ➜  clearway echo A >> /tmp/fixprobe/out.txt // ➜  clearway git:(main)
+```
+
+Both settings run the command exactly once.
 
 **Gate.** `./scripts/ci.sh` — see the report.

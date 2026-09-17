@@ -169,5 +169,4 @@ struct TodosPanelView: View {
             todoManager.setStatus(todo, to: .inProgress)
         }
     }
-
 }

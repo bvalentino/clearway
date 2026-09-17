@@ -303,10 +303,15 @@ class TerminalManager: ObservableObject {
     ///
     /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher`. Returns the tab's surface so
     /// a caller can write into it. Used by the Cmd+Shift+T shortcut.
+    ///
+    /// The surface comes from the tab, not from `promoteLauncher`'s return: with
+    /// Settings → Main Terminal at "None", `appendLauncherTab` has already promoted the tab, so
+    /// the call here fails its `isLauncher` guard and returns nil while the surface exists.
     @discardableResult
     func appendShellTab(for worktree: Worktree, app: ghostty_app_t) -> Ghostty.SurfaceView? {
         let id = appendLauncherTab(for: worktree, app: app)
-        return promoteLauncher(tabId: id, in: worktree.id, app: app)
+        promoteLauncher(tabId: id, in: worktree.id, app: app)
+        return panes[worktree.id]?.main.tabs.first(where: { $0.id == id })?.surface
     }
 
     /// Swaps a `.launcher` tab for a `.surface` tab in-place, running `command` — or a login

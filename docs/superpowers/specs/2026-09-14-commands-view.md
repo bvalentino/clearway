@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-15
 **Base:** d94b0b0f879606872a8b1a92e2f38ac144914339
+**PR:** #216
 
 Clearway can save reusable *prompts* but not reusable *actions*. This change adds **Commands**: named,
 ordered, globally-stored things a user runs in a worktree. A command is either a **terminal** command
