@@ -187,8 +187,17 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
     list too long" — the launcher's prompts sit well under that.
   - `TerminalManager.appendLauncherTab` promotes the new tab straight to a login shell when
-    `mainCommandProvider() == nil` — Settings → Main Terminal set to "None". Otherwise the tab stays a
-    launcher and its view focuses the prompt input.
+    `startsAsLoginShell` is true — neither its `agentOverride` nor `mainCommandProvider()` names an
+    agent. Otherwise the tab stays a launcher and its view focuses the prompt input. The override is
+    what keeps an agent command's tab a launcher with Settings → Main Terminal at "None", where the
+    agent would otherwise be swallowed into a bare shell; the rule is `static` so the truth table is
+    testable without a `ghostty_app_t`.
+  - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
+    `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
+    wait and the stage-vs-promote branch live on the coordinator with the rest of the tab logic.
+    The Enter placement a terminal command needs is `ShellSend.steps`, not a surface method —
+    nothing on `Ghostty.SurfaceView` is reachable from XCTest, and staging rather than running the
+    last line is the rule most worth pinning.
   - `SavedCommandStore.swift` owns `~/.clearway/commands.json`, the one global list of saved
     commands. Array order **is** display order — nothing sorts it, and a reorder rewrites the file.
     There is deliberately no watcher: the app is the only writer and `SavedCommandManager` is

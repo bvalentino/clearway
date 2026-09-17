@@ -134,10 +134,29 @@ final class SavedCommandManagerTests: TempRootTestCase {
         manager.add(second)
         manager.add(third)
 
-        manager.move(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        manager.move(fromOffsets: IndexSet(integer: 2), toOffset: 0, filter: .all)
 
         XCTAssertEqual(manager.commands, [third, first, second])
         let persisted = await persistedCommands(matching: [third, first, second])
         XCTAssertEqual(persisted, [third, first, second])
+    }
+
+    /// Offsets arrive against the visible subset, so applying them to the global array would
+    /// reorder commands the user cannot see — and persist it.
+    func testMoveUnderAnActiveFilterIsRefused() async {
+        let agent = makeCommand(name: "Review", kind: .agent, text: "Review the diff.")
+        let firstTerminal = makeCommand(name: "Dev")
+        let secondTerminal = makeCommand(name: "Test", text: "bin/test")
+        manager.add(agent)
+        manager.add(firstTerminal)
+        manager.add(secondTerminal)
+
+        // Dragging the second visible row above the first under the `.terminal` filter: offsets
+        // 1 → 0 would swap `agent` and `firstTerminal` in the global array.
+        manager.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, filter: .terminal)
+
+        XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
+        let persisted = await persistedCommands(matching: [agent, firstTerminal, secondTerminal])
+        XCTAssertEqual(persisted, [agent, firstTerminal, secondTerminal])
     }
 }

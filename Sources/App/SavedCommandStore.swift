@@ -40,11 +40,14 @@ final class SavedCommandStore: Sendable {
                 Ghostty.logger.warning("commands.json is unreadable — loading as empty.")
                 return []
             }
-            guard let commands = try? JSONDecoder().decode([SavedCommand].self, from: data) else {
-                Ghostty.logger.warning("commands.json is corrupt — loading as empty.")
+            do {
+                return try JSONDecoder().decode([SavedCommand].self, from: data)
+            } catch {
+                // The error names the offending key and index, which is what makes the file
+                // hand-repairable — a bare "corrupt" tells its reader nothing.
+                Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(error)")
                 return []
             }
-            return commands
         }.value
     }
 
@@ -69,7 +72,17 @@ final class SavedCommandStore: Sendable {
                     }
                     // Write to a temp file and rename over the final path, so a reader never
                     // sees a partial write.
-                    fm.createFile(atPath: tmpPath, contents: data, attributes: [.posixPermissions: 0o600])
+                    // `createFile` reports failure by returning false, and a temp file that was
+                    // never written makes `replaceItemAt` throw "no such file" against the temp
+                    // path — naming the wrong file and hiding the full disk or unwritable
+                    // directory that actually stopped the save.
+                    guard fm.createFile(
+                        atPath: tmpPath,
+                        contents: data,
+                        attributes: [.posixPermissions: 0o600]
+                    ) else {
+                        throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tmpPath])
+                    }
                     _ = try fm.replaceItemAt(URL(fileURLWithPath: finalPath), withItemAt: URL(fileURLWithPath: tmpPath))
                     continuation.resume()
                 } catch {

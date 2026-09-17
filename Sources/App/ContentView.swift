@@ -776,6 +776,19 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailView: some View {
+        // Commands is a JSON-backed list that needs no `ghostty_app_t` to view or edit, so it
+        // stays reachable when the terminal fails to initialize — as the Tasks and Prompts lists
+        // do by rendering in `contentColumn`, outside this switch. Only `RunCommandMenu` needs the
+        // app, and it is gated on it separately.
+        if detailSelection == .commands {
+            CommandsView()
+        } else {
+            readinessDetailView
+        }
+    }
+
+    @ViewBuilder
+    private var readinessDetailView: some View {
         switch ghosttyApp.readiness {
         case .loading:
             ProgressView("Loading terminal...")
@@ -927,8 +940,6 @@ struct ContentView: View {
                 } else {
                     detailPlaceholder("Select a task")
                 }
-            } else if detailSelection == .commands {
-                CommandsView()
             }
         }
     }

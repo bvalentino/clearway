@@ -287,6 +287,22 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertNil(manager.launcherDrafts[tabId])
     }
 
+    // MARK: - startsAsLoginShell
+
+    /// The conjunction that lets an agent command work with Settings → Main Terminal at "None".
+    /// Drop the `agentOverride` half and the tab is promoted to a bare login shell, so the
+    /// prompt is handed to nobody and the agent never launches.
+    func test_startsAsLoginShell_onlyWhenNeitherSourceNamesAnAgent() {
+        XCTAssertTrue(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: nil))
+
+        XCTAssertFalse(
+            TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: nil),
+            "An agent command must keep its tab a launcher even when Main Terminal is None"
+        )
+        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: "claude"))
+        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: "claude"))
+    }
+
     // MARK: - beginTaskLaunch
 
     /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else

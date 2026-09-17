@@ -67,11 +67,8 @@ struct CommandsView: View {
                         }
                     }
             }
-            // A move computed against a filtered subset would rewrite the wrong global positions,
-            // so a filtered list refuses it and its rows are `.moveDisabled`.
             .onMove { from, to in
-                guard !filter.isActive else { return }
-                savedCommandManager.move(fromOffsets: from, toOffset: to)
+                savedCommandManager.move(fromOffsets: from, toOffset: to, filter: filter)
             }
         }
         .listStyle(.inset)

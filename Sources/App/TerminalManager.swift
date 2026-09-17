@@ -263,6 +263,13 @@ class TerminalManager: ObservableObject {
     /// `agentOverride` addresses the new tab to a specific agent instead of
     /// Settings → Main Terminal, and keeps it a launcher even when that setting is "None" —
     /// otherwise the agent would be swallowed into a bare login shell.
+    /// A new launcher tab promotes straight to a login shell only when neither source names an
+    /// agent. An `agentOverride` therefore keeps the tab a launcher even with Settings →
+    /// Main Terminal at "None", where the agent would otherwise be swallowed into a bare shell.
+    static func startsAsLoginShell(agentOverride: String?, mainCommand: String?) -> Bool {
+        agentOverride == nil && mainCommand == nil
+    }
+
     @discardableResult
     func appendLauncherTab(for worktree: Worktree, app: ghostty_app_t, agentOverride: String? = nil) -> UUID {
         let key = worktree.id
@@ -283,12 +290,11 @@ class TerminalManager: ObservableObject {
             setInitialPanelVisibility(for: key, worktree: worktree)
         }
 
-        // No agent for this tab, from either source → promote immediately to a login shell (which
-        // focuses via `promoteLauncher`). Otherwise the tab stays a launcher, so signal its
-        // view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
+        // A login shell focuses via `promoteLauncher`. Otherwise the tab stays a launcher, so
+        // signal its view to focus the prompt input — this is the explicit-creation (Cmd+T) path.
         // `pendingFocusTabId` isn't `@Published`, so it must be set *before* the
         // `objectWillChange.send()` below to be visible in the resulting render pass.
-        if agentOverride == nil, mainCommandProvider() == nil {
+        if Self.startsAsLoginShell(agentOverride: agentOverride, mainCommand: mainCommandProvider()) {
             promoteLauncher(tabId: newTab.id, in: key, app: app)
         } else {
             pendingFocusTabId = newTab.id

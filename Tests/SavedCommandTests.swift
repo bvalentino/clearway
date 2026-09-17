@@ -121,6 +121,43 @@ final class SavedCommandTests: XCTestCase {
         XCTAssertEqual(shellSend(for: command)?.lines, [])
     }
 
+    // MARK: - Enter placement
+
+    /// The steps are what the surface is actually handed, so these pin the whole of what
+    /// "Append Enter to run immediately" governs — everything above only pins the split.
+
+    func testAutoRunAppendsTheTrailingEnter() {
+        let command = makeCommand(kind: .terminal, text: "bin/dev", autoRun: true)
+        XCTAssertEqual(shellSend(for: command)?.steps, [.text("bin/dev"), .enter])
+    }
+
+    /// Without the toggle the line is typed and left on the prompt, unrun and editable. The
+    /// missing trailing `.enter` is the whole safety property of staging.
+    func testWithoutAutoRunTheLastLineIsTypedButNotRun() {
+        let command = makeCommand(kind: .terminal, text: "git reset --hard origin/main", autoRun: false)
+        XCTAssertEqual(shellSend(for: command)?.steps, [.text("git reset --hard origin/main")])
+    }
+
+    func testInteriorNewlinesAreEntersRegardlessOfTheToggle() {
+        let running = makeCommand(kind: .terminal, text: "cd /tmp\npwd", autoRun: true)
+        XCTAssertEqual(
+            shellSend(for: running)?.steps,
+            [.text("cd /tmp"), .enter, .text("pwd"), .enter]
+        )
+
+        let staged = makeCommand(kind: .terminal, text: "cd /tmp\npwd", autoRun: false)
+        XCTAssertEqual(
+            shellSend(for: staged)?.steps,
+            [.text("cd /tmp"), .enter, .text("pwd")],
+            "Only the last line is held back — the earlier lines still run"
+        )
+    }
+
+    func testEmptyTextProducesNoSteps() {
+        let command = makeCommand(kind: .terminal, text: "  \n\n ", autoRun: true)
+        XCTAssertEqual(shellSend(for: command)?.steps, [])
+    }
+
     func testAgentCommandWithAutoRunSubmits() {
         let command = makeCommand(kind: .agent, text: "Review the PR", agent: "codex", autoRun: true)
         XCTAssertEqual(
