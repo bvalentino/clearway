@@ -14,9 +14,10 @@ checked.
    (Decision 1)
 2. **The signal is `headStatus == .detached` and nothing else.** No path matching, no provenance
    heuristic, no Claude-Code directory shape. (Decision 3)
-3. **`.rebasing` and `.bisecting` are never hidden, and need no extra guard.**
-   `applyHeadResolution` (`Worktree.swift:302-314`) has already rewritten a mid-rebase/mid-bisect
-   entry to `.rebasing`/`.bisecting` with its recovered branch name before any view sees the list, so
+3. **A detached HEAD with a git operation in progress is never hidden, and needs no extra guard.**
+   `applyHeadResolution` has already rewritten such an entry before any view sees the list — to
+   `.rebasing`/`.bisecting` with the recovered branch name, or (post-review addition) to
+   `.inProgress` for cherry-pick, revert, merge and `git am`, which record no branch — so
    `.detached` at render time already means a bare detached HEAD. (Decision 4)
 4. **Main is exempt unconditionally**, whatever its `headStatus`. `ContentView` uses main as the
    guaranteed selection fallback and `TerminalManager.isOpen` reports it open by definition; a hidden
@@ -471,6 +472,89 @@ the gate run.
 (315 before this fix, +4). Run after the last edit. `git status --porcelain` clean afterwards, no
 `default.profraw` (no Debug launch was made).
 
+### Post-review addition: in-progress ops that record no branch
+
+Not a numbered plan task. The PR review pass declined this as a scope change (`## PR review stage`
+→ Declined, errors 1); the operator has since decided it in, so a worktree detached because *any*
+git operation is in progress is never hidden. Recorded in `## Changelog` too.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/Worktree.swift` | `HeadStatus` gains one case, `.inProgress`: a git operation is in progress and recorded no branch name. `branchFromInProgressOp` is now `inProgressOp(gitdir:) -> (branch: String?, status: HeadStatus)?` — the three branch-recovering probes are unchanged, followed by four existence probes (`rebase-apply/applying`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`) that return `(nil, .inProgress)`. `applyHeadResolution` passes `op.branch` straight through, so such a row keeps its "(detached)" display name and never stays `.detached`. `removeWorktree`'s refusal message says "git operation in progress" instead of naming only rebase/bisect. |
+| `Tests/WorktreeTests.swift` | One case per new marker; `testInProgressOpPrefersRebaseOverCherryPick` (a conflicted `rebase -i` writes `CHERRY_PICK_HEAD` beside `rebase-merge/head-name` — the branch must still be recovered); `testVisibilityKeepsWorktreeWithOperationInProgress`; `testParserAndResolverPipelineMarksCherryPickingWorktreeInProgress`, which runs parser → resolver → `Worktree.visible` over a real temp gitdir and is the test that pins the operator's rule end to end. The six existing probe cases were renamed and re-pointed at `inProgressOp`, asserting through `XCTUnwrap` so `branch: String?` does not read as a double optional. |
+| `Sources/App/Worktree.swift` (doc) + `CLAUDE.md` | The marker list and its precedence, and the note that `.inProgress` keeps the "(detached)" name. |
+| `docs/superpowers/specs/…` | Decision 4 rewritten, criterion 2 widened, Assumption 2 marked superseded in part, testing strategy and files table updated. |
+
+**Why these markers, and nothing else.** Git's own shipped prompt script,
+`/Applications/Xcode.app/Contents/Developer/usr/share/git-core/git-prompt.sh` (git 2.54.0), reads
+exactly these files and in this order:
+
+```sh
+	if [ -d "$g/rebase-merge" ]; then
+		__git_eread "$g/rebase-merge/head-name" b
+		...
+		r="|REBASE"
+	else
+		if [ -d "$g/rebase-apply" ]; then
+			...
+			if [ -f "$g/rebase-apply/rebasing" ]; then
+				__git_eread "$g/rebase-apply/head-name" b
+				r="|REBASE"
+			elif [ -f "$g/rebase-apply/applying" ]; then
+				r="|AM"
+			...
+		elif [ -f "$g/MERGE_HEAD" ]; then
+			r="|MERGING"
+		elif __git_sequencer_status; then
+```
+
+and `__git_sequencer_status` is `test -f "$g/CHERRY_PICK_HEAD"` → `|CHERRY-PICKING`,
+`test -f "$g/REVERT_HEAD"` → `|REVERTING`. `rebase-apply/applying` is what separates `git am` from
+`git rebase --apply`, which is why it is the `am` marker and not the `rebase-apply` directory
+itself. Only `rebase-merge`/`rebase-apply` (and `BISECT_START`, which the existing code reads) hold
+a branch name at all, which is the whole reason `.inProgress` carries none.
+
+**Evidence.** The new tests were written against the widened signature *before* the four probes
+existed, so they failed on behaviour rather than on compilation (`./scripts/ci.sh`, exit 65,
+`Executed 330 tests, with 6 failures`):
+
+```
+    ✖ testInProgressOpRecognizesCherryPick, XCTUnwrap failed: expected non-nil value of type "(branch: Optional<String>, status: HeadStatus)"
+    ✖ testInProgressOpRecognizesGitAm, XCTUnwrap failed: expected non-nil value of type "(branch: Optional<String>, status: HeadStatus)"
+    ✖ testInProgressOpRecognizesMerge, XCTUnwrap failed: expected non-nil value of type "(branch: Optional<String>, status: HeadStatus)"
+    ✖ testInProgressOpRecognizesRevert, XCTUnwrap failed: expected non-nil value of type "(branch: Optional<String>, status: HeadStatus)"
+    ✖ testParserAndResolverPipelineMarksCherryPickingWorktreeInProgress, XCTAssertEqual failed: ("detached") is not equal to ("inProgress")
+    ✖ testParserAndResolverPipelineMarksCherryPickingWorktreeInProgress, XCTAssertEqual failed: ("[]") is not equal to ("[…/picked-wt"]") - a worktree with a cherry-pick in progress is never hidden
+```
+
+The last line is the bug itself: before this change a worktree stopped on a cherry-pick conflict
+was filtered out of the sidebar.
+
+**Deviations**
+
+- One new `HeadStatus` case rather than one per operation. Nothing distinguishes them downstream:
+  `visible` hides only `.detached`, `canRemove`/`canFetchPR` admit only `.attached`, no view reads
+  `headStatus`, and none of the four records a branch to display. Four cases would be four names
+  with identical behaviour.
+- The four branchless probes are appended after the existing three rather than interleaved into
+  git's precedence, which puts `MERGE_HEAD` before rebase and bisect last. The orderings differ only
+  when markers coexist, and the one coexistence that actually happens — a conflicted `rebase -i`
+  writing `CHERRY_PICK_HEAD` — resolves to `.rebasing` either way, pinned by
+  `testInProgressOpPrefersRebaseOverCherryPick`. Reordering the three existing probes would have
+  changed behaviour this task did not ask about.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0, SwiftLint clean, build succeeded,
+`Executed 330 tests, with 0 failures` (323 before this addition, +7). Run after the last code edit.
+The run before it failed on the documented `ShellPathResolverTests` flake — exit 65,
+`testExtraLinesAroundThePathDoNotBreakResolution`, `degraded` where `full` was expected, the same
+0.5 s-per-attempt timeout under load recorded in the post-review-fix section above — and passed on
+the re-run with no edit in between. `git status --porcelain` shows only the five files this addition
+touched; nothing untracked, no `default.profraw` (no Debug launch).
+
 ## PR review stage (`/pr-review-toolkit:review-pr code tests errors types`)
 
 Four agents over `d94b0b0..cbd0094`. No Critical findings from any of them.
@@ -528,6 +612,15 @@ permutation) the two agree exactly, so the fix changes nothing but the duplicate
 
 ## Changelog
 
+- **Post-review addition (this branch, after `fe73508`).** Operator decision: a worktree detached
+  because *any* git operation is in progress must never be hidden by the toggle, not just rebase and
+  bisect. `HeadStatus` gains `.inProgress` and `branchFromInProgressOp` becomes
+  `inProgressOp(gitdir:)`, probing `rebase-apply/applying` (`git am`), `MERGE_HEAD`,
+  `CHERRY_PICK_HEAD` and `REVERT_HEAD` — markers that carry no branch, so those rows keep the
+  "(detached)" name while `applyHeadResolution` stops leaving them `.detached`. Reverses the
+  `## PR review stage` "Declined, errors 1" entry. Spec Decision 4 and criterion 2 updated. Full
+  detail in the `## Build log` section above. Persisting opened detached worktrees across a relaunch
+  (errors 2) stays deferred to a follow-up task.
 - **PR review stage (this branch, after `cbd0094`).** `repositioned` no longer amplifies a duplicate
   stored id, and `Worktree.isOpen(openIds:)` now holds the one copy of the open-worktree rule that
   `visible` and `TerminalManager.isOpen` share. Four tests added at the seams the filter passes
