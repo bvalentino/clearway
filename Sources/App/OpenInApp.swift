@@ -32,6 +32,13 @@ enum OpenInBuiltIn: String, Codable, CaseIterable, Identifiable {
 /// One entry in the user's "Open in" list: a label and the command to run with the worktree
 /// path appended. A built-in's label lives in its `kind`, so there is no field to edit.
 struct OpenInApp: Identifiable, Codable, Equatable {
+
+    /// `Kind` is stored in its synthesized form, so the **case names and their associated-value
+    /// labels are persisted form too** — `{"kind":{"builtIn":{"_0":"zed"}}}` and
+    /// `{"kind":{"custom":{"label":"Xcode"}}}`. `_0` comes from `builtIn`'s value being unlabeled,
+    /// so adding a label renames the key and orphans every stored entry, and the compiler says
+    /// nothing. `OpenInAppTests.test_storedWireFormat_decodesFromItsPersistedBytes` is what
+    /// notices; a round-trip test cannot, since it encodes and decodes with the same build.
     enum Kind: Codable, Equatable {
         case builtIn(OpenInBuiltIn)
         case custom(label: String)
@@ -67,6 +74,16 @@ struct OpenInApp: Identifiable, Codable, Equatable {
         return OpenInBuiltIn.allCases.filter { !used.contains($0) }
     }
 
+    /// Saving from the editor sheet: an edit replaces in place so the entry keeps its position,
+    /// and an unknown id appends, which is the add-custom path. List order is menu order, so an
+    /// edit that moved its entry would reorder the menu.
+    static func upsert(_ app: OpenInApp, into apps: [OpenInApp]) -> [OpenInApp] {
+        guard let index = apps.firstIndex(where: { $0.id == app.id }) else { return apps + [app] }
+        var updated = apps
+        updated[index] = app
+        return updated
+    }
+
     /// The editor sheet's fields, shared by add-custom and edit. `builtIn` is nil for a custom
     /// entry, which is the only case that shows a label field.
     struct Draft: Equatable {
@@ -74,8 +91,8 @@ struct OpenInApp: Identifiable, Codable, Equatable {
         var label: String
         var command: String
 
-        private var trimmedLabel: String { label.trimmingCharacters(in: .whitespaces) }
-        private var trimmedCommand: String { command.trimmingCharacters(in: .whitespaces) }
+        private var trimmedLabel: String { label.trimmingCharacters(in: .whitespacesAndNewlines) }
+        private var trimmedCommand: String { command.trimmingCharacters(in: .whitespacesAndNewlines) }
 
         var isValid: Bool {
             !trimmedCommand.isEmpty && (builtIn != nil || !trimmedLabel.isEmpty)

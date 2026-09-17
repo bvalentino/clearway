@@ -216,7 +216,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
     launcher, the one menu view both entry points render, and the Settings section that edits the
     list. The list lives on `SettingsManager.openInApps` as JSON in a single `UserDefaults` value; an
-    absent or undecodable key reseeds `[Finder]`, a stored `[]` stays genuinely empty. It is a
+    absent or undecodable key reseeds `[Finder]`, a stored `[]` stays genuinely empty. The seed is
+    **written back only for a genuinely absent key** — an undecodable value is left on disk, because
+    `Kind` is an associated-value enum whose synthesized JSON carries its case names and `_0` as
+    persisted form, so a rename or a version rollback makes the whole array throw and overwriting it
+    would destroy the user's list irrecoverably. `OpenInAppTests`' wire-format case decodes those
+    literal bytes; a round-trip test cannot catch a rename. It is a
     preference, not a saved-command list, so it belongs there rather than in a `~/.clearway` JSON
     file the way `SavedCommandStore` holds commands.
     `buildOpenInScript` interpolates the command text **raw** and escapes only the appended folder —
@@ -229,11 +234,21 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     The launcher is `nonisolated` throughout and uses **no** `Process.terminationHandler`: that is a
     bridged ObjC block property, so a `@convention(block)` literal written in a `@MainActor` member
     traps the moment it is invoked off-main (see Concurrency above). The 2-second failure window is
-    an `NSLock`-guarded `LaunchOutcomeBox` bridging one `withCheckedContinuation` — the
-    `ShellPathStore` shape — resumed by whichever arrives first, the child's exit or the deadline,
-    with the loser left running. A task group cannot express this: `await task.value` on a
-    `Task<_, Never>` ignores cancellation and would block until the editor quits. Still running at
-    the deadline counts as launched.
+    a `Task.sleep` poll of `process.isRunning` on the cooperative pool — still running at the
+    deadline counts as launched, and the child is simply abandoned.
+    The child's stdout **and** stderr go to one **unlinked temp file**, never a `Pipe`. A pipe's
+    verdict arrives at EOF, and any grandchild inheriting the descriptor — the editor a command
+    backgrounds — holds the write end open for its whole life, so `readDataToEndOfFile()` hid the
+    shell's exit status behind it: a command like `myeditor &` failed in milliseconds and the user
+    saw no alert, while a `DispatchQueue.global` worker stayed parked for the editor's session
+    (libdispatch caps that pool, and `ShellPathStore` resolves PATH on the same queue and QoS, so
+    enough parked launches hung new launcher tabs with no diagnostic). Do not go back to a pipe:
+    a regular file has no 64KB buffer, so nothing has to be drained, and unlinking at once means
+    the space is reclaimed when the last descriptor closes. `standardInput` is `nullDevice` so a
+    command that reads stdin gets EOF instead of the app's.
+    A `run()` throw is about the working directory, not the command — the shell has not looked the
+    command up yet — so `spawnFailureMessage` names the folder rather than letting the alert's
+    "Couldn't open in Cursor" title imply the app is missing.
     Both entry points — a `.primaryAction` item in `detailView`'s toolbar, in its own
     `ToolbarGroupBreak` capsule beside Run, and `SidebarView`'s worktree context submenu — are gated
     on a non-empty list **and** a non-nil worktree path, so emptying the list in Settings hides them.

@@ -10,13 +10,16 @@ enum OpenInLaunchOutcome: Equatable, Sendable {
 /// Runs a user-configured "Open in" command against a worktree folder.
 ///
 /// Nothing here is `@MainActor`, and no `@convention(block)` or `@convention(c)` closure literal
-/// is formed: the spawn, the stderr drain and `waitUntilExit()` all block, so they run off the
-/// cooperative pool, and `Process.terminationHandler` is avoided entirely.
+/// is formed: the watch window is a `Task.sleep` poll on the cooperative pool, so neither
+/// `Process.terminationHandler` nor a `DispatchSource` is needed.
 enum OpenInAppLauncher {
 
     /// How long a launch is watched for failure. `sh` reports `command not found` and exits 127
-    /// in well under 100 ms, so a launch that works never waits this out.
+    /// in well under 100 ms, so a failure is never held up by this; a command that stays in the
+    /// foreground waits it out, which nobody sees because success is silent.
     static let watchWindow: TimeInterval = 2
+
+    private static let pollInterval: TimeInterval = 0.025
 
     /// The script handed to `/bin/sh -c`. The command text is interpolated raw — it is the user's
     /// and is meant to be read by the shell as typed, the same contract as `WorktreeHooks`. Only
@@ -26,85 +29,73 @@ enum OpenInAppLauncher {
     }
 
     /// What the failure alert shows below its title. Some failures say nothing at all — `false`
-    /// exits 1 silently — so a blank stderr needs its own wording rather than an empty alert.
-    nonisolated static func failureMessage(command: String, stderr: String) -> String {
-        stderr.isEmpty ? "\"\(command)\" failed without reporting an error." : stderr
+    /// exits 1 silently — so no output needs its own wording rather than an empty alert.
+    nonisolated static func failureMessage(command: String, detail: String) -> String {
+        detail.isEmpty ? "\"\(command)\" failed without reporting an error." : detail
+    }
+
+    /// A `run()` throw is about the working directory, never the command — the shell has not
+    /// looked the command up yet. Naming the folder keeps the alert from reading as if the app
+    /// were the thing missing, since its title already carries the app's label.
+    nonisolated static func spawnFailureMessage(directory: String, error: Error) -> String {
+        "Couldn't run in \(directory) — \(error.localizedDescription)"
     }
 
     nonisolated static func launch(command: String, path: String) async -> OpenInLaunchOutcome {
-        let script = buildOpenInScript(command: command, path: path)
-        let outcome = LaunchOutcomeBox()
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            outcome.settle(runToCompletion(script: script, directory: path))
-        }
-
-        let deadline = Task {
-            try? await Task.sleep(nanoseconds: UInt64(watchWindow * 1_000_000_000))
-            outcome.settle(.launched)
-        }
-        defer { deadline.cancel() }
-
-        return await outcome.wait()
-    }
-
-    private nonisolated static func runToCompletion(script: String, directory: String) -> OpenInLaunchOutcome {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script]
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.arguments = ["-c", buildOpenInScript(command: command, path: path)]
+        process.currentDirectoryURL = URL(fileURLWithPath: path)
         process.environment = ShellEnvironment.processEnvironment
+        process.standardInput = FileHandle.nullDevice
 
-        let stderr = Pipe()
-        process.standardError = stderr
+        // An unlinked temp file, not a pipe. A pipe's verdict arrives at EOF, and any grandchild
+        // that inherits the descriptor — an editor the command backgrounds — holds the write end
+        // open for its whole life, so the shell's exit status would stay unreadable behind it.
+        // A regular file also has no 64KB buffer to fill, so nothing has to be drained to keep
+        // the child from blocking. Unlinking at once means the space is reclaimed whenever the
+        // last descriptor closes, including when this function abandons a child at the deadline.
+        let output = makeOutputSink()
+        let sink: FileHandle = output ?? .nullDevice
+        process.standardOutput = sink
+        process.standardError = sink
 
         do {
             try process.run()
         } catch {
-            return .failed(message: error.localizedDescription)
+            let message = spawnFailureMessage(directory: path, error: error)
+            Ghostty.logger.error("OpenInAppLauncher: spawn failed: \(message)")
+            return .failed(message: message)
         }
 
-        // Read the pipe before waiting for exit: a child that fills the ~64KB buffer would
-        // block on the write while we block on its exit.
-        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        let deadline = Date().addingTimeInterval(watchWindow)
+        while process.isRunning, Date() < deadline {
+            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        }
 
+        guard !process.isRunning else { return .launched }
         guard process.terminationStatus != 0 else { return .launched }
-        let message = String(data: stderrData, encoding: .utf8)?
+
+        let detail = output.map(readFromStart) ?? ""
+        Ghostty.logger.error(
+            "OpenInAppLauncher: \"\(command)\" exited \(process.terminationStatus): \(detail)"
+        )
+        return .failed(message: detail)
+    }
+
+    private nonisolated static func makeOutputSink() -> FileHandle? {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("clearway-open-in-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: url.path, contents: nil),
+              let handle = try? FileHandle(forUpdating: url) else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        return handle
+    }
+
+    private nonisolated static func readFromStart(_ handle: FileHandle) -> String {
+        try? handle.seek(toOffset: 0)
+        let data = handle.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return .failed(message: message)
-    }
-}
-
-/// Delivers whichever arrives first — the child's outcome or the watch window expiring — and drops
-/// every later one, so the continuation resumes exactly once. The loser keeps running: the drain
-/// finishes on its own when the child exits.
-private final class LaunchOutcomeBox: @unchecked Sendable {
-
-    private let lock = NSLock()
-    private var settled: OpenInLaunchOutcome?
-    private var waiter: CheckedContinuation<OpenInLaunchOutcome, Never>?
-
-    func settle(_ outcome: OpenInLaunchOutcome) {
-        let waiter: CheckedContinuation<OpenInLaunchOutcome, Never>? = lock.withLock {
-            guard settled == nil else { return nil }
-            settled = outcome
-            defer { self.waiter = nil }
-            return self.waiter
-        }
-        waiter?.resume(returning: outcome)
-    }
-
-    func wait() async -> OpenInLaunchOutcome {
-        await withCheckedContinuation { continuation in
-            let alreadySettled: OpenInLaunchOutcome? = lock.withLock {
-                guard let settled else {
-                    waiter = continuation
-                    return nil
-                }
-                return settled
-            }
-            if let alreadySettled { continuation.resume(returning: alreadySettled) }
-        }
     }
 }

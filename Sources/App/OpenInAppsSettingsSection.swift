@@ -72,14 +72,9 @@ struct OpenInAppsSettingsSection: View {
     }
 
     private func save(_ app: OpenInApp) {
-        if let index = settings.openInApps.firstIndex(where: { $0.id == app.id }) {
-            settings.openInApps[index] = app
-        } else {
-            settings.openInApps.append(app)
-        }
+        settings.openInApps = OpenInApp.upsert(app, into: settings.openInApps)
     }
 
-    /// Identifies which entry the sheet is editing; `nil` is the add-custom case.
     private struct EditorTarget: Identifiable {
         let app: OpenInApp?
         var id: String { app?.id.uuidString ?? "new" }

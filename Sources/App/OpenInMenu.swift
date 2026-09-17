@@ -31,17 +31,17 @@ struct OpenInMenu<Label: View>: View {
         Task {
             let outcome = await OpenInAppLauncher.launch(command: app.command, path: path)
             guard case .failed(let message) = outcome else { return }
-            presentFailure(app, stderr: message)
+            presentFailure(app, detail: message)
         }
     }
 
     /// `NSAlert().runModal()` is the app's pattern for a fire-and-forget message
     /// (`ClearwayApp.swift:68, 90`); a `@Published` failure would have to be wired into both
     /// entry points' view trees for one message.
-    private func presentFailure(_ app: OpenInApp, stderr: String) {
+    private func presentFailure(_ app: OpenInApp, detail: String) {
         let alert = NSAlert()
         alert.messageText = "Couldn't open in \(app.label)"
-        alert.informativeText = OpenInAppLauncher.failureMessage(command: app.command, stderr: stderr)
+        alert.informativeText = OpenInAppLauncher.failureMessage(command: app.command, detail: detail)
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()

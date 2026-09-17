@@ -128,18 +128,26 @@ class SettingsManager: ObservableObject {
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
-        let storedApps = defaults.data(forKey: SettingsKey.openInApps)
-            .flatMap { try? JSONDecoder().decode([OpenInApp].self, from: $0) }
-        self.openInApps = storedApps ?? Self.seedOpenInApps
+        let storedData = defaults.data(forKey: SettingsKey.openInApps)
+        let decodedApps = storedData.flatMap { try? JSONDecoder().decode([OpenInApp].self, from: $0) }
+        self.openInApps = decodedApps ?? Self.seedOpenInApps
         // didSet doesn't fire during init, so mirror the initial values out here.
         NSApp?.appearance = self.colorScheme.nsAppearance
-        if storedApps == nil {
+        // Seeded only for a genuinely absent key. A value that failed to decode is left where it
+        // is: overwriting it would destroy the user's list for good, where leaving it lets a build
+        // that understands the format read it back. Decision 9 asks for the reseed, not the write.
+        if storedData == nil {
             persistOpenInApps()
+        } else if decodedApps == nil {
+            Ghostty.logger.error("SettingsManager: couldn't decode \(SettingsKey.openInApps); showing the seed")
         }
     }
 
     private func persistOpenInApps() {
-        guard let data = try? JSONEncoder().encode(openInApps) else { return }
+        guard let data = try? JSONEncoder().encode(openInApps) else {
+            Ghostty.logger.error("SettingsManager: failed to encode openInApps; the edit will not survive relaunch")
+            return
+        }
         defaults.set(data, forKey: SettingsKey.openInApps)
     }
 }

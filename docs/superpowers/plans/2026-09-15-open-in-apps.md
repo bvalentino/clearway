@@ -896,3 +896,70 @@ No RED test: the label is a `Text` inside a SwiftUI `Menu` builder, which no tes
 **Gate**
 
 `./scripts/ci.sh` — `Executed 386 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
+
+### PR review fixes (review-pr stage, after `cdde062`)
+
+`/pr-review-toolkit:review-pr code tests errors types`. Four agents; the important findings and what
+was done with each.
+
+**The launcher decided on pipe EOF, not on the child's exit.** Two agents proved it independently,
+and it is a deviation from decision 15 rather than a disagreement with it: `readDataToEndOfFile()`
+returns when the *last* holder of the write end closes it, so any grandchild inheriting stderr — the
+editor a command backgrounds — hid the shell's exit status behind its whole lifetime. RED on
+`cdde062`: `test_launch_nonZeroExitWithADescendantHoldingTheOutput_stillReportsFailure`
+(`sleep 30 & echo boom 1>&2; exit 1 #`) failed with `expected a failure, got launched`. The same
+mechanism parked a `DispatchQueue.global(qos: .userInitiated)` worker per launch for the editor's
+session, and `ShellPathStore` resolves PATH on that same queue and QoS, so enough parked launches
+would hang `awaitPath()` and with it every new launcher tab — silently.
+
+`Sources/App/OpenInAppLauncher.swift` was rewritten: stdout **and** stderr go to one unlinked temp
+file, the watch window is a `Task.sleep` poll of `process.isRunning` on the cooperative pool, and
+`LaunchOutcomeBox`, the `DispatchQueue` hop and `runToCompletion` are gone — a net simplification of
+the racing apparatus, with no block or C callback formed anywhere (decision 16 holds). A regular
+file has no 64KB buffer, so the read-before-wait rule the pipe needed no longer applies; unlinking
+at once reclaims the space when the last descriptor closes, including for a child abandoned at the
+deadline. `standardInput` is `nullDevice`. Decision 15 is unchanged and now pinned by
+`test_launch_failureAfterTheDeadline_staysLaunched`.
+
+**Reseeding overwrote an undecodable stored list.** Decision 9 asks for the reseed, not the write.
+`Kind`'s synthesized JSON carries its case names and `_0` as persisted form, so a rename or a
+version rollback makes the whole array throw; writing `[Finder]` over it destroyed the user's list
+with no recovery. `SettingsManager.init` now persists only for a genuinely absent key and logs the
+decode failure. Pinned by `test_undecodableStoredValue_isLeftOnDiskRatherThanOverwritten`, and the
+wire format itself by `test_storedWireFormat_decodesFromItsPersistedBytes`, which decodes literal
+bytes — a round-trip test passes under any rename.
+
+**Other fixes.** A failing command's stdout is captured too, so a wrapper that prints its complaint
+there no longer reaches the user as "failed without reporting an error"; the spec excludes surfacing
+output *on success*, not on failure. A `run()` throw now goes through `spawnFailureMessage`, which
+names the working directory — a removed worktree folder previously read as if the editor were
+missing. The settings section's index-or-append upsert moved to a pure `OpenInApp.upsert(_:into:)`
+with both branches tested: it was the one decision rule in the diff still private to a view, and
+criterion 10 asks for those to be view-free. `Draft` trims `.whitespacesAndNewlines`, matching the
+launcher. Failure paths log through `Ghostty.logger`, as `SavedCommandManager.save` does. The
+`failureMessage(command:stderr:)` label became `detail:`, since a spawn throw is not stderr. New
+tests pin the child's PATH and cwd, `availableBuiltIns` with every built-in present, and
+`.failed(message: "")` for a silent non-zero exit. `EditorTarget`'s doc comment, copied verbatim
+from `CommandEditorTarget`, is gone.
+
+**Declined, with reasons.** Moving `openInApps` to `private(set)` with add/update/delete methods on
+`SettingsManager` (the `SavedCommandManager` shape) — the upsert lift takes the testability win
+without inventing a test-only mutation door, and the simplify pass already declined the move on
+consistency grounds; recorded as a follow-up. Making `Draft.app(id:)` failable — the door it closes
+(Save with a blank field) is already unreachable behind `.disabled(!draft.isValid)`, and it does not
+close the door that is reachable (a hand-edited blob), so it would add an unreachable branch at the
+call site. Per-element decoding of the stored array — leaving the bytes intact already makes a
+rollback recoverable. Serializing `NSAlert.runModal()` against a nested modal — a `command not
+found` alerts in under 100 ms and is modal once up, so two overlapping failures are not reachable
+through the menu. Lenient non-UTF-8 decoding of the child's output — `String(decoding:as:)` trips
+SwiftLint's `optional_data_string_conversion` and CLAUDE.md forbids new warnings. The "Open in" vs
+"Open In" capitalisation disagreement — an operator decision recorded in this changelog.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 420 tests, with 0 failures (0 unexpected)`, `==> CI passed.`, exit 0,
+run after the last edit, with no SwiftLint warnings (the first run after the rewrite reported
+`optional_data_string_conversion`, which the final `String(data:encoding:)` form removes).
+`git status --porcelain` listed only the eight files above plus this plan; `--ignored` adds
+`.clearway/`, `.work/` and `Sources/App/BuildInfo.generated.swift`, all gitignored, and no
+`default.profraw` because the app was not launched.

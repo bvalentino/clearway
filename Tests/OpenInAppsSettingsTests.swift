@@ -53,6 +53,17 @@ final class OpenInAppsSettingsTests: XCTestCase {
         XCTAssertEqual(manager.openInApps.first?.command, "open")
     }
 
+    /// An undecodable value is what a rollback past a format change looks like. Showing the seed is
+    /// decision 9; writing it over the stored bytes would destroy the user's list for good.
+    func test_undecodableStoredValue_isLeftOnDiskRatherThanOverwritten() {
+        let stored = Data([0x00, 0x01, 0x02, 0xFF])
+        defaults.set(stored, forKey: SettingsKey.openInApps)
+
+        _ = SettingsManager(defaults: defaults)
+
+        XCTAssertEqual(defaults.data(forKey: SettingsKey.openInApps), stored)
+    }
+
     func test_storedValueOfTheWrongType_yieldsTheFinderSeed() {
         defaults.set("not a JSON array", forKey: SettingsKey.openInApps)
 

@@ -40,6 +40,11 @@ final class OpenInAppTests: XCTestCase {
         XCTAssertEqual(OpenInApp.availableBuiltIns(excluding: apps), [.vsCode, .zed])
     }
 
+    func test_availableBuiltIns_everyBuiltInPresent_offersNone() {
+        let apps = OpenInBuiltIn.allCases.map { OpenInApp(kind: .builtIn($0), command: $0.defaultCommand) }
+        XCTAssertEqual(OpenInApp.availableBuiltIns(excluding: apps), [])
+    }
+
     func test_availableBuiltIns_customEntriesExcludeNothing() {
         let apps = [
             OpenInApp(kind: .custom(label: "Xcode"), command: "xed"),
@@ -70,6 +75,41 @@ final class OpenInAppTests: XCTestCase {
         let app = OpenInApp(kind: .custom(label: "Xcode"), command: "xed")
         let decoded = try JSONDecoder().decode(OpenInApp.self, from: JSONEncoder().encode(app))
         XCTAssertEqual(decoded, app)
+    }
+
+    /// Pins the synthesized `Codable` shape of `Kind`, which a round-trip test cannot: renaming a
+    /// case or its associated-value label orphans every stored entry with no compiler complaint.
+    func test_storedWireFormat_decodesFromItsPersistedBytes() throws {
+        let id = UUID()
+        let json = """
+        [{"id":"\(id.uuidString)","kind":{"builtIn":{"_0":"zed"}},"command":"zed"},
+         {"id":"\(id.uuidString)","kind":{"custom":{"label":"Xcode"}},"command":"xed"}]
+        """
+        let decoded = try JSONDecoder().decode([OpenInApp].self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.map(\.kind), [.builtIn(.zed), .custom(label: "Xcode")])
+        XCTAssertEqual(decoded.map(\.command), ["zed", "xed"])
+    }
+
+    func test_upsert_replacesInPlaceSoTheEntryKeepsItsPosition() {
+        let middle = OpenInApp(kind: .builtIn(.cursor), command: "cursor")
+        let apps = [
+            OpenInApp(kind: .builtIn(.finder), command: "open"),
+            middle,
+            OpenInApp(kind: .custom(label: "Xcode"), command: "xed")
+        ]
+
+        let updated = OpenInApp.upsert(OpenInApp(id: middle.id, kind: .builtIn(.cursor), command: "cursor --wait"), into: apps)
+
+        XCTAssertEqual(updated.map(\.label), ["Finder", "Cursor", "Xcode"])
+        XCTAssertEqual(updated[1].command, "cursor --wait")
+    }
+
+    func test_upsert_appendsAnIdThatIsNotInTheList() {
+        let apps = [OpenInApp(kind: .builtIn(.finder), command: "open")]
+        let added = OpenInApp(kind: .custom(label: "Xcode"), command: "xed")
+
+        XCTAssertEqual(OpenInApp.upsert(added, into: apps), apps + [added])
     }
 
     func test_draftFromBuiltInApp_carriesTheBuiltInAndItsCommand() {
@@ -128,16 +168,24 @@ extension OpenInAppTests {
 
     func test_failureMessage_quotesTheShellsTextWhenThereIsSome() {
         XCTAssertEqual(
-            OpenInAppLauncher.failureMessage(command: "zed", stderr: "sh: zed: command not found"),
+            OpenInAppLauncher.failureMessage(command: "zed", detail: "sh: zed: command not found"),
             "sh: zed: command not found"
         )
     }
 
     func test_failureMessage_namesTheCommandWhenTheShellSaidNothing() {
         XCTAssertEqual(
-            OpenInAppLauncher.failureMessage(command: "false", stderr: ""),
+            OpenInAppLauncher.failureMessage(command: "false", detail: ""),
             "\"false\" failed without reporting an error."
         )
+    }
+
+    func test_spawnFailureMessage_namesTheFolderRatherThanLeavingItOnTheApp() {
+        let message = OpenInAppLauncher.spawnFailureMessage(
+            directory: "/tmp/gone",
+            error: CocoaError(.fileNoSuchFile)
+        )
+        XCTAssertTrue(message.hasPrefix("Couldn't run in /tmp/gone — "), "unexpected message: \(message)")
     }
 
     func test_launch_commandThatSucceeds_reportsLaunched() async {
@@ -145,11 +193,38 @@ extension OpenInAppTests {
         XCTAssertEqual(outcome, .launched)
     }
 
-    func test_launch_commandThatExitsNonZero_reportsFailed() async {
+    func test_launch_commandThatExitsNonZero_reportsFailedWithNoDetail() async {
         let outcome = await OpenInAppLauncher.launch(command: "false", path: "/tmp")
-        guard case .failed = outcome else {
-            return XCTFail("expected a failure, got \(outcome)")
-        }
+        XCTAssertEqual(outcome, .failed(message: ""))
+    }
+
+    func test_launch_failureThatPrintsToStdout_reportsWhatItPrinted() async {
+        let outcome = await OpenInAppLauncher.launch(command: "echo 'no project here'; exit 1 #", path: "/tmp")
+        XCTAssertEqual(outcome, .failed(message: "no project here"))
+    }
+
+    /// Pins both halves of the execution contract: the child inherits the resolved PATH through
+    /// `processEnvironment`, and it runs in the worktree folder. Nothing else notices if either
+    /// assignment is dropped — the test host's own PATH and cwd are good enough to hide it.
+    func test_launch_runsInTheFolderWithTheResolvedPath() async throws {
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("clearway-open-in-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let outcome = await OpenInAppLauncher.launch(
+            command: "{ printenv PATH; pwd; } > captured #",
+            path: folder.path
+        )
+        XCTAssertEqual(outcome, .launched)
+
+        let lines = try String(contentsOf: folder.appendingPathComponent("captured"), encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+        XCTAssertEqual(lines.first, ShellEnvironment.path)
+        XCTAssertEqual(
+            lines.last.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path },
+            folder.resolvingSymlinksInPath().path
+        )
     }
 
     func test_launch_commandNotOnPath_reportsTheShellsError() async {
@@ -161,6 +236,18 @@ extension OpenInAppTests {
         XCTAssertTrue(message.contains("clearway-no-such-command"), "unexpected message: \(message)")
     }
 
+    func test_launch_nonZeroExitWithADescendantHoldingTheOutput_stillReportsFailure() async {
+        let started = Date()
+        let outcome = await OpenInAppLauncher.launch(command: "sleep 30 & echo boom 1>&2; exit 1 #", path: "/tmp")
+        let elapsed = Date().timeIntervalSince(started)
+
+        guard case .failed(let message) = outcome else {
+            return XCTFail("expected a failure, got \(outcome)")
+        }
+        XCTAssertTrue(message.contains("boom"), "unexpected message: \(message)")
+        XCTAssertLessThan(elapsed, OpenInAppLauncher.watchWindow, "the verdict waited on the descendant, not the shell's exit")
+    }
+
     func test_launch_commandThatKeepsRunning_reportsLaunchedAtTheDeadline() async {
         let started = Date()
         let outcome = await OpenInAppLauncher.launch(command: "sleep 5 #", path: "/tmp")
@@ -168,6 +255,13 @@ extension OpenInAppTests {
         XCTAssertEqual(outcome, .launched)
         XCTAssertGreaterThanOrEqual(elapsed, OpenInAppLauncher.watchWindow - 0.2)
         XCTAssertLessThan(elapsed, OpenInAppLauncher.watchWindow + 1.5)
+    }
+
+    /// Decision 15: a child still running at the deadline counts as launched, and the non-zero
+    /// exit it reaches later raises no alert.
+    func test_launch_failureAfterTheDeadline_staysLaunched() async {
+        let outcome = await OpenInAppLauncher.launch(command: "sleep 4; exit 1 #", path: "/tmp")
+        XCTAssertEqual(outcome, .launched)
     }
 
     func test_launch_spawnThatThrows_reportsTheErrorAsAFailure() async {
