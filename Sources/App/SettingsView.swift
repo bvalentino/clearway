@@ -42,9 +42,11 @@ struct SettingsView: View {
             } footer: {
                 Text("Directory where reusable prompt files are stored.")
             }
+
+            OpenInAppsSettingsSection(settings: settings)
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .frame(width: 450, height: 420)
+        .frame(width: 450, height: 560)
     }
 }

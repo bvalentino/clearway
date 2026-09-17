@@ -347,6 +347,12 @@ struct SidebarView: View {
 
         Divider()
 
+        if !settings.openInApps.isEmpty, let path = wt.path {
+            OpenInMenu(path: path) {
+                Text("Open in")
+            }
+        }
+
         Button("Reveal in Finder") {
             if let path = wt.path {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
