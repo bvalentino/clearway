@@ -688,6 +688,18 @@ toolbar, behind `ContentView.detailView`'s four worktree items. The break that s
 is the one on its leading side; a spacer written after it lands at the trailing end and separates
 nothing. Measured both ways — see the build log.
 
+### C9: The editor's text area matches the field above it (after C8, this commit)
+
+Requested by the operator from a hands-on check: the command/prompt `TextEditor` in
+`CommandEditorSheet` reads and behaves differently from the "Menu label" `TextField` above it. Two
+fixes, recorded as spec decision 32.
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandEditorSheet.swift` | The editor's font is `.body` for an agent prompt and `.body.monospaced()` for a terminal command, up from `.callout`. A `@FocusState private var textIsFocused` drives the existing `strokeBorder`: `Color.accentColor` at 2 pt while focused, `.quaternary` at 1 pt otherwise. Height, padding and fill unchanged. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decision 32. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C9 and the build-log section. |
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -1325,5 +1337,27 @@ checked; the leading position is what satisfies its rule.
 **What is still unverified.** The probe measures the view tree, not pixels. Five platters of the
 right geometry is strong evidence of five capsules, but the rendered gaps need the operator's eyes.
 The app was left running on a clean build of this commit.
+
+**Gate.** `./scripts/ci.sh` — see the report.
+
+### C9: The editor's text area matches the field above it
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandEditorSheet.swift` | `.font(kind == .terminal ? .body.monospaced() : .body)` replaces the `.callout` pair. New `@FocusState private var textIsFocused`, applied with `.focused($textIsFocused)`. The existing `.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))` becomes a `strokeBorder(textIsFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary), lineWidth: textIsFocused ? 2 : 1)`. The `.frame(height: 120)`, the `.padding(4)` and the `Color(.textBackgroundColor)` fill are byte-for-byte unchanged. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decision 32. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C9 and this section. |
+
+**Why `AnyShapeStyle`.** `strokeBorder` takes one `S: ShapeStyle`, and the two branches are a
+`Color` and a `HierarchicalShapeStyle`; erasing both is what lets one expression carry the focused
+and unfocused strokes. `AnyShapeStyle` is macOS 12+, below the 13.0 deployment target.
+
+**No new tests.** Like C5–C8 this adds no pure rule. `CommandEditorSheet` is a view with no decision
+logic to lift out, and nothing in `Tests/` renders it. `AppKeyboardShortcutsTests` is untouched in
+both directions — no shortcut is added, changed or retired.
+
+**What is still unverified.** The font step and the focus ring were not seen on screen by this
+agent. The change is two view modifiers and the build is clean, but the rendered look needs the
+operator's eyes. The app was left running on a build of this change.
 
 **Gate.** `./scripts/ci.sh` — see the report.

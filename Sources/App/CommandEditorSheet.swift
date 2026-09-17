@@ -11,6 +11,7 @@ struct CommandEditorSheet: View {
     @State private var text: String
     @State private var agent: String
     @State private var autoRun: Bool
+    @FocusState private var textIsFocused: Bool
 
     init(command: SavedCommand?) {
         self.command = command
@@ -64,11 +65,18 @@ struct CommandEditorSheet: View {
 
                 field(kind == .terminal ? "Command" : "Prompt") {
                     TextEditor(text: $text)
-                        .font(kind == .terminal ? .callout.monospaced() : .callout)
+                        .font(kind == .terminal ? .body.monospaced() : .body)
+                        .focused($textIsFocused)
                         .frame(height: 120)
                         .padding(4)
                         .background(Color(.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(
+                                    textIsFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
+                                    lineWidth: textIsFocused ? 2 : 1
+                                )
+                        )
                 }
 
                 Toggle("Append Enter to run immediately", isOn: $autoRun)
