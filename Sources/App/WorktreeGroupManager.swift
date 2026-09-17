@@ -177,12 +177,17 @@ final class WorktreeGroupManager: ObservableObject {
     /// main worktree is pinned first, then entries follow `defaultOrder`; any ungrouped
     /// worktree not yet recorded in `defaultOrder` (newly created) is appended in
     /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
-    /// The `matches` closure acts as the search predicate.
+    /// The `matches` closure acts as the search predicate. `showingDetached` is applied through
+    /// `Worktree.visible` before any ordering, so every sidebar-ordered list hides the same rows
+    /// and the ⌘N badge cannot disagree with the ⌘1…9 shortcut that selects it.
     func sidebarOrderedWorktrees(
         _ worktrees: [Worktree],
         openIds: [String],
+        showingDetached: Bool,
         matches: (Worktree) -> Bool
     ) -> [Worktree] {
+        let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)
+
         // Default section: worktrees not in any group (includes main).
         let defaultSlice = worktrees.filter { groupId(for: $0.id) == nil }
         let defaultById = Dictionary(uniqueKeysWithValues: defaultSlice.map { ($0.id, $0) })

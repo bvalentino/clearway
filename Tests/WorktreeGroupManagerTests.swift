@@ -240,7 +240,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let openIds: [String] = []
 
         let direct = Worktree.sorted(worktrees, openIds: openIds)
-        let viaManager = manager.sidebarOrderedWorktrees(worktrees, openIds: openIds, matches: { _ in true })
+        let viaManager = manager.sidebarOrderedWorktrees(worktrees, openIds: openIds, showingDetached: false, matches: { _ in true })
 
         XCTAssertEqual(viaManager, direct, "with no groups the two orderings must be identical")
     }
@@ -263,6 +263,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let result = manager.sidebarOrderedWorktrees(
             [ungrouped, grouped],
             openIds: [],
+            showingDetached: false,
             matches: { _ in true }
         )
 
@@ -297,6 +298,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let result = manager.sidebarOrderedWorktrees(
             [wtNewer, wtOlder],
             openIds: [],
+            showingDetached: false,
             matches: { _ in true }
         )
 
@@ -332,6 +334,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let result = manager.sidebarOrderedWorktrees(
             all,
             openIds: [],
+            showingDetached: false,
             matches: { $0.displayName.contains("foo") }
         )
 
@@ -368,6 +371,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let result = manager.sidebarOrderedWorktrees(
             [nonMain, main],
             openIds: [],
+            showingDetached: false,
             matches: { _ in true }
         )
 
@@ -438,9 +442,9 @@ final class WorktreeGroupManagerTests: XCTestCase {
         manager.seedDefaultOrder(with: worktrees, openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, openIds: [], matches: { _ in true })
-        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt3.id], matches: { _ in true })
-        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt1.id], matches: { _ in true })
+        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, openIds: [], showingDetached: false, matches: { _ in true })
+        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt3.id], showingDetached: false, matches: { _ in true })
+        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt1.id], showingDetached: false, matches: { _ in true })
 
         XCTAssertEqual(closedOrder.map(\.id), afterOpenLast.map(\.id),
                        "opening the last worktree must not reorder the sidebar")

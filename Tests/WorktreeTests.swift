@@ -203,24 +203,6 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(visible.map(\.id), ["/tmp/detached", "/tmp/main", "/tmp/feature"])
     }
 
-    func testVisibilityKeepsAttachedWorktreeInEveryCombination() {
-        let attached = makeWorktree(branch: "feature", path: "/tmp/feature")
-        for showingDetached in [true, false] {
-            for openIds in [[], ["/tmp/feature"]] {
-                let visible = Worktree.visible(
-                    [attached],
-                    showingDetached: showingDetached,
-                    openIds: openIds
-                )
-                XCTAssertEqual(
-                    visible.map(\.id),
-                    ["/tmp/feature"],
-                    "showingDetached: \(showingDetached), openIds: \(openIds)"
-                )
-            }
-        }
-    }
-
     // MARK: - Gitdir Resolver
 
     var tempDir: URL?

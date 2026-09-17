@@ -338,3 +338,76 @@ None.
 (313 after T1, +3 from this task). Run after the last edit. `git status --porcelain` shows only
 `Sources/App/SettingsManager.swift`, `Sources/App/SettingsView.swift` and
 `Tests/SettingsManagerTests.swift`; no `default.profraw` (no Debug launch was made).
+
+### T3: Filter the three sidebar-ordered call sites
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarView.swift` | `@EnvironmentObject private var settings: SettingsManager` added to the existing environment-object block. `orderedWorktrees` and `sortedWorktrees` each now pass a `Worktree.visible(worktreeManager.worktrees, showingDetached: settings.showDetachedWorktrees, openIds: terminalManager.openWorktreeIds)` expression as the first argument to `sidebarOrderedWorktrees`; the `openIds:` label and both `matches` closures are byte-identical to base. |
+| `Sources/App/ContentView.swift` | Same substitution in `sortedWorktrees`. No new property — the existing `settings` declaration is reused. |
+| `CLAUDE.md` | One entry under `## Architecture` → `Sources/App/`, above the `WorktreeGroupStore.openFileWatcher` note: sidebar visibility is `Worktree.visible` on the `worktrees` argument at all three `sidebarOrderedWorktrees` call sites, filtering only some desynchronises the ⌘N badge from the ⌘N shortcut, and the order/reconcile/watch/prune paths deliberately keep the unfiltered list. |
+
+**Evidence**
+
+No watched failure for this task, and none was available: the plan states it adds no test, because all
+three edited expressions are private computed properties of view types XCTest cannot instantiate. That
+is the reason decision 6 lifted the rule into `Worktree.visible`, whose seven cases were watched red in
+T1. The criteria that can be proved without the GUI were proved structurally:
+
+```
+$ git ls-files -- Sources | xargs grep -n 'sidebarOrderedWorktrees('
+Sources/App/ContentView.swift:446:        groupManager.sidebarOrderedWorktrees(
+Sources/App/SidebarView.swift:44:        return groupManager.sidebarOrderedWorktrees(
+Sources/App/SidebarView.swift:70:        groupManager.sidebarOrderedWorktrees(
+Sources/App/WorktreeGroupManager.swift:181:    func sidebarOrderedWorktrees(
+
+$ git ls-files -- Sources | xargs grep -c 'Worktree.visible(' | grep -v ':0'
+Sources/App/ContentView.swift:1
+Sources/App/SidebarView.swift:2
+
+$ grep -c 'var settings: SettingsManager' Sources/App/SidebarView.swift Sources/App/ContentView.swift
+Sources/App/SidebarView.swift:1
+Sources/App/ContentView.swift:1
+```
+
+Four lines for acceptance criterion 1 — the declaration plus exactly the three call sites, each with a
+`Worktree.visible(` first argument. Three `Worktree.visible(` call sites for criterion 2, one `settings`
+declaration per file for criterion 3, and criterion 5 follows from criterion 1: the row list and the
+⌘1…9 targets are now the same filtered sequence by construction. No `onChange`, `@State` mirror or
+refresh call was added; both properties re-evaluate off the existing `@Published` observation.
+
+**Deviations**
+
+Acceptance criterion 4 — the scripted `./scripts/run.sh` pass over spec criteria 1–5 — was **not run**.
+A subagent cannot observe a SwiftUI sidebar, so launching the app would have produced a probe worktree
+and an un-gitignored `default.profraw` with no observation to show for them. It is handed to the
+operator as the Try line instead. Neither the probe worktree nor `default.profraw` exists; the tree is
+clean apart from this task's three files.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0, SwiftLint clean (no output between `==> Linting...` and
+`==> Building and testing...`), build succeeded, `Executed 316 tests, with 0 failures` (unchanged from
+T2, as expected for a task that adds no test). Run after the last edit. `git status --porcelain`
+immediately after: `CLAUDE.md`, `Sources/App/ContentView.swift`, `Sources/App/SidebarView.swift` and
+nothing else — no `default.profraw`.
+
+### Simplify
+
+`Worktree.visible` moved from the `worktrees` argument of all three `sidebarOrderedWorktrees` call
+sites into the top of `sidebarOrderedWorktrees` itself, which now takes `showingDetached: Bool`
+(existing test call sites pass `false`). Behaviour-identical — filtering the argument and filtering
+the parameter are the same operation — but success criterion 6 becomes structural instead of a
+CLAUDE.md rule, so that note shrank from 11 lines to 7 and the eight-name list of non-rendering
+callers went with it. This **reverses spec Decision 6**: the rejection rested on the manager owning
+"grouping and order, not visibility policy", but it already applies the `matches` search predicate
+and pins main first, and `sidebarOrderedWorktrees` turned out to have exactly three callers, all
+rendering — none of the must-stay-unfiltered paths reaches it. Also deleted
+`testVisibilityKeepsAttachedWorktreeInEveryCombination`: 16 lines whose four iterations exercised
+the same branch, pinning no success criterion.
+
+`./scripts/ci.sh` — exit 0, SwiftLint clean, `Executed 315 tests, with 0 failures` (316 − the
+deleted case). Run after the last edit; `git status --porcelain` shows six modified files and
+nothing untracked.

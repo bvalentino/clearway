@@ -455,7 +455,8 @@ struct ContentView: View {
     private var sortedWorktrees: [Worktree] {
         groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
-            openIds: terminalManager.openWorktreeIds
+            openIds: terminalManager.openWorktreeIds,
+            showingDetached: settings.showDetachedWorktrees
         ) { _ in true }
     }
 

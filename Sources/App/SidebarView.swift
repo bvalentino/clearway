@@ -16,6 +16,7 @@ struct SidebarView: View {
     @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
+    @EnvironmentObject private var settings: SettingsManager
     @Binding var sidebarSelection: DetailSelection?
     var ctrlHeld: Bool = false
     var onRemoveWorktree: ((Worktree) -> Void)?
@@ -42,7 +43,8 @@ struct SidebarView: View {
         let titles = workTaskManager.titlesByBranch
         return groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
-            openIds: terminalManager.openWorktreeIds
+            openIds: terminalManager.openWorktreeIds,
+            showingDetached: settings.showDetachedWorktrees
         ) { wt in
             guard isSearching else { return true }
             if wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
@@ -64,7 +66,8 @@ struct SidebarView: View {
     private var sortedWorktrees: [Worktree] {
         groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
-            openIds: terminalManager.openWorktreeIds
+            openIds: terminalManager.openWorktreeIds,
+            showingDetached: settings.showDetachedWorktrees
         ) { _ in true }
     }
 
