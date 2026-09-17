@@ -477,6 +477,9 @@ struct WorktreeRow: View {
                             .lineLimit(1)
                     }
                 }
+                if worktree.isMain {
+                    PrimaryBadge()
+                }
                 Spacer()
                 Group {
                     if isWorking {
@@ -519,6 +522,20 @@ private struct ShortcutBadge: View {
         Text(text)
             .font(.caption2.monospaced())
             .foregroundStyle(.tertiary)
+    }
+}
+
+// MARK: - Primary Badge
+
+private struct PrimaryBadge: View {
+    var body: some View {
+        Text("primary")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.quaternary, in: Capsule())
+            .fixedSize()
     }
 }
 
