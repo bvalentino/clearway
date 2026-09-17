@@ -44,19 +44,10 @@ struct SidebarView: View {
         return groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
             showingDetached: settings.showDetachedWorktrees,
-            openIds: terminalManager.openWorktreeIds
+            openIds: terminalManager.openWorktreeIds,
+            grouping: groupManager.grouping
         ) { wt in
-            guard isSearching else { return true }
-            if wt.displayName.localizedCaseInsensitiveContains(searchText) { return true }
-            if let branch = wt.branch,
-               let title = titles[branch],
-               title.localizedCaseInsensitiveContains(searchText) { return true }
-            // Match the worktree when its containing group's name matches the query,
-            // so filtering by group surfaces all members under that header.
-            if let groupId = groupManager.groupId(for: wt.id),
-               let group = groupManager.groups.first(where: { $0.id == groupId }),
-               group.name.localizedCaseInsensitiveContains(searchText) { return true }
-            return false
+            groupManager.matches(wt, query: searchText, taskTitle: wt.branch.flatMap { titles[$0] })
         }
     }
 
@@ -67,7 +58,8 @@ struct SidebarView: View {
         groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
             showingDetached: settings.showDetachedWorktrees,
-            openIds: terminalManager.openWorktreeIds
+            openIds: terminalManager.openWorktreeIds,
+            grouping: groupManager.grouping
         ) { _ in true }
     }
 

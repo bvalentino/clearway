@@ -206,6 +206,24 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
+    /// True when the worktree should survive the sidebar's search field.
+    ///
+    /// An empty query matches everything. Otherwise the query is compared, case-insensitively,
+    /// against the worktree's display name, the task title the caller resolved for its branch,
+    /// the name of the group holding it, and its status's display name.
+    func matches(_ wt: Worktree, query: String, taskTitle: String?) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
+        if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
+        if let groupId = groupId(for: wt.id),
+           let group = groups.first(where: { $0.id == groupId }),
+           group.name.localizedCaseInsensitiveContains(query) { return true }
+        if let status = status(for: wt.id),
+           status.displayName.localizedCaseInsensitiveContains(query) { return true }
+        return false
+    }
+
     /// Returns worktrees in the order used by both the sidebar and keyboard shortcuts.
     ///
     /// Default-section worktrees (ungrouped, including main) come first, followed by each
@@ -214,10 +232,16 @@ final class WorktreeGroupManager: ObservableObject {
     /// worktree not yet recorded in `defaultOrder` (newly created) is appended in
     /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
     /// The `matches` closure acts as the search predicate.
+    ///
+    /// `.group` and `.none` both return that order — they differ only in how the sidebar
+    /// sections it. `.status` stably partitions it into no-status first then the five
+    /// statuses in `allCases` order, so each bucket keeps its members' relative order and
+    /// main (which can carry no status) stays first.
     func sidebarOrderedWorktrees(
         _ worktrees: [Worktree],
         showingDetached: Bool,
         openIds: [String],
+        grouping: WorktreeGrouping,
         matches: (Worktree) -> Bool
     ) -> [Worktree] {
         let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)
@@ -255,7 +279,26 @@ final class WorktreeGroupManager: ObservableObject {
             result.append(contentsOf: (ordered + sortedUnknown).filter(matches))
         }
 
-        return result
+        guard grouping == .status else { return result }
+        return Self.partitionedByStatus(result, status: { self.status(for: $0.id) })
+    }
+
+    /// Stably partitions an ordered list into no-status first, then one bucket per
+    /// `WorktreeStatus.allCases` case in order.
+    private static func partitionedByStatus(
+        _ worktrees: [Worktree],
+        status: (Worktree) -> WorktreeStatus?
+    ) -> [Worktree] {
+        var buckets: [WorktreeStatus: [Worktree]] = [:]
+        var unstatused: [Worktree] = []
+        for wt in worktrees {
+            if let status = status(wt) {
+                buckets[status, default: []].append(wt)
+            } else {
+                unstatused.append(wt)
+            }
+        }
+        return unstatused + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
     }
 
     // MARK: - Private Helpers

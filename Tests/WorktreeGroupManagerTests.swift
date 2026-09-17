@@ -240,7 +240,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let openIds: [String] = []
 
         let direct = Worktree.sorted(worktrees, openIds: openIds)
-        let viaManager = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: openIds, matches: { _ in true })
+        let viaManager = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: openIds, grouping: .group, matches: { _ in true })
 
         XCTAssertEqual(viaManager, direct, "with no groups the two orderings must be identical")
     }
@@ -264,6 +264,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [ungrouped, grouped],
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -299,6 +300,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [wtNewer, wtOlder],
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -335,6 +337,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
             all,
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { $0.displayName.contains("foo") }
         )
 
@@ -372,6 +375,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [nonMain, main],
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -442,9 +446,9 @@ final class WorktreeGroupManagerTests: XCTestCase {
         manager.seedDefaultOrder(with: worktrees, openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], matches: { _ in true })
-        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], matches: { _ in true })
-        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt1.id], matches: { _ in true })
+        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], grouping: .group, matches: { _ in true })
+        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], grouping: .group, matches: { _ in true })
+        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt1.id], grouping: .group, matches: { _ in true })
 
         XCTAssertEqual(closedOrder.map(\.id), afterOpenLast.map(\.id),
                        "opening the last worktree must not reorder the sidebar")
@@ -538,12 +542,14 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
         let showing = manager.sidebarOrderedWorktrees(
             [main, detached],
             showingDetached: true,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -561,6 +567,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [detached.id],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -587,12 +594,14 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
         let showing = manager.sidebarOrderedWorktrees(
             [main, detached],
             showingDetached: true,
             openIds: [],
+            grouping: .group,
             matches: { _ in true }
         )
 
@@ -688,5 +697,175 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [alive.id: .todo],
             "a reconcile whose only change is a status prune must still persist"
         )
+    }
+
+    // MARK: - sidebarOrderedWorktrees per grouping
+
+    /// `.none` renders the base order under one header, so it must return exactly what
+    /// `.group` returns — the view mode changes the sections, never the list.
+    func testNoneGroupingReturnsTheSameOrderAsGroup() async throws {
+        manager.createGroup(named: "G")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        guard let group = manager.groups.first else {
+            XCTFail("Expected one group")
+            return
+        }
+
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
+        let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
+        manager.addWorktree(charlie, toGroup: group.id)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.done, for: alpha)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let all = [main, alpha, bravo, charlie]
+        let grouped = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: false,
+            openIds: [],
+            grouping: .group,
+            matches: { _ in true }
+        )
+        let none = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: false,
+            openIds: [],
+            grouping: .none,
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(grouped.map(\.id), [main.id, alpha.id, bravo.id, charlie.id])
+        XCTAssertEqual(none, grouped, "`.none` must not reorder the base list")
+    }
+
+    /// `.status` is a stable partition of the base order: no status first, then the five
+    /// statuses in `allCases` order, each bucket keeping its members' `.group` relative order.
+    func testStatusGroupingStablyPartitionsTheBaseOrder() async throws {
+        manager.createGroup(named: "G")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        guard let group = manager.groups.first else {
+            XCTFail("Expected one group")
+            return
+        }
+
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
+        let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
+        let delta = makeWorktree(branch: "delta", path: "/tmp/delta")
+        manager.addWorktree(charlie, toGroup: group.id)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.addWorktree(delta, toGroup: group.id)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.done, for: alpha)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.todo, for: bravo)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.done, for: charlie)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let all = [main, alpha, bravo, charlie, delta]
+        let base = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: false,
+            openIds: [],
+            grouping: .group,
+            matches: { _ in true }
+        )
+        let byStatus = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: false,
+            openIds: [],
+            grouping: .status,
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(base.map(\.id), [main.id, alpha.id, bravo.id, charlie.id, delta.id])
+        XCTAssertEqual(
+            byStatus.map(\.id),
+            [main.id, delta.id, bravo.id, alpha.id, charlie.id],
+            "no status first, then todo, then done; alpha keeps its place ahead of charlie"
+        )
+        XCTAssertEqual(Set(byStatus.map(\.id)), Set(base.map(\.id)), "no worktree lost")
+        XCTAssertEqual(byStatus.count, base.count, "no worktree duplicated")
+    }
+
+    /// The partition runs after `Worktree.visible`, so the detached rule is inherited by
+    /// `.status` without restating it.
+    func testStatusGroupingAppliesVisibilityFirst() async throws {
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let closed = makeWorktree(branch: "closed", path: "/tmp/closed")
+        let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
+        manager.setDefaultOrder([detached.id, closed.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.todo, for: closed)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let all = [main, closed, detached]
+        let hiding = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: false,
+            openIds: [],
+            grouping: .status,
+            matches: { _ in true }
+        )
+        let showing = manager.sidebarOrderedWorktrees(
+            all,
+            showingDetached: true,
+            openIds: [],
+            grouping: .status,
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(hiding.map(\.id), [main.id, closed.id],
+                       "the bare-detached worktree is hidden; a closed one still appears")
+        XCTAssertEqual(showing.map(\.id), [main.id, detached.id, closed.id],
+                       "showingDetached keeps it, in the no-status bucket")
+    }
+
+    // MARK: - matches(_:query:taskTitle:)
+
+    func testMatchesEmptyQueryMatchesEverything() {
+        let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+
+        XCTAssertTrue(manager.matches(wt, query: "", taskTitle: nil))
+        XCTAssertTrue(manager.matches(wt, query: "   ", taskTitle: nil))
+    }
+
+    func testMatchesBranchNameAndTaskTitle() {
+        let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+
+        XCTAssertTrue(manager.matches(wt, query: "EATURE", taskTitle: nil))
+        XCTAssertTrue(manager.matches(wt, query: "rewrite", taskTitle: "Rewrite the parser"))
+        XCTAssertFalse(manager.matches(wt, query: "nothing", taskTitle: "Rewrite the parser"))
+    }
+
+    func testMatchesContainingGroupName() async throws {
+        manager.createGroup(named: "Backend")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        guard let group = manager.groups.first else {
+            XCTFail("Expected one group")
+            return
+        }
+
+        let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+        manager.addWorktree(wt, toGroup: group.id)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertTrue(manager.matches(wt, query: "backend", taskTitle: nil))
+    }
+
+    func testMatchesStatusDisplayName() async throws {
+        let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+        manager.setStatus(.inReview, for: wt)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertTrue(manager.matches(wt, query: "review", taskTitle: nil))
+        XCTAssertFalse(manager.matches(wt, query: "hold", taskTitle: nil))
     }
 }

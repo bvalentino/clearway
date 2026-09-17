@@ -601,3 +601,41 @@ None.
 **Gate**
 
 `./scripts/ci.sh` — green after the last edit.
+
+### T4: Ordering per view mode and the liftable search predicate
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `sidebarOrderedWorktrees` gains `grouping:` before `matches:`; `.group` and `.none` return the existing body's result, `.status` runs it through a new `private static func partitionedByStatus`. New `func matches(_:query:taskTitle:)` carries the row predicate with a status-display-name branch added. |
+| `Sources/App/SidebarView.swift` | `orderedWorktrees` passes `grouping: groupManager.grouping` and delegates its closure body to `groupManager.matches`; `sortedWorktrees` passes the same `grouping:`. |
+| `Sources/App/ContentView.swift` | `sortedWorktrees` passes `grouping: groupManager.grouping`. |
+| `Tests/WorktreeGroupManagerTests.swift` | Existing 12 `sidebarOrderedWorktrees` calls pass `grouping: .group` and assert the same results. Seven new cases: `.none` equals `.group`, the stable status partition, `.status` applying visibility first, and four `matches` cases. |
+
+`partitionedByStatus` buckets into a dictionary in one pass and concatenates `unstatused` with
+`WorktreeStatus.allCases.flatMap`, so each bucket keeps the base list's relative order for free and
+main — which can carry no status — stays first. `matches` trims the query before the empty check, so
+a whitespace-only search field matches everything rather than nothing.
+
+**Evidence**
+
+The partition and the status branch of `matches` were both removed in one probe run, the new cases
+watched fail, and the file restored from a scratchpad copy:
+
+```
+Tests/WorktreeGroupManagerTests.swift:868: error: -[WorktreeGroupManagerTests testMatchesStatusDisplayName] : XCTAssertTrue failed
+Tests/WorktreeGroupManagerTests.swift:788: error: -[WorktreeGroupManagerTests testStatusGroupingStablyPartitionsTheBaseOrder] : XCTAssertEqual failed: ("["/tmp/main", "/tmp/alpha", "/tmp/bravo", "/tmp/charlie", "/tmp/delta"]") is not equal to ("["/tmp/main", "/tmp/delta", "/tmp/bravo", "/tmp/alpha", "/tmp/charlie"]") - no status first, then todo, then done; alpha keeps its place ahead of charlie
+```
+
+`testStatusGroupingAppliesVisibilityFirst` stays green under that probe by design: it pins the
+`Worktree.visible` rule, not the partition, and its fixture's statuses happen to leave the order
+unchanged.
+
+**Deviations from the plan**
+
+None. `matches` trimming the query is the plan's "empty/whitespace-only query returns `true`".
+
+**Gate**
+
+`./scripts/ci.sh` — green after the last edit.
