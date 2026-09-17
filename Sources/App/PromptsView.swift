@@ -42,26 +42,18 @@ struct PromptsView: View {
                 }
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            createButton
-        }
-    }
-
-    private var createButton: some View {
-        Button {
-            if let prompt = promptManager.createPrompt() {
-                openPrompt(prompt)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if let prompt = promptManager.createPrompt() {
+                        openPrompt(prompt)
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New prompt")
             }
-        } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
         }
-        .buttonStyle(.plain)
-        .padding(12)
     }
 
     private func openPrompt(_ prompt: Prompt) {

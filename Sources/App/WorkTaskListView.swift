@@ -46,22 +46,16 @@ struct WorkTaskListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottomTrailing) {
-            Button {
-                createAndEdit()
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(.thinMaterial, in: Circle())
-                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-            }
-            .buttonStyle(.plain)
-            .help("New task")
-            .padding(12)
-        }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    createAndEdit()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New task")
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button("Start Now") {
                     if let task = selectedTask { startTask(task) }

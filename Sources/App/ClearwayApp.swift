@@ -191,6 +191,7 @@ struct ClearwayApp: App {
                 NewTabMenuItem()
                 NewShellTabMenuItem()
                 NewTaskMenuItem()
+                NewPromptMenuItem()
                 NewCommandMenuItem()
             }
             // Replacing the whole group is the only way to drop SwiftUI's Show Sidebar item, which
@@ -317,6 +318,30 @@ private struct NewTaskMenuItem: View {
 
     var body: some View {
         Button("New Task") { action?() }
+            .disabled(action == nil)
+    }
+}
+
+/// Focused-value key for the active window's "new prompt" action.
+/// Published by `PromptListView`, so it is set only while the Prompts destination is showing.
+private struct NewPromptActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var newPromptAction: (() -> Void)? {
+        get { self[NewPromptActionKey.self] }
+        set { self[NewPromptActionKey.self] = newValue }
+    }
+}
+
+/// File menu item that creates a prompt and selects it, disabled unless the focused window is
+/// showing Prompts. Carries no key equivalent.
+private struct NewPromptMenuItem: View {
+    @FocusedValue(\.newPromptAction) private var action
+
+    var body: some View {
+        Button("New Prompt") { action?() }
             .disabled(action == nil)
     }
 }

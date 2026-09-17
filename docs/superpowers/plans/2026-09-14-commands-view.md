@@ -632,6 +632,39 @@ which is the one place the outer modifier reads, and `CommandsView` sets none.
 have selected with, so click-to-edit and the selection highlight only coexist if the tap writes
 `selection` itself. `openEditor(_:)` does both.
 
+### C7: The floating circular `+` is retired app-wide (after C6, this commit)
+
+Requested by the operator from a hands-on check: the floating circular `+` is a non-macOS pattern.
+C6 removed it from `CommandsView`; this removes the four that were left and gives each view a
+toolbar `+` on exactly that pattern. Recorded as spec decision 30.
+
+The shape grepped for was a `.buttonStyle(.plain)` circular button inside
+`.overlay(alignment: .bottomTrailing)`. Four matched — one more than the HIG review named:
+
+| File | State |
+| --- | --- |
+| `Sources/App/PromptListView.swift` | The overlay button is gone. A `+` `ToolbarItem(placement: .primaryAction)` with `.help("New prompt")` leads the existing toolbar, ahead of Copy / More actions / edit-preview. The create body moved into a `createPrompt()` method so the toolbar and the menu item share one action. `.focusedSceneValue(\.newPromptAction) { createPrompt() }` publishes it. |
+| `Sources/App/WorkTaskListView.swift` | The overlay button is gone. A `+` item with `.help("New task")` leads the existing toolbar, ahead of Start Now. It calls the existing `createAndEdit()`. The glyph changes from `square.and.pencil` to `plus`. |
+| `Sources/App/PromptsView.swift` | The overlay button and `createButton` are gone; the view declares its own `.toolbar` with the `+` and `.help("New prompt")`. Glyph `square.and.pencil` → `plus`. The action still creates a prompt and opens its window. |
+| `Sources/App/TodosPanelView.swift` | Same shape: overlay and `createButton` gone, own `.toolbar` with `+` and `.help("New todo")` calling `startCreating()`. Beyond the three views the HIG review named — found by the grep the request asked for. |
+| `Sources/App/ClearwayApp.swift` | New `NewPromptActionKey` / `FocusedValues.newPromptAction` and `NewPromptMenuItem`, added to `CommandGroup(replacing: .newItem)` between `NewTaskMenuItem()` and `NewCommandMenuItem()`. No key equivalent, so `AppKeyboardShortcuts` is untouched. |
+
+**Why the aside views declare their own `.toolbar`.** `PromptsView` and `TodosPanelView` render
+inside the worktree aside, which is inside `detailView` — the attachment point C5 established for
+reaching the toolbar's detail section. A toolbar item declared there is therefore live exactly while
+that aside tab is showing, which is the same "publishes itself, disappears on its own" contract C6
+used for the focused scene value, obtained without a gating expression in `ContentView`.
+
+**Why New Task is untouched.** It already exists (`NewTaskMenuItem`, `ClearwayApp.swift`), published
+by `ContentView` and gated on the window rather than on the Tasks destination: invoking it navigates
+to Tasks and creates. The request asked to add the menu commands *if they do not already exist*, so
+its gating is left as it is rather than re-pointed at `WorkTaskListView`. New Prompt is the one that
+did not exist.
+
+**Why no shortcut changes.** Neither new item carries a key equivalent and no floating `+` ever had
+one, so `AppKeyboardShortcuts.claims` gains no claim and `AppKeyboardShortcutsTests` gains no
+retirement pin — nothing was retired from the shortcut table.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -1152,6 +1185,45 @@ this line alone.
 **Not visually confirmed.** No screen access from the build session: the toolbar items landing in the
 detail section, the selection highlight and focus ring, drag reordering, the greyed-out New Command
 item, and the window title in the running app are all unverified by eye. The app was left running on
+this build.
+
+**Gate.** `./scripts/ci.sh` — see the report.
+
+### C7: The floating circular `+` is retired app-wide
+
+| File | State |
+| --- | --- |
+| `Sources/App/PromptListView.swift` | Overlay button removed; toolbar `+` added first; `createPrompt()` extracted; `newPromptAction` published. |
+| `Sources/App/WorkTaskListView.swift` | Overlay button removed; toolbar `+` added first, calling the existing `createAndEdit()`. |
+| `Sources/App/PromptsView.swift` | Overlay button and `createButton` removed; own `.toolbar` with the `+`. |
+| `Sources/App/TodosPanelView.swift` | Overlay button and `createButton` removed; own `.toolbar` with the `+`. |
+| `Sources/App/ClearwayApp.swift` | `newPromptAction` focused-scene value + `NewPromptMenuItem` in the New Item group. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decision 30. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C7 and this section. |
+
+**How the four were found.** The request named three views and asked for a grep to be sure.
+`grep -rn '\.overlay(alignment: \.bottom' Sources/` returns six hits: the four floating `+` buttons
+(`PromptsView:45`, `TodosPanelView:84`, `PromptListView:29`, `WorkTaskListView:49`), `PromptsView:142`
+(a row separator `Divider`) and `SidebarView:81` (the caffeine toggle, `.bottomLeading`, not a `+`).
+`TodosPanelView` is the one beyond the three named. The other `plus` glyphs in the codebase are not
+this shape and are untouched: `SidebarView`'s two `SidebarHeaderButton`s, `MainTerminalTabStrip`'s
+new-tab button, `TaskAsideView`'s two "Create Task" `Label`s and `ProjectSelectorView`'s
+"Add Project" button.
+
+**No new tests.** Like C6 this adds no pure rule — it is view chrome plus a menu item gated by a
+focused-scene value. Nothing in it is reachable from XCTest. `AppKeyboardShortcutsTests` is untouched
+in both directions: New Prompt carries no key equivalent, so there is no claim to assert, and no
+floating `+` ever had a shortcut, so there is no retirement to pin.
+
+**Deviation from the request.** The request scoped the diff to the named views, `ClearwayApp.swift`,
+the focused-value file and tests. `TodosPanelView.swift` is a fifth view, added because the same
+request retires the pattern app-wide and told the build to grep for it. No test file changed, for
+the reason above.
+
+**Not visually confirmed.** No screen access from this session. Unverified by eye: where each `+`
+lands in the window toolbar (in particular the two aside-panel views, whose items merge with the four
+worktree toolbar items declared on `detailView`), whether the `+` reads correctly ahead of Start Now
+in the Tasks toolbar, and the greyed/enabled state of File > New Prompt. The app was left running on
 this build.
 
 **Gate.** `./scripts/ci.sh` — see the report.

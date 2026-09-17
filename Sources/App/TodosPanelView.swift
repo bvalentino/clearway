@@ -81,8 +81,15 @@ struct TodosPanelView: View {
                 }
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            createButton
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    startCreating()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New todo")
+            }
         }
         .confirmationDialog(
             "Delete \"\(todoPendingDeletion?.subject ?? "")\"?",
@@ -158,18 +165,4 @@ struct TodosPanelView: View {
         }
     }
 
-    private var createButton: some View {
-        Button {
-            startCreating()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
-        .padding(12)
-    }
 }
