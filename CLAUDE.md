@@ -161,6 +161,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     A nested view's toolbar content merges **after** the enclosing view's, so the aside panels'
     (`PromptsView`, `TodosPanelView`) items arrive behind `detailView`'s four worktree buttons: the
     spacer that separates their `+` from those buttons precedes it, where every other view's follows.
+    Every such break is a `ToolbarGroupBreak` (`Sources/App/ToolbarGroupBreak.swift`), which holds
+    the macOS 26 availability check `ToolbarSpacer` needs in one place.
     `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
     overrides anything a column sets, so a per-destination window title is resolved in its
     `navigationTitle` property, not by a `.navigationTitle` inside the detail column.

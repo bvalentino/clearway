@@ -56,9 +56,7 @@ struct WorkTaskListView: View {
                 .help("New task")
             }
 
-            if #available(macOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-            }
+            ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
                 Button("Start Now") {

@@ -1,5 +1,4 @@
 import SwiftUI
-import GhosttyKit
 
 /// The worktree toolbar's Run dropdown: every saved command, in saved order, run in the selected
 /// worktree's main terminal.
@@ -23,45 +22,30 @@ struct RunCommandMenu: View {
         .disabled(savedCommandManager.commands.isEmpty || ghosttyApp.app == nil)
     }
 
+    /// Open a new main-terminal tab in `worktree` and hand it the command.
     private func run(_ command: SavedCommand) {
         guard let app = ghosttyApp.app else { return }
-        Self.run(command, in: worktree, app: app, terminalManager: terminalManager)
-    }
-}
 
-extension RunCommandMenu {
-    /// Open a new main-terminal tab in `worktree` and hand it the command.
-    ///
-    /// Static because nothing here reads view state: the run action is the rule, the `Menu` is one
-    /// door onto it.
-    @MainActor
-    static func run(
-        _ command: SavedCommand,
-        in worktree: Worktree,
-        app: ghostty_app_t,
-        terminalManager: TerminalManager
-    ) {
         switch CommandLaunch.launch(for: command) {
         case .shell(let send):
-            let tabId = terminalManager.appendShellTab(for: worktree, app: app)
-            guard let surface = terminalManager.mainTabs(for: worktree.id)
-                .first(where: { $0.id == tabId })?.surface else { return }
+            guard let surface = terminalManager.appendShellTab(for: worktree, app: app) else { return }
             Task { @MainActor in
-                await awaitShellPrompt(on: surface)
+                await Self.awaitShellPrompt(on: surface)
                 surface.sendLines(send.lines, runsLastLine: send.runsLastLine)
             }
 
         case .agent(let agent, let prompt, let submit):
+            let worktreeId = worktree.id
             let tabId = terminalManager.appendLauncherTab(for: worktree, app: app, agentOverride: agent)
             guard submit else {
                 terminalManager.objectWillChange.send()
                 terminalManager.launcherDrafts[tabId] = prompt
                 return
             }
-            Task { @MainActor in
+            Task { @MainActor [terminalManager] in
                 await terminalManager.promoteLauncherToAgent(
                     tabId: tabId,
-                    in: worktree.id,
+                    in: worktreeId,
                     app: app,
                     command: agent,
                     prompt: prompt

@@ -119,17 +119,18 @@ struct CommandEditorSheet: View {
     }
 
     private func save() {
-        if var existing = command {
-            existing.name = trimmedName
-            existing.kind = kind
-            existing.text = text
-            existing.agent = agent
-            existing.autoRun = autoRun
-            savedCommandManager.update(existing)
+        let edited = SavedCommand(
+            id: command?.id ?? UUID(),
+            name: trimmedName,
+            kind: kind,
+            text: text,
+            agent: agent,
+            autoRun: autoRun
+        )
+        if command == nil {
+            savedCommandManager.add(edited)
         } else {
-            savedCommandManager.add(
-                SavedCommand(id: UUID(), name: trimmedName, kind: kind, text: text, agent: agent, autoRun: autoRun)
-            )
+            savedCommandManager.update(edited)
         }
         dismiss()
     }

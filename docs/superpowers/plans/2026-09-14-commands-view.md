@@ -1361,3 +1361,24 @@ agent. The change is two view modifiers and the build is clean, but the rendered
 operator's eyes. The app was left running on a build of this change.
 
 **Gate.** `./scripts/ci.sh` — see the report.
+
+### Simplify
+
+Quality-only pass over the branch, no behaviour changed.
+
+- The eight copies of `if #available(macOS 26, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }`
+  collapse into one `ToolbarGroupBreak` (`Sources/App/ToolbarGroupBreak.swift`); call-site order is
+  untouched, so C8's deliberate leading-break on the aside panels still reads as such.
+- `SavedCommand`'s hand-written `init(from:)` — six `container.decode` lines to tolerate one unknown
+  `kind` — becomes a lenient `init(from:)` on `SavedCommand.Kind`, leaving the struct's `Codable`
+  synthesized so a new field cannot be forgotten. `testUnknownKindDecodesAsTerminal` and
+  `testRoundTripsThroughJSONUnchanged` both still pass.
+- `CommandEditorSheet.save()` builds one `SavedCommand` (`command?.id ?? UUID()`) and picks `add` or
+  `update`, instead of assigning the five fields twice.
+- `appendShellTab` returns the surface `promoteLauncher` already handed it, so `RunCommandMenu`'s
+  `.shell` arm stops looking the tab back up through `mainTabs(for:)`.
+- `RunCommandMenu.run(_:in:app:terminalManager:)` folds into the instance `run(_:)`: its second
+  caller was the temporary probe from T7, and with that gone the static took four arguments to reach
+  state the view already holds.
+
+**Gate.** `./scripts/ci.sh` — see the report.

@@ -196,9 +196,7 @@ struct ContentView: View {
                         ToolbarItem(placement: .primaryAction) {
                             RunCommandMenu(worktree: runWorktree)
                         }
-                        if #available(macOS 26, *) {
-                            ToolbarSpacer(.fixed, placement: .primaryAction)
-                        }
+                        ToolbarGroupBreak()
                         ToolbarItem(placement: .primaryAction) {
                             Button {
                                 showRemoveConfirmation = true
@@ -208,9 +206,7 @@ struct ContentView: View {
                             .help("Remove worktree")
                             .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
                         }
-                        if #available(macOS 26, *) {
-                            ToolbarSpacer(.fixed, placement: .primaryAction)
-                        }
+                        ToolbarGroupBreak()
                         ToolbarItem(placement: .primaryAction) {
                             Button(action: toggleSecondaryTerminal) {
                                 Image(systemName: "rectangle.bottomhalf.inset.filled")
@@ -218,9 +214,7 @@ struct ContentView: View {
                             }
                             .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
                         }
-                        if #available(macOS 26, *) {
-                            ToolbarSpacer(.fixed, placement: .primaryAction)
-                        }
+                        ToolbarGroupBreak()
                         ToolbarItem(placement: .primaryAction) {
                             Button(action: toggleAside) {
                                 Image(systemName: "sidebar.trailing")

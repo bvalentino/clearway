@@ -301,13 +301,12 @@ class TerminalManager: ObservableObject {
 
     /// Append a new tab that immediately runs a login shell (no launcher screen).
     ///
-    /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher`.
-    /// Used by the Cmd+Shift+T shortcut.
+    /// Convenience wrapper: `appendLauncherTab` + `promoteLauncher`. Returns the tab's surface so
+    /// a caller can write into it. Used by the Cmd+Shift+T shortcut.
     @discardableResult
-    func appendShellTab(for worktree: Worktree, app: ghostty_app_t) -> UUID {
+    func appendShellTab(for worktree: Worktree, app: ghostty_app_t) -> Ghostty.SurfaceView? {
         let id = appendLauncherTab(for: worktree, app: app)
-        promoteLauncher(tabId: id, in: worktree.id, app: app)
-        return id
+        return promoteLauncher(tabId: id, in: worktree.id, app: app)
     }
 
     /// Swaps a `.launcher` tab for a `.surface` tab in-place, running `command` — or a login

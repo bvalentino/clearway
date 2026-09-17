@@ -116,6 +116,7 @@
 		E8C2DC7EBBC5489F51610A85 /* PromptLauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3396ABC258004DA10D0685 /* PromptLauncherView.swift */; };
 		EB491D3A6BE4934B06A9B67B /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */; };
 		EBE18373B5AC1A72F2197FCF /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111635747B13F014EEF1AB32 /* Worktree.swift */; };
+		EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */; };
 		F0C141C306E95B91B5750C24 /* TodosPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62E65C09069869291224DF1D /* TodosPanelView.swift */; };
 		F37D1613C1DF3740CA1802C4 /* PromptDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FED179216122D158BE6A56 /* PromptDetailView.swift */; };
 		F50B48B75A6494ED0EC0BC03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADD413DCDFE98EF635534720 /* Assets.xcassets */; };
@@ -191,6 +192,7 @@
 		86F03706FEA2A1FDBB4B3BFC /* MarkdownEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorView.swift; sourceTree = "<group>"; };
 		8742B714B02945F53726FF28 /* ShellEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironment.swift; sourceTree = "<group>"; };
 		87D53B2248C692859A82CD26 /* GitResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitResolverTests.swift; sourceTree = "<group>"; };
+		8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarGroupBreak.swift; sourceTree = "<group>"; };
 		904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskListView.swift; sourceTree = "<group>"; };
 		90F058F6484B056DE5C42A4C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaffeineManager.swift; sourceTree = "<group>"; };
@@ -382,6 +384,7 @@
 				6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */,
 				62E65C09069869291224DF1D /* TodosPanelView.swift */,
 				9EC9411B19B7913605A851B1 /* TodosView.swift */,
+				8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */,
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
@@ -752,6 +755,7 @@
 				78C1B08688DBF1C02B5FFD67 /* TodoManager.swift in Sources */,
 				F0C141C306E95B91B5750C24 /* TodosPanelView.swift in Sources */,
 				3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */,
+				EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */,
 				2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */,
 				0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */,
 				89257C7D9FED4F7AA51380B3 /* WorkTaskCoordinator+TaskTerminal.swift in Sources */,

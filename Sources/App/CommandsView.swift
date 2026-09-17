@@ -34,9 +34,7 @@ struct CommandsView: View {
                 .help("New command")
             }
 
-            if #available(macOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-            }
+            ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
                 Picker("Filter", selection: $filter) {

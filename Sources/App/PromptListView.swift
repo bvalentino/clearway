@@ -36,9 +36,7 @@ struct PromptListView: View {
                 .help("New prompt")
             }
 
-            if #available(macOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-            }
+            ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
                 Button {

@@ -19,17 +19,12 @@ struct SavedCommand: Codable, Equatable, Identifiable {
     var autoRun: Bool
 }
 
-extension SavedCommand {
-    /// Decodes `kind` through its raw string so an unrecognized value costs one command its kind
-    /// rather than taking the whole file down — the store loads an undecodable file as empty.
+extension SavedCommand.Kind {
+    /// Decoded through the raw string so an unrecognized kind costs one command its kind rather
+    /// than taking the whole file down — the store loads an undecodable file as empty.
     init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        kind = Kind(rawValue: try container.decode(String.self, forKey: .kind)) ?? .terminal
-        text = try container.decode(String.self, forKey: .text)
-        agent = try container.decode(String.self, forKey: .agent)
-        autoRun = try container.decode(Bool.self, forKey: .autoRun)
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? .terminal
     }
 }
 
