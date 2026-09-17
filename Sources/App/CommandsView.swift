@@ -1,67 +1,62 @@
 import SwiftUI
 
 /// The Commands sidebar destination: the global, ordered list of saved commands, with the editor
-/// sheet reached by clicking a card or the floating `+`.
+/// sheet reached by clicking a row, the toolbar `+`, or File > New Command.
 struct CommandsView: View {
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @State private var filter: CommandFilter = .all
     @State private var editorTarget: CommandEditorTarget?
+    @State private var selection: UUID?
 
     private var visibleCommands: [SavedCommand] {
         SavedCommand.filter(savedCommandManager.commands, by: filter)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
+        Group {
             if visibleCommands.isEmpty {
                 emptyState
             } else {
                 commandList
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            createButton
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Attached here, not to `ContentView`'s `NavigationSplitView`: this view is the detail
+        // column's content, which is where toolbar content has to be declared to reach the detail
+        // section intact.
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    openEditor(nil)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New command")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Filter", selection: $filter) {
+                    ForEach(CommandFilter.allCases, id: \.self) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
         }
+        .focusedSceneValue(\.newCommandAction) { openEditor(nil) }
         .sheet(item: $editorTarget) { target in
             CommandEditorSheet(command: target.command)
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Commands")
-                    .font(.title2.weight(.semibold))
-                Text("Saved actions for terminal or agents.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Picker("Filter", selection: $filter) {
-                ForEach(CommandFilter.allCases, id: \.self) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 260)
-        }
-        .frame(maxWidth: contentWidth, alignment: .leading)
-        .frame(maxWidth: .infinity)
-        .padding(20)
-    }
-
     private var commandList: some View {
-        List {
+        List(selection: $selection) {
             ForEach(visibleCommands) { command in
-                CommandCard(command: command)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    .listRowBackground(Color.clear)
+                CommandRow(command: command)
+                    .tag(command.id)
                     .moveDisabled(filter.isActive)
-                    .onTapGesture { editorTarget = CommandEditorTarget(command: command) }
+                    .onTapGesture { openEditor(command) }
                     .contextMenu {
                         Button(role: .destructive) {
                             savedCommandManager.delete(command)
@@ -77,10 +72,7 @@ struct CommandsView: View {
                 savedCommandManager.move(fromOffsets: from, toOffset: to)
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(maxWidth: contentWidth)
-        .frame(maxWidth: .infinity)
+        .listStyle(.inset)
     }
 
     private var emptyState: some View {
@@ -92,25 +84,14 @@ struct CommandsView: View {
                 .foregroundStyle(.secondary)
                 .font(.callout)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var createButton: some View {
-        Button {
-            editorTarget = CommandEditorTarget(command: nil)
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
-        .padding(12)
+    /// A row's tap carries the selection itself: the gesture consumes the click the list would
+    /// otherwise have selected with, so the highlight has to be set alongside the sheet.
+    private func openEditor(_ command: SavedCommand?) {
+        selection = command?.id
+        editorTarget = CommandEditorTarget(command: command)
     }
-
-    private var contentWidth: CGFloat { 720 }
 }
 
 /// Identifies which command the sheet is editing; `nil` is the create case.
@@ -119,33 +100,29 @@ private struct CommandEditorTarget: Identifiable {
     var id: String { command?.id.uuidString ?? "new" }
 }
 
-// MARK: - Card
+// MARK: - Row
 
-private struct CommandCard: View {
+private struct CommandRow: View {
     let command: SavedCommand
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(command.name.isEmpty ? "Untitled" : command.name)
-                    .font(.body.weight(.semibold))
+                    .font(.body)
                     .foregroundStyle(command.name.isEmpty ? .secondary : .primary)
                     .lineLimit(1)
-
                 Text(command.text)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
-
+            Spacer(minLength: 0)
             KindLabel(kind: command.kind)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 6)
+        .padding(.horizontal, 5)
+        .contentShape(Rectangle())
     }
 }
 

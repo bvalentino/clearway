@@ -191,6 +191,7 @@ struct ClearwayApp: App {
                 NewTabMenuItem()
                 NewShellTabMenuItem()
                 NewTaskMenuItem()
+                NewCommandMenuItem()
             }
             // Replacing the whole group is the only way to drop SwiftUI's Show Sidebar item, which
             // advertises Ctrl+Cmd+S and cannot be retitled or re-keyed. Despite Apple documenting
@@ -316,6 +317,30 @@ private struct NewTaskMenuItem: View {
 
     var body: some View {
         Button("New Task") { action?() }
+            .disabled(action == nil)
+    }
+}
+
+/// Focused-value key for the active window's "new command" action.
+/// Published by `CommandsView`, so it is set only while the Commands destination is showing.
+private struct NewCommandActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var newCommandAction: (() -> Void)? {
+        get { self[NewCommandActionKey.self] }
+        set { self[NewCommandActionKey.self] = newValue }
+    }
+}
+
+/// File menu item that opens the command editor on a new command, disabled unless the focused
+/// window is showing Commands. Carries no key equivalent.
+private struct NewCommandMenuItem: View {
+    @FocusedValue(\.newCommandAction) private var action
+
+    var body: some View {
+        Button("New Command") { action?() }
             .disabled(action == nil)
     }
 }

@@ -153,6 +153,14 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     as well as a `selectedTaskId`, since only `detailView` switches on readiness, so a failed
     `ghostty_app_new` still leaves the task list rendering and setting a selection.
     `newTabAction` / `newShellTabAction` still split the two and are the known exceptions.
+  - **A `.toolbar` for the detail column goes on the detail column's own content.** Attached to the
+    `NavigationSplitView` in `ContentView`, SwiftUI routes the `ToolbarItem`s into the detail section
+    but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
+    `placement:` — which is why the worktree toolbar now hangs off `detailView` rather than the split
+    view, and why `CommandsView` declares its own `+` and filter picker on its own root view.
+    `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
+    overrides anything a column sets, so a per-destination window title is resolved in its
+    `navigationTitle` property, not by a `.navigationTitle` inside the detail column.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
     and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
     what lets one behavior carry several entry points without the decision being written once per

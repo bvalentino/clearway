@@ -598,6 +598,40 @@ tested separately and ruled out (see the build log).
 
 Recorded as decision 26 in the spec.
 
+### C6: Native page chrome for the Commands view (after C5, this commit)
+
+Requested by the operator from a HIG review: `CommandsView` hand-built page chrome that no sibling
+view uses. The operator chose native macOS chrome, the single column kept, and the editor still a
+sheet. This **supersedes the mockup's** in-body title, subtitle, centred picker, cards and floating
+`+` — spec decisions 9 and 16, and the mock-derived half of decision 8. Recorded as spec decisions
+27, 28 and 29.
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandsView.swift` | The `header` (title, subtitle, picker), the `Divider()`, both 720 pt content-width frames and the floating `createButton` are gone. The list is `List(selection: $selection)` + `.listStyle(.inset)` over a new plain `CommandRow` (name, monospaced caption command text, trailing `KindLabel` capsule); `CommandCard` is deleted. A `.toolbar` on the view's own root carries the `+` (`.help("New command")`) and the All/Terminal/Agent segmented picker, both `.primaryAction`. `.focusedSceneValue(\.newCommandAction)` publishes the create action. `.onMove`, `.moveDisabled(filter.isActive)`, the context-menu delete, click-to-edit and the empty state are unchanged. |
+| `Sources/App/ClearwayApp.swift` | New `NewCommandActionKey` / `FocusedValues.newCommandAction` and `NewCommandMenuItem`, added to `CommandGroup(replacing: .newItem)` after `NewTaskMenuItem()`. No key equivalent, so `AppKeyboardShortcuts` is untouched. |
+| `Sources/App/ContentView.swift` | `navigationTitle` returns `"Commands"` when `detailSelection == .commands`, the project name otherwise. Nothing else changed. |
+| `CLAUDE.md` | One bullet in the `Sources/App/` notes recording the toolbar-attachment trap and the inverse `.navigationTitle` rule. |
+
+**Why the menu item is gated from `CommandsView`, not `ContentView`.** `focusedSceneValue` publishes
+for as long as the modified view is in the key scene's hierarchy, so the value disappears on its own
+the moment the destination changes or another scene becomes key. That is exactly the `nil`-greys-it-out
+contract `PanelCommands.swift` states, obtained without a second gating expression in `ContentView`
+that could drift from the one condition that matters — whether `CommandsView` is on screen. A
+standalone Task/Prompt/Settings window has no `CommandsView`, so New Command greys out there too.
+
+**Why the window title is not set in `CommandsView`.** The change request named
+`.navigationTitle("Commands")` on the view. Measured, it does nothing: `ContentView` applies
+`.navigationTitle(navigationTitle)` to the result of the `NavigationSplitView`, and an outer
+`navigationTitle` overrides whatever a column sets. A standalone SwiftUI probe built in the
+scratchpad — the same split view with `"clearway"` outside and `"Commands"` on the detail column —
+reported `WINDOW TITLE: [clearway]`. The title is therefore resolved in `ContentView.navigationTitle`,
+which is the one place the outer modifier reads, and `CommandsView` sets none.
+
+**Why the row's tap sets the selection.** `.onTapGesture` on a row consumes the click the list would
+have selected with, so click-to-edit and the selection highlight only coexist if the tap writes
+`selection` itself. `openEditor(_:)` does both.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -1079,3 +1113,45 @@ refactor — the four buttons, their order, their gating and their modifiers are
 they were.
 
 **Gate.** `./scripts/ci.sh` — see the commit.
+
+### C6: Native page chrome for the Commands view
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandsView.swift` | Rewritten around `List(selection:)` + `.listStyle(.inset)` and a toolbar; header, divider, content-width frames, floating `+` and `CommandCard` removed. |
+| `Sources/App/ClearwayApp.swift` | `newCommandAction` focused-scene value + `NewCommandMenuItem` in the New Item group. |
+| `Sources/App/ContentView.swift` | `navigationTitle` switches to `"Commands"` on the Commands destination. |
+| `CLAUDE.md` | Toolbar-attachment / `navigationTitle` bullet under `Sources/App/`. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decisions 27, 28, 29. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C6 and this section. |
+
+**Evidence: the window title.** The change request's `.navigationTitle("Commands")` on `CommandsView`
+was written first, then measured with a standalone SwiftUI binary in the scratchpad (not the repo) —
+a `NavigationSplitView` with `.navigationTitle("clearway")` on the split view and
+`.navigationTitle("Commands")` on the detail column, printing `NSApp.windows` titles two seconds
+after launch:
+
+```
+WINDOW TITLE: [clearway] subtitle: []
+```
+
+The outer modifier wins, so the inner one was removed and `ContentView.navigationTitle` answers the
+destination instead. Without this probe the change would have shipped a title that never changed.
+
+**No new tests.** The change adds no pure rule: it is view chrome, a menu item gated by a
+focused-scene value, and one string on an existing computed property. Nothing in it is reachable from
+XCTest, and the shortcut table is untouched because New Command carries no key equivalent, so
+`AppKeyboardShortcutsTests` needs neither a claim nor a retirement pin.
+
+**Deviation from the request.** Item 1 named `.navigationTitle("Commands")` in `CommandsView`; the
+probe above shows that has no effect, so the title moved to `ContentView.navigationTitle`. That is
+the one line of `ContentView` beyond the change request's "only if the focused value needs publishing
+there" allowance — and the focused value did *not* need publishing there, so `ContentView`'s diff is
+this line alone.
+
+**Not visually confirmed.** No screen access from the build session: the toolbar items landing in the
+detail section, the selection highlight and focus ring, drag reordering, the greyed-out New Command
+item, and the window title in the running app are all unverified by eye. The app was left running on
+this build.
+
+**Gate.** `./scripts/ci.sh` — see the report.

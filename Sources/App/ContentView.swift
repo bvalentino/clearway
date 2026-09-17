@@ -467,7 +467,12 @@ struct ContentView: View {
 
     private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
 
-    private var navigationTitle: String { projectName }
+    /// The window title, resolved here rather than by a `.navigationTitle` inside the detail column:
+    /// this modifier sits outside the `NavigationSplitView` and overrides anything a column sets,
+    /// measured in a standalone probe.
+    private var navigationTitle: String {
+        detailSelection == .commands ? "Commands" : projectName
+    }
 
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
