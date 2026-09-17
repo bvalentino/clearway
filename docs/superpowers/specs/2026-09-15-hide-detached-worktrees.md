@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-15
 **Base:** d94b0b0f879606872a8b1a92e2f38ac144914339
+**PR:** #217
 
 Subagents create short-lived worktrees with a bare detached HEAD. Clearway lists every worktree
 `git worktree list --porcelain` reports, so those arrive in the sidebar as rows labelled
@@ -20,8 +21,8 @@ currently open.
 | 3 | Is any path heuristic used to identify subagent worktrees? | No. The signal is `headStatus == .detached` and nothing else — no matching on Claude Code's worktree directory or any other path shape. | Operator |
 | 4 | Which `HeadStatus` values can be hidden? | Only `.detached`. `.rebasing` and `.bisecting` are always shown. This needs no extra guard: `applyHeadResolution` already rewrites a mid-rebase/mid-bisect entry to `.rebasing`/`.bisecting` with its recovered branch name before the list reaches any view (`Worktree.swift:302-314`), so `.detached` at render time means a bare detached HEAD. | Operator |
 | 5 | Is the main worktree ever hidden? | No — main is exempt unconditionally, even if its HEAD is detached. `ContentView` treats main as the guaranteed selection fallback (`ContentView.swift:629-630`) and `TerminalManager.isOpen` reports it open by definition (`TerminalManager.swift:466-467`); a hidden main row would leave the window with a selection it cannot render. | Spec author |
-| 6 | Where does the filter live? | A pure static helper on `Worktree` — `Worktree.visible(_:showingDetached:openIds:)` — applied to the `worktrees` argument at each of the three sites that build a sidebar-ordered list. Keeping it pure and static is what makes it testable, matching the split the project already makes for untestable view code (CLAUDE.md, `Ghostty.SurfaceView`/`revealSecondaryForHook`). Putting the rule inside `WorktreeGroupManager.sidebarOrderedWorktrees` was rejected: that type owns grouping and order, not visibility policy, and its existing `matches` closure is the search predicate. | Spec author |
-| 7 | Which call sites get the filter? | All three, or the ⌘N badge and the ⌘N shortcut disagree: `SidebarView.orderedWorktrees` (`:41-60`, the rendered rows), `SidebarView.sortedWorktrees` (`:64-70`, feeds `shortcutIndex`), and `ContentView.sortedWorktrees` (`:445-452`, feeds the hidden ⌘1…9 buttons at `:344-358`). | Spec author |
+| 6 | Where does the filter live? | The rule is a pure static helper on `Worktree` — `Worktree.visible(_:showingDetached:openIds:)`, which is what makes it testable, matching the split the project already makes for untestable view code (CLAUDE.md, `Ghostty.SurfaceView`/`revealSecondaryForHook`). It is **called once, inside `WorktreeGroupManager.sidebarOrderedWorktrees`**, which takes a `showingDetached: Bool` parameter and filters before it orders anything. This reverses the original decision to apply the helper to the `worktrees` argument at each call site: that rejection rested on the manager owning grouping and order rather than visibility policy, but the method already applies the `matches` search predicate and pins main first, all three of its callers are rendering sites, and none of the paths that must stay unfiltered (Decision 8) reaches it. Applying it once makes success criterion 6 structural instead of a convention a future caller has to remember. | Operator (simplify pass); originally Spec author |
+| 7 | Which call sites are affected? | The three that build a sidebar-ordered list, each of which now passes `showingDetached: settings.showDetachedWorktrees`: `SidebarView.orderedWorktrees` (the rendered rows), `SidebarView.sortedWorktrees` (feeds `shortcutIndex`), and `ContentView.sortedWorktrees` (feeds the hidden ⌘1…9 buttons). Under Decision 6 the filter itself is applied once inside the method, so the ⌘N badge and the ⌘N shortcut cannot disagree even if a fourth caller appears. | Operator (simplify pass); originally Spec author |
 | 8 | Do hidden worktrees still reach `seedDefaultOrder` / `reconcile` / `pruneStale`? | Yes — those keep taking the unfiltered list (`ContentView.swift:318-327`). Persisted order is display *order*, not display *membership*, so seeding a hidden id costs nothing and means a worktree that later becomes visible already has a stable position. Self-healing: `reconcile` prunes `defaultOrder` against the live id set (`WorktreeGroupManager.swift:164-170`), so a subagent worktree's id leaves the store when the worktree does. | Spec author |
 | 9 | Where in Settings does the checkbox go? | The existing `Section("Appearance")` (`SettingsView.swift:21-30`), below the two toggles already there. That section is already the app's behaviour-toggle section — "Open secondary terminal on start" is not appearance either — so a new one-row "Sidebar" section would add structure without adding clarity. | Spec author |
 | 10 | What does the checkbox say? | `Toggle("Show detached worktrees", isOn: $settings.showDetachedWorktrees)`. One label, no footer or helper text, per the project's UI-copy rule. | Spec author |
@@ -58,8 +59,9 @@ Each verified against the codebase at base `d94b0b0`.
    (`:213`, `:289`); `SidebarView.sortedWorktrees` (`:64-70`) → `shortcutIndex(for:)` (`:372-375`)
    → the row badge (`:398`, `:409`); `ContentView.sortedWorktrees` (`:445-452`) → the hidden ⌘1…9 buttons
    (`:344-358`). All three call `WorktreeGroupManager.sidebarOrderedWorktrees(_:openIds:matches:)`
-   (`WorktreeGroupManager.swift:181-218`) with `worktreeManager.worktrees`. Filtering that argument
-   at each site is therefore sufficient and keeps badge and shortcut in agreement.
+   (`WorktreeGroupManager.swift:181-218`) with `worktreeManager.worktrees`. That one method is
+   therefore the single seam every sidebar-ordered list passes through, which is what Decision 6
+   filters in.
 
 5. **A selected worktree is always open or main, so hiding cannot orphan the selection.**
    `ContentView.onChange(of: terminalManager.openWorktreeIds)` calls `selectFallback()` whenever
@@ -113,8 +115,9 @@ them or has ticked one Settings checkbox to see them.
    disappears once its last terminal closes, without a manual refresh.
 4. The main worktree always appears, whatever its `headStatus` and whatever the toggle.
 5. With the toggle on, the sidebar list is identical to today's.
-6. The sidebar row list and the ⌘1…9 targets are drawn from the same filtered sequence, so the badge
-   on a row and the shortcut that selects it never disagree.
+6. The sidebar row list and the ⌘1…9 targets are drawn from the same filtered sequence — one filter
+   inside `sidebarOrderedWorktrees` (Decision 6) — so the badge on a row and the shortcut that
+   selects it never disagree.
 7. Settings → Appearance shows one new checkbox, "Show detached worktrees", off on first launch,
    persisted across app restarts.
 8. `./scripts/ci.sh` passes.
@@ -154,8 +157,9 @@ persisted preference, so both are covered directly and no view is instantiated.
 | `Sources/App/Worktree.swift` | Add `static func visible(_:showingDetached:openIds:) -> [Worktree]` beside `sorted(_:openIds:)`. |
 | `Sources/App/SettingsManager.swift` | Add `SettingsKey.showDetachedWorktrees`, the `@Published var` with its `didSet`, and the `init` read defaulting to `false`. |
 | `Sources/App/SettingsView.swift` | Add the `Toggle` to `Section("Appearance")`. |
-| `Sources/App/SidebarView.swift` | Add `@EnvironmentObject private var settings: SettingsManager`; filter the `worktrees` argument in `orderedWorktrees` and `sortedWorktrees`. |
-| `Sources/App/ContentView.swift` | Filter the `worktrees` argument in `sortedWorktrees`. |
+| `Sources/App/WorktreeGroupManager.swift` | `sidebarOrderedWorktrees` takes `showingDetached: Bool` and applies `Worktree.visible` before ordering (Decision 6). |
+| `Sources/App/SidebarView.swift` | Add `@EnvironmentObject private var settings: SettingsManager`; pass `showingDetached:` in `orderedWorktrees` and `sortedWorktrees`. |
+| `Sources/App/ContentView.swift` | Pass `showingDetached:` in `sortedWorktrees`. |
 | `Tests/WorktreeTests.swift` | Tests for the new helper. |
 | `Tests/SettingsManagerTests.swift` | Tests for the new preference. |
 | `CLAUDE.md` | Note the visibility rule where the sidebar/worktree behaviour is described, if the build stage finds the existing text now misleading. |

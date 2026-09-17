@@ -240,7 +240,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let openIds: [String] = []
 
         let direct = Worktree.sorted(worktrees, openIds: openIds)
-        let viaManager = manager.sidebarOrderedWorktrees(worktrees, openIds: openIds, showingDetached: false, matches: { _ in true })
+        let viaManager = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: openIds, matches: { _ in true })
 
         XCTAssertEqual(viaManager, direct, "with no groups the two orderings must be identical")
     }
@@ -262,8 +262,8 @@ final class WorktreeGroupManagerTests: XCTestCase {
 
         let result = manager.sidebarOrderedWorktrees(
             [ungrouped, grouped],
-            openIds: [],
             showingDetached: false,
+            openIds: [],
             matches: { _ in true }
         )
 
@@ -297,8 +297,8 @@ final class WorktreeGroupManagerTests: XCTestCase {
 
         let result = manager.sidebarOrderedWorktrees(
             [wtNewer, wtOlder],
-            openIds: [],
             showingDetached: false,
+            openIds: [],
             matches: { _ in true }
         )
 
@@ -333,8 +333,8 @@ final class WorktreeGroupManagerTests: XCTestCase {
         // Filter to only "foo" matches.
         let result = manager.sidebarOrderedWorktrees(
             all,
-            openIds: [],
             showingDetached: false,
+            openIds: [],
             matches: { $0.displayName.contains("foo") }
         )
 
@@ -370,8 +370,8 @@ final class WorktreeGroupManagerTests: XCTestCase {
 
         let result = manager.sidebarOrderedWorktrees(
             [nonMain, main],
-            openIds: [],
             showingDetached: false,
+            openIds: [],
             matches: { _ in true }
         )
 
@@ -442,13 +442,99 @@ final class WorktreeGroupManagerTests: XCTestCase {
         manager.seedDefaultOrder(with: worktrees, openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, openIds: [], showingDetached: false, matches: { _ in true })
-        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt3.id], showingDetached: false, matches: { _ in true })
-        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, openIds: [wt1.id], showingDetached: false, matches: { _ in true })
+        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], matches: { _ in true })
+        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], matches: { _ in true })
+        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt1.id], matches: { _ in true })
 
         XCTAssertEqual(closedOrder.map(\.id), afterOpenLast.map(\.id),
                        "opening the last worktree must not reorder the sidebar")
         XCTAssertEqual(closedOrder.map(\.id), afterOpenFirst.map(\.id),
                        "opening the first worktree must not reorder the sidebar")
+    }
+
+    // MARK: - Reordering a filtered subset
+
+    /// A reorder carries only the rows the sidebar rendered. Stored ids the caller omitted —
+    /// hidden by the detached filter or by search — keep their group and their position.
+    func testSetGroupOrderKeepsIdsAbsentFromTheNewOrder() async throws {
+        manager.createGroup(named: "Group")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        guard let group = manager.groups.first else {
+            XCTFail("Expected one group")
+            return
+        }
+
+        let first = makeWorktree(branch: "first", path: "/tmp/first")
+        let hidden = makeWorktree(branch: nil, path: "/tmp/hidden", headStatus: .detached)
+        let last = makeWorktree(branch: "last", path: "/tmp/last")
+        for wt in [first, hidden, last] {
+            manager.addWorktree(wt, toGroup: group.id)
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        manager.setGroupOrder(id: group.id, ids: [last.id, first.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(
+            manager.groups.first?.worktreeIds,
+            [last.id, hidden.id, first.id],
+            "the omitted id must stay in the group, in its original slot"
+        )
+    }
+
+    /// Same rule for the ungrouped section's order.
+    func testSetDefaultOrderKeepsIdsAbsentFromTheNewOrder() async throws {
+        let first = makeWorktree(branch: "first", path: "/tmp/first")
+        let hidden = makeWorktree(branch: nil, path: "/tmp/hidden", headStatus: .detached)
+        let last = makeWorktree(branch: "last", path: "/tmp/last")
+
+        manager.setDefaultOrder([first.id, hidden.id, last.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        manager.setDefaultOrder([last.id, first.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(manager.defaultOrder, [last.id, hidden.id, first.id])
+    }
+
+    /// An id the store has never seen — a worktree appended at render time and then dragged —
+    /// is recorded rather than discarded.
+    func testSetDefaultOrderRecordsAnIdItHasNotStored() async throws {
+        let stored = makeWorktree(branch: "stored", path: "/tmp/stored")
+        let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
+
+        manager.setDefaultOrder([stored.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        manager.setDefaultOrder([fresh.id, stored.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(manager.defaultOrder, [fresh.id, stored.id])
+    }
+
+    // MARK: - Visibility
+
+    /// `sidebarOrderedWorktrees` applies `Worktree.visible` before ordering, so every
+    /// sidebar-ordered list hides the same rows.
+    func testSidebarOrderedHidesClosedDetachedWorktreeUnlessShowing() {
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
+
+        let hiding = manager.sidebarOrderedWorktrees(
+            [main, detached],
+            showingDetached: false,
+            openIds: [],
+            matches: { _ in true }
+        )
+        let showing = manager.sidebarOrderedWorktrees(
+            [main, detached],
+            showingDetached: true,
+            openIds: [],
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(hiding.map(\.id), [main.id], "a closed bare-detached worktree must be dropped")
+        XCTAssertEqual(showing.map(\.id), [main.id, detached.id], "showingDetached must keep it")
     }
 }

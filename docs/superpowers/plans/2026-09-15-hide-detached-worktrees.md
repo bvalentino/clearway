@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-15
 **Base:** d94b0b0f879606872a8b1a92e2f38ac144914339
+**PR:** #217
 
 Breaks down `docs/superpowers/specs/2026-09-15-hide-detached-worktrees.md`. Every design decision is
 settled there; read it before starting a task, and read this file for what your task is and how it is
@@ -411,3 +412,73 @@ the same branch, pinning no success criterion.
 `./scripts/ci.sh` — exit 0, SwiftLint clean, `Executed 315 tests, with 0 failures` (316 − the
 deleted case). Run after the last edit; `git status --porcelain` shows six modified files and
 nothing untracked.
+
+### Post-review fix: reordering a filtered subset, and a test for the filter itself
+
+Not a numbered plan task — two findings from the review pass, recorded in `## Changelog` as well.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | F1: `setDefaultOrder` and `setGroupOrder` now reposition the ids they are given instead of replacing the stored list wholesale, through a new `private static func repositioned(_:with:)` — each incoming id takes the next slot the stored list gives the incoming set, and stored ids the caller omitted stay where they were; ids the store has not seen are appended. Nit: `sidebarOrderedWorktrees` now takes `showingDetached:` before `openIds:`, matching `Worktree.visible(_:showingDetached:openIds:)`, and the doc comment lost the three lines restating the CLAUDE.md visibility note. |
+| `Sources/App/SidebarView.swift` | Both `.onMove` closures lost `guard !isSearching else { return }` — reordering a filtered subset is now safe in general. Argument order at the two `sidebarOrderedWorktrees` call sites follows the new signature. |
+| `Sources/App/ContentView.swift` | Same argument-order change at its one call site. |
+| `Tests/WorktreeGroupManagerTests.swift` | `// MARK: - Reordering a filtered subset`: a hidden id keeps its group and slot (`setGroupOrder`), the same for `setDefaultOrder`, and an id the store has not yet recorded is added rather than discarded. `// MARK: - Visibility`: F2 — `sidebarOrderedWorktrees` drops a closed bare-detached worktree with `showingDetached: false` and keeps it with `true`. |
+| `docs/superpowers/specs/…` | The review pass's edits to Decisions 6/7, Assumption 4, criterion 6 and the files table, committed here. |
+
+**Evidence**
+
+F1, red on the wholesale-replacement code (`./scripts/ci.sh`, exit 65):
+
+```
+    ✖ testSetDefaultOrderKeepsIdsAbsentFromTheNewOrder, XCTAssertEqual failed: ("["/tmp/last", "/tmp/first"]") is not equal to ("["/tmp/last", "/tmp/hidden", "/tmp/first"]")
+    ✖ testSetGroupOrderKeepsIdsAbsentFromTheNewOrder, XCTAssertEqual failed: ("Optional(["/tmp/last", "/tmp/first"])") is not equal to ("Optional(["/tmp/last", "/tmp/hidden", "/tmp/first"])") - the omitted id must stay in the group, in its original slot
+```
+
+That is the bug itself: `/tmp/hidden` is a closed bare-detached worktree, absent from the rendered
+rows, and dragging a visible row dropped it from the stored order for good.
+`testSetDefaultOrderRecordsAnIdItHasNotStored` passes against wholesale replacement by construction
+— it guards the merge against a fix that only ever *keeps* stored ids.
+
+F2, red with the `Worktree.visible` call commented out of `sidebarOrderedWorktrees` (exit 65),
+which is the deletion the finding said CI would not notice:
+
+```
+    ✖ testSidebarOrderedHidesClosedDetachedWorktreeUnlessShowing, XCTAssertEqual failed: ("["/tmp/main", "/tmp/detached"]") is not equal to ("["/tmp/main"]") - a closed bare-detached worktree must be dropped
+```
+
+The filter line was restored immediately after.
+
+**Deviations**
+
+`moveDisabled: isSearching` on the rows is left as it is: with the guards gone, reordering during a
+search is correct but still disabled at the row level, which is a UX decision this fix does not make.
+
+Two `./scripts/ci.sh` runs before the gate failed on `ShellPathResolverTests` — three cases each run,
+but *different* cases each time (`testAHealthyShellGivesFullFromOneInteractiveAttempt`,
+`testAProfileThatFloodsStderrStillResolves`, then `testATrailingPathShapedLineIsNotMistakenForThePath`,
+`testExtraLinesAroundThePathDoNotBreakResolution`), always `degraded` where `full` was expected. That
+suite drives fake shell scripts under a 0.5 s per-attempt timeout
+(`Tests/ShellPathResolverTests.swift:9-12`), so a loaded machine times the interactive attempt out and
+falls through to the login attempt. Load average was 3.3 with other sessions building. Unrelated to
+this change — it was green in both red runs above, which exercised the same code — and it passed on
+the gate run.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0, SwiftLint clean, build succeeded, `Executed 319 tests, with 0 failures`
+(315 before this fix, +4). Run after the last edit. `git status --porcelain` clean afterwards, no
+`default.profraw` (no Debug launch was made).
+
+## Changelog
+
+- **Post-review fix (this branch, after `b449541`).** F1: a drag inside a group or the ungrouped
+  section dropped every worktree the rendered rows omitted — with the toggle off, a closed
+  bare-detached worktree lost its group permanently. `setDefaultOrder` / `setGroupOrder` now
+  reposition the ids they receive instead of replacing the stored list, so both `!isSearching`
+  guards in `SidebarView`'s `.onMove` closures could go. F2: `sidebarOrderedWorktrees`'s
+  `Worktree.visible` call had no test, so deleting it left CI green; it now has one. Plus the
+  reviewer's two nits — `showingDetached:` precedes `openIds:` in `sidebarOrderedWorktrees` to match
+  `Worktree.visible`, and the doc comment restating the CLAUDE.md visibility note is gone. Full
+  detail in the `## Build log` section above.

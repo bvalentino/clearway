@@ -109,11 +109,13 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Replaces the ungrouped section's order. Caller should pass non-main worktree
-    /// IDs in their new display order.
+    /// Repositions the given non-main worktree IDs within the ungrouped section's order.
+    /// Callers pass the rows the sidebar rendered, which is a subset whenever search or the
+    /// detached filter hides one, so stored IDs the caller omits keep their slot.
     func setDefaultOrder(_ ids: [String]) {
-        guard ids != defaultOrder else { return }
-        defaultOrder = ids
+        let reordered = Self.repositioned(defaultOrder, with: ids)
+        guard reordered != defaultOrder else { return }
+        defaultOrder = reordered
         save()
     }
 
@@ -134,12 +136,13 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Replaces the order of worktrees inside a group.
+    /// Repositions the given worktree IDs within a group, on the same terms as `setDefaultOrder`.
     func setGroupOrder(id groupId: UUID, ids: [String]) {
         guard let index = groups.firstIndex(where: { $0.id == groupId }) else { return }
-        guard groups[index].worktreeIds != ids else { return }
+        let reordered = Self.repositioned(groups[index].worktreeIds, with: ids)
+        guard reordered != groups[index].worktreeIds else { return }
         var updated = groups
-        updated[index].worktreeIds = ids
+        updated[index].worktreeIds = reordered
         groups = updated
         save()
     }
@@ -177,13 +180,11 @@ final class WorktreeGroupManager: ObservableObject {
     /// main worktree is pinned first, then entries follow `defaultOrder`; any ungrouped
     /// worktree not yet recorded in `defaultOrder` (newly created) is appended in
     /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
-    /// The `matches` closure acts as the search predicate. `showingDetached` is applied through
-    /// `Worktree.visible` before any ordering, so every sidebar-ordered list hides the same rows
-    /// and the ⌘N badge cannot disagree with the ⌘1…9 shortcut that selects it.
+    /// The `matches` closure acts as the search predicate.
     func sidebarOrderedWorktrees(
         _ worktrees: [Worktree],
-        openIds: [String],
         showingDetached: Bool,
+        openIds: [String],
         matches: (Worktree) -> Bool
     ) -> [Worktree] {
         let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)
@@ -225,6 +226,24 @@ final class WorktreeGroupManager: ObservableObject {
     }
 
     // MARK: - Private Helpers
+
+    /// Places `ids` into the slots `stored` gives them, in the new order, leaving every other
+    /// stored ID where it was. IDs `stored` does not hold yet are appended.
+    private static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
+        let moving = Set(ids)
+        var incoming = ids[...]
+        var result: [String] = []
+        result.reserveCapacity(max(stored.count, ids.count))
+        for id in stored {
+            if moving.contains(id), let next = incoming.popFirst() {
+                result.append(next)
+            } else {
+                result.append(id)
+            }
+        }
+        result.append(contentsOf: incoming)
+        return result
+    }
 
     /// Fire-and-forget save. Logs errors; does not crash or revert in-memory state.
     private func save() {
