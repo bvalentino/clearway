@@ -552,7 +552,7 @@ without an indicator". The neighbouring toolbar buttons declare no `.buttonStyle
 
 **Not visually confirmed.** See the C4 build log section. Recorded as decision 25 in the spec.
 
-### C5: The four worktree toolbar buttons sit in four separate groups (after C4, commit `54a9e55`)
+### C5: The four worktree toolbar buttons sit in four separate groups (after C4, commits `54a9e55` + this one)
 
 Requested by the operator from a hands-on check of the worktree toolbar: "the top bar has all of
 these together in a single group: [run] [archive] [secondary terminal] [aside]. Can we have them all
@@ -560,9 +560,19 @@ in different groups?" On macOS 26 adjacent toolbar items sharing one placement a
 Liquid Glass capsule, so all four read as a single control. A fixed `ToolbarSpacer` between each
 adjacent pair breaks that shared background into four.
 
+Commit `54a9e55` added the three spacers and had no visible effect: the operator's screenshot of that
+build still showed one capsule around all four icons. The spacers were reaching `NSToolbar`, but
+being placed at the leading edge instead of between the buttons. This entry covers both commits.
+
 | File | State |
 | --- | --- |
-| `Sources/App/ContentView.swift` | Three `if #available(macOS 26, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }` entries in the `.toolbar` block, one between each adjacent pair of the four `.primaryAction` items. The items themselves, their order, their gating and the rest of the block are untouched. |
+| `Sources/App/ContentView.swift` | The `.toolbar` block moved from the `NavigationSplitView` to `detailView` inside the `detail:` closure, and carries three `if #available(macOS 26, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }` entries, one between each adjacent pair of the four `.primaryAction` items. The items themselves, their order, their gating and the rest of the block are untouched. |
+
+**Why the attachment point is what mattered.** With `.toolbar` on the `NavigationSplitView`, SwiftUI
+routes the four `ToolbarItem`s into the detail section of the window toolbar but hoists every
+`ToolbarSpacer` into the leading sidebar section, ahead of `com.apple.SwiftUI.navigationSplitView.toggleSidebar`.
+The four buttons therefore stay adjacent and keep one shared background. Attaching the same block to
+the detail column's content keeps the spacers with the items. See the build log for the measurements.
 
 **Why `ToolbarSpacer(.fixed)`.** Apple's *Adopting Liquid Glass* names the separation of a shared
 background as the spacer's job — "You can create a fixed spacer to separate items that share a
@@ -572,16 +582,19 @@ toolbar between items. Spacers can have a standard fixed size or be flexible and
 `.flexible` was rejected: it pushes the items to opposite ends of the toolbar rather than leaving
 them adjacent in four capsules.
 
-**Why not `ToolbarItemGroup` or `.sharedBackgroundVisibility`.** A `ToolbarItemGroup` is the opposite
-tool — it *shares* one background across its members, which is the state being removed.
-`.sharedBackgroundVisibility(.hidden)` removes an item's glass entirely, so the buttons would lose
-the capsule instead of each getting their own.
+**Why not `ToolbarItemGroup` or `.sharedBackgroundVisibility`.** Both were tried in the running app
+and both were measured, not assumed. One `ToolbarItemGroup` per button leaves the toolbar exactly as
+it was — a single `NSToolbarPlatterView` spanning all four. `.sharedBackgroundVisibility(.hidden)` on
+all four items removes every platter, leaving the buttons with no capsule at all; Apple's reference
+for it says "Hiding the effect will cause the item to be placed in its own grouping", and an item in
+its own grouping with the effect hidden draws no glass.
 
 **Why the availability guard.** `ToolbarSpacer` is macOS 26.0+
-(`MacOSX27.0.sdk/.../SwiftUI.swiftinterface:29520`: `@available(iOS 26.0, macOS 26.0, *)`) and the
+(`MacOSX27.0.sdk/.../SwiftUI.swiftinterface:29510`: `@available(iOS 26.0, macOS 26.0, *)`) and the
 deployment target is macOS 13. `ToolbarContentBuilder.buildLimitedAvailability` exists from macOS
 14.5, so `if #available` inside the `.toolbar` block compiles; on macOS 13–25 the branch yields
-nothing and the toolbar is byte-for-byte what it was.
+nothing and the toolbar is what it was. The guard is not what suppressed the spacers — that was
+tested separately and ruled out (see the build log).
 
 Recorded as decision 26 in the spec.
 
@@ -966,26 +979,103 @@ both the enabled and the disabled state — is unverified and needs the operator
 
 ### C5: The four worktree toolbar buttons sit in four separate groups
 
-**What landed.** The file table is in Changelog C5 above.
+**What landed.** The file table is in Changelog C5 above. Commit `54a9e55` added the three spacers;
+this commit moves the `.toolbar` block onto the detail column, which is what makes them take effect.
 
-**Evidence.** No watched failure: the change adds three availability-gated spacers to a view's
-`.toolbar` block and touches no behaviour. Nothing in `Tests/` reaches the toolbar — `ContentView`
-needs a live `ghostty_app_t` to render at all — so the suite gates this only as a regression check.
-The behavioural claim rests on Apple's documentation, quoted in Changelog C5, not on a local
-experiment.
+**Evidence.** Commit `54a9e55` shipped unverified — that build's entry recorded the grouping as
+"not confirmed visually" because this session has no Screen Recording permission. The operator ran it
+and reported one capsule around all four icons. Screenshots are still unavailable, so the same
+substitute C2 used was applied: a temporary in-app probe, written in the session scratchpad, copied
+into the repo only for the probe runs and deleted before this commit. It dumped
+`NSApp.windows.first?.toolbar?.items` and walked the `NSToolbarView` subview tree, printing each
+view's class and window-space x origin.
 
-The **no-worktree** case was confirmed at compile time rather than by eye: the three spacers live
-inside the same `if let runWorktree = selectedWorktree` block as the four items, so the builder wraps
-the whole seven-entry block in one `buildIf`. `./scripts/build.sh` succeeded, which is the proof the
-optional form typechecks; when `selectedWorktree` is `nil` the block yields `nil` and no toolbar item
-renders, exactly as before.
+Against `54a9e55`'s code, the probe showed the spacers present but misplaced:
 
-**The grouping was not confirmed visually.** `./scripts/build.sh` succeeded and `./scripts/run.sh`
-launched the app, but this session has neither Screen Recording nor Accessibility permission, so no
-screenshot and no accessibility read is possible — the same limitation recorded under C4. The
-rendered result (four separate Liquid Glass capsules, spacing consistent with the system) is
-unverified and needs the operator's eyes.
+```
+items (10):
+  id=NSToolbarFlexibleSpaceItem
+  id=NSToolbarSpaceItem
+  id=NSToolbarSpaceItem
+  id=NSToolbarSpaceItem
+  id=com.apple.SwiftUI.navigationSplitView.toggleSidebar   frame=(205.5, 660.0, 38.5, 28.5)
+  id=com.apple.SwiftUI.splitViewSeparator-0
+  id=F7069D6C-…  frame=(938.0, …)
+  id=985C6D18-…  frame=(974.0, …)
+  id=66A95F78-…  frame=(1012.0, …)
+  id=E1039224-…  frame=(1051.0, …)
+toolbar view tree:
+  NSToolbarView x=0 w=1100
+    NSGlassContainerView x=0 w=1100
+      NSView x=0 w=1100
+        NSToolbarPlatterView x=938 w=152
+          NSGlassEffectView x=938 w=152
+    …
+    _NSToolbarSpace x=193 w=8
+    _NSToolbarSpace x=185 w=8
+    _NSToolbarSpace x=177 w=8
+```
 
-**Deviations from the plan.** C5 is an operator change request, not a plan task.
+All three `_NSToolbarSpace` views sit at x=177–201, in the sidebar section ahead of the sidebar
+toggle at x=205, while the four buttons sit at x=938–1090 inside **one** `NSToolbarPlatterView`
+(x=938, w=152) — the single capsule the operator saw.
+
+Four hypotheses were tested one at a time, each in its own build of the running app:
+
+1. *The `if #available` guard erases the spacers through `buildLimitedAvailability`.* Ruled out. The
+   deployment target was temporarily raised to macOS 26 and the three guards deleted, so the spacers
+   were plain members of the builder block. Identical output: spaces at x=177/185/193, one platter at
+   x=938 w=152.
+2. *The spacer's `placement:` is wrong.* Ruled out. `.automatic` and `.secondaryAction` both land in
+   the same leading section as `.primaryAction` (x=185, x=193). Placement is ignored for the hoisted
+   spacer.
+3. *`.sharedBackgroundVisibility(.hidden)` splits the capsule.* Ruled out, and it is the opposite
+   tool: applied to all four items the probe reported **no** `NSToolbarPlatterView` and no
+   `NSGlassEffectView` anywhere in the tree. The glass is removed, not divided.
+4. *`ToolbarItemGroup` per button splits it.* Ruled out. Replacing all four `ToolbarItem`s with
+   `ToolbarItemGroup`s left one `NSToolbarPlatterView x=938 w=152`, unchanged.
+
+The common factor was the `.toolbar` attachment point. Moving the block from the
+`NavigationSplitView` to `detailView` inside the `detail:` closure, with the guards restored and the
+deployment target back at macOS 13, produced the intended result:
+
+```
+items (10):
+  id=NSToolbarFlexibleSpaceItem
+  id=com.apple.SwiftUI.navigationSplitView.toggleSidebar   frame=(205.5, …)
+  id=com.apple.SwiftUI.splitViewSeparator-0
+  id=8A69822B-…  frame=(891.0, …)
+  id=NSToolbarSpaceItem
+  id=FA9F7455-…  frame=(943.5, …)
+  id=NSToolbarSpaceItem
+  id=30F40EB6-…  frame=(996.5, …)
+  id=NSToolbarSpaceItem
+  id=A1C0A2C0-…  frame=(1052.5, …)
+toolbar view tree:
+  NSToolbarPlatterView x=1052 w=39 / NSGlassEffectView x=1052 w=39
+  NSToolbarPlatterView x=996  w=39 / NSGlassEffectView x=996  w=39
+  NSToolbarPlatterView x=943  w=36 / NSGlassEffectView x=943  w=36
+  NSToolbarPlatterView x=891  w=36 / NSGlassEffectView x=891  w=36
+  _NSToolbarSpace x=1040 w=8
+  _NSToolbarSpace x=984  w=8
+  _NSToolbarSpace x=931  w=8
+```
+
+Four platters, four glass effect views, one per button, with the three 8pt spaces interleaved. The
+spacers are now ordered between the items in `toolbar.items` rather than clustered at the front.
+
+Nothing in `Tests/` reaches the toolbar — `ContentView` needs a live `ghostty_app_t` to render at all
+— so the suite gates this only as a regression check. The **no-worktree** case is unchanged: the
+three spacers still live inside the same `if let runWorktree = selectedWorktree` block as the four
+items, so when the selection is `nil` the block yields nothing.
+
+**What is still unverified.** The probe measures the view tree, not pixels. Four platters of the
+right geometry is strong evidence of four capsules, but the rendered look — capsule spacing, whether
+the gaps read as intended next to the sidebar toggle — needs the operator's eyes.
+
+**Deviations from the plan.** C5 is an operator change request, not a plan task. The change is wider
+than the toolbar block's contents: the block's attachment point moved. That is the fix, not a
+refactor — the four buttons, their order, their gating and their modifiers are byte-for-byte what
+they were.
 
 **Gate.** `./scripts/ci.sh` — see the commit.

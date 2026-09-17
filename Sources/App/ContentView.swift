@@ -191,48 +191,48 @@ struct ContentView: View {
             contentColumn
         } detail: {
             detailView
+                .toolbar {
+                    if let runWorktree = selectedWorktree {
+                        ToolbarItem(placement: .primaryAction) {
+                            RunCommandMenu(worktree: runWorktree)
+                        }
+                        if #available(macOS 26, *) {
+                            ToolbarSpacer(.fixed, placement: .primaryAction)
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showRemoveConfirmation = true
+                            } label: {
+                                Image(systemName: "archivebox")
+                            }
+                            .help("Remove worktree")
+                            .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
+                        }
+                        if #available(macOS 26, *) {
+                            ToolbarSpacer(.fixed, placement: .primaryAction)
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: toggleSecondaryTerminal) {
+                                Image(systemName: "rectangle.bottomhalf.inset.filled")
+                                    .opacity(secondaryVisible ? 1 : 0.5)
+                            }
+                            .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
+                        }
+                        if #available(macOS 26, *) {
+                            ToolbarSpacer(.fixed, placement: .primaryAction)
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: toggleAside) {
+                                Image(systemName: "sidebar.trailing")
+                                    .opacity(asideVisible ? 1 : 0.5)
+                            }
+                            .help(asideVisible ? "Hide aside" : "Show aside")
+                        }
+                    }
+                }
         }
         .sheet(item: $hookSheet) { hook in
             HookTerminalSheet(hook: hook)
-        }
-        .toolbar {
-            if let runWorktree = selectedWorktree {
-                ToolbarItem(placement: .primaryAction) {
-                    RunCommandMenu(worktree: runWorktree)
-                }
-                if #available(macOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .primaryAction)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showRemoveConfirmation = true
-                    } label: {
-                        Image(systemName: "archivebox")
-                    }
-                    .help("Remove worktree")
-                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
-                }
-                if #available(macOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .primaryAction)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: toggleSecondaryTerminal) {
-                        Image(systemName: "rectangle.bottomhalf.inset.filled")
-                            .opacity(secondaryVisible ? 1 : 0.5)
-                    }
-                    .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
-                }
-                if #available(macOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .primaryAction)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: toggleAside) {
-                        Image(systemName: "sidebar.trailing")
-                            .opacity(asideVisible ? 1 : 0.5)
-                    }
-                    .help(asideVisible ? "Hide aside" : "Show aside")
-                }
-            }
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
