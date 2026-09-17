@@ -18,6 +18,7 @@ private func clampedColumnWidth(_ width: Double) -> Double {
 enum DetailSelection: Hashable {
     case tasks
     case prompts
+    case commands
     case worktree(Worktree)
 
     var worktree: Worktree? {
@@ -32,7 +33,7 @@ enum DetailSelection: Hashable {
         switch selection {
         case .worktree: return .secondaryTerminal
         case .tasks: return .taskTerminal
-        case .prompts, .none: return .noPanel
+        case .prompts, .commands, .none: return .noPanel
         }
     }
 }
@@ -190,36 +191,42 @@ struct ContentView: View {
             contentColumn
         } detail: {
             detailView
+                .toolbar {
+                    if let runWorktree = selectedWorktree {
+                        ToolbarItem(placement: .primaryAction) {
+                            RunCommandMenu(worktree: runWorktree)
+                        }
+                        ToolbarGroupBreak()
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showRemoveConfirmation = true
+                            } label: {
+                                Image(systemName: "archivebox")
+                            }
+                            .help("Remove worktree")
+                            .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
+                        }
+                        ToolbarGroupBreak()
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: toggleSecondaryTerminal) {
+                                Image(systemName: "rectangle.bottomhalf.inset.filled")
+                                    .opacity(secondaryVisible ? 1 : 0.5)
+                            }
+                            .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
+                        }
+                        ToolbarGroupBreak()
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: toggleAside) {
+                                Image(systemName: "sidebar.trailing")
+                                    .opacity(asideVisible ? 1 : 0.5)
+                            }
+                            .help(asideVisible ? "Hide aside" : "Show aside")
+                        }
+                    }
+                }
         }
         .sheet(item: $hookSheet) { hook in
             HookTerminalSheet(hook: hook)
-        }
-        .toolbar {
-            if selectedWorktree != nil {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showRemoveConfirmation = true
-                    } label: {
-                        Image(systemName: "archivebox")
-                    }
-                    .help("Remove worktree")
-                    .disabled(currentWorktree?.isMain == true || currentWorktree?.branch == nil)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: toggleSecondaryTerminal) {
-                        Image(systemName: "rectangle.bottomhalf.inset.filled")
-                            .opacity(secondaryVisible ? 1 : 0.5)
-                    }
-                    .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: toggleAside) {
-                        Image(systemName: "sidebar.trailing")
-                            .opacity(asideVisible ? 1 : 0.5)
-                    }
-                    .help(asideVisible ? "Hide aside" : "Show aside")
-                }
-            }
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
@@ -365,6 +372,9 @@ struct ContentView: View {
             Button("") { detailSelection = .prompts }
                 .keyboardShortcut("2", modifiers: .control)
                 .hidden()
+            Button("") { detailSelection = .commands }
+                .keyboardShortcut("3", modifiers: .control)
+                .hidden()
         }
         .onAppear {
             // Route the launcher decision through the live SettingsManager so clearing
@@ -451,7 +461,12 @@ struct ContentView: View {
 
     private var projectName: String { URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent }
 
-    private var navigationTitle: String { projectName }
+    /// The window title, resolved here rather than by a `.navigationTitle` inside the detail column:
+    /// this modifier sits outside the `NavigationSplitView` and overrides anything a column sets,
+    /// measured in a standalone probe.
+    private var navigationTitle: String {
+        detailSelection == .commands ? "Commands" : projectName
+    }
 
     private var currentWorktree: Worktree? {
         guard let id = selectedWorktree?.id else { return nil }
@@ -761,6 +776,19 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailView: some View {
+        // Commands is a JSON-backed list that needs no `ghostty_app_t` to view or edit, so it
+        // stays reachable when the terminal fails to initialize — as the Tasks and Prompts lists
+        // do by rendering in `contentColumn`, outside this switch. Only `RunCommandMenu` needs the
+        // app, and it is gated on it separately.
+        if detailSelection == .commands {
+            CommandsView()
+        } else {
+            readinessDetailView
+        }
+    }
+
+    @ViewBuilder
+    private var readinessDetailView: some View {
         switch ghosttyApp.readiness {
         case .loading:
             ProgressView("Loading terminal...")
@@ -793,8 +821,12 @@ struct ContentView: View {
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
+                                    // Resolved once: rendering one agent's name while submitting to
+                                    // another is the failure this single binding rules out.
+                                    let launcherAgent = terminalManager.launcherAgents[activeTab.id]
+                                        ?? settings.resolvedMainTerminalCommand
                                     PromptLauncherView(
-                                        command: settings.resolvedMainTerminalCommand,
+                                        command: launcherAgent,
                                         autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
                                         draft: Binding(
                                             get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
@@ -807,7 +839,7 @@ struct ContentView: View {
                                                     tabId: activeTab.id,
                                                     in: worktreeId,
                                                     app: app,
-                                                    command: settings.resolvedMainTerminalCommand,
+                                                    command: launcherAgent,
                                                     prompt: prompt
                                                 )
                                             }

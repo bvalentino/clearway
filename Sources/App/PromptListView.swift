@@ -26,25 +26,18 @@ struct PromptListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottomTrailing) {
-            Button {
-                if let prompt = promptManager.createPrompt() {
-                    selection = prompt.id
-                    newlyCreatedPromptId = prompt.id
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(.thinMaterial, in: Circle())
-                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-            }
-            .buttonStyle(.plain)
-            .help("New prompt")
-            .padding(12)
-        }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    createPrompt()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New prompt")
+            }
+
+            ToolbarGroupBreak()
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if let prompt = selectedPrompt {
@@ -98,6 +91,7 @@ struct PromptListView: View {
                 .disabled(selectedPrompt == nil)
             }
         }
+        .focusedSceneValue(\.newPromptAction) { createPrompt() }
         .alert(
             "Delete \"\(selectedPrompt?.title ?? "Untitled")\"?",
             isPresented: $showDeleteConfirmation
@@ -155,6 +149,12 @@ struct PromptListView: View {
             }
         }
         .listStyle(.inset)
+    }
+
+    private func createPrompt() {
+        guard let prompt = promptManager.createPrompt() else { return }
+        selection = prompt.id
+        newlyCreatedPromptId = prompt.id
     }
 
     private func openPrompt(_ prompt: Prompt) {

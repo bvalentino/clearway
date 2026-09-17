@@ -268,6 +268,41 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
     }
 
+    // MARK: - launcherAgents
+
+    /// A per-tab agent override outlives nothing: tab ids are recycled, so every site that
+    /// drops a launcher draft must drop the override too, or a new tab inherits the agent of
+    /// a dead one. `closeAllSurfaces` is the one such site reachable without a live
+    /// `ghostty_app_t`; the other four are pinned by the grep parity check in the build log.
+    func test_closeAllSurfaces_clearsLauncherAgents() {
+        let manager = TerminalManager()
+        let tabId = UUID()
+        manager.launcherAgents[tabId] = "grok"
+        manager.launcherDrafts[tabId] = "draft"
+
+        manager.closeAllSurfaces()
+
+        XCTAssertNil(manager.launcherAgents[tabId],
+                     "a stale agent override would address the next tab with this id to the wrong agent")
+        XCTAssertNil(manager.launcherDrafts[tabId])
+    }
+
+    // MARK: - startsAsLoginShell
+
+    /// The conjunction that lets an agent command work with Settings → Main Terminal at "None".
+    /// Drop the `agentOverride` half and the tab is promoted to a bare login shell, so the
+    /// prompt is handed to nobody and the agent never launches.
+    func test_startsAsLoginShell_onlyWhenNeitherSourceNamesAnAgent() {
+        XCTAssertTrue(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: nil))
+
+        XCTAssertFalse(
+            TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: nil),
+            "An agent command must keep its tab a launcher even when Main Terminal is None"
+        )
+        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: "claude"))
+        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: "claude"))
+    }
+
     // MARK: - beginTaskLaunch
 
     /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else

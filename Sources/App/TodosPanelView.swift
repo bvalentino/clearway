@@ -81,8 +81,20 @@ struct TodosPanelView: View {
                 }
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            createButton
+        // The break precedes the `+` here, not follows it: this aside panel's toolbar content is
+        // merged after `ContentView.detailView`'s four worktree items, so the break that separates
+        // the `+` from them is the one on its leading side.
+        .toolbar {
+            ToolbarGroupBreak()
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    startCreating()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New todo")
+            }
         }
         .confirmationDialog(
             "Delete \"\(todoPendingDeletion?.subject ?? "")\"?",
@@ -156,20 +168,5 @@ struct TodosPanelView: View {
         if todo.status == .pending {
             todoManager.setStatus(todo, to: .inProgress)
         }
-    }
-
-    private var createButton: some View {
-        Button {
-            startCreating()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .background(.thinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
-        .padding(12)
     }
 }

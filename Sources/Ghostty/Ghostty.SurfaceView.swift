@@ -459,7 +459,7 @@ extension Ghostty {
         }
 
         /// Simulate pressing the Enter/Return key.
-        private func sendEnter() {
+        func sendEnter() {
             guard let surface = surfacePtr else { return }
             let kVKReturn: UInt32 = 36
 

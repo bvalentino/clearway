@@ -132,9 +132,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     before the main menu, so menu shortcuts need an entry too). Claim **exactly** what the app
     handles: a claimed combo no handler answers is taken from the shell and then dropped.
     A shortcut Clearway itself retires gets a not-claimed pin in `AppKeyboardShortcutsTests`
-    (⌘⌃2, ⌘⌃3, ⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
-    app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"2"` —
-    the sidebar's two destinations — and ⌃3 is retired with no alias.
+    (⌘⌃2, ⌘⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
+    app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"3"` —
+    the sidebar's three destinations.
   - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
     aside ⌥⌘B, each a `PanelToggle` (`isVisible` + `toggle`) that `ContentView` publishes as a
     focused **scene** value. A `nil` value greys the item out, which is also how all three grey out
@@ -153,6 +153,19 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     as well as a `selectedTaskId`, since only `detailView` switches on readiness, so a failed
     `ghostty_app_new` still leaves the task list rendering and setting a selection.
     `newTabAction` / `newShellTabAction` still split the two and are the known exceptions.
+  - **A `.toolbar` for the detail column goes on the detail column's own content.** Attached to the
+    `NavigationSplitView` in `ContentView`, SwiftUI routes the `ToolbarItem`s into the detail section
+    but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
+    `placement:` — which is why the worktree toolbar now hangs off `detailView` rather than the split
+    view, and why `CommandsView` declares its own `+` and filter picker on its own root view.
+    A nested view's toolbar content merges **after** the enclosing view's, so the aside panels'
+    (`PromptsView`, `TodosPanelView`) items arrive behind `detailView`'s four worktree buttons: the
+    spacer that separates their `+` from those buttons precedes it, where every other view's follows.
+    Every such break is a `ToolbarGroupBreak` (`Sources/App/ToolbarGroupBreak.swift`), which holds
+    the macOS 26 availability check `ToolbarSpacer` needs in one place.
+    `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
+    overrides anything a column sets, so a per-destination window title is resolved in its
+    `navigationTitle` property, not by a `.navigationTitle` inside the detail column.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
     and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
     what lets one behavior carry several entry points without the decision being written once per
@@ -174,8 +187,21 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
     list too long" — the launcher's prompts sit well under that.
   - `TerminalManager.appendLauncherTab` promotes the new tab straight to a login shell when
-    `mainCommandProvider() == nil` — Settings → Main Terminal set to "None". Otherwise the tab stays a
-    launcher and its view focuses the prompt input.
+    `startsAsLoginShell` is true — neither its `agentOverride` nor `mainCommandProvider()` names an
+    agent. Otherwise the tab stays a launcher and its view focuses the prompt input. The override is
+    what keeps an agent command's tab a launcher with Settings → Main Terminal at "None", where the
+    agent would otherwise be swallowed into a bare shell; the rule is `static` so the truth table is
+    testable without a `ghostty_app_t`.
+  - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
+    `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
+    wait and the stage-vs-promote branch live on the coordinator with the rest of the tab logic.
+    The Enter placement a terminal command needs is `ShellSend.steps`, not a surface method —
+    nothing on `Ghostty.SurfaceView` is reachable from XCTest, and staging rather than running the
+    last line is the rule most worth pinning.
+  - `SavedCommandStore.swift` owns `~/.clearway/commands.json`, the one global list of saved
+    commands. Array order **is** display order — nothing sorts it, and a reorder rewrites the file.
+    There is deliberately no watcher: the app is the only writer and `SavedCommandManager` is
+    process-wide, so the case a watcher would cover cannot arise.
   - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
     installs a new source over the old one without cancelling it, so the old cancel handler never
     runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the

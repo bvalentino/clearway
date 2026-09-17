@@ -26,6 +26,7 @@ final class BottomPanelActionTests: XCTestCase {
 
     func testDestinationsWithoutABottomPanelGetNothing() {
         XCTAssertEqual(action(.prompts), .noPanel)
+        XCTAssertEqual(action(.commands), .noPanel)
         XCTAssertEqual(action(nil), .noPanel)
     }
 }

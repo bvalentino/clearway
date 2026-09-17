@@ -72,6 +72,7 @@ struct SidebarView: View {
         List(selection: $sidebarSelection) {
             tasksRow
             promptsRow
+            commandsRow
             defaultWorktreeSection
             ForEach(groupManager.groups) { group in
                 groupSection(group)
@@ -193,6 +194,11 @@ struct SidebarView: View {
     private var promptsRow: some View {
         destinationRow("Prompts", systemImage: "text.quote", shortcutHint: "⌃2")
             .tag(DetailSelection.prompts)
+    }
+
+    private var commandsRow: some View {
+        destinationRow("Commands", systemImage: "bolt", shortcutHint: "⌃3")
+            .tag(DetailSelection.commands)
     }
 
     /// Top-level destination row whose icon gives way to its `⌃N` hint while
