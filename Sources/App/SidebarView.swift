@@ -31,6 +31,7 @@ struct SidebarView: View {
     @State private var showingNewGroupSheet: Bool = false
     @State private var defaultSectionTargeted: Bool = false
     @State private var targetedGroupId: UUID?
+    @State private var targetedStatus: WorktreeStatus?
 
     private var isSearching: Bool { !searchText.isEmpty }
 
@@ -290,8 +291,9 @@ struct SidebarView: View {
         }
     }
 
+    @ViewBuilder
     private var worktreesSectionHeader: some View {
-        HStack {
+        let header = HStack {
             Text("Worktrees")
             Spacer()
             SidebarHeaderButton(systemImage: "arrow.clockwise") {
@@ -299,7 +301,7 @@ struct SidebarView: View {
             }
             .padding(.trailing, -6)
 
-            groupByMenu
+            GroupByMenu { activeSheet = .worktreeSettings }
                 .padding(.trailing, -6)
 
             SidebarHeaderButton(systemImage: "plus") {
@@ -309,37 +311,17 @@ struct SidebarView: View {
             .padding(.trailing, 6)
         }
         .background(defaultSectionTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
-        .dropDestination(for: String.self) { ids, _ in
-            dropIntoDefault(ids)
-            return true
-        } isTargeted: { defaultSectionTargeted = $0 }
-    }
 
-    private var groupByMenu: some View {
-        Menu {
-            Picker("Group by", selection: Binding(
-                get: { groupManager.grouping },
-                set: { groupManager.setGrouping($0) }
-            )) {
-                ForEach(WorktreeGrouping.allCases) { grouping in
-                    Text(grouping.displayName).tag(grouping)
-                }
-            }
-            .pickerStyle(.inline)
-
-            Divider()
-
-            Button("Worktree Settings…") { activeSheet = .worktreeSettings }
-        } label: {
-            Image(systemName: "gearshape")
-                .font(.body)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-                .foregroundStyle(.secondary)
+        // `.none` sections by nothing, so a drop here would silently rewrite the group
+        // membership that view does not show.
+        if groupManager.grouping == .none {
+            header
+        } else {
+            header.dropDestination(for: String.self) { ids, _ in
+                dropIntoWorktreesHeader(ids)
+                return true
+            } isTargeted: { defaultSectionTargeted = $0 }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
     }
 
     @ViewBuilder
@@ -389,7 +371,14 @@ struct SidebarView: View {
                     worktreeRowView(for: wt, titles: titles, moveDisabled: true)
                 }
             } header: {
+                let isTargeted = Binding(get: { targetedStatus == status }, set: { targetedStatus = $0 ? status : nil })
                 Text(status.displayName)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(isTargeted.wrappedValue ? Color.accentColor.opacity(0.12) : Color.clear)
+                    .dropDestination(for: String.self) { ids, _ in
+                        applyStatus(status, to: ids)
+                        return true
+                    } isTargeted: { isTargeted.wrappedValue = $0 }
             }
         }
     }
@@ -413,6 +402,24 @@ struct SidebarView: View {
         .disabled(wt.isMain || wt.branch == nil)
 
         Divider()
+
+        if !wt.isMain {
+            Menu("Status") {
+                Picker("Status", selection: Binding(
+                    get: { groupManager.status(for: wt.id) },
+                    set: { groupManager.setStatus($0, for: wt) }
+                )) {
+                    Text("None").tag(WorktreeStatus?.none)
+                    ForEach(WorktreeStatus.allCases) { status in
+                        Text(status.displayName).tag(Optional(status))
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+
+            Divider()
+        }
 
         if !settings.openInApps.isEmpty, let path = wt.path {
             OpenInMenu(path: path) {
@@ -492,7 +499,7 @@ struct SidebarView: View {
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }
-            .draggableIf(!wt.isMain, id: wt.id) { WorktreeDragChip() }
+            .draggableIf(!wt.isMain && groupManager.grouping != .none, id: wt.id) { WorktreeDragChip() }
             .moveDisabled(moveDisabled)
     }
 
@@ -507,6 +514,23 @@ struct SidebarView: View {
 
     private func dropIntoDefault(_ ids: [String]) {
         DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
+    }
+
+    /// The Worktrees header clears whichever axis the current view sections by, never both.
+    private func dropIntoWorktreesHeader(_ ids: [String]) {
+        switch groupManager.grouping {
+        case .group: dropIntoDefault(ids)
+        case .status: applyStatus(nil, to: ids)
+        case .none: break
+        }
+    }
+
+    private func applyStatus(_ status: WorktreeStatus?, to ids: [String]) {
+        DispatchQueue.main.async {
+            let wts = worktreeManager.worktrees
+            ids.compactMap { id in wts.first { $0.id == id } }
+                .forEach { groupManager.setStatus(status, for: $0) }
+        }
     }
 }
 
