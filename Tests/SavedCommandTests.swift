@@ -191,17 +191,6 @@ final class SavedCommandTests: XCTestCase {
 
     // MARK: - Decoding
 
-    /// A file hand-written with an unrecognized kind must not take the whole list down with it.
-    func testUnknownKindDecodesAsTerminal() throws {
-        let json = Data("""
-        {"id":"7B1F0B1E-0000-4000-8000-000000000001","name":"Mystery","kind":"wormhole",
-         "text":"bin/dev","agent":"claude","autoRun":false}
-        """.utf8)
-        let decoded = try JSONDecoder().decode(SavedCommand.self, from: json)
-        XCTAssertEqual(decoded.kind, .terminal)
-        XCTAssertEqual(decoded.name, "Mystery")
-    }
-
     func testRoundTripsThroughJSONUnchanged() throws {
         let command = makeCommand(kind: .agent, text: "Review the PR", agent: "codex", autoRun: false)
         let data = try JSONEncoder().encode(command)

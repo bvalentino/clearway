@@ -19,15 +19,6 @@ struct SavedCommand: Codable, Equatable, Identifiable {
     var autoRun: Bool
 }
 
-extension SavedCommand.Kind {
-    /// Decoded through the raw string so an unrecognized kind costs one command its kind rather
-    /// than taking the whole file down — the store loads an undecodable file as empty.
-    init(from decoder: any Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = Self(rawValue: raw) ?? .terminal
-    }
-}
-
 // MARK: - Filter
 
 enum CommandFilter: String, CaseIterable {

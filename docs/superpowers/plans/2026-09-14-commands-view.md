@@ -701,6 +701,34 @@ fixes, recorded as spec decision 32.
 | `docs/superpowers/specs/2026-09-14-commands-view.md` | Decision 32. |
 | `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C9 and the build-log section. |
 
+### C10: A corrupt `commands.json` is moved aside, and an unknown kind is corrupt (after C9, this commit)
+
+Requested by the operator from the PR review on `add-commands`. Two halves of one rule, recorded as
+spec decisions 33 and 34.
+
+1. `SavedCommandStore.load` still loads an unreadable or undecodable file as empty, but first renames
+   it to `commands.json.corrupt` beside it — replacing an older `.corrupt` — and logs the rename. The
+   next save then writes a fresh `commands.json` instead of destroying the only copy. This supersedes
+   decision 19, which assumed the next user change was far enough off to count as safety; adding one
+   command is enough.
+2. The lenient `init(from:)` on `SavedCommand.Kind` is deleted. An unrecognized kind string is now an
+   ordinary decode error, which makes the whole file unreadable and therefore puts it under rule 1 —
+   quarantined, rather than silently rewritten with a command's kind changed under the user. This
+   supersedes the lenient-kind decision taken in T1's build log.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | New `commandsCorruptFile` path and a `nonisolated`-by-nature `private static func moveAside(_:to:)`, called from both of `load`'s failure arms. The type doc comment says what a degraded file now does. |
+| `Sources/App/SavedCommand.swift` | The `extension SavedCommand.Kind` carrying the lenient `init(from:)` is gone; `Kind` is a plain `String`-raw-value `Codable` again. |
+| `Tests/SavedCommandStoreTests.swift` | `testLoadUnknownKindFallsBackToTerminal` replaced by `testLoadUnknownKindIsTreatedAsCorrupt`; new `testLoadMovesACorruptFileAsideWithItsOriginalBytes`, `testLoadOverwritesAnOlderCorruptFile`, `testLoadMissingFileLeavesNoCorruptFileBehind`, `testLoadValidFileLeavesNoCorruptFileBehind`. |
+| `Tests/SavedCommandTests.swift` | `testUnknownKindDecodesAsTerminal` removed — the behaviour it pinned is gone. |
+
+### C11: A failed write stays log-only (after C10, this commit)
+
+Settled by the operator in the same review: `SavedCommandManager.save` keeps logging the error and
+leaving the in-memory list alone, as `WorktreeGroupManager.save` does. No UI change, no revert of the
+optimistic mutation, no alert. Recorded as spec decision 35; no code changed.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -1427,3 +1455,40 @@ With the fix, the same probe:
 Both settings run the command exactly once.
 
 **Gate.** `./scripts/ci.sh` — see the report.
+
+### C10 + C11: Corrupt-file quarantine and strict kinds
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | `commandsCorruptFile` path; `private static func moveAside(_:to:)` removes an older `.corrupt`, renames the unusable file onto it and logs at `warning`, logging at `error` if the rename itself fails. Called from the unreadable arm and the decode-error arm of `load`. Save path untouched. |
+| `Sources/App/SavedCommand.swift` | The lenient `SavedCommand.Kind.init(from:)` extension deleted. |
+| `Tests/SavedCommandStoreTests.swift` | Four new tests plus `testLoadUnknownKindIsTreatedAsCorrupt` in place of `testLoadUnknownKindFallsBackToTerminal`. |
+| `Tests/SavedCommandTests.swift` | `testUnknownKindDecodesAsTerminal` deleted. |
+| `Sources/App/SavedCommandManager.swift` | Unchanged — C11 is a recorded decision, not an edit. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decisions 33, 34, 35. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C10, C11 and this section. |
+
+**Evidence.** The new tests were watched failing against the unfixed code: both source files restored
+to their `518eb47` contents, tests kept, `./scripts/ci.sh`:
+
+```
+Test Suite 'SavedCommandStoreTests' started at 2026-09-17 16:16:07.621.
+    ✖ testLoadMovesACorruptFileAsideWithItsOriginalBytes, XCTAssertFalse failed - The unreadable file is renamed, not copied
+    ✖ testLoadMovesACorruptFileAsideWithItsOriginalBytes, XCTAssertEqual failed: ("nil") is not equal to ("Optional(18 bytes)")
+    ✖ testLoadOverwritesAnOlderCorruptFile, XCTAssertEqual failed: ("nil") is not equal to ("Optional(17 bytes)") - The list Clearway was last unable to read is the one worth keeping
+    ✖ testLoadUnknownKindIsTreatedAsCorrupt, XCTAssertEqual failed: ("[Clearway.SavedCommand(id: 11111111-…, kind: Clearway.SavedCommand.Kind.terminal, …)]") is not equal to ("[]") - An unknown kind takes the file down rather than losing its kind
+    ✖ testLoadUnknownKindIsTreatedAsCorrupt, XCTAssertTrue failed
+    ✖ testLoadUnknownKindIsTreatedAsCorrupt, XCTAssertFalse failed
+Executed 352 tests, with 6 failures (0 unexpected) in 40.282 (40.442) seconds
+** TEST FAILED **
+```
+
+The unfixed sources were restored from a scratchpad copy, not from git, and the unknown-kind failure
+shows both halves at once: with the lenient decoder back the file decodes to one `.terminal` command
+and is never quarantined.
+
+**Deviations.** None. `moveAside` is a `private static` on the store so `load`'s detached task can
+call it without capturing `self`, which is the same shape the rest of the type already uses for
+work that runs off the main actor.
+
+**Gate.** `./scripts/ci.sh` — passed, 352 tests, 0 failures; `swiftlint lint` clean.

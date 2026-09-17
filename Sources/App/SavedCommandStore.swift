@@ -4,8 +4,9 @@ import os
 /// Reads and writes the global command list at `~/.clearway/commands.json`.
 ///
 /// The array is stored and returned in order — that order is the display order, so nothing here
-/// sorts or re-keys. A missing, unreadable or undecodable file loads as empty and is only
-/// overwritten when the user next changes something, so a transient read failure loses nothing.
+/// sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as empty
+/// too, but is moved aside to `commands.json.corrupt` first, so the next save cannot destroy the
+/// only copy of a list the user can still repair by hand.
 final class SavedCommandStore: Sendable {
 
     private let directory: String
@@ -29,15 +30,21 @@ final class SavedCommandStore: Sendable {
         (directory as NSString).appendingPathComponent("commands.json.tmp")
     }
 
+    private var commandsCorruptFile: String {
+        (directory as NSString).appendingPathComponent("commands.json.corrupt")
+    }
+
     // MARK: - Load
 
     func load() async -> [SavedCommand] {
         let path = commandsFile
+        let corruptPath = commandsCorruptFile
         return await Task.detached(priority: .utility) {
             let fm = FileManager.default
             guard fm.fileExists(atPath: path) else { return [] }
             guard let data = fm.contents(atPath: path) else {
                 Ghostty.logger.warning("commands.json is unreadable — loading as empty.")
+                Self.moveAside(path, to: corruptPath)
                 return []
             }
             do {
@@ -46,9 +53,26 @@ final class SavedCommandStore: Sendable {
                 // The error names the offending key and index, which is what makes the file
                 // hand-repairable — a bare "corrupt" tells its reader nothing.
                 Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(error)")
+                Self.moveAside(path, to: corruptPath)
                 return []
             }
         }.value
+    }
+
+    /// Renames an unusable `commands.json` out of the way so the next save writes a fresh file
+    /// instead of overwriting the one the user may still want to repair. An older `.corrupt` file
+    /// is replaced — the list Clearway was last unable to read is the one worth keeping.
+    private static func moveAside(_ path: String, to corruptPath: String) {
+        let fm = FileManager.default
+        do {
+            if fm.fileExists(atPath: corruptPath) {
+                try fm.removeItem(atPath: corruptPath)
+            }
+            try fm.moveItem(atPath: path, toPath: corruptPath)
+            Ghostty.logger.warning("commands.json moved aside to \(corruptPath, privacy: .public)")
+        } catch {
+            Ghostty.logger.error("commands.json could not be moved aside: \(error)")
+        }
     }
 
     // MARK: - Save

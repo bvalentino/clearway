@@ -22,6 +22,10 @@ final class SavedCommandStoreTests: TempRootTestCase {
         (tempRoot as NSString).appendingPathComponent("commands.json")
     }
 
+    private var corruptFile: String {
+        (tempRoot as NSString).appendingPathComponent("commands.json.corrupt")
+    }
+
     private func writeCommandsFile(_ contents: String) throws {
         try FileManager.default.createDirectory(atPath: tempRoot, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: commandsFile, contents: Data(contents.utf8))
@@ -145,7 +149,9 @@ final class SavedCommandStoreTests: TempRootTestCase {
         XCTAssertEqual(loaded, [])
     }
 
-    func testLoadUnknownKindFallsBackToTerminal() async throws {
+    /// An unrecognized kind is a decode error like any other, so the whole file is unreadable and
+    /// goes the way every unreadable file goes.
+    func testLoadUnknownKindIsTreatedAsCorrupt() async throws {
         try writeCommandsFile("""
         [{
           "id": "11111111-1111-1111-1111-111111111111",
@@ -159,8 +165,51 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
         let loaded = await store.load()
 
-        XCTAssertEqual(loaded.count, 1, "An unknown kind costs the command its kind, not the file")
-        XCTAssertEqual(loaded.first?.kind, .terminal)
-        XCTAssertEqual(loaded.first?.name, "From a newer Clearway")
+        XCTAssertEqual(loaded, [], "An unknown kind takes the file down rather than losing its kind")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: corruptFile))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: commandsFile))
+    }
+
+    // MARK: - Quarantine
+
+    /// The next save writes a fresh `commands.json`, so the unreadable one has to survive under
+    /// another name or the user loses the only copy they could have repaired.
+    func testLoadMovesACorruptFileAsideWithItsOriginalBytes() async throws {
+        let original = "not valid json {{{"
+        try writeCommandsFile(original)
+
+        _ = await store.load()
+
+        let fm = FileManager.default
+        XCTAssertFalse(fm.fileExists(atPath: commandsFile), "The unreadable file is renamed, not copied")
+        XCTAssertEqual(fm.contents(atPath: corruptFile), Data(original.utf8))
+    }
+
+    func testLoadOverwritesAnOlderCorruptFile() async throws {
+        try writeCommandsFile("first corruption")
+        _ = await store.load()
+
+        try writeCommandsFile("second corruption")
+        _ = await store.load()
+
+        XCTAssertEqual(
+            FileManager.default.contents(atPath: corruptFile),
+            Data("second corruption".utf8),
+            "The list Clearway was last unable to read is the one worth keeping"
+        )
+    }
+
+    func testLoadMissingFileLeavesNoCorruptFileBehind() async {
+        _ = await store.load()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: corruptFile))
+    }
+
+    func testLoadValidFileLeavesNoCorruptFileBehind() async throws {
+        try await store.save([terminalCommand])
+
+        _ = await store.load()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: corruptFile))
     }
 }
