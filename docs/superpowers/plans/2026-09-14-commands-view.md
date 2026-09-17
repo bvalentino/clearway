@@ -665,6 +665,29 @@ did not exist.
 one, so `AppKeyboardShortcuts.claims` gains no claim and `AppKeyboardShortcutsTests` gains no
 retirement pin — nothing was retired from the shortcut table.
 
+### C8: A toolbar `+` always sits in its own capsule (after C7, this commit)
+
+Requested by the operator from a hands-on check: "in Prompts, the + is in the same group as the rest.
+It should always be separate." The rule applies to every view that has a toolbar `+`. Recorded as
+spec decision 31. Spacer insertions only — no item, action or gating changes.
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandsView.swift` | One `if #available(macOS 26, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }` between the `+` and the All/Terminal/Agent filter picker. |
+| `Sources/App/PromptListView.swift` | The same spacer between the `+` and the Copy button. |
+| `Sources/App/WorkTaskListView.swift` | The same spacer between the `+` and Start Now. |
+| `Sources/App/PromptsView.swift` | The same spacer, **before** the `+` rather than after it, with a comment saying why. |
+| `Sources/App/TodosPanelView.swift` | The same spacer, before the `+`, same comment. |
+| `CLAUDE.md` | The detail-column `.toolbar` bullet gains the merge-order sentence. |
+| `docs/superpowers/specs/2026-09-14-commands-view.md` | Decision 31. |
+| `docs/superpowers/plans/2026-09-14-commands-view.md` | Changelog C8 and the build-log section. |
+
+**Why the aside panels take a leading spacer.** SwiftUI merges a nested view's toolbar content after
+the enclosing view's, so `PromptsView`'s and `TodosPanelView`'s `+` arrives last in the window
+toolbar, behind `ContentView.detailView`'s four worktree items. The break that separates it from them
+is the one on its leading side; a spacer written after it lands at the trailing end and separates
+nothing. Measured both ways — see the build log.
+
 ## Build log
 
 ### T1: The `SavedCommand` model and its two pure rules
@@ -1225,5 +1248,82 @@ lands in the window toolbar (in particular the two aside-panel views, whose item
 worktree toolbar items declared on `detailView`), whether the `+` reads correctly ahead of Start Now
 in the Tasks toolbar, and the greyed/enabled state of File > New Prompt. The app was left running on
 this build.
+
+**Gate.** `./scripts/ci.sh` — see the report.
+
+### C8: A toolbar `+` always sits in its own capsule
+
+**What landed.** The file table is in Changelog C8 above. Five spacer insertions, nothing else.
+
+**Evidence.** No screen access again, so the C5 substitute was reused: a temporary in-app probe,
+written in the session scratchpad and copied into the repo only for the probe runs, deleted before
+this commit. It dumps `NSApp.windows`' toolbar items and walks the `NSToolbarView` subview tree,
+printing every `NSToolbarPlatterView` (one per Liquid Glass capsule) and `_NSToolbarSpace` with its
+window-space x origin. A second temporary edit drove the window through each destination on a timer,
+because `ContentView` has to be on screen for any of these toolbars to exist.
+
+With the spacer written **after** the `+` in all five views, the three own-toolbar views were already
+right:
+
+```
+--- commands ---            NSToolbarPlatterView x=816 w=36 | _NSToolbarSpace x=856 | NSToolbarPlatterView x=868 w=223
+--- prompts list ---        NSToolbarPlatterView x=879 w=36 | _NSToolbarSpace x=919 | NSToolbarPlatterView x=933 w=70 | NSToolbarPlatterView x=1013 w=79
+--- tasks list ---          NSToolbarPlatterView x=733 w=36 | _NSToolbarSpace x=773 | NSToolbarPlatterView x=785 w=96 | NSToolbarPlatterView x=892 w=111 | NSToolbarPlatterView x=1013 w=79
+```
+
+The leading 36pt platter is the `+`, alone, with an 8pt space after it.
+
+The two aside panels were not:
+
+```
+--- worktree + todos aside ---
+  id=…  x=846 w=36   (Run)
+  id=NSToolbarSpaceItem
+  id=…  x=898 w=36   (Archive)
+  id=NSToolbarSpaceItem
+  id=…  x=951 w=39   (secondary terminal)
+  id=NSToolbarSpaceItem
+  id=…  x=1009 w=39  (aside)
+  id=…  x=1046 w=36  (+)
+  id=NSToolbarSpaceItem
+platters and spaces:
+  … NSToolbarPlatterView x=1009 w=73 | _NSToolbarSpace x=1088 w=8
+```
+
+The panel's `+` lands **after** `detailView`'s four worktree items, so it shares the aside toggle's
+platter (x=1009 w=73 spans both), and the panel's own spacer is pushed past it to x=1088, the
+trailing end of the toolbar, where it separates nothing. `PromptsView` read identically.
+
+Moving the spacer ahead of the `+` in those two views fixes it. Same probe, same two tabs:
+
+```
+--- worktree + todos aside ---   (and --- worktree + prompts aside --- identical)
+  NSToolbarPlatterView x=839  w=36   (Run)
+  _NSToolbarSpace     x=879  w=8
+  NSToolbarPlatterView x=891  w=36   (Archive)
+  _NSToolbarSpace     x=932  w=8
+  NSToolbarPlatterView x=944  w=39   (secondary terminal)
+  _NSToolbarSpace     x=988  w=8
+  NSToolbarPlatterView x=1000 w=39   (aside)
+  _NSToolbarSpace     x=1044 w=8
+  NSToolbarPlatterView x=1056 w=36   (+)
+```
+
+Five platters, five capsules, the `+` alone in the last one. The three own-toolbar views were
+re-measured on the same build and are unchanged from the listing above.
+
+**No new tests.** Like C5, C6 and C7 this adds no pure rule — it is toolbar chrome, and nothing in
+`Tests/` reaches a toolbar (`ContentView` needs a live `ghostty_app_t` to render at all).
+`AppKeyboardShortcutsTests` is untouched in both directions: no shortcut is added, changed or
+retired.
+
+**Deviation from the request.** The request said to put one spacer after each `+`. For
+`PromptsView` and `TodosPanelView` the measurement above shows that position is inert, so their
+spacer precedes the `+` instead. The request anticipated this by asking for the merge order to be
+checked; the leading position is what satisfies its rule.
+
+**What is still unverified.** The probe measures the view tree, not pixels. Five platters of the
+right geometry is strong evidence of five capsules, but the rendered gaps need the operator's eyes.
+The app was left running on a clean build of this commit.
 
 **Gate.** `./scripts/ci.sh` — see the report.

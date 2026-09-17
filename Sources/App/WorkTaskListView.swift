@@ -56,6 +56,10 @@ struct WorkTaskListView: View {
                 .help("New task")
             }
 
+            if #available(macOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button("Start Now") {
                     if let task = selectedTask { startTask(task) }

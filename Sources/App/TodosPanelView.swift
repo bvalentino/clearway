@@ -81,7 +81,14 @@ struct TodosPanelView: View {
                 }
             }
         }
+        // The spacer precedes the `+` here, not follows it: this aside panel's toolbar content is
+        // merged after `ContentView.detailView`'s four worktree items, so the break that separates
+        // the `+` from them is the one on its leading side.
         .toolbar {
+            if #available(macOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     startCreating()

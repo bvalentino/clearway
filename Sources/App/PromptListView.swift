@@ -36,6 +36,10 @@ struct PromptListView: View {
                 .help("New prompt")
             }
 
+            if #available(macOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if let prompt = selectedPrompt {

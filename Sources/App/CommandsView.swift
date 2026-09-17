@@ -34,6 +34,10 @@ struct CommandsView: View {
                 .help("New command")
             }
 
+            if #available(macOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Picker("Filter", selection: $filter) {
                     ForEach(CommandFilter.allCases, id: \.self) { option in
