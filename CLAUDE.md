@@ -207,7 +207,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached
     worktree that is neither main nor open unless Settings → Appearance → Show detached worktrees is
     on; `.rebasing`/`.bisecting` never reach it as `.detached` because `applyHeadResolution` has
-    already rewritten them. Nothing that is not rendering goes through that method, and none should:
+    already rewritten them. Only rendering paths go through that method, and only they should:
     this is a display rule, not a change to what the app tracks.
   - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
     installs a new source over the old one without cancelling it, so the old cancel handler never

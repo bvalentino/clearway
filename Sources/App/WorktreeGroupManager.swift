@@ -110,8 +110,8 @@ final class WorktreeGroupManager: ObservableObject {
     }
 
     /// Repositions the given non-main worktree IDs within the ungrouped section's order.
-    /// Callers pass the rows the sidebar rendered, which is a subset whenever search or the
-    /// detached filter hides one, so stored IDs the caller omits keep their slot.
+    /// Callers pass the rows the sidebar rendered, which is a subset whenever the detached
+    /// filter hides one, so stored IDs the caller omits keep their slot.
     func setDefaultOrder(_ ids: [String]) {
         let reordered = Self.repositioned(defaultOrder, with: ids)
         guard reordered != defaultOrder else { return }
@@ -233,10 +233,11 @@ final class WorktreeGroupManager: ObservableObject {
         let moving = Set(ids)
         var incoming = ids[...]
         var result: [String] = []
-        result.reserveCapacity(max(stored.count, ids.count))
         for id in stored {
-            if moving.contains(id), let next = incoming.popFirst() {
-                result.append(next)
+            if moving.contains(id) {
+                // A slot with no id left to take it is a duplicate of one already placed; dropping
+                // it heals a `groups.json` that recorded the same id twice.
+                if let next = incoming.popFirst() { result.append(next) }
             } else {
                 result.append(id)
             }

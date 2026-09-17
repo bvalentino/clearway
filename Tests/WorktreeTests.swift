@@ -193,6 +193,27 @@ final class WorktreeTests: XCTestCase {
         XCTAssertEqual(visible.map(\.id), ["/tmp/main"])
     }
 
+    /// Every case above passes a one-element list, so none of them asks the filter to keep and
+    /// drop within a single call.
+    func testVisibilityKeepsEveryExemptShapeInOneCall() {
+        let worktrees = [
+            makeDetached(path: "/tmp/main", isMain: true),
+            makeDetached(path: "/tmp/open"),
+            makeDetached(path: "/tmp/stray"),
+            makeWorktree(branch: "rebasing", path: "/tmp/rebasing", headStatus: .rebasing),
+            makeWorktree(branch: "bisecting", path: "/tmp/bisecting", headStatus: .bisecting),
+            makeWorktree(branch: "feature", path: "/tmp/feature"),
+        ]
+
+        let visible = Worktree.visible(worktrees, showingDetached: false, openIds: ["/tmp/open"])
+
+        XCTAssertEqual(
+            visible.map(\.id),
+            ["/tmp/main", "/tmp/open", "/tmp/rebasing", "/tmp/bisecting", "/tmp/feature"],
+            "only the closed non-main bare-detached worktree is dropped, and order is preserved"
+        )
+    }
+
     func testVisibilityPassesWholeListThroughWhenShowingDetached() {
         let worktrees = [
             makeDetached(path: "/tmp/detached"),

@@ -471,8 +471,69 @@ the gate run.
 (315 before this fix, +4). Run after the last edit. `git status --porcelain` clean afterwards, no
 `default.profraw` (no Debug launch was made).
 
+## PR review stage (`/pr-review-toolkit:review-pr code tests errors types`)
+
+Four agents over `d94b0b0..cbd0094`. No Critical findings from any of them.
+
+**Fixed**
+
+| Finding | Source | Change |
+| --- | --- | --- |
+| `repositioned` amplified a duplicate stored id where the old wholesale replace healed one: `stored == [a,a,b]` + drag `[b,a]` gave `[b,a,b]`, and `orderedNonMain` maps `defaultOrder` through `defaultById`, so the same `Worktree` reached the `List` twice. | types (F5) + tests (nit 6), independently | A moving slot with no id left to take it is dropped instead of re-emitting the stored id, so a duplicated `groups.json` heals on the next drag. `testSetDefaultOrderCollapsesADuplicateStoredId` pins it. |
+| `Worktree.visible` restated `TerminalManager.isOpen`'s predicate verbatim, unpinned — widening "open" in one would have let the sidebar hide a row `worktreeRowView` still styles as open. | types (F2) | `Worktree.isOpen(openIds:)` holds the rule; `visible` and `TerminalManager.isOpen` both call it. Keeps `visible` pure, so Decision 6 is untouched. |
+| `openIds` reached the filter at the seam with nothing asserting it — a stale array there would hide a worktree the user has terminals open in, failing criterion 3 with the suite green. | tests (1) | `testSidebarOrderedKeepsOpenDetachedWorktreeWhileHiding`. |
+| A *grouped* bare-detached worktree was never tested, so narrowing the filter to `defaultSlice` — close to the original Decision 6 wording — would pass CI. | tests (2) | `testSidebarOrderedHidesDetachedWorktreeInsideAGroup`. |
+| Every `visible` case passed a one-element list, so the filter was never asked to keep and drop in one call; the spec's listed "keeps `.attached` in every combination" case was absent. | tests (4, 5) | One mixed-list case replaces neither: `testVisibilityKeepsEveryExemptShapeInOneCall`. |
+| `result.reserveCapacity(max(stored.count, ids.count))` was speculative and wrong — the result can be as long as `stored.count` plus the count of ids `stored` does not hold, so it reallocated anyway. | code (2) | Line deleted. |
+| `visible`'s doc comment transcribed the boolean under it. | code (1) | Deleted. The `setDefaultOrder` / `repositioned` comments stay: they encode a caller contract the signature cannot. |
+| `setDefaultOrder`'s comment claimed search produces a subset here; `moveDisabled` makes that unreachable. Two reorder tests' comments claimed the detached filter was in their call path, which it is not — the store only ever sees `[String]`. | types (F6) + tests | Reworded to name only what is true. |
+| CLAUDE.md: "Nothing that is not rendering goes through that method, and none should" says the opposite of what it means. | code (3) | "Only rendering paths go through that method, and only they should". |
+
+**Evidence for the `repositioned` fix.** A standalone Swift comparison of the two versions in the
+scratchpad: old `[a,a,b]`+`[b,a]` → `["b","a","b"]`, new → `["b","a"]`; and over all 14,113
+duplicate-free inputs (stored orders to 5 ids × every hidden subset × 0-2 fresh ids × every
+permutation) the two agree exactly, so the fix changes nothing but the duplicate case.
+
+**Declined**
+
+- *Extend the in-progress probe table to cherry-pick / revert / merge / `am`* (errors 1). Decision 4
+  scopes hiding to `.detached` and names rebase and bisect only; a new `HeadStatus` case plus parser
+  probes is a scope change. Recorded as a follow-up — it is a real gap, not a wrong reading.
+- *Persist `openWorktreeIds` so Decision 2's exemption survives a relaunch* (errors 2). Follows the
+  letter of Decisions 2 and 12; the restart case is a product decision for the operator.
+- *`defaults.bool(forKey:)` instead of `object(forKey:) as? Bool ?? false`* (errors 3). Decision 11
+  prescribes the shape, and diverging one of three sibling preferences is worse than the coercion gap.
+- *Restore `guard !isSearching` in the two `.onMove` closures* (errors 4). The post-review fix removed
+  them deliberately and two other reviewers confirmed the removal: `moveDisabled` blocks the drag and
+  `repositioned` now handles a filtered subset, so the guard is dead code.
+- *Rename `showingDetached:` to `showDetachedWorktrees:`* (types F3). Naming only; Decision 6 fixes
+  the helper's parameter name and 11 call sites would churn.
+- *A `reconcile` test with a `.detached` id in the known set* (tests 3). Vacuous by construction:
+  `reconcile(knownWorktreeIds: Set<String>)` receives strings and cannot see `headStatus`, so it
+  could not filter on detachedness however it were written. The real invariant — `ContentView`
+  passing the unfiltered list — stays a review-only one.
+- *Delete the sleeps in the three new reorder tests* (tests, quality note). They are load-bearing:
+  `setUp:16-18` and `testReconcileDropsPhantomIds:191-196` document the store's watcher callback
+  reloading a just-written file over newer in-memory state.
+- *`HeadStatus` carrying its branch as a payload* (types F1) and *`id` being `""`-able* (types F4).
+  Assumption 1 puts the first out of this PR; the second is pre-existing. Both follow-ups.
+- *A group whose only members are hidden renders as a bare header* (errors 5). Consistent with the
+  existing "empty (new) groups stay visible" rule, and the code reviewer independently read it as
+  in-design. Follow-up.
+
+**Gate.** `./scripts/ci.sh` — exit 0, SwiftLint clean, build succeeded,
+`Executed 323 tests, with 0 failures` (319 before this stage, +4). Run after the last edit.
+`git status --porcelain` shows only the six files this stage modified; nothing untracked, no
+`default.profraw` (no Debug launch).
+
 ## Changelog
 
+- **PR review stage (this branch, after `cbd0094`).** `repositioned` no longer amplifies a duplicate
+  stored id, and `Worktree.isOpen(openIds:)` now holds the one copy of the open-worktree rule that
+  `visible` and `TerminalManager.isOpen` share. Four tests added at the seams the filter passes
+  through: `openIds` reaching the filter, a grouped detached worktree, a mixed keep-and-drop list,
+  and the duplicate-id heal. Plus three comment/doc corrections and a dead `reserveCapacity`.
+  Detail, and the nine declined findings with reasons, in the `## PR review stage` section above.
 - **Post-review fix (this branch, after `b449541`).** F1: a drag inside a group or the ungrouped
   section dropped every worktree the rendered rows omitted — with the toggle off, a closed
   bare-detached worktree lost its group permanently. `setDefaultOrder` / `setGroupOrder` now

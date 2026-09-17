@@ -24,11 +24,16 @@ struct Worktree: Identifiable, Hashable {
     var canRemove: Bool { headStatus == .attached }
     var canFetchPR: Bool { headStatus == .attached }
 
-    /// Hide bare-detached worktrees unless they are main, have open terminals, or are opted into.
+    /// The rule `TerminalManager.isOpen` applies, lifted here so `visible` can reach it without
+    /// the manager. Widening "open" means widening it here, for both callers.
+    func isOpen(openIds: [String]) -> Bool {
+        isMain || openIds.contains(id)
+    }
+
     static func visible(_ worktrees: [Worktree], showingDetached: Bool, openIds: [String]) -> [Worktree] {
         guard !showingDetached else { return worktrees }
         return worktrees.filter { worktree in
-            worktree.headStatus != .detached || worktree.isMain || openIds.contains(worktree.id)
+            worktree.headStatus != .detached || worktree.isOpen(openIds: openIds)
         }
     }
 
