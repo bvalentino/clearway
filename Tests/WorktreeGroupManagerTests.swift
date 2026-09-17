@@ -599,4 +599,94 @@ final class WorktreeGroupManagerTests: XCTestCase {
         XCTAssertEqual(hiding.map(\.id), [main.id], "a grouped bare-detached worktree must be dropped too")
         XCTAssertEqual(showing.map(\.id), [main.id, detached.id], "showingDetached must keep it in its group")
     }
+
+    // MARK: - setStatus / status(for:)
+
+    func testSetStatusPublishesAndPersists() async throws {
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
+
+        manager.setStatus(.inReview, for: wt)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(manager.statuses, [wt.id: .inReview])
+        XCTAssertEqual(manager.status(for: wt.id), .inReview)
+
+        let reloaded = await WorktreeGroupStore(projectPath: tempRoot).load()
+        XCTAssertEqual(reloaded.statuses, [wt.id: .inReview])
+    }
+
+    func testSetStatusNilRemovesTheEntryAndPersistsTheRemoval() async throws {
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
+
+        manager.setStatus(.done, for: wt)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        manager.setStatus(nil, for: wt)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertNil(manager.status(for: wt.id))
+        let reloaded = await WorktreeGroupStore(projectPath: tempRoot).load()
+        XCTAssertEqual(reloaded.statuses, [:])
+    }
+
+    func testSetStatusIgnoresTheMainWorktree() async throws {
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+
+        manager.setStatus(.todo, for: main)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertTrue(manager.statuses.isEmpty)
+        let file = (tempRoot as NSString)
+            .appendingPathComponent(".clearway/groups.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: file),
+            "a main-worktree status must write nothing"
+        )
+    }
+
+    // MARK: - setGrouping
+
+    func testSetGroupingPublishesAndPersists() async throws {
+        manager.setGrouping(.status)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(manager.grouping, .status)
+        let reloaded = await WorktreeGroupStore(projectPath: tempRoot).load()
+        XCTAssertEqual(reloaded.grouping, .status)
+    }
+
+    func testSetGroupingToTheCurrentValueWritesNothing() async throws {
+        manager.setGrouping(.group)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let file = (tempRoot as NSString)
+            .appendingPathComponent(".clearway/groups.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: file),
+            "an unchanged grouping must not save"
+        )
+    }
+
+    // MARK: - reconcile prunes statuses
+
+    func testReconcileDropsStatusesOfAbsentWorktrees() async throws {
+        let alive = makeWorktree(branch: "alive", path: "/tmp/alive")
+        let dead = makeWorktree(branch: "dead", path: "/tmp/dead")
+
+        manager.setStatus(.todo, for: alive)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setStatus(.onHold, for: dead)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        manager.reconcile(knownWorktreeIds: [alive.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertEqual(manager.statuses, [alive.id: .todo])
+        let reloaded = await WorktreeGroupStore(projectPath: tempRoot).load()
+        XCTAssertEqual(
+            reloaded.statuses,
+            [alive.id: .todo],
+            "a reconcile whose only change is a status prune must still persist"
+        )
+    }
 }

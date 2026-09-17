@@ -564,3 +564,40 @@ it in this file.
 `./scripts/ci.sh` — green after the last edit. `Executed 436 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `swiftlint lint --quiet` — exit 0, no output. `git status --porcelain` — only the
 two files above plus this build log; no untracked files.
+
+### T3: Manager state — `statuses`, `grouping`, `setStatus`, pruning
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `@Published private(set) var statuses: [String: WorktreeStatus]` and `@Published private(set) var grouping: WorktreeGrouping`, both assigned from the payload in `init`'s load Task and compared-before-assigned in the `startWatching` reload. New `status(for:)`, `setStatus(_:for:)` (main guard, unchanged-value guard, `nil` removes the key) and `setGrouping(_:)` (unchanged-value guard). `reconcile(knownWorktreeIds:)` prunes `statuses` beside `groups` and `defaultOrder`, with `statusesChanged` folded into its `guard`. `save()` builds the widened payload. |
+| `Tests/WorktreeGroupManagerTests.swift` | Six new cases: status publish + persist, `nil` removal persisted, main ignored (and nothing written), grouping publish + persist, grouping no-op writes nothing, reconcile prunes an absent worktree's status and persists a status-only change. |
+
+No signature `SidebarView` or `ContentView` calls changed; ordering and search stay T4.
+
+`setStatus` guards on `wt.isMain` rather than on the view, mirroring `addWorktree`. The two
+"writes nothing" cases assert on the absence of `.clearway/groups.json` itself — the store creates
+the directory lazily on first save, so a no-op mutator leaves no file at all, which is a stronger
+statement than comparing in-memory state.
+
+**Evidence**
+
+Each guard was reverted in turn (all three at once, in one probe run) and the new cases watched
+fail, then restored from a scratchpad copy of the file:
+
+```
+Tests/WorktreeGroupManagerTests.swift:638: error: -[WorktreeGroupManagerTests testSetStatusIgnoresTheMainWorktree] : XCTAssertTrue failed
+Tests/WorktreeGroupManagerTests.swift:641: error: -[WorktreeGroupManagerTests testSetStatusIgnoresTheMainWorktree] : XCTAssertFalse failed - a main-worktree status must write nothing
+Tests/WorktreeGroupManagerTests.swift:664: error: -[WorktreeGroupManagerTests testSetGroupingToTheCurrentValueWritesNothing] : XCTAssertFalse failed - an unchanged grouping must not save
+Tests/WorktreeGroupManagerTests.swift:684: error: -[WorktreeGroupManagerTests testReconcileDropsStatusesOfAbsentWorktrees] : XCTAssertEqual failed: ("["/tmp/dead": WorktreeStatus.onHold, "/tmp/alive": WorktreeStatus.todo]") is not equal to ("["/tmp/alive": WorktreeStatus.todo]")
+Tests/WorktreeGroupManagerTests.swift:686: error: -[WorktreeGroupManagerTests testReconcileDropsStatusesOfAbsentWorktrees] : XCTAssertEqual failed: ... - a reconcile whose only change is a status prune must still persist
+```
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — green after the last edit.
