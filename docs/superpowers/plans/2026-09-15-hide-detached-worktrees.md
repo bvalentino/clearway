@@ -612,6 +612,14 @@ permutation) the two agree exactly, so the fix changes nothing but the duplicate
 
 ## Changelog
 
+- **Rebased onto `origin/main` (this branch, after `ed65624`).** `main` had gained `ce39685` "Add saved commands and a worktree Run dropdown (#216)". One conflict, in `CLAUDE.md` only: both
+  sides edited the `TerminalManager.appendLauncherTab` bullet's tail — `main` rewrote the promote
+  rule around `startsAsLoginShell` and appended the saved-command bullets, this branch carried the
+  older `mainCommandProvider() == nil` wording and appended the sidebar-visibility bullet. Resolved
+  by keeping `main`'s rewrite and all three of its bullets, then the sidebar-visibility bullet on
+  top. `ContentView.swift` and `SidebarView.swift` auto-merged; no code changed beyond the conflict,
+  and the new `RunCommandMenu` takes a single selected worktree rather than a worktree list, so the
+  visibility filter does not apply to it. `./scripts/ci.sh` green, 376 tests, exit 0.
 - **Post-review addition (this branch, after `fe73508`).** Operator decision: a worktree detached
   because *any* git operation is in progress must never be hidden by the toggle, not just rebase and
   bisect. `HeadStatus` gains `.inProgress` and `branchFromInProgressOp` becomes
