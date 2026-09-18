@@ -152,8 +152,10 @@ struct RenameWorktreeSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
+            LabeledField("Name") {
+                TextField("", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -192,8 +194,10 @@ struct RenameGroupSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Group name", text: $name)
-                .textFieldStyle(.roundedBorder)
+            LabeledField("Name") {
+                TextField("", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -225,8 +229,10 @@ struct NewGroupSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Group name", text: $name)
-                .textFieldStyle(.roundedBorder)
+            LabeledField("Name") {
+                TextField("", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
 
             HStack {
                 Button("Cancel") { dismiss() }

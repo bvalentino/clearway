@@ -1276,3 +1276,33 @@ touched files. `ShellPathResolverTests` did not flake. `git status --porcelain` 
 showed the three source files, the regenerated `Clearway.xcodeproj/project.pbxproj` that
 `xcodegen generate` rewrote for the new file, and the two documents. Nothing untracked beyond
 `Sources/App/LabeledField.swift` itself; no `default.profraw` was left behind.
+
+### The other three sidebar sheets get the same persistent label
+
+Reported after the labelling landed (`1fab029`), whose entry above recorded the other three sheets
+as deliberately untouched. The operator decided the treatment covers all four sheets in
+`SidebarSheets.swift`: a single field identified only by its placeholder still loses its label the
+moment it has content, and a sheet title is not a field label. Spec decision 23 is extended to say
+so.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `RenameWorktreeSheet`, `RenameGroupSheet` and `NewGroupSheet` each wrap their one `TextField` in `LabeledField("Name")` and drop its placeholder |
+
+The label is "Name" in all three, matching `CreateWorktreeSheet` under the "New Worktree" title:
+"Group name" under a "New Group" or "Rename Group" title restates the heading. Each sheet keeps its
+title, its Cancel/Save or Cancel/Create pair, its `.frame(width: 320)`, its keyboard shortcuts and
+its disabled rules — `RenameWorktreeSheet` still saves an empty name, the two group sheets still
+refuse one. No helper copy was added.
+
+No probe was run and no test covers this. Width is the unchanged `.frame(width: 320)` on each
+sheet, read off the diff; the only layout change is the 20pt label row per field that the previous
+entry already measured, and nothing in these three bodies is reachable from XCTest.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 505 tests, with 0 failures (0 unexpected) in 85.436 seconds`,
+`==> CI passed.` Run after the last source edit; only this plan and the spec's Decisions table
+changed afterwards, and neither is compiled. `ShellPathResolverTests` did not flake.
