@@ -7,15 +7,14 @@ import SwiftUI
 /// three on one column.
 enum SidebarRowMetrics {
     static let iconWidth: CGFloat = 18
-    /// A status header's own icon-to-title gap. Set here rather than taken from `Label`, whose
-    /// spacing is not readable and would leave `statusRowIndent` a guess about it.
-    static let labelIconSpacing: CGFloat = 6
+    /// The status header's icon-to-title gap, and a term of `statusRowIndent`.
+    static let headerIconSpacing: CGFloat = 6
     /// A `Section` header is inset less than a list row; this makes up the difference.
     static let headerLeadingInset: CGFloat = 4
     /// How far inside its own `Text` frame the header title's first glyph begins inking.
     static let titleLeadingBearing: CGFloat = 3
     /// Lands a row's icon on the letter its status header's title starts with.
-    static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing - titleLeadingBearing
+    static let statusRowIndent: CGFloat = iconWidth + headerIconSpacing - titleLeadingBearing
 }
 
 /// One slot of that column: the `⌘N` / `⌃N` hint while there is one, else the symbol. Leading

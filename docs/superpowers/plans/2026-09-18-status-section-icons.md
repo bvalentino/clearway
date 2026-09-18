@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-18
 **Base:** 7ae81c1fca4c52beaf290a2035746c975ff95c69
+**PR:** #222
 
 Breaks down `docs/superpowers/specs/2026-09-18-status-section-icons.md`.
 
@@ -680,3 +681,23 @@ the indent gutter out of the row's `.contextMenu`/`.draggableIf` regions — an 
 a `WorktreeStatus.icon` view (the three sites need the slot, `Label`'s own column, and no tint at
 all respectively); dropping `testSymbols` in favour of `testSymbolsResolve` (T1 pins it as an
 acceptance criterion).
+
+### 2026-09-18 — Review finding: rename `labelIconSpacing` to `headerIconSpacing`
+
+Not a plan task. A review of 7f5f80a found the constant's name and doc comment invoked `Label`,
+while the value is the status header's own `HStack` spacing — no `Label` is involved at any reader.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarIcon.swift` | `SidebarRowMetrics.labelIconSpacing` renamed to `headerIconSpacing`; its doc comment now says what it is (the status header's icon-to-title gap, and a term of `statusRowIndent`) instead of explaining why it is not taken from `Label`. `statusRowIndent`'s expression follows the rename. |
+| `Sources/App/SidebarView.swift` | `statusSection`'s header `HStack(spacing:)` reads the new name. |
+| `docs/superpowers/specs/2026-09-18-status-section-icons.md` | Decision 17's four mentions renamed. |
+
+Values are unchanged (6, and `statusRowIndent` still 18 + 6 − 3 = 21), so nothing renders
+differently. The Build log entries above keep the old name: they record what landed at the time.
+
+**The gate**
+
+`./scripts/ci.sh` — see the report.

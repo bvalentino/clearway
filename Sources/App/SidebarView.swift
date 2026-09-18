@@ -378,7 +378,7 @@ struct SidebarView: View {
                     )
                 }
             } header: {
-                HStack(spacing: SidebarRowMetrics.labelIconSpacing) {
+                HStack(spacing: SidebarRowMetrics.headerIconSpacing) {
                     SidebarIcon(systemImage: status.symbol)
                         .foregroundStyle(status.color)
                     Text(status.displayName)
