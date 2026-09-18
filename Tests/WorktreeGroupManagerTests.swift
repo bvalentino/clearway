@@ -1,31 +1,7 @@
 import XCTest
 @testable import Clearway
 
-@MainActor
-final class WorktreeGroupManagerTests: XCTestCase {
-
-    private var tempRoot: String!
-    private var manager: WorktreeGroupManager!
-
-    override func setUp() async throws {
-        try await super.setUp()
-        tempRoot = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("clearway-manager-tests-\(UUID().uuidString)")
-        manager = WorktreeGroupManager(projectPath: tempRoot)
-        // Allow the manager's init Task (store.load + startWatching) to complete before
-        // each test body runs. Without this, the background load() can race with early
-        // createGroup() calls and overwrite the in-memory groups with [].
-        try await Task.sleep(nanoseconds: 100_000_000)
-    }
-
-    override func tearDown() async throws {
-        manager = nil
-        if let root = tempRoot {
-            try? FileManager.default.removeItem(atPath: root)
-        }
-        tempRoot = nil
-        try await super.tearDown()
-    }
+final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
 
     // MARK: - createGroup / renameGroup / deleteGroup round-trip
 
@@ -524,6 +500,56 @@ final class WorktreeGroupManagerTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.defaultOrder, ["/tmp/b", "/tmp/a"])
+    }
+
+    /// A stored duplicate survives until a drag collapses it, so the order must emit the
+    /// worktree once regardless: `SidebarView.shortcutIndexes` builds a uniquely-keyed
+    /// dictionary over the first nine rows and traps on a repeat.
+    func testDuplicateStoredDefaultOrderDoesNotDuplicateRows() async throws {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        manager.setDefaultOrder([alpha.id, alpha.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(manager.defaultOrder, [alpha.id, alpha.id], "precondition: the duplicate is stored")
+
+        let result = manager.sidebarOrderedWorktrees(
+            [alpha],
+            showingDetached: false,
+            openIds: [],
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(result.map(\.id), [alpha.id])
+    }
+
+    /// The other feeder of that trap, and the reachable one: `addWorktree` strips the id from
+    /// every group first, but a hand-edited or merged `groups.json` can list it in two, and
+    /// `groupId(for:)` resolves only the first — so both group loops emit the same row.
+    func testIdStoredInTwoGroupsDoesNotDuplicateRows() async throws {
+        manager.createGroup(named: "Alpha")
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.createGroup(named: "Bravo")
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let ids = manager.groups.map(\.id)
+        guard ids.count == 2 else {
+            XCTFail("Expected two groups, got \(ids.count)")
+            return
+        }
+
+        let shared = makeWorktree(branch: "shared", path: "/tmp/shared")
+        manager.setGroupOrder(id: ids[0], ids: [shared.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setGroupOrder(id: ids[1], ids: [shared.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let result = manager.sidebarOrderedWorktrees(
+            [shared],
+            showingDetached: false,
+            openIds: [],
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(result.map(\.id), [shared.id])
     }
 
     // MARK: - Visibility

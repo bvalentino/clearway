@@ -13,6 +13,10 @@ final class WorktreeGroupManager: ObservableObject {
     /// User-defined order of non-main worktrees in the ungrouped "default" section.
     /// Main is always pinned to the top and is not tracked here.
     @Published private(set) var defaultOrder: [String] = []
+    /// Per-worktree status, keyed by `Worktree.id`. Main is never a key.
+    @Published private(set) var statuses: [String: WorktreeStatus] = [:]
+    /// The axis the sidebar sections its worktrees by.
+    @Published private(set) var grouping: WorktreeGrouping = .group
 
     private let store: WorktreeGroupStore
 
@@ -24,6 +28,8 @@ final class WorktreeGroupManager: ObservableObject {
             let loaded = await self.store.load()
             self.groups = WorktreeGroup.sortedByCreation(loaded.groups)
             self.defaultOrder = loaded.defaultOrder
+            self.statuses = loaded.statuses
+            self.grouping = loaded.grouping
 
             self.store.startWatching { [weak self] in
                 Task { @MainActor [weak self] in
@@ -34,6 +40,8 @@ final class WorktreeGroupManager: ObservableObject {
                     if reloaded.defaultOrder != self.defaultOrder {
                         self.defaultOrder = reloaded.defaultOrder
                     }
+                    if reloaded.statuses != self.statuses { self.statuses = reloaded.statuses }
+                    if reloaded.grouping != self.grouping { self.grouping = reloaded.grouping }
                 }
             }
         }
@@ -152,6 +160,30 @@ final class WorktreeGroupManager: ObservableObject {
         groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.id
     }
 
+    /// Takes a `Worktree` rather than an ID so main's "no status" rule is enforced on the read
+    /// path too: `setStatus` refuses main, but a hand-edited or merged `groups.json` can still
+    /// carry its path, `reconcile` keeps the entry because main is always live, and no gesture
+    /// in the app could clear it. Honouring it would drop main out of the top of the by-status
+    /// order and move `⌘1` with it.
+    func status(for wt: Worktree) -> WorktreeStatus? {
+        wt.isMain ? nil : statuses[wt.id]
+    }
+
+    /// Clears the status when `status` is `nil`. The main worktree can never carry one,
+    /// so it is silently ignored.
+    func setStatus(_ status: WorktreeStatus?, for wt: Worktree) {
+        guard !wt.isMain else { return }
+        guard statuses[wt.id] != status else { return }
+        statuses[wt.id] = status
+        save()
+    }
+
+    func setGrouping(_ grouping: WorktreeGrouping) {
+        guard grouping != self.grouping else { return }
+        self.grouping = grouping
+        save()
+    }
+
     /// Strips any stored worktree ID that is no longer present in the live list.
     /// Saves only if any IDs were removed.
     func reconcile(knownWorktreeIds: Set<String>) {
@@ -167,10 +199,30 @@ final class WorktreeGroupManager: ObservableObject {
         }
         let prunedDefault = defaultOrder.filter { knownWorktreeIds.contains($0) }
         let defaultChanged = prunedDefault != defaultOrder
-        guard changed || defaultChanged else { return }
+        let prunedStatuses = statuses.filter { knownWorktreeIds.contains($0.key) }
+        let statusesChanged = prunedStatuses != statuses
+        guard changed || defaultChanged || statusesChanged else { return }
         groups = updated
         defaultOrder = prunedDefault
+        statuses = prunedStatuses
         save()
+    }
+
+    /// True when the worktree should survive the sidebar's search field.
+    ///
+    /// An empty query matches everything. Otherwise the query is compared, case-insensitively,
+    /// against the worktree's display name, the task title the caller resolved for its branch,
+    /// the name of the group holding it, and its status's display name.
+    func matches(_ wt: Worktree, query: String, taskTitle: String?) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
+        if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
+        if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
+           group.name.localizedCaseInsensitiveContains(query) { return true }
+        if let status = status(for: wt),
+           status.displayName.localizedCaseInsensitiveContains(query) { return true }
+        return false
     }
 
     /// Returns worktrees in the order used by both the sidebar and keyboard shortcuts.
@@ -181,6 +233,15 @@ final class WorktreeGroupManager: ObservableObject {
     /// worktree not yet recorded in `defaultOrder` (newly created) is appended in
     /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
     /// The `matches` closure acts as the search predicate.
+    ///
+    /// The view mode is this manager's own `grouping` rather than a parameter, for the same
+    /// reason `Worktree.visible` is applied here: the rows, the ⌘N badge and the ⌘1…9 buttons
+    /// must not be able to disagree about which worktrees exist or in what order. For the same
+    /// reason no worktree is emitted twice, whatever a stored order records.
+    /// `.group` and `.none` both return that order — they differ only in how the sidebar
+    /// sections it. `.status` stably partitions it into no-status first then the five
+    /// statuses in `allCases` order, so each bucket keeps its members' relative order and
+    /// main (which `status(for:)` never reports a status for) stays first.
     func sidebarOrderedWorktrees(
         _ worktrees: [Worktree],
         showingDetached: Bool,
@@ -222,7 +283,23 @@ final class WorktreeGroupManager: ObservableObject {
             result.append(contentsOf: (ordered + sortedUnknown).filter(matches))
         }
 
-        return result
+        let ordered = Self.deduplicated(result)
+        guard grouping == .status else { return ordered }
+        return partitionedByStatus(ordered)
+    }
+
+    /// Emits each worktree once, keeping its first position. A `groups.json` can record the
+    /// same id twice in `defaultOrder` or in a group's `worktreeIds` (see `repositioned`), and a
+    /// row emitted twice traps `SidebarView.shortcutIndexes` on its uniquely-keyed dictionary.
+    private static func deduplicated(_ worktrees: [Worktree]) -> [Worktree] {
+        var seen = Set<String>()
+        return worktrees.filter { seen.insert($0.id).inserted }
+    }
+
+    /// `Dictionary(grouping:)` keeps each bucket in input order, so the partition is stable.
+    private func partitionedByStatus(_ worktrees: [Worktree]) -> [Worktree] {
+        let buckets = Dictionary(grouping: worktrees) { status(for: $0) }
+        return (buckets[nil] ?? []) + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
     }
 
     // MARK: - Private Helpers
@@ -248,7 +325,12 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Fire-and-forget save. Logs errors; does not crash or revert in-memory state.
     private func save() {
-        let payload = WorktreeGroupsPayload(groups: groups, defaultOrder: defaultOrder)
+        let payload = WorktreeGroupsPayload(
+            groups: groups,
+            defaultOrder: defaultOrder,
+            statuses: statuses,
+            grouping: grouping
+        )
         Task {
             do {
                 try await store.save(payload)
