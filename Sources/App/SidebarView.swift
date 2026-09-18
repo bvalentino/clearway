@@ -376,13 +376,18 @@ struct SidebarView: View {
                     worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
                 }
             } header: {
-                Text(status.displayName)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
-                    .dropDestination(for: String.self) { ids, _ in
-                        applyStatus(status, to: ids)
-                        return true
-                    } isTargeted: { targetedStatus = $0 ? status : nil }
+                Label {
+                    Text(status.displayName)
+                } icon: {
+                    Image(systemName: status.symbol)
+                        .foregroundStyle(status.color)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
+                .dropDestination(for: String.self) { ids, _ in
+                    applyStatus(status, to: ids)
+                    return true
+                } isTargeted: { targetedStatus = $0 ? status : nil }
             }
         }
     }
@@ -415,7 +420,13 @@ struct SidebarView: View {
                 )) {
                     Text("None").tag(WorktreeStatus?.none)
                     ForEach(WorktreeStatus.allCases) { status in
-                        Text(status.displayName).tag(Optional(status))
+                        Label {
+                            Text(status.displayName)
+                        } icon: {
+                            Image(systemName: status.symbol)
+                                .foregroundStyle(status.color)
+                        }
+                        .tag(Optional(status))
                     }
                 }
                 .pickerStyle(.inline)

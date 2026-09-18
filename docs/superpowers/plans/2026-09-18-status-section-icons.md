@@ -232,3 +232,58 @@ one computed property and cannot reach `ShellPathResolver`.
 
 `git status --porcelain` before the commit listed only the spec, the plan and the two changed sources.
 No `default.profraw`: the app was not launched, since T1 changes nothing visible.
+
+### T2: Show the symbol in the section header and the Status picker
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarView.swift` | `statusSection`'s header is now a `Label` whose title is `Text(status.displayName)` and whose icon is `Image(systemName: status.symbol).foregroundStyle(status.color)`. The `.frame(maxWidth: .infinity, alignment: .leading)`, the conditional `.background` and the `.dropDestination`/`isTargeted` pair follow it unchanged, so the full-width drop target and its targeting highlight are untouched. The Status picker's `ForEach(WorktreeStatus.allCases)` row is the same `Label` shape carrying the same `.tag(Optional(status))`; `Text("None").tag(WorktreeStatus?.none)`, the `Picker`, its `Binding`, `.pickerStyle(.inline)` and `.labelsHidden()` are unchanged. `worktreesSection`'s header gets no icon. |
+
+The two-closure `Label { } icon: { }` form is used in both places rather than
+`Label(_:systemImage:)` plus a `.foregroundStyle`, because the plan requires the tint on the icon
+only — a modifier on the whole `Label` would recolour the title too, and the header's title must
+keep the section header's default style.
+
+**Evidence**
+
+T2 adds no test. The plan assigns T2 none, and the spec's `### Test coverage this requires` puts its
+acceptance criteria (1, 2 and the drop-target and main-worktree pins) under "confirmed by hand in the
+running app": all four are SwiftUI view state reached only through a rendered `SidebarView`, which
+needs a live `WorktreeGroupManager` and `TerminalManager`. There is no failure to watch, so none is
+quoted here rather than a test written after the fact and never run against the bug. The symbol
+vocabulary these two sites read is already pinned by T1's `testSymbols` and `testSymbolsResolve`,
+which is what makes a blank icon slot a test failure rather than a visual one.
+
+**Deviations from the plan**
+
+None.
+
+**The gate**
+
+`./scripts/ci.sh` after the last edit: **`Test Succeeded` / `==> CI passed.`, exit 0, 459 tests, 0
+failures.** `swiftlint lint --quiet` was also run directly and exits 0 with no output.
+
+It took two runs, and the pair is what finally settles the `ShellPathResolverTests` flake rather
+than merely asserting it. The first run — the two `Label` edits, before a whitespace-only reindent
+of the header's modifier chain — exited 65 on three failures, all in that one suite:
+
+```
+✖ testAHealthyShellGivesFullFromOneInteractiveAttempt, XCTAssertEqual failed: ("degraded("/opt/homebrew/bin:/usr/bin:/bin")") is not equal to ("full("/opt/homebrew/bin:/usr/bin:/bin")")
+✖ testAHealthyShellGivesFullFromOneInteractiveAttempt, XCTAssertEqual failed: ("["-lc"]") is not equal to ("["-lic"]") - A healthy shell must run exactly once
+✖ testExtraLinesAroundThePathDoNotBreakResolution, XCTAssertEqual failed: ("degraded("/opt/homebrew/bin:/usr/bin:/bin")") is not equal to ("full("/opt/homebrew/bin:/usr/bin:/bin")")
+```
+
+The second run was required anyway, because the reindent edited the file after the first gate and a
+suite is not green unless the command ran after the *last* edit. It passed with the same test code
+and the same two `Label` edits in place, and the elapsed times are the mechanism: 768 s of test time
+on the red run against **58.8 s** on the green one, a 13× spread with no code change between them
+that `ShellPathResolver` can see. `ShellPathResolverTests` spawns real shell processes and asserts
+against a 0.5 s timeout, so under load the interactive attempt overruns it and the resolver falls
+through to the login attempt — `.degraded` where `.full` was expected. The failing methods also
+differ from T1's runs, which is the flake's signature; a real regression would fail the same method
+every time. This change edits two SwiftUI view builders and cannot reach `ShellPathResolver`.
+
+`git status --porcelain` before the commit listed only `Sources/App/SidebarView.swift` and this plan.
+No `default.profraw`: the hand-verification pass is the operator's, so the app was not launched here.
