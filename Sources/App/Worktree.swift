@@ -360,7 +360,7 @@ class WorktreeManager: ObservableObject {
     }
 
     @discardableResult
-    static func runCommand(_ args: [String], in directory: String) async throws -> Data {
+    nonisolated static func runCommand(_ args: [String], in directory: String) async throws -> Data {
         let process = Process()
 
         // For git commands, use the resolved git path directly.

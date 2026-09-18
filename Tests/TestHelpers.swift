@@ -49,6 +49,106 @@ class TempRootTestCase: XCTestCase {
     }
 }
 
+/// A throwaway git repository for the suites that must prove behaviour against real git.
+///
+/// Shells out to `/usr/bin/git` directly with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` pointed
+/// at `/dev/null`, so the developer's own git config cannot change a result, and resolves symlinks
+/// in every path it hands back — a temp root under `/var/folders` is a symlink to `/private/var/…`
+/// and `git worktree list` reports the resolved form.
+struct GitRepoFixture {
+
+    struct Failure: Error {
+        let command: String
+        let status: Int32
+        let stderr: String
+    }
+
+    let root: String
+
+    static func make(at root: String) throws -> GitRepoFixture {
+        try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
+        let resolved = URL(fileURLWithPath: root).resolvingSymlinksInPath().path
+        try git(["init", "-q", "."], in: resolved)
+        try git(["config", "user.name", "Clearway Tests"], in: resolved)
+        try git(["config", "user.email", "tests@example.com"], in: resolved)
+        try git(["commit", "-q", "--allow-empty", "-m", "init"], in: resolved)
+        return GitRepoFixture(root: resolved)
+    }
+
+    @discardableResult
+    func addWorktree(branch: String) throws -> String {
+        let path = (root as NSString).appendingPathComponent(".worktrees/\(branch)")
+        try Self.git(["worktree", "add", "-q", path, "-b", branch], in: root)
+        return URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
+    func removeWorktree(at path: String) throws {
+        try Self.git(["worktree", "remove", "--force", path], in: root)
+    }
+
+    /// The value stored against one worktree, or nil when the key is absent — `--get` exits 1 for
+    /// a missing key and the whole command fails on a worktree with no `config.worktree` yet.
+    func value(ofKey key: String, atWorktree path: String) throws -> String? {
+        let result = try Self.capture(["-C", path, "config", "--worktree", "--get", key], in: root)
+        guard result.status == 0 else { return nil }
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func localConfigContents() throws -> String {
+        try String(
+            contentsOfFile: (root as NSString).appendingPathComponent(".git/config"),
+            encoding: .utf8
+        )
+    }
+
+    func mainWorktreeConfigContents() throws -> String {
+        try String(
+            contentsOfFile: (root as NSString).appendingPathComponent(".git/config.worktree"),
+            encoding: .utf8
+        )
+    }
+
+    /// Whether git can still operate in the given worktree — the end-state check the extension
+    /// bootstrap has to survive in both the main and a linked worktree.
+    func statusSucceeds(in path: String) throws -> Bool {
+        try Self.capture(["-C", path, "status", "--porcelain"], in: root).status == 0
+    }
+
+    @discardableResult
+    static func git(_ args: [String], in directory: String) throws -> String {
+        let result = try capture(args, in: directory)
+        guard result.status == 0 else {
+            throw Failure(command: args.joined(separator: " "), status: result.status, stderr: result.stderr)
+        }
+        return result.stdout
+    }
+
+    static func capture(_ args: [String], in directory: String) throws -> (status: Int32, stdout: String, stderr: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = args
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
+        environment["GIT_CONFIG_SYSTEM"] = "/dev/null"
+        process.environment = environment
+
+        let out = Pipe()
+        let err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        try process.run()
+        let stdout = out.fileHandleForReading.readDataToEndOfFile()
+        let stderr = err.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (
+            process.terminationStatus,
+            String(data: stdout, encoding: .utf8) ?? "",
+            String(data: stderr, encoding: .utf8) ?? ""
+        )
+    }
+}
+
 /// Base for the `WorktreeGroupManager` suites: a manager over the scratch root, plus the
 /// `groups.json` probe the "writes nothing" cases assert on.
 class WorktreeGroupManagerTestCase: TempRootTestCase {
