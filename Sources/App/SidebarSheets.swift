@@ -7,7 +7,9 @@ struct CreateWorktreeSheet: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @Environment(\.dismiss) private var dismiss
-    @State private var branchName = ""
+    @State private var draft = WorktreeDraft()
+    @State private var status: WorktreeStatus = .inProgress
+    @State private var showingAdvanced = false
     @State private var baseBranch = ""
     @State private var fetchBeforeCreate = true
     @State private var isCreating = false
@@ -18,21 +20,46 @@ struct CreateWorktreeSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Branch name", text: $branchName)
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: branchName) { newValue in
-                    let sanitized = newValue.replacingOccurrences(of: " ", with: "-")
-                    if sanitized != newValue { branchName = sanitized }
+            TextField("Name", text: Binding(
+                get: { draft.name },
+                set: { draft.setName($0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .disabled(isCreating)
+
+            TextField("Branch name", text: Binding(
+                get: { draft.branch },
+                set: { draft.setBranch($0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .disabled(isCreating)
+
+            Picker("Status", selection: $status) {
+                ForEach(WorktreeStatus.allCases) { option in
+                    Label {
+                        Text(option.displayName)
+                    } icon: {
+                        Image(systemName: option.symbol)
+                            .foregroundStyle(option.color)
+                    }
+                    .tag(option)
                 }
-                .disabled(isCreating)
+            }
+            .disabled(isCreating)
 
-            TextField("Base branch (new branches only)", text: $baseBranch)
-                .textFieldStyle(.roundedBorder)
-                .disabled(isCreating)
-                .opacity(isCreating ? 0.5 : 1.0)
+            DisclosureGroup("Advanced", isExpanded: $showingAdvanced) {
+                VStack(alignment: .leading, spacing: 16) {
+                    TextField("Base branch (new branches only)", text: $baseBranch)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isCreating)
+                        .opacity(isCreating ? 0.5 : 1.0)
 
-            Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
-                .disabled(isCreating)
+                    Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
+                        .disabled(isCreating)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+            }
 
             HStack {
                 Button("Cancel") { dismiss() }
@@ -43,15 +70,19 @@ struct CreateWorktreeSheet: View {
                     isCreating = true
                     Task {
                         let created = await worktreeManager.createWorktree(
-                            branch: branchName,
+                            branch: draft.branch,
                             base: baseBranch.isEmpty ? nil : baseBranch,
                             fetch: fetchBeforeCreate
                         )
                         if worktreeManager.error == nil {
-                            if let created, let targetGroupId {
-                                groupManager.addWorktree(created, toGroup: targetGroupId)
-                            } else if targetGroupId != nil {
-                                Ghostty.logger.warning("CreateWorktreeSheet: worktree creation succeeded but return lookup failed; new worktree will be ungrouped")
+                            if let created {
+                                groupManager.setName(draft.name, for: created)
+                                groupManager.setStatus(status, for: created)
+                                if let targetGroupId {
+                                    groupManager.addWorktree(created, toGroup: targetGroupId)
+                                }
+                            } else {
+                                Ghostty.logger.warning("CreateWorktreeSheet: worktree creation succeeded but return lookup failed; new worktree keeps no name, status or group")
                             }
                             dismiss()
                         } else {
@@ -70,7 +101,7 @@ struct CreateWorktreeSheet: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(branchName.isEmpty || isCreating)
+                .disabled(draft.branch.isEmpty || isCreating)
             }
         }
         .padding(20)

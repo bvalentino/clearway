@@ -1091,3 +1091,47 @@ have; criteria 2 and 4 are the behaviour it did, carried over and now pinned.
 `==> CI passed.` Run after the last edit. `swiftlint lint --quiet` prints nothing for either
 touched file. `ShellPathResolverTests` did not flake on this run. `git status --porcelain` before
 the commit showed three modified files and the one new test file, nothing else untracked.
+
+### T7: The New Worktree sheet
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet` rebuilt: `draft`, `status` and `showingAdvanced` replace `branchName`; the body is Name, Branch name, Status, then a collapsed **Advanced** `DisclosureGroup` holding Base branch and Fetch before creating. The `.onChange(of: branchName)` sanitiser is deleted. Create passes `draft.branch` and, on a successful lookup, calls `setName` and `setStatus` before `addWorktree`. The padding (20) and `.frame(width: 320)` are unchanged; no other view in the file is touched. 152 → 183 lines. |
+
+**Evidence**
+
+No watched red is available for this task, and the plan says so: every rule the sheet drives was
+lifted out precisely because nothing in a SwiftUI body is reachable from XCTest. The slug and
+branch-ownership rule is `WorktreeDraftTests` (T2, 14 cases), the writes are
+`WorktreeGroupManagerNameTests` (T4, 7 cases) and `WorktreeGroupManagerStatusTests` (T5, 19 cases),
+and all three suites were watched red against their own unfixed code. This task is the wiring
+between them; its acceptance criteria 1–5 are the hands-on checks the plan assigns, and the
+regression check is the whole suite staying green.
+
+`WorktreeStatus.symbol` was confirmed present at `Sources/App/WorktreeStatus.swift:38-46` before
+starting, as the plan's first note requires.
+
+**Deviations from the plan**
+
+- *The lookup-failure warning is no longer gated on `targetGroupId != nil`.* The plan said the
+  existing branch stays as-is. Under the old code a `nil` return with no target group lost nothing,
+  so staying silent was correct; now it also drops the name and the status the user just typed, so
+  the branch is a plain `else` and the message names all three. The success path is unchanged.
+- *The Status picker uses the `Label { } icon: { }` form, not `Label(_:systemImage:)`.* The plan's
+  line reads `Label(status.displayName, systemImage: status.symbol)` but also says the picker reads
+  `symbol` **and** `color`; the short initialiser has nowhere to put the colour. The explicit form
+  with `.foregroundStyle(option.color)` is byte-for-byte the shape the Status picker in
+  `SidebarView.worktreeContextMenu` already uses, so the two sites render the same rows. No symbol
+  and no colour is defined here.
+- *The `ForEach` binds `option`, not `status`*, because `status` is the `@State` property the picker
+  selects into and shadowing it inside the closure reads as a bug.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 505 tests, with 0 failures (0 unexpected) in 86.276 seconds`,
+`==> CI passed.` Run after the last edit. `swiftlint lint --quiet` prints nothing for
+`SidebarSheets.swift`, which is 183 lines against the 700-line warning.
+`ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
+showed one modified source file and the modified plan, nothing untracked.
