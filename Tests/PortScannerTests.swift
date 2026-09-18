@@ -33,7 +33,7 @@ final class PortScannerTests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.stride))
             }
         }
         try XCTSkipIf(bound != 0, "bind() failed: \(errno)")
