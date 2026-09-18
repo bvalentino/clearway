@@ -8,11 +8,15 @@ import SwiftUI
 /// header sets its own icon-to-title gap to `labelIconSpacing` rather than taking `Label`'s
 /// opaque default, which is what lets `statusRowIndent` be the width of that whole icon
 /// column: a row inside the section starts its icon where its header starts its title.
+/// `titleLeadingBearing` is the last term: the header's title is a `Text`, and its first glyph's
+/// ink starts that far inside the `Text`'s own leading edge, so a row's icon has to come back by
+/// the same amount to land on the letter rather than on the frame that holds it.
 enum SidebarRowMetrics {
     static let iconWidth: CGFloat = 18
     static let labelIconSpacing: CGFloat = 6
     static let headerLeadingInset: CGFloat = 4
-    static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing
+    static let titleLeadingBearing: CGFloat = 3
+    static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing - titleLeadingBearing
 }
 
 extension View {

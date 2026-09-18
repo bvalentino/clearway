@@ -604,3 +604,56 @@ composition: one modifier owns the slot, and all three call sites take it.
 
 `git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
 No `default.profraw` — the app was not launched here; the operator owns the visual check.
+
+### 2026-09-18 — Operator change from the hands-on check: trim the indent by the title's leading bearing
+
+Requested by the operator after trying 4fdcbf2 by hand: "it should be 3 px more to the left",
+pointing at the indented worktree rows under a status header in Group by → Status. Read as 3 points.
+Recorded here so no later stage reverts it as unintentional. Spec decision 17 carries the amended
+ruling.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `SidebarRowMetrics` gains `titleLeadingBearing` (3) and `statusRowIndent` becomes `iconWidth + labelIconSpacing - titleLeadingBearing` (21) instead of 24. The type's comment names what the new constant compensates for. Nothing else in the file changes — `sidebarIconSlot()`, `iconWidth`, `labelIconSpacing` and `headerLeadingInset` are exactly as 4fdcbf2 left them. |
+
+**What the 3 points are**
+
+The remaining term is the header title's leading side bearing. After 4fdcbf2 both sides of the
+alignment are flush with their own frames' leading edges — the row's icon by `sidebarIconSlot()`, the
+header's title because a `Text` has no slot — but a `Text`'s frame is not where its ink starts: the
+first glyph of "In progress", "Done" and the rest carries a left side bearing inside the frame, so a
+row's icon sitting exactly at the title's frame reads a few points right of the letter the operator
+is aligning to. Subtracting it is what puts the icon on the letter.
+
+Keeping it a named term rather than writing 21 keeps the indent derived: the three geometric terms
+still say where the header's title frame is, and the fourth says how far inside that frame its ink
+begins. Only the new constant is a measured number, and it is the one the operator supplied.
+
+Nothing else moves. `statusRowIndent` has one reader — `statusSection`'s `leadingIndent:` argument —
+so the header, the destination rows, the top-level worktree rows, the group grouping and the none
+grouping are untouched by construction.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3 and the five earlier operator changes.
+
+**Evidence**
+
+No test. This is SwiftUI view geometry inside a rendered `SidebarView`, reachable only with a live
+`WorktreeGroupManager` and `TerminalManager`, so there is no failure to watch and none is quoted
+rather than a test written after the fact. The 3 is the operator's own measurement from the running
+app, and it is a named constant in one place so a further nudge stays a one-line edit.
+
+**The gate**
+
+`./scripts/ci.sh` after the last source edit: `Test Succeeded` / `==> CI passed.`,
+**459 tests, 0 failures** in 58.7 s, then a second confirming run after this log was written with
+the exit status captured — `EXIT:0`, 459 tests, 0 failures. `xcodegen generate` and
+`swiftlint lint --quiet` pass (the script runs under `set -euo pipefail`, so `==> CI passed.` prints
+only when every step did). `ShellPathResolverTests` was green both times — no re-run for the flake
+was needed.
+
+`git status --porcelain` before the commit listed only the source above, the spec and this plan.
+No `default.profraw` — the app was not launched here; the operator owns the visual check.
