@@ -788,3 +788,28 @@ were removed.
 `./scripts/ci.sh` — green after the last edit: `Executed 449 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `swiftlint lint --quiet` — exit 0, only T4's pre-existing `file_length` and
 `type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.
+
+## Changelog
+
+- **Post-simplify change (this branch, after `ef435f6`).** Operator decision, overturning spec
+  decision 12: `WorktreeGroupManager.sidebarOrderedWorktrees` no longer takes a `grouping:`
+  parameter and reads the manager's own `grouping` property instead — the same reason
+  `Worktree.visible` is applied inside that function. The sidebar rows, the ⌘N badge and the
+  ⌘1…9 buttons are three call sites of one ordering, and a parameter is what would let them
+  disagree about the view mode. T4's task text still describes the parameter; this entry
+  supersedes it, so no later step should reintroduce it as a fix.
+
+  | File | State |
+  | --- | --- |
+  | `Sources/App/WorktreeGroupManager.swift` | `grouping:` parameter dropped; the doc comment states why the mode is read rather than passed. |
+  | `Sources/App/SidebarView.swift` | Both call sites (`orderedWorktrees`, `sortedWorktrees`) drop the argument. |
+  | `Sources/App/ContentView.swift` | `sortedWorktrees` drops the argument. |
+  | `Tests/WorktreeGroupManagerTests.swift` | Every call drops the argument; the three tests that vary the mode call `setGrouping(.none)` / `setGrouping(.status)` first, with the same 150 ms settle the other mutations use. |
+  | `docs/superpowers/specs/2026-09-17-worktrees-with-status.md` | Decision 12 amended with the new rule and the reason. |
+
+  No new test: the two `.status` tests already fail if the partition stops running, and they now
+  reach it through `setGrouping`. Nothing else in the suite changed behaviour.
+
+  **Gate.** `./scripts/ci.sh` — exit 0, run after the last edit: `Executed 449 tests, with 0
+  failures (0 unexpected)`, `==> CI passed.` SwiftLint clean apart from T4's pre-existing
+  `file_length` and `type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.

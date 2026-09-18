@@ -45,8 +45,7 @@ struct SidebarView: View {
         return groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
             showingDetached: settings.showDetachedWorktrees,
-            openIds: terminalManager.openWorktreeIds,
-            grouping: groupManager.grouping
+            openIds: terminalManager.openWorktreeIds
         ) { wt in
             groupManager.matches(wt, query: searchText, taskTitle: wt.branch.flatMap { titles[$0] })
         }
@@ -59,8 +58,7 @@ struct SidebarView: View {
         groupManager.sidebarOrderedWorktrees(
             worktreeManager.worktrees,
             showingDetached: settings.showDetachedWorktrees,
-            openIds: terminalManager.openWorktreeIds,
-            grouping: groupManager.grouping
+            openIds: terminalManager.openWorktreeIds
         ) { _ in true }
     }
 

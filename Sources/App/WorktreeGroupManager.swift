@@ -229,6 +229,9 @@ final class WorktreeGroupManager: ObservableObject {
     /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
     /// The `matches` closure acts as the search predicate.
     ///
+    /// The view mode is this manager's own `grouping` rather than a parameter, for the same
+    /// reason `Worktree.visible` is applied here: the rows, the ⌘N badge and the ⌘1…9 buttons
+    /// must not be able to disagree about which worktrees exist or in what order.
     /// `.group` and `.none` both return that order — they differ only in how the sidebar
     /// sections it. `.status` stably partitions it into no-status first then the five
     /// statuses in `allCases` order, so each bucket keeps its members' relative order and
@@ -237,7 +240,6 @@ final class WorktreeGroupManager: ObservableObject {
         _ worktrees: [Worktree],
         showingDetached: Bool,
         openIds: [String],
-        grouping: WorktreeGrouping,
         matches: (Worktree) -> Bool
     ) -> [Worktree] {
         let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)

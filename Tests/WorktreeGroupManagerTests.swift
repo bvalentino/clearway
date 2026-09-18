@@ -246,7 +246,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         let openIds: [String] = []
 
         let direct = Worktree.sorted(worktrees, openIds: openIds)
-        let viaManager = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: openIds, grouping: .group, matches: { _ in true })
+        let viaManager = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: openIds, matches: { _ in true })
 
         XCTAssertEqual(viaManager, direct, "with no groups the two orderings must be identical")
     }
@@ -270,7 +270,6 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [ungrouped, grouped],
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -306,7 +305,6 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [wtNewer, wtOlder],
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -343,7 +341,6 @@ final class WorktreeGroupManagerTests: XCTestCase {
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { $0.displayName.contains("foo") }
         )
 
@@ -381,7 +378,6 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [nonMain, main],
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -452,9 +448,9 @@ final class WorktreeGroupManagerTests: XCTestCase {
         manager.seedDefaultOrder(with: worktrees, openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], grouping: .group, matches: { _ in true })
-        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], grouping: .group, matches: { _ in true })
-        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt1.id], grouping: .group, matches: { _ in true })
+        let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], matches: { _ in true })
+        let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], matches: { _ in true })
+        let afterOpenFirst = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt1.id], matches: { _ in true })
 
         XCTAssertEqual(closedOrder.map(\.id), afterOpenLast.map(\.id),
                        "opening the last worktree must not reorder the sidebar")
@@ -548,14 +544,12 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
         let showing = manager.sidebarOrderedWorktrees(
             [main, detached],
             showingDetached: true,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -573,7 +567,6 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [detached.id],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -600,14 +593,12 @@ final class WorktreeGroupManagerTests: XCTestCase {
             [main, detached],
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
         let showing = manager.sidebarOrderedWorktrees(
             [main, detached],
             showingDetached: true,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
 
@@ -722,14 +713,14 @@ final class WorktreeGroupManagerTests: XCTestCase {
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
+        manager.setGrouping(.none)
+        try await Task.sleep(nanoseconds: 150_000_000)
         let none = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .none,
             matches: { _ in true }
         )
 
@@ -769,14 +760,14 @@ final class WorktreeGroupManagerTests: XCTestCase {
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .group,
             matches: { _ in true }
         )
+        manager.setGrouping(.status)
+        try await Task.sleep(nanoseconds: 150_000_000)
         let byStatus = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .status,
             matches: { _ in true }
         )
 
@@ -800,20 +791,20 @@ final class WorktreeGroupManagerTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.todo, for: closed)
         try await Task.sleep(nanoseconds: 150_000_000)
+        manager.setGrouping(.status)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         let all = [main, closed, detached]
         let hiding = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: false,
             openIds: [],
-            grouping: .status,
             matches: { _ in true }
         )
         let showing = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: true,
             openIds: [],
-            grouping: .status,
             matches: { _ in true }
         )
 
