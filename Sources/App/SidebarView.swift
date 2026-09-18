@@ -385,13 +385,12 @@ struct SidebarView: View {
                     )
                 }
             } header: {
-                Label {
-                    Text(status.displayName)
-                        .foregroundStyle(.primary)
-                } icon: {
+                HStack(spacing: SidebarRowMetrics.labelIconSpacing) {
                     Image(systemName: status.symbol)
                         .foregroundStyle(status.color)
                         .frame(width: SidebarRowMetrics.iconWidth)
+                    Text(status.displayName)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.leading, SidebarRowMetrics.headerLeadingInset)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -463,3 +463,77 @@ green runs.
 
 `git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
 No `default.profraw` — the app was not launched here; the operator owns the visual check.
+
+### 2026-09-18 — Operator change from the hands-on check: indent the rows to the header's title column
+
+Requested by the operator after trying dfe41ae's 8-point indent by hand: "The indent is not
+sufficient. The icon of the worktree should start where the text of the status starts." Recorded
+here so no later stage reverts it as unintentional. Spec decision 17 carries the amended ruling.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `SidebarRowMetrics` gains `labelIconSpacing` (6) and `statusRowIndent` becomes `iconWidth + labelIconSpacing` (24) instead of the literal 8. The type's comment names what the new constant is for. Nothing else in the file changes. |
+| `Sources/App/SidebarView.swift` | `statusSection`'s header is an explicit `HStack(spacing: SidebarRowMetrics.labelIconSpacing)` of the same tinted `Image(systemName: status.symbol)` — still `.frame(width: SidebarRowMetrics.iconWidth)` — and the same `Text(status.displayName).foregroundStyle(.primary)`, in place of the two-closure `Label`. Every modifier after it is untouched: `.padding(.leading, SidebarRowMetrics.headerLeadingInset)`, then `.frame(maxWidth: .infinity, alignment: .leading)`, the conditional `.background` and the `.dropDestination`/`isTargeted` pair. |
+
+The indent is derived, not chosen. The header's title starts at
+`headerLeadingInset + iconWidth + labelIconSpacing`; the row already carries, as list inset, the
+`headerLeadingInset` the header has to add back (that is what decision 16 established), so the
+indent that lands a row's icon on the header's title is `iconWidth + labelIconSpacing` and nothing
+else. Writing it as that sum is what stops the two drifting.
+
+`Label`'s icon-to-title gap is not a public constant and cannot be set, so leaving the header a
+`Label` would have made `labelIconSpacing` a guess about SwiftUI's default — the drift the operator's
+brief asked to rule out. The `HStack` owns the gap instead, which makes the sum true by construction
+whatever value the constant takes. The icon keeps its `.frame(width: iconWidth)` rather than being
+left-aligned in a 24-wide slot, so the header's glyph stays centred on the same axis as the
+destination rows' and the worktree rows' glyphs above and below it.
+
+`WorktreeRow` stays a `Label`: its own icon-to-title spacing is irrelevant to this alignment (only
+where its icon *starts* matters), and its two-line variant relies on `Label`'s vertical alignment of
+the icon against a multi-line title. `worktreeRowView`'s `leadingIndent` parameter, its default of 0
+and the content-side `.padding(.leading,)` before `.tag` are exactly as dfe41ae left them, so the
+highlight still spans the full sidebar and the group and none groupings are pixel-identical.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3, the palette change, the row-grid alignment and
+dfe41ae's first indent.
+
+**Evidence**
+
+No test. The indent is SwiftUI view geometry inside a rendered `SidebarView`, reachable only with a
+live `WorktreeGroupManager` and `TerminalManager`; there is no failure to watch, so none is quoted
+rather than a test written after the fact. The composition is the guarantee instead: both sides of
+the alignment now read the same two constants.
+
+**The gate**
+
+`./scripts/ci.sh` after the last edit: `Test Succeeded` / `==> CI passed.`, **`EXIT:0`, 459 tests, 0
+failures** in 58.4 s. `xcodegen generate` and `swiftlint lint --quiet` pass (the script runs under
+`set -euo pipefail`, so `==> CI passed.` prints only when every step did).
+
+It took three runs, and the two red ones are worth recording because they do not carry the flake's
+usual signature. Both runs after the last *source* edit exited 65 with 459 tests and 3 failures, all
+three in `ShellPathResolverTests`, all of the documented `.degraded`-where-`.full` shape, and — unlike
+T1's and T2's red runs — the **same** three methods both times:
+
+```
+✖ testAProfileThatFloodsStderrStillResolves, XCTAssertEqual failed: ("degraded("/opt/homebrew/bin:/usr/bin:/bin")") is not equal to ("full("/opt/homebrew/bin:/usr/bin:/bin")")
+✖ testExtraLinesAroundThePathDoNotBreakResolution, XCTAssertEqual failed: ("degraded("/opt/homebrew/bin:/usr/bin:/bin")") is not equal to ("full("/opt/homebrew/bin:/usr/bin:/bin")")
+✖ testTheResolvedValueIsTheSanitizedOne, XCTAssertEqual failed: ("degraded("/usr/bin:/bin")") is not equal to ("full("/usr/bin:/bin")")
+```
+
+Every other suite was green in both. A repeated method set is what a real regression looks like, so
+it was settled rather than asserted: `-only-testing:ClearwayTests/ShellPathResolverTests` was then
+run three times back to back against this same code and exited **0, 65, 0**, and the next full
+`./scripts/ci.sh` — same code, only this log appended since — was green. A regression does not pass
+three times out of four with no edit between runs. The suite spawns real shell processes and asserts
+against a 0.5 s timeout, so under load the interactive attempt overruns and the resolver falls
+through to the login attempt; the machine was at load average 3.4 with another repository's build
+holding cores, and the green run came once it dropped. This change edits one metrics enum and one
+SwiftUI view builder and cannot reach `ShellPathResolver`.
+
+`git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
+No `default.profraw` — the app was not launched here; the operator owns the visual check.
