@@ -1227,3 +1227,52 @@ text with a trailing `Spacer` and `.contentShape(Rectangle())`, and the advanced
 The sheet still carries only `.frame(width: 320)`, so it auto-sizes to the expanded content exactly
 as before. No test covers this: the finding is a hit-test geometry fact about SwiftUI's layout, not
 a decision rule, and nothing in `CreateWorktreeSheet` is reachable from XCTest.
+
+### Every row in the New Worktree sheet gets a persistent label
+
+Reported after the Advanced fix (`ab450c5`). The sheet identified its fields by placeholder text
+only, which disappears the moment a field has content, while `CommandEditorSheet` already put a
+persistent label above every control through a private `field(_:content:)` helper. The two sheets
+were drifting.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/LabeledField.swift` | New. `CommandEditorSheet`'s private `field(_:content:)` lifted verbatim into a shared view so the sheets cannot drift |
+| `Sources/App/CommandEditorSheet.swift` | Four `field(…)` call sites become `LabeledField(…)`; the private helper is deleted |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet`: Name, Branch name, Status and Advanced's Base branch each wrapped in `LabeledField`; both text fields lose their placeholder, the Status picker gains `.labelsHidden()` and keeps its symbols, and "(new branches only)" is dropped from Base branch |
+
+`RenameWorktreeSheet`, `RenameGroupSheet` and `NewGroupSheet` are untouched: the operator's
+decision names the New Worktree sheet, and each of those is a single field whose sheet title
+already says what it edits.
+
+**Evidence.** Neither `screencapture` nor `osascript` has the TCC grants to drive or photograph the
+running app here (`could not create image from display`; `osascript is not allowed assistive
+access`), the same wall the Advanced fix hit, so the layout was measured instead by a scratchpad
+probe that hosts the sheet's exact body — compiled against the real `Sources/App/LabeledField.swift`
+— beside a replica of the pre-change body, reading `NSHostingView.fittingSize` for each:
+
+```
+== expanded=false fittingSize=320.0x308.0
+== expanded=true  fittingSize=320.0x401.0
+== legacy collapsed=(320.0, 248.0) expanded=(320.0, 321.0)
+```
+
+Width is 320pt in all four cases and the sheet still grows when Advanced expands, so the
+auto-sizing decision 7 records is intact. Height rises by 60pt collapsed and 80pt expanded: 20pt
+per labelled field — three of them collapsed, four with Advanced open — which is one label row and
+its 6pt spacing per field and nothing else.
+
+No test covers this. Nothing in either sheet's body is reachable from XCTest, and `LabeledField` is
+a `VStack` with no decision rule in it.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 505 tests, with 0 failures (0 unexpected) in 85.320 seconds`,
+`==> CI passed.` Run after the last source edit; only this plan and the spec's Decisions table
+changed afterwards, and neither is compiled. `swiftlint lint --quiet` reports nothing for the three
+touched files. `ShellPathResolverTests` did not flake. `git status --porcelain` before the commit
+showed the three source files, the regenerated `Clearway.xcodeproj/project.pbxproj` that
+`xcodegen generate` rewrote for the new file, and the two documents. Nothing untracked beyond
+`Sources/App/LabeledField.swift` itself; no `default.profraw` was left behind.

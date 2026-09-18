@@ -37,7 +37,7 @@ struct CommandEditorSheet: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                field("Command kind") {
+                LabeledField("Command kind") {
                     Picker("Command kind", selection: $kind) {
                         ForEach(SavedCommand.Kind.allCases, id: \.self) { option in
                             Text(option.title).tag(option)
@@ -47,13 +47,13 @@ struct CommandEditorSheet: View {
                     .labelsHidden()
                 }
 
-                field("Menu label") {
+                LabeledField("Menu label") {
                     TextField("", text: $name)
                         .textFieldStyle(.roundedBorder)
                 }
 
                 if kind == .agent {
-                    field("Agent") {
+                    LabeledField("Agent") {
                         Picker("Agent", selection: $agent) {
                             ForEach(agentAllowlist, id: \.self) { option in
                                 Text(option).tag(option)
@@ -63,7 +63,7 @@ struct CommandEditorSheet: View {
                     }
                 }
 
-                field(kind == .terminal ? "Command" : "Prompt") {
+                LabeledField(kind == .terminal ? "Command" : "Prompt") {
                     TextEditor(text: $text)
                         .font(kind == .terminal ? .body.monospaced() : .body)
                         .focused($textIsFocused)
@@ -108,14 +108,6 @@ struct CommandEditorSheet: View {
                 .disabled(!canSave)
         }
         .padding(16)
-    }
-
-    private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-            content()
-        }
     }
 
     private func save() {

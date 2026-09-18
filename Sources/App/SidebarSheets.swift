@@ -20,32 +20,39 @@ struct CreateWorktreeSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Name", text: Binding(
-                get: { draft.name },
-                set: { draft.setName($0) }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .disabled(isCreating)
-
-            TextField("Branch name", text: Binding(
-                get: { draft.branch },
-                set: { draft.setBranch($0) }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .disabled(isCreating)
-
-            Picker("Status", selection: $status) {
-                ForEach(WorktreeStatus.allCases) { option in
-                    Label {
-                        Text(option.displayName)
-                    } icon: {
-                        Image(systemName: option.symbol)
-                            .foregroundStyle(option.color)
-                    }
-                    .tag(option)
-                }
+            LabeledField("Name") {
+                TextField("", text: Binding(
+                    get: { draft.name },
+                    set: { draft.setName($0) }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .disabled(isCreating)
             }
-            .disabled(isCreating)
+
+            LabeledField("Branch name") {
+                TextField("", text: Binding(
+                    get: { draft.branch },
+                    set: { draft.setBranch($0) }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .disabled(isCreating)
+            }
+
+            LabeledField("Status") {
+                Picker("Status", selection: $status) {
+                    ForEach(WorktreeStatus.allCases) { option in
+                        Label {
+                            Text(option.displayName)
+                        } icon: {
+                            Image(systemName: option.symbol)
+                                .foregroundStyle(option.color)
+                        }
+                        .tag(option)
+                    }
+                }
+                .labelsHidden()
+                .disabled(isCreating)
+            }
 
             // A `DisclosureGroup` in a plain VStack only toggles on the triangle itself —
             // measured at roughly 4x8pt of a 280pt row — so the row is built by hand to
@@ -66,10 +73,12 @@ struct CreateWorktreeSheet: View {
 
             if showingAdvanced {
                 VStack(alignment: .leading, spacing: 16) {
-                    TextField("Base branch (new branches only)", text: $baseBranch)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(isCreating)
-                        .opacity(isCreating ? 0.5 : 1.0)
+                    LabeledField("Base branch") {
+                        TextField("", text: $baseBranch)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isCreating)
+                            .opacity(isCreating ? 0.5 : 1.0)
+                    }
 
                     Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
                         .disabled(isCreating)
