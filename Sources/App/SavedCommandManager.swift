@@ -56,7 +56,8 @@ final class SavedCommandManager: ObservableObject {
     }
 
     /// Offsets are against the unfiltered array, so a move is refused outright while a filter is
-    /// on: one computed against a visible subset would rewrite the wrong global positions.
+    /// on: one computed against a visible subset would rewrite the wrong positions in the full
+    /// array.
     func move(fromOffsets source: IndexSet, toOffset destination: Int, filter: CommandFilter) {
         guard !filter.isActive else { return }
         commands.move(fromOffsets: source, toOffset: destination)

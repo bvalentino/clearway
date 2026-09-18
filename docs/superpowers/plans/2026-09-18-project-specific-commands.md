@@ -298,3 +298,50 @@ None.
 `./scripts/ci.sh` — passed after the last edit. `Executed 458 tests, with 0 failures (0 unexpected)`,
 `Test Succeeded`, `==> CI passed.` `git status --porcelain` showed only the five modified files this
 commit carries; no untracked or ignored files.
+
+### T3: Restate the doc comments and the CLAUDE.md bullet
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/CommandsView.swift` | Type doc comment: "the global, ordered list of saved commands" becomes "the project's ordered list of saved commands". |
+| `Sources/App/RunCommandMenu.swift` | Type doc comment: "every saved command" becomes "the project's saved commands"; the rest of the sentence (saved order, selected worktree's main terminal) is unchanged. |
+| `Sources/App/SavedCommandManager.swift` | `move(fromOffsets:toOffset:filter:)`'s comment said a move computed against a visible subset "would rewrite the wrong global positions". That "global" means the unfiltered array, not the removed process-wide list, but it is one of the four files the task's grep covers, so it now reads "the wrong positions in the full array". |
+| `CLAUDE.md` | The `SavedCommandStore` bullet names `<projectPath>/.clearway/commands.json`, one list per project shared by that repo's worktrees, the store owning the `.clearway` component as `WorktreeGroupStore` does, and the project-root rule with its reason (a `commands.json` checked out differently on a branch must not change the Run dropdown). Array order as display order is kept verbatim. The no-watcher reasoning is restated for a per-window manager: `SavedCommandManager` is a `@StateObject` on `ProjectContentView` built from `projectPath`, the app is still the only writer, and an outside edit is picked up when the window reopens. |
+
+**Evidence**
+
+No test was added or changed and none failed: this task changes no behaviour, only comments and a
+document, so there is nothing a test could watch go red. The acceptance criteria are greps, run
+after the last edit:
+
+```
+$ grep -rn '~/\.clearway' Sources Tests CLAUDE.md
+Sources/App/PromptManager.swift:3:/// Manages reusable prompt files stored in a configurable directory (default `~/.clearway/prompts/`).
+Sources/App/SettingsManager.swift:91:    static let defaultPromptsDirectory = "~/.clearway/prompts"
+CLAUDE.md:229:    preference, not a saved-command list, so it belongs there rather than in a `~/.clearway` JSON
+$ grep -rni 'global\|process-wide' Sources/App/CommandsView.swift Sources/App/RunCommandMenu.swift Sources/App/SavedCommandStore.swift Sources/App/SavedCommandManager.swift; echo $?
+1
+```
+
+The three surviving `~/.clearway` hits are the prompts directory and the `OpenInApp` bullet
+contrasting a `UserDefaults` preference with a `~/.clearway` JSON file. Neither is the commands
+file, and both are out of scope.
+
+**Deviations from the plan**
+
+The plan's verification line reads `grep -rn 'clearway/commands.json' Sources Tests CLAUDE.md`
+returns nothing. It cannot: the plan and the spec both require `SavedCommandStore`'s doc comment and
+the CLAUDE.md bullet to *name* `<projectPath>/.clearway/commands.json`, and T2 already wrote the
+first of them. The criterion the grep was standing in for is the acceptance bullet above it — no
+reference to `~/.clearway/commands.json` — so that is what was checked.
+
+The plan listed two source files; `SavedCommandManager.swift` is a third, because the task's own
+`global` grep covers it and it carried an unrelated use of the word.
+
+**Gate**
+
+`./scripts/ci.sh` — passed after the last edit. `Executed 458 tests, with 0 failures (0 unexpected)`,
+`Test Succeeded`, `==> CI passed.` `git status --porcelain` showed only the four modified files this
+commit carries; no untracked or ignored files.
