@@ -84,6 +84,7 @@ struct WorktreeStatusBar: View {
     let secondaryVisible: Bool
     let onToggleSecondary: () -> Void
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var portMonitor: PortMonitor
 
     private var secondaryToggleLabel: String {
         secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal"
@@ -106,6 +107,7 @@ struct WorktreeStatusBar: View {
                 }
             Spacer()
             HStack(spacing: 12) {
+                livePortsView
                 if let wt = worktree, !wt.isMain {
                     prStatusView(for: wt.id)
                 }
@@ -125,6 +127,34 @@ struct WorktreeStatusBar: View {
         .padding(.bottom, 12)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private var livePorts: [UInt16] {
+        guard let worktree else { return [] }
+        return PortAttribution.attribute(portMonitor.listeners, to: worktreeManager.worktrees)[worktree.id] ?? []
+    }
+
+    /// Empty for a portless worktree rather than a zero-width subview, so the enclosing stack's
+    /// spacing stays 0 and the path keeps every character it has at base.
+    @ViewBuilder
+    private var livePortsView: some View {
+        let ports = livePorts
+        if !ports.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(ports, id: \.self) { port in
+                    Text(PortLink.label(port))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
+                        .pointerCursorOnHover()
+                        .onTapGesture {
+                            if let url = PortLink.url(port) { NSWorkspace.shared.open(url) }
+                        }
+                        .help(PortLink.urlString(port))
+                }
+            }
+            .padding(.trailing, 12)
+        }
     }
 
     @ViewBuilder

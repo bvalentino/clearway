@@ -128,6 +128,7 @@ struct ClearwayApp: App {
     @StateObject private var settings: SettingsManager
     @StateObject private var caffeine = CaffeineManager()
     @StateObject private var savedCommandManager = SavedCommandManager()
+    @StateObject private var portMonitor = PortMonitor()
     @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     private let updaterController: SPUStandardUpdaterController
 
@@ -161,6 +162,7 @@ struct ClearwayApp: App {
                 .environmentObject(projectList)
                 .environmentObject(caffeine)
                 .environmentObject(savedCommandManager)
+                .environmentObject(portMonitor)
                 .task { await savedCommandManager.load() }
                 .clearwayChrome(settings)
         }
