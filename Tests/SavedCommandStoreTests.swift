@@ -138,6 +138,11 @@ final class SavedCommandStoreTests: TempRootTestCase {
         XCTAssertEqual(loadedB, [], "Project B must not see project A's commands")
         let loadedA = await storeA.load()
         XCTAssertEqual(loadedA, [terminalCommand], "Project A still loads its own list")
+
+        try await storeB.save([agentCommand])
+
+        let reloadedA = await storeA.load()
+        XCTAssertEqual(reloadedA, [terminalCommand], "A save through B must not reach project A")
     }
 
     func testSaveOverwritesThePreviousList() async throws {

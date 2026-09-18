@@ -141,7 +141,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(persisted, [third, first, second])
     }
 
-    /// Offsets arrive against the visible subset, so applying them to the global array would
+    /// Offsets arrive against the visible subset, so applying them to the full array would
     /// reorder commands the user cannot see — and persist it.
     func testMoveUnderAnActiveFilterIsRefused() async {
         let agent = makeCommand(name: "Review", kind: .agent, text: "Review the diff.")
@@ -152,7 +152,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
         manager.add(secondTerminal)
 
         // Dragging the second visible row above the first under the `.terminal` filter: offsets
-        // 1 → 0 would swap `agent` and `firstTerminal` in the global array.
+        // 1 → 0 would swap `agent` and `firstTerminal` in the full array.
         manager.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, filter: .terminal)
 
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
