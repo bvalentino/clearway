@@ -204,8 +204,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     the project root rather than the selected worktree — a `commands.json` checked out differently on
     a branch must not change what the Run dropdown shows. Array order **is** display order — nothing
     sorts it, and a reorder rewrites the file. There is deliberately no watcher: `SavedCommandManager`
-    is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and the app is the only
-    writer, so an edit made in a text editor or by `git pull` is picked up when the window reopens.
+    is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
+    an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
+    reopens.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached

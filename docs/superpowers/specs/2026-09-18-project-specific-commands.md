@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-18
 **Base:** 7ae81c1fca4c52beaf290a2035746c975ff95c69
+**PR:** #225
 
 Saved commands (PR #216) are one global list at `~/.clearway/commands.json`, held by a process-wide
 `SavedCommandManager` injected into every project window. A command like "Build & run" only makes
@@ -146,9 +147,10 @@ untracked files block sign-off.
   three paths hang off `<projectPath>/.clearway/`. No default value: every caller names a project.
   Load, save, temp-file and move-aside logic unchanged. Doc comment restated for the per-project
   file.
-- `Sources/App/SavedCommandManager.swift` — `init(projectPath:)` building its own store, keeping the
-  `init(store:)` seam for tests. Doc comments on the type and on `load()` restated: one manager per
-  project window, `hasLoaded` justified by Decision 8 rather than by process-wide sharing.
+- `Sources/App/SavedCommandManager.swift` — `init(projectPath:)` building its own store, as the only
+  initializer: the `init(store:)` test seam is removed, since a test builds its own store on the
+  same project path. Doc comments on the type and on `load()` restated: one manager per project
+  window, `hasLoaded` justified by Decision 8 rather than by process-wide sharing.
 - `Sources/App/ProjectWindow.swift` — `ProjectContentView` gains
   `@StateObject private var savedCommandManager`, built in `init` from `projectPath` alongside the
   other per-project managers, injected with `.environmentObject` and loaded with

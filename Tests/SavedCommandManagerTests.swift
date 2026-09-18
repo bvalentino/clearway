@@ -12,7 +12,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
     override func setUp() async throws {
         try await super.setUp()
         store = SavedCommandStore(projectPath: tempRoot)
-        manager = SavedCommandManager(store: store)
+        manager = SavedCommandManager(projectPath: tempRoot)
     }
 
     override func tearDown() async throws {
@@ -59,8 +59,8 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [])
     }
 
-    /// `.task` re-runs when its view disappears and reappears; only the first read happens, so a
-    /// re-run landing while a save is still in flight cannot revert the live list.
+    /// Only the first read happens, so a later one landing while a save is still in flight cannot
+    /// revert the live list.
     func testASecondLoadDoesNotRereadTheFile() async throws {
         let existing = makeCommand(name: "Dev")
         try await store.save([existing])

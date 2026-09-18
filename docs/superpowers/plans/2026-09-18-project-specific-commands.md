@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-18
 **Base:** 7ae81c1fca4c52beaf290a2035746c975ff95c69
+**PR:** #225
 
 Breaks down `docs/superpowers/specs/2026-09-18-project-specific-commands.md`. Every design decision
 below is carried from that spec; this document only orders the work and says how each piece is
@@ -345,3 +346,12 @@ The plan listed two source files; `SavedCommandManager.swift` is a third, becaus
 `./scripts/ci.sh` — passed after the last edit. `Executed 458 tests, with 0 failures (0 unexpected)`,
 `Test Succeeded`, `==> CI passed.` `git status --porcelain` showed only the four modified files this
 commit carries; no untracked or ignored files.
+
+### Simplify
+
+Collapsed `SavedCommandManager` to the single `init(projectPath:)` the sibling project-scoped
+managers use — the `init(store:)` seam T2 kept is unnecessary once the store takes a path, and
+`SavedCommandManagerTests` builds its own store on the same `tempRoot` for seeding and read-back.
+Trimmed the `hasLoaded` and no-watcher comments in `SavedCommandManager.swift`, the reworded test
+doc and the CLAUDE.md bullet: they asserted a `.task` re-run hazard nothing establishes, and claimed
+"the app is the only writer" in the same sentence that names `git pull` as another one.
