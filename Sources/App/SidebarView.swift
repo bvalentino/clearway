@@ -25,6 +25,7 @@ struct SidebarView: View {
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
+    @State private var worktreeToRename: Worktree?
     @State private var createWorktreeTargetGroupId: UUID?
     @State private var groupToRename: WorktreeGroup?
     @State private var groupToDelete: WorktreeGroup?
@@ -136,6 +137,12 @@ struct SidebarView: View {
             }
         } message: {
             Text("There are processes still running in this worktree's terminals.")
+        }
+        .sheet(item: $worktreeToRename) { wt in
+            RenameWorktreeSheet(currentName: groupManager.name(for: wt) ?? "") { newName in
+                groupManager.setName(newName, for: wt)
+                worktreeToRename = nil
+            }
         }
         .sheet(item: $groupToRename) { group in
             RenameGroupSheet(group: group) { newName in
@@ -416,6 +423,10 @@ struct SidebarView: View {
         Divider()
 
         if !wt.isMain {
+            Button("Rename…") {
+                worktreeToRename = wt
+            }
+
             Menu("Status") {
                 Picker("Status", selection: Binding(
                     get: { groupManager.status(for: wt) },

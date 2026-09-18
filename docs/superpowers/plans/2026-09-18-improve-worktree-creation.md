@@ -1135,3 +1135,42 @@ starting, as the plan's first note requires.
 `SidebarSheets.swift`, which is 183 lines against the 700-line warning.
 `ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
 showed one modified source file and the modified plan, nothing untracked.
+
+### T8: "Rename…" in the worktree context menu
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | New `RenameWorktreeSheet`, shaped like `RenameGroupSheet` — `init(currentName:onSave:)`, `TextField("Name", …)`, Cancel on `.cancelAction`, Save on `.defaultAction` — but with **no** `.disabled` on Save. 183 → 221 lines. |
+| `Sources/App/SidebarView.swift` | `@State private var worktreeToRename: Worktree?`, a `.sheet(item:)` beside the group-rename one presenting it with `groupManager.name(for: wt) ?? ""` and calling `groupManager.setName(newName, for: wt)`, and a `Button("Rename…")` at the top of the existing `if !wt.isMain` block in `worktreeContextMenu`, above the Status menu. 658 → 669 lines. |
+
+**Evidence**
+
+No watched red is available, and the plan says so: both halves of this task are SwiftUI view state,
+and the behaviour behind them is already pinned. `setName` clearing the key on an empty string and
+`setName` refusing the main worktree are `WorktreeGroupManagerNameTests` (T4, 7 cases over a real
+repository), watched red there against a manager that had no `setName` at all. This task is the two
+view surfaces that call it; acceptance criteria 1–5 are the hands-on checks the plan assigns, and
+the regression check is the whole suite staying green.
+
+`Worktree` is already `Identifiable` (`Worktree.swift:18`, `id` is `path ?? branch ?? ""`), so
+`.sheet(item:)` needed no wrapper type.
+
+**Deviations from the plan**
+
+- *The sheet carries one comment.* `RenameGroupSheet` and `NewGroupSheet` both disable Save on an
+  empty field, and this one deliberately does not, so a one-line comment records why rather than
+  leaving the next reader to "align" it with its two neighbours and silently remove the only way to
+  clear a name.
+- *`RenameWorktreeSheet` does not hold the `Worktree`.* `RenameGroupSheet` keeps its `group`
+  property, but the worktree is only needed by the `onSave` closure the call site already captures,
+  so the sheet takes `currentName` and nothing else — the shape the plan's `init` line describes.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 505 tests, with 0 failures (0 unexpected) in 85.023 seconds`,
+`==> CI passed.` Run after the last edit. `swiftlint lint --quiet` prints nothing for either touched
+file; `SidebarView.swift` is 669 lines, under the 700-line warning.
+`ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
+showed two modified source files and the modified plan, nothing untracked.

@@ -109,6 +109,44 @@ struct CreateWorktreeSheet: View {
     }
 }
 
+// MARK: - Rename Worktree Sheet
+
+struct RenameWorktreeSheet: View {
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+
+    init(currentName: String, onSave: @escaping (String) -> Void) {
+        self.onSave = onSave
+        _name = State(initialValue: currentName)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Rename Worktree")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                // Unlike RenameGroupSheet, an empty field saves: it is how a name is cleared.
+                Button("Save") {
+                    onSave(name)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 320)
+    }
+}
+
 // MARK: - Rename Group Sheet
 
 struct RenameGroupSheet: View {
