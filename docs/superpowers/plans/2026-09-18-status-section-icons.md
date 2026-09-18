@@ -365,3 +365,55 @@ failures** in 58.1 s. `xcodegen generate` and `swiftlint lint --quiet` pass. One
 
 `git status --porcelain` before the commit listed only the three sources above, the spec and this
 plan. No `default.profraw` — the app was not launched here.
+
+### 2026-09-18 — Operator change from the hands-on check: put the status headers on the row grid
+
+Requested by the operator after trying the repainted headers by hand: in Group by → Status the
+section headers' icon and title rendered a few points left of the worktree rows' beneath them and of
+the Tasks / Prompts / Commands rows above. Recorded here so no later stage reverts it as
+unintentional. Spec decision 16 carries the ruling.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | New `SidebarRowMetrics` — `iconWidth` 18 and `headerLeadingInset` 4 — sits above `WorktreeRow`, beside the already-shared `ShortcutBadge`. `WorktreeRow`'s `icon:` closure wraps its two branches (the `⌘N` badge and the worktree symbol) in a `Group` carrying `.frame(width: SidebarRowMetrics.iconWidth)`. `StatusBadge`, `PrimaryBadge`, `rowBadge` and the row's title column are untouched. |
+| `Sources/App/SidebarView.swift` | `destinationRow`'s `icon:` closure gets the same `Group` + `.frame(width:)` treatment, so Tasks / Prompts / Commands and the worktree rows share one icon column whichever of the four glyphs or the `⌃N` badge is showing. `statusSection`'s header icon takes the same frame, and the `Label` takes `.padding(.leading, SidebarRowMetrics.headerLeadingInset)` **before** its existing `.frame(maxWidth: .infinity, alignment: .leading)`. |
+
+Two causes, two numbers. The leading inset: a `Section` header is inset less than a list row, which
+is what shifted the whole header — icon and title together — to the left. The icon column: a header
+`Label` sizes its icon slot to the glyph, and the five status circles are narrower than
+`square.on.square.intersection.dashed`, so even once the header started at the row's leading edge
+its title would still have sat left of the rows' titles. One shared constant per cause, read by all
+three sites, is what makes them agree by construction rather than by three matching literals.
+
+The padding precedes the `.frame(maxWidth: .infinity)`, so the frame still expands the padded label
+to the full width and the conditional `.background` and the `.dropDestination`/`isTargeted` pair
+below it are unchanged: the drop target and its targeting highlight still cover the whole header.
+
+No extra top spacing was added. The operator asked for it "only if needed"; the section's own header
+spacing is untouched by a horizontal change, so the header reads as the divider it already did.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3 and the palette change. Nothing T1–T3 shipped changes
+behaviour here — the picker rows and `StatusBadge` were deliberately left alone.
+
+**Evidence**
+
+No test. Both numbers are SwiftUI view geometry inside a rendered `SidebarView`, reachable only with
+a live `WorktreeGroupManager` and `TerminalManager`; there is no failure to watch, so none is quoted
+rather than a test written after the fact. `18` and `4` are the operator's hand check to confirm:
+they are named constants in one place precisely so a nudge is a one-line edit, not a hunt through
+three call sites.
+
+**The gate**
+
+`./scripts/ci.sh` after the last source edit: `Test Succeeded` / `==> CI passed.`, **459 tests, 0
+failures** in 59.9 s, then a second confirming run with the exit status captured — `EXIT:0`, 459
+tests, 0 failures in 59.0 s. `xcodegen generate` and `swiftlint lint --quiet` pass in both.
+`ShellPathResolverTests` was green both times, matching the unloaded-machine timings of T2's and
+T3's green runs.
+
+`git status --porcelain` before the commit listed only the two sources above, the spec and this
+plan. No `default.profraw` — the app was not launched here; the operator owns the visual check.

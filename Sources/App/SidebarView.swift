@@ -198,11 +198,14 @@ struct SidebarView: View {
         Label {
             Text(title)
         } icon: {
-            if ctrlHeld {
-                ShortcutBadge(text: shortcutHint)
-            } else {
-                Image(systemName: systemImage)
+            Group {
+                if ctrlHeld {
+                    ShortcutBadge(text: shortcutHint)
+                } else {
+                    Image(systemName: systemImage)
+                }
             }
+            .frame(width: SidebarRowMetrics.iconWidth)
         }
     }
 
@@ -382,7 +385,9 @@ struct SidebarView: View {
                 } icon: {
                     Image(systemName: status.symbol)
                         .foregroundStyle(status.color)
+                        .frame(width: SidebarRowMetrics.iconWidth)
                 }
+                .padding(.leading, SidebarRowMetrics.headerLeadingInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
                 .dropDestination(for: String.self) { ids, _ in

@@ -1,5 +1,15 @@
 import SwiftUI
 
+// MARK: - Sidebar Row Metrics
+
+/// The sidebar's icon grid: rows and status section headers size their icon slot to
+/// `iconWidth`, and a header — which the list insets less than a row — makes up the
+/// difference with `headerLeadingInset`, so both sit on the same grid.
+enum SidebarRowMetrics {
+    static let iconWidth: CGFloat = 18
+    static let headerLeadingInset: CGFloat = 4
+}
+
 // MARK: - Worktree Row
 
 struct WorktreeRow: View {
@@ -56,11 +66,14 @@ struct WorktreeRow: View {
                 .animation(.easeOut(duration: 0.6), value: isWorking)
             }
         } icon: {
-            if let index = shortcutIndex {
-                ShortcutBadge(text: "⌘\(index)")
-            } else {
-                Image(systemName: "square.on.square.intersection.dashed")
+            Group {
+                if let index = shortcutIndex {
+                    ShortcutBadge(text: "⌘\(index)")
+                } else {
+                    Image(systemName: "square.on.square.intersection.dashed")
+                }
             }
+            .frame(width: SidebarRowMetrics.iconWidth)
         }
     }
 }
