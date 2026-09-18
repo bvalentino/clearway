@@ -94,9 +94,12 @@ private struct StatusBadge: View {
     let status: WorktreeStatus
 
     var body: some View {
-        Text(status.displayName.lowercased())
-            .foregroundStyle(status.color)
-            .rowBadge(status.color.opacity(0.15))
+        HStack(spacing: 3) {
+            Image(systemName: status.symbol)
+            Text(status.displayName.lowercased())
+        }
+        .foregroundStyle(status.color)
+        .rowBadge(status.color.opacity(0.15))
     }
 }
 

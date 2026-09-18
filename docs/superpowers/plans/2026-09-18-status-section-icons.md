@@ -287,3 +287,43 @@ every time. This change edits two SwiftUI view builders and cannot reach `ShellP
 
 `git status --porcelain` before the commit listed only `Sources/App/SidebarView.swift` and this plan.
 No `default.profraw`: the hand-verification pass is the operator's, so the app was not launched here.
+
+### T3: Put the symbol inside the status badge
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `StatusBadge`'s body is now an `HStack(spacing: 3)` of `Image(systemName: status.symbol)` and the same `Text(status.displayName.lowercased())`. `.foregroundStyle(status.color)` and `.rowBadge(status.color.opacity(0.15))` moved onto the `HStack`, so both parts are tinted inside the unchanged capsule. No `imageScale` and no explicit font: `rowBadge` applies `.font(.caption2)` to the whole subtree before padding, background and `fixedSize()`. `PrimaryBadge`, `ShortcutBadge`, `rowBadge` and the rest of `WorktreeRow` are untouched. |
+
+**Evidence**
+
+T3 adds no test, for the same reason T2 did not. The plan assigns it none, and the spec's
+`### Test coverage this requires` puts acceptance criteria 3, 4 and 5 under "confirmed by hand in
+the running app": all three are SwiftUI view state — the capsule's layout, `fixedSize()`'s
+no-truncation guarantee, the `.status`-mode badge suppression at `SidebarView.swift:504` and the
+main worktree's `PrimaryBadge` branch — reachable only through a rendered `WorktreeRow` inside a
+`SidebarView` with a live `WorktreeGroupManager` and `TerminalManager`. `StatusBadge` is `private`,
+so it is not reachable from the test target at all. There is no failure to watch, so none is quoted
+here rather than a test written after the fact and never run against the bug. The symbol vocabulary
+this site reads is pinned by T1's `testSymbols` and `testSymbolsResolve`, which is what makes a
+blank icon slot in the badge a test failure rather than a visual one.
+
+**Deviations from the plan**
+
+None.
+
+**The gate**
+
+`./scripts/ci.sh` after the last edit: `Test Succeeded` / `==> CI passed.`, exit 0, **459 tests, 0
+failures**. `xcodegen generate` and `swiftlint lint --quiet` pass (the script runs under
+`set -euo pipefail`, so `==> CI passed.` prints only when every step did).
+
+One run was enough. `ShellPathResolverTests` passed this time, and the elapsed time is the
+confirmation of T2's flake diagnosis rather than a new data point: 59.1 s of test time, within a
+second of T2's green run at 58.8 s and 13× below the 768 s of its red one. The machine was not
+under the competing load that produced the earlier `.degraded`-where-`.full` failures.
+
+`git status --porcelain` before the commit listed only `Sources/App/WorktreeRow.swift` and this
+plan. No `default.profraw`: the hand-verification pass is the operator's, so the app was not
+launched here.
