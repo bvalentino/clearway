@@ -1174,3 +1174,56 @@ the regression check is the whole suite staying green.
 file; `SidebarView.swift` is 669 lines, under the 700-line warning.
 `ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
 showed two modified source files and the modified plan, nothing untracked.
+
+## Changelog
+
+Operator-reported fixes made after a hands-on check, outside the task list. A later step must not
+revert these as unintentional.
+
+### Advanced disclosure in the New Worktree sheet did not toggle on a click
+
+Reported after T7/T8 (`fd89e87`): clicking "Advanced" in `CreateWorktreeSheet` usually did nothing;
+it took several clicks and was not consistently reproducible.
+
+**Cause, measured.** `DisclosureGroup("Advanced", isExpanded:)` in a plain `VStack` makes only the
+disclosure triangle clickable — not its label, and not the rest of the row. Neither `osascript` nor
+`screencapture` has the TCC grants to drive the running app in this environment, so the hit area was
+measured instead by a probe app (scratchpad, not the repo) that hosts the sheet's exact layout and
+sends real `NSEvent` mouse clicks into its own window, scanning x and y across the row and reading
+the binding after each click:
+
+```
+== A(current): row in window coords = (20.0, 60.0, 280.0, 24.0), contentH=256.0
+A(current): x hits at y=72: 21...21 (1 samples) row x 20...300
+A(current): y hits at x=21: 68...74 row y 60...84
+```
+
+One of 94 x samples across a 280pt row toggles it, over 8pt of a 24pt row height: a ~4x8pt target at
+the row's left edge. That is the whole report — aim anywhere else on the row, including the word
+"Advanced", and nothing happens.
+
+Two candidate fixes were measured the same way:
+
+```
+== B(custom-label): DisclosureGroup + .contentShape(Rectangle()).onTapGesture on the label
+B(custom-label): x hits at y=72: 21...294 (89 samples) — gaps: 21->33
+== C(button-row): plain Button row, rotated chevron, content gated on the flag
+C(button-row): x hits at y=68: 21...297 (93 samples) — gaps: none
+C(button-row): y hits at x=21: 62...76 row y 60...76
+```
+
+Keeping `DisclosureGroup` and making its label tappable leaves a ~10pt dead strip between the
+triangle and the label, because the spacing between them belongs to the style and no modifier
+reaches it. So the row is built by hand: a `.plain` `Button` whose label is the chevron plus the
+text with a trailing `Spacer` and `.contentShape(Rectangle())`, and the advanced fields gated on
+`showingAdvanced`. Every point of the row's full width and full height toggles it, with no gaps.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet`'s `DisclosureGroup` replaced by a full-width button row plus conditional content |
+
+The sheet still carries only `.frame(width: 320)`, so it auto-sizes to the expanded content exactly
+as before. No test covers this: the finding is a hit-test geometry fact about SwiftUI's layout, not
+a decision rule, and nothing in `CreateWorktreeSheet` is reachable from XCTest.

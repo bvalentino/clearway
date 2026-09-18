@@ -47,7 +47,24 @@ struct CreateWorktreeSheet: View {
             }
             .disabled(isCreating)
 
-            DisclosureGroup("Advanced", isExpanded: $showingAdvanced) {
+            // A `DisclosureGroup` in a plain VStack only toggles on the triangle itself —
+            // measured at roughly 4x8pt of a 280pt row — so the row is built by hand to
+            // make the whole width a single-click target.
+            Button {
+                showingAdvanced.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(showingAdvanced ? 90 : 0))
+                    Text("Advanced")
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if showingAdvanced {
                 VStack(alignment: .leading, spacing: 16) {
                     TextField("Base branch (new branches only)", text: $baseBranch)
                         .textFieldStyle(.roundedBorder)
@@ -58,7 +75,6 @@ struct CreateWorktreeSheet: View {
                         .disabled(isCreating)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
             }
 
             HStack {
