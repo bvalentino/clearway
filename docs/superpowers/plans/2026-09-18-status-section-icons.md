@@ -327,3 +327,41 @@ under the competing load that produced the earlier `.degraded`-where-`.full` fai
 `git status --porcelain` before the commit listed only `Sources/App/WorktreeRow.swift` and this
 plan. No `default.profraw`: the hand-verification pass is the operator's, so the app was not
 launched here.
+
+## Changelog
+
+### 2026-09-18 — Operator change from the hands-on check: header colour and palette
+
+Requested by the operator after trying T1–T3 by hand. Recorded here so no later stage reverts it as
+unintentional. Spec decisions 14 and 15 carry the same two rulings.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeStatus.swift` | `color` repainted: todo gray (unchanged), inProgress `.yellow`, inReview `.green`, done `.indigo`, onHold `.gray`. |
+| `Sources/App/SidebarView.swift` | `statusSection`'s header title gets `.foregroundStyle(.primary)`, matching `destinationRow`'s Tasks / Prompts / Commands labels. The icon keeps `status.color`. |
+| `Tests/WorktreeStatusTests.swift` | `testColorsAreSystemColors` repinned to `[.gray, .yellow, .green, .indigo, .gray]`. |
+
+Two call sites consume `color` and both follow without change: the section header icon and
+`StatusBadge` (`WorktreeRow.swift:101-102`, tint plus a 0.15-opacity capsule). Todo and On hold now
+render identically in the badge; they are told apart by the symbol and the name, which is the
+distinction the badge already leans on elsewhere.
+
+`destinationRow` sets no font or weight of its own — it is a plain `Label` in a `List` row — so
+colour is the whole of the difference, and `.foregroundStyle(.primary)` on the title is the whole of
+the change. Applying it to the `Label` rather than the `Text` would have overridden the icon's tint.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3. No deviation from T1–T3's shipped behaviour beyond the
+two rulings above.
+
+**The gate**
+
+`./scripts/ci.sh` after the last edit: `Test Succeeded` / `==> CI passed.`, exit 0, **459 tests, 0
+failures** in 58.1 s. `xcodegen generate` and `swiftlint lint --quiet` pass. One run was enough;
+`ShellPathResolverTests` was green, matching T1–T3's unloaded-machine timings.
+
+`git status --porcelain` before the commit listed only the three sources above, the spec and this
+plan. No `default.profraw` — the app was not launched here.

@@ -29,10 +29,10 @@ enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
     var color: Color {
         switch self {
         case .todo: return .gray
-        case .inProgress: return .blue
-        case .inReview: return .purple
-        case .done: return .green
-        case .onHold: return .orange
+        case .inProgress: return .yellow
+        case .inReview: return .green
+        case .done: return .indigo
+        case .onHold: return .gray
         }
     }
 

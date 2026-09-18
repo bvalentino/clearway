@@ -33,7 +33,7 @@ final class WorktreeStatusTests: XCTestCase {
 
     func testColorsAreSystemColors() {
         XCTAssertEqual(WorktreeStatus.allCases.map(\.color),
-                       [.gray, .blue, .purple, .green, .orange])
+                       [.gray, .yellow, .green, .indigo, .gray])
     }
 
     func testSymbols() {

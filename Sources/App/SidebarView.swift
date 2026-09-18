@@ -378,6 +378,7 @@ struct SidebarView: View {
             } header: {
                 Label {
                     Text(status.displayName)
+                        .foregroundStyle(.primary)
                 } icon: {
                     Image(systemName: status.symbol)
                         .foregroundStyle(status.color)
