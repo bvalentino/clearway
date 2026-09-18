@@ -376,7 +376,13 @@ struct SidebarView: View {
         if !(isSearching && rows.isEmpty) {
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
+                    worktreeRowView(
+                        for: wt,
+                        titles: titles,
+                        shortcuts: shortcuts,
+                        moveDisabled: true,
+                        leadingIndent: SidebarRowMetrics.statusRowIndent
+                    )
                 }
             } header: {
                 Label {
@@ -501,7 +507,8 @@ struct SidebarView: View {
         for wt: Worktree,
         titles: [String: String],
         shortcuts: [String: Int],
-        moveDisabled: Bool
+        moveDisabled: Bool,
+        leadingIndent: CGFloat = 0
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
@@ -520,6 +527,7 @@ struct SidebarView: View {
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
+            .padding(.leading, leadingIndent)
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }

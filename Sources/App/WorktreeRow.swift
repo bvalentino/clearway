@@ -4,10 +4,13 @@ import SwiftUI
 
 /// The sidebar's icon grid: rows and status section headers size their icon slot to
 /// `iconWidth`, and a header — which the list insets less than a row — makes up the
-/// difference with `headerLeadingInset`, so both sit on the same grid.
+/// difference with `headerLeadingInset`, so both sit on the same grid. Inside a status
+/// section the rows step off that grid by `statusRowIndent`, so the header reads as
+/// their parent rather than as their sibling.
 enum SidebarRowMetrics {
     static let iconWidth: CGFloat = 18
     static let headerLeadingInset: CGFloat = 4
+    static let statusRowIndent: CGFloat = 8
 }
 
 // MARK: - Worktree Row

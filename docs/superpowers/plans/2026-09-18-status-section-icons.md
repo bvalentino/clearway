@@ -417,3 +417,49 @@ T3's green runs.
 
 `git status --porcelain` before the commit listed only the two sources above, the spec and this
 plan. No `default.profraw` — the app was not launched here; the operator owns the visual check.
+
+### 2026-09-18 — Operator change from the hands-on check: indent the rows inside a status section
+
+Requested by the operator after trying the row-grid alignment by hand: "It looks better but I think
+the worktrees within a status should be a tiny bit indented." After 45416d1 the header's icon and
+title and the rows beneath it share one leading edge, so the rows read as the header's siblings.
+Recorded here so no later stage reverts it as unintentional. Spec decision 17 carries the ruling.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `SidebarRowMetrics` gains `statusRowIndent` (8), beside `iconWidth` and `headerLeadingInset`; the type's comment names what it is for. Nothing else in the file changes. |
+| `Sources/App/SidebarView.swift` | `worktreeRowView` gains `leadingIndent: CGFloat = 0`, applied as `.padding(.leading, leadingIndent)` on the `WorktreeRow` **before** `.tag`, so every interaction modifier below it — `.tag`, `.opacity`, `.contextMenu`, `.draggableIf`, `.moveDisabled` — wraps the padded content. `statusSection` is the one call site that passes it, as `SidebarRowMetrics.statusRowIndent`. |
+
+The indent is on the row's content, not its `listRowInsets`: the list row keeps its own width, so the
+selection highlight, the hover highlight and the row's hit area still span the full sidebar and only
+the label moves. Changing the insets would have pulled the highlight in with it.
+
+`worktreeRowView` is shared by all three groupings, so the parameter is what scopes the indent:
+`worktreesSection` (the ungrouped rows in every mode, including the status mode's "no status" rows)
+and `groupSection` call it without one and default to 0, leaving the group and none groupings
+pixel-identical. `WorktreeRow` itself is untouched, so the ⌘N shortcut badge, the status badge and
+the drag chip are unchanged.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3, the palette change and the row-grid alignment.
+
+**Evidence**
+
+No test. The indent is SwiftUI view geometry inside a rendered `SidebarView`, reachable only with a
+live `WorktreeGroupManager` and `TerminalManager`; there is no failure to watch, so none is quoted
+rather than a test written after the fact. `8` is the operator's hand check to confirm, and it is a
+named constant in one place so a nudge is a one-line edit.
+
+**The gate**
+
+`./scripts/ci.sh` after the last source edit: `Test Succeeded` / `==> CI passed.`, `EXIT:0`, **459
+tests, 0 failures** in 58.5 s, then a second confirming run after this log was written — `EXIT:0`,
+459 tests, 0 failures. `xcodegen generate` and `swiftlint lint --quiet` pass in both.
+`ShellPathResolverTests` was green both times, matching the unloaded-machine timings of the earlier
+green runs.
+
+`git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
+No `default.profraw` — the app was not launched here; the operator owns the visual check.
