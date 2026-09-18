@@ -98,6 +98,7 @@
 		9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */; };
 		9C5DCA7C8D021A775B94678A /* ShellPathValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB28BB9D069A601AE8E718 /* ShellPathValidationTests.swift */; };
 		9D63570CEEBD24A6E23A637D /* OpenInAppsSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1619E5B757A9C885392E313 /* OpenInAppsSettingsTests.swift */; };
+		9E3AA295A79E40C65420829D /* WorktreeRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */; };
 		9ECA5CFF97E74134CB98DF00 /* SavedCommandManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817FE51E6717FE77D1D2492E /* SavedCommandManager.swift */; };
 		9ECE1393362BF02D6F8CBB10 /* WorktreeConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887483E216E5DE343FBD8B6B /* WorktreeConfigStoreTests.swift */; };
 		9F0679943B3F29280ECD5474 /* OpenInAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8085B8AFE47063DF39964C /* OpenInAppLauncher.swift */; };
@@ -185,6 +186,7 @@
 		2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarHeaderControls.swift; sourceTree = "<group>"; };
 		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
 		3433F4B6B71E828C4ED9D94C /* PortScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortScannerTests.swift; sourceTree = "<group>"; };
+		3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
 		391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRow.swift; sourceTree = "<group>"; };
 		3D0E30A2C721296DD9587040 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
@@ -376,6 +378,7 @@
 				B835A714483253365FD9A156 /* WorktreeGroupStoreTests.swift */,
 				83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */,
 				6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */,
+				3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */,
 				BBD5D4159FBAAA8E9DF65BC4 /* WorktreeStatusTests.swift */,
 				BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */,
 			);
@@ -911,6 +914,7 @@
 				341BA0217D7DFD0145AEA798 /* WorktreeGroupStoreTests.swift in Sources */,
 				A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */,
 				8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */,
+				9E3AA295A79E40C65420829D /* WorktreeRowTests.swift in Sources */,
 				4ABDB458DFD7D216E9B0E56A /* WorktreeStatusTests.swift in Sources */,
 				2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */,
 			);

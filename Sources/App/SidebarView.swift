@@ -481,18 +481,6 @@ struct SidebarView: View {
         )
     }
 
-    /// Computes the (primaryText, subtitle) pair for a worktree row.
-    /// For the main worktree the stable branch name is the primary label.
-    /// For non-main worktrees a linked task title (if any) is primary, with the branch as subtitle.
-    private func rowTexts(
-        for wt: Worktree,
-        titles: [String: String]
-    ) -> (primaryText: String?, subtitle: String?) {
-        let primaryText = wt.branch.flatMap { titles[$0] }
-        let subtitle: String? = primaryText == nil ? nil : wt.displayName
-        return (primaryText, subtitle)
-    }
-
     @ViewBuilder
     private func worktreeRowView(
         for wt: Worktree,
@@ -505,9 +493,10 @@ struct SidebarView: View {
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
         let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
         let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
-        let (primaryText, subtitle) = rowTexts(
+        let (primaryText, subtitle) = WorktreeRow.rowTexts(
             for: wt,
-            titles: titles
+            name: groupManager.name(for: wt),
+            taskTitle: wt.branch.flatMap { titles[$0] }
         )
         WorktreeRow(
             worktree: wt,

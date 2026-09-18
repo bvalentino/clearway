@@ -12,6 +12,22 @@ struct WorktreeRow: View {
     var status: WorktreeStatus? = nil
     @State private var glowExpanded = false
 
+    /// The row's text precedence: a stored name wins, the linked task title fills the slot when
+    /// there is none, and the branch is the subtitle behind whichever won. With neither, both are
+    /// `nil` and the body falls back to `worktree.displayName` alone. Main carries no name because
+    /// `WorktreeGroupManager.name(for:)` refuses it, not because of a branch here.
+    static func rowTexts(
+        for wt: Worktree,
+        name: String?,
+        taskTitle: String?
+    ) -> (primaryText: String?, subtitle: String?) {
+        let storedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let primaryText = storedName.flatMap({ $0.isEmpty ? nil : $0 }) ?? taskTitle else {
+            return (nil, nil)
+        }
+        return (primaryText, wt.displayName)
+    }
+
     var body: some View {
         Label {
             HStack(spacing: 4) {
