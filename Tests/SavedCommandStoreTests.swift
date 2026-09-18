@@ -10,7 +10,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        store = SavedCommandStore(directory: tempRoot)
+        store = SavedCommandStore(projectPath: tempRoot)
     }
 
     override func tearDown() async throws {
@@ -18,16 +18,20 @@ final class SavedCommandStoreTests: TempRootTestCase {
         try await super.tearDown()
     }
 
+    private var clearwayDir: String {
+        (tempRoot as NSString).appendingPathComponent(".clearway")
+    }
+
     private var commandsFile: String {
-        (tempRoot as NSString).appendingPathComponent("commands.json")
+        (clearwayDir as NSString).appendingPathComponent("commands.json")
     }
 
     private var corruptFile: String {
-        (tempRoot as NSString).appendingPathComponent("commands.json.corrupt")
+        (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
     }
 
     private func writeCommandsFile(_ contents: String) throws {
-        try FileManager.default.createDirectory(atPath: tempRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: commandsFile, contents: Data(contents.utf8))
     }
 
@@ -95,7 +99,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
     func testSaveCreatesDirectoryAndFileWithRestrictivePermissions() async throws {
         XCTAssertFalse(
-            FileManager.default.fileExists(atPath: tempRoot),
+            FileManager.default.fileExists(atPath: clearwayDir),
             "The commands directory must not exist before the first save"
         )
 
@@ -103,7 +107,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
         let fm = FileManager.default
         XCTAssertTrue(fm.fileExists(atPath: commandsFile))
-        let dirMode = try fm.attributesOfItem(atPath: tempRoot)[.posixPermissions] as? NSNumber
+        let dirMode = try fm.attributesOfItem(atPath: clearwayDir)[.posixPermissions] as? NSNumber
         let fileMode = try fm.attributesOfItem(atPath: commandsFile)[.posixPermissions] as? NSNumber
         XCTAssertEqual(dirMode?.int16Value, 0o700)
         XCTAssertEqual(fileMode?.int16Value, 0o600)
@@ -114,10 +118,31 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
         XCTAssertFalse(
             FileManager.default.fileExists(
-                atPath: (tempRoot as NSString).appendingPathComponent("commands.json.tmp")
+                atPath: (clearwayDir as NSString).appendingPathComponent("commands.json.tmp")
             ),
             "commands.json.tmp should be renamed away by the atomic save"
         )
+    }
+
+    /// The reason the store takes a project path at all: one project's list is invisible to
+    /// another's, and nothing else in the suite pins that.
+    func testStoresOnDifferentProjectPathsDoNotSeeEachOther() async throws {
+        let projectA = (tempRoot as NSString).appendingPathComponent("a")
+        let projectB = (tempRoot as NSString).appendingPathComponent("b")
+        let storeA = SavedCommandStore(projectPath: projectA)
+        let storeB = SavedCommandStore(projectPath: projectB)
+
+        try await storeA.save([terminalCommand])
+
+        let loadedB = await storeB.load()
+        XCTAssertEqual(loadedB, [], "Project B must not see project A's commands")
+        let loadedA = await storeA.load()
+        XCTAssertEqual(loadedA, [terminalCommand], "Project A still loads its own list")
+
+        try await storeB.save([agentCommand])
+
+        let reloadedA = await storeA.load()
+        XCTAssertEqual(reloadedA, [terminalCommand], "A save through B must not reach project A")
     }
 
     func testSaveOverwritesThePreviousList() async throws {

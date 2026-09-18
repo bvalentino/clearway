@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Commands sidebar destination: the global, ordered list of saved commands, with the editor
+/// The Commands sidebar destination: the project's ordered list of saved commands, with the editor
 /// sheet reached by clicking a row, the toolbar `+`, or File > New Command.
 struct CommandsView: View {
     @EnvironmentObject private var savedCommandManager: SavedCommandManager

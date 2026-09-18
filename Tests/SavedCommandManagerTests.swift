@@ -11,8 +11,8 @@ final class SavedCommandManagerTests: TempRootTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        store = SavedCommandStore(directory: tempRoot)
-        manager = SavedCommandManager(store: store)
+        store = SavedCommandStore(projectPath: tempRoot)
+        manager = SavedCommandManager(projectPath: tempRoot)
     }
 
     override func tearDown() async throws {
@@ -59,8 +59,8 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [])
     }
 
-    /// Every project window asks the process-wide manager to load; only the first read happens, so a
-    /// window opened while another window's save is still in flight cannot revert the live list.
+    /// Only the first read happens, so a later one landing while a save is still in flight cannot
+    /// revert the live list.
     func testASecondLoadDoesNotRereadTheFile() async throws {
         let existing = makeCommand(name: "Dev")
         try await store.save([existing])
@@ -141,7 +141,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(persisted, [third, first, second])
     }
 
-    /// Offsets arrive against the visible subset, so applying them to the global array would
+    /// Offsets arrive against the visible subset, so applying them to the full array would
     /// reorder commands the user cannot see — and persist it.
     func testMoveUnderAnActiveFilterIsRefused() async {
         let agent = makeCommand(name: "Review", kind: .agent, text: "Review the diff.")
@@ -152,7 +152,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
         manager.add(secondTerminal)
 
         // Dragging the second visible row above the first under the `.terminal` filter: offsets
-        // 1 → 0 would swap `agent` and `firstTerminal` in the global array.
+        // 1 → 0 would swap `agent` and `firstTerminal` in the full array.
         manager.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, filter: .terminal)
 
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])

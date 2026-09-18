@@ -1,7 +1,8 @@
 import Foundation
 import os
 
-/// Reads and writes the global command list at `~/.clearway/commands.json`.
+/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`, beside
+/// that project's `groups.json`.
 ///
 /// The array is stored and returned in order — that order is the display order, so nothing here
 /// sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as empty
@@ -9,29 +10,31 @@ import os
 /// only copy of a list the user can still repair by hand.
 final class SavedCommandStore: Sendable {
 
-    private let directory: String
+    private let projectPath: String
 
     /// Serialises writes so two mutations in flight cannot interleave on the same file.
     private let writeQueue = DispatchQueue(label: "app.getclearway.mac.SavedCommandStore.write")
 
-    /// `directory` is a test seam, not a setting: the global path is the default and the only one
-    /// the app ever passes.
-    init(directory: String = "~/.clearway") {
-        self.directory = (directory as NSString).expandingTildeInPath
+    init(projectPath: String) {
+        self.projectPath = projectPath
     }
 
     // MARK: - Paths
 
+    private var clearwayDir: String {
+        (projectPath as NSString).appendingPathComponent(".clearway")
+    }
+
     private var commandsFile: String {
-        (directory as NSString).appendingPathComponent("commands.json")
+        (clearwayDir as NSString).appendingPathComponent("commands.json")
     }
 
     private var commandsTempFile: String {
-        (directory as NSString).appendingPathComponent("commands.json.tmp")
+        (clearwayDir as NSString).appendingPathComponent("commands.json.tmp")
     }
 
     private var commandsCorruptFile: String {
-        (directory as NSString).appendingPathComponent("commands.json.corrupt")
+        (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
     }
 
     // MARK: - Load
@@ -79,7 +82,7 @@ final class SavedCommandStore: Sendable {
 
     func save(_ commands: [SavedCommand]) async throws {
         let data = try JSONEncoder().encode(commands)
-        let dir = directory
+        let dir = clearwayDir
         let tmpPath = commandsTempFile
         let finalPath = commandsFile
 

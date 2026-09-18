@@ -1,10 +1,11 @@
 import Foundation
 import SwiftUI
 
-/// The process-wide ordered list of saved commands.
+/// One project's ordered list of saved commands, owned by that project's window.
 ///
-/// Every mutation rewrites the whole array through `SavedCommandStore`. There is no watcher: the
-/// app is the only writer and there is one manager per process.
+/// Every mutation rewrites the whole array through `SavedCommandStore`. The file is not watched, so
+/// an edit made outside the app — in a text editor, or by `git pull` — shows once the window is
+/// reopened.
 @MainActor
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
@@ -14,16 +15,15 @@ final class SavedCommandManager: ObservableObject {
     /// The save in flight, if any. Each new save awaits it before writing.
     private var pendingSave: Task<Void, Never>?
 
-    /// Set before the read starts, so a second window's `.task` cannot race the first one's.
     private var hasLoaded = false
 
-    init(store: SavedCommandStore = SavedCommandStore()) {
-        self.store = store
+    init(projectPath: String) {
+        self.store = SavedCommandStore(projectPath: projectPath)
     }
 
-    /// Reads the file once per process. Every project window asks, and only the first one reads:
-    /// a later read could land while a save from another window is still in flight and replace the
-    /// live list with the pre-save file. There is no reload path — the app is the only writer.
+    /// Reads the file once, and marks itself done before the read starts: a second read could land
+    /// while a save is still in flight and replace the live list with the pre-save file. There is
+    /// no reload path.
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
@@ -50,7 +50,8 @@ final class SavedCommandManager: ObservableObject {
     }
 
     /// Offsets are against the unfiltered array, so a move is refused outright while a filter is
-    /// on: one computed against a visible subset would rewrite the wrong global positions.
+    /// on: one computed against a visible subset would rewrite the wrong positions in the full
+    /// array.
     func move(fromOffsets source: IndexSet, toOffset destination: Int, filter: CommandFilter) {
         guard !filter.isActive else { return }
         commands.move(fromOffsets: source, toOffset: destination)

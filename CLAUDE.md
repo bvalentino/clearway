@@ -198,10 +198,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     The Enter placement a terminal command needs is `ShellSend.steps`, not a surface method —
     nothing on `Ghostty.SurfaceView` is reachable from XCTest, and staging rather than running the
     last line is the rule most worth pinning.
-  - `SavedCommandStore.swift` owns `~/.clearway/commands.json`, the one global list of saved
-    commands. Array order **is** display order — nothing sorts it, and a reorder rewrites the file.
-    There is deliberately no watcher: the app is the only writer and `SavedCommandManager` is
-    process-wide, so the case a watcher would cover cannot arise.
+  - `SavedCommandStore.swift` owns `<projectPath>/.clearway/commands.json`, one saved-command list
+    per project, shared by every worktree of that repo. The store takes the project path and owns the
+    `.clearway` component itself, the way `WorktreeGroupStore` does, and the list is always read from
+    the project root rather than the selected worktree — a `commands.json` checked out differently on
+    a branch must not change what the Run dropdown shows. Array order **is** display order — nothing
+    sorts it, and a reorder rewrites the file. There is deliberately no watcher: `SavedCommandManager`
+    is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
+    an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
+    reopens.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached

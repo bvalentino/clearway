@@ -27,7 +27,7 @@ enum CommandFilter: String, CaseIterable {
     case agent
 
     /// Drag reorder is refused while this is true: a move computed against a subset would rewrite
-    /// the wrong global positions.
+    /// the wrong positions in the full array.
     var isActive: Bool { self != .all }
 }
 

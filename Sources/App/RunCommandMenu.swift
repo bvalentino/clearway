@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The worktree toolbar's Run dropdown: every saved command, in saved order, run in the selected
-/// worktree's main terminal.
+/// The worktree toolbar's Run dropdown: the project's saved commands, in saved order, run in the
+/// selected worktree's main terminal.
 struct RunCommandMenu: View {
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @EnvironmentObject private var terminalManager: TerminalManager
