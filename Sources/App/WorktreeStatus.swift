@@ -35,6 +35,16 @@ enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
         case .onHold: return .orange
         }
     }
+
+    var symbol: String {
+        switch self {
+        case .todo: return "circle"
+        case .inProgress: return "circle.lefthalf.filled"
+        case .inReview: return "circle.inset.filled"
+        case .done: return "checkmark.circle.fill"
+        case .onHold: return "pause.circle"
+        }
+    }
 }
 
 /// How the sidebar sections its worktrees. Persisted beside the statuses under the same slug
