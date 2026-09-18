@@ -79,7 +79,7 @@ struct ProjectContentView: View {
     @StateObject private var workTaskCoordinator: WorkTaskCoordinator
     @StateObject private var claudeActivityMonitor = ClaudeActivityMonitor()
     @StateObject private var promptManager: PromptManager
-    @StateObject private var savedCommandManager = SavedCommandManager()
+    @StateObject private var savedCommandManager: SavedCommandManager
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -101,6 +101,7 @@ struct ProjectContentView: View {
             worktreeManager: wm
         ))
         _promptManager = StateObject(wrappedValue: PromptManager(directory: promptsDir))
+        _savedCommandManager = StateObject(wrappedValue: SavedCommandManager(projectPath: projectPath))
     }
 
     var body: some View {

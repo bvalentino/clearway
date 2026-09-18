@@ -245,3 +245,56 @@ None.
 `./scripts/ci.sh` — passed after the last edit. `Executed 457 tests, with 0 failures (0 unexpected)`,
 `Test Succeeded`, `==> CI passed.` `git status --porcelain` showed only the two modified sources and
 the untracked spec and plan, which this commit adds.
+
+### T2: Store and manager take a project path
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | `init(projectPath:)` replaces `init(directory: String = "~/.clearway")`; no default, no tilde expansion. A private `clearwayDir` joins `.clearway` onto `projectPath`, and `commandsFile`, `commandsTempFile` and `commandsCorruptFile` hang off it. `save()` captures `clearwayDir` as its `dir`, so the `0o700` creation now makes `<projectPath>/.clearway`. Load, save, temp-file, permission and move-aside logic untouched. Type doc comment restated for the per-project file; the "test seam" note on the initializer is gone. |
+| `Sources/App/SavedCommandManager.swift` | `init(projectPath:)` builds its own store; `init(store:)` stays as the test seam. Type doc comment restated as one project's list owned by that project's window, with the no-watcher reasoning; `load()`'s comment and the `hasLoaded` note now cite `.task` re-running when a view disappears and reappears. |
+| `Sources/App/ProjectWindow.swift` | `@StateObject private var savedCommandManager: SavedCommandManager`, built in `init` as `SavedCommandManager(projectPath: projectPath)` alongside the other per-project managers, replacing T1's property initializer. |
+| `Tests/SavedCommandStoreTests.swift` | `SavedCommandStore(projectPath: tempRoot)`; a `clearwayDir` helper carries the `.clearway` component for `commandsFile`, `corruptFile`, the inline `commands.json.tmp` path and `writeCommandsFile`. `testSaveCreatesDirectoryAndFileWithRestrictivePermissions` asserts absence-before and `0o700` on `<tempRoot>/.clearway`, not on `tempRoot`. New case `testStoresOnDifferentProjectPathsDoNotSeeEachOther`. |
+| `Tests/SavedCommandManagerTests.swift` | `SavedCommandStore(projectPath: tempRoot)`; `testASecondLoadDoesNotRereadTheFile` kept, its doc comment restated off "process-wide manager". |
+
+**Evidence**
+
+The new case was watched red against the unfixed behaviour. The fix is that the paths derive from
+`projectPath`, so the revert was to make `clearwayDir` ignore it and return one shared directory
+(under `NSTemporaryDirectory()` rather than `~/.clearway`, so the probe could not touch a real home
+directory):
+
+```
+Test Case '-[ClearwayTests.SavedCommandStoreTests testStoresOnDifferentProjectPathsDoNotSeeEachOther]' started.
+Tests/SavedCommandStoreTests.swift:138: error: -[ClearwayTests.SavedCommandStoreTests testStoresOnDifferentProjectPathsDoNotSeeEachOther] : XCTAssertEqual failed: ("[Clearway.SavedCommand(id: 11111111-1111-1111-1111-111111111111, name: "Dev server", kind: Clearway.SavedCommand.Kind.terminal, text: "bin/dev", agent: "claude", autoRun: true)]") is not equal to ("[]") - Project B must not see project A's commands
+Test Case '-[ClearwayTests.SavedCommandStoreTests testStoresOnDifferentProjectPathsDoNotSeeEachOther]' failed (0.083 seconds).
+```
+
+`clearwayDir` was restored and the probe directory removed before the gate ran.
+
+Acceptance greps, run after the last edit:
+
+```
+$ grep -rn 'SavedCommandStore(' Sources Tests
+Sources/App/SavedCommandManager.swift:22:        self.store = SavedCommandStore(projectPath: projectPath)
+Tests/SavedCommandStoreTests.swift:13:        store = SavedCommandStore(projectPath: tempRoot)
+Tests/SavedCommandStoreTests.swift:132:        let storeA = SavedCommandStore(projectPath: projectA)
+Tests/SavedCommandStoreTests.swift:133:        let storeB = SavedCommandStore(projectPath: projectB)
+Tests/SavedCommandManagerTests.swift:14:        store = SavedCommandStore(projectPath: tempRoot)
+$ grep -rn '~/.clearway' Sources/App/SavedCommandStore.swift Sources/App/SavedCommandManager.swift; echo $?
+1
+```
+
+The two-project behaviour itself is operator-verified: the per-window wiring is `@StateObject`
+ownership in `ProjectContentView`, which XCTest cannot exercise without a running scene.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — passed after the last edit. `Executed 458 tests, with 0 failures (0 unexpected)`,
+`Test Succeeded`, `==> CI passed.` `git status --porcelain` showed only the five modified files this
+commit carries; no untracked or ignored files.
