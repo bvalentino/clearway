@@ -15,13 +15,24 @@ final class WorktreeGroupManager: ObservableObject {
     @Published private(set) var defaultOrder: [String] = []
     /// Per-worktree status, keyed by `Worktree.id`. Main is never a key.
     @Published private(set) var statuses: [String: WorktreeStatus] = [:]
+    /// Per-worktree display name, keyed by `Worktree.id`, backed by each worktree's own git
+    /// config. Main is never a key.
+    @Published private(set) var names: [String: String] = [:]
     /// The axis the sidebar sections its worktrees by.
     @Published private(set) var grouping: WorktreeGrouping = .group
 
     private let store: WorktreeGroupStore
+    private let configStore: WorktreeConfigStore
+
+    /// Config writes run one after another, and every config read awaits the chain first.
+    /// Creating a worktree writes a name and also changes the live worktree list, which fires the
+    /// reload in the same turn; without the chain that reload can read the worktree's config
+    /// before the write lands and publish an empty name over the one just typed.
+    private var writeChain: Task<Void, Never>?
 
     init(projectPath: String) {
         self.store = WorktreeGroupStore(projectPath: projectPath)
+        self.configStore = WorktreeConfigStore(projectPath: projectPath)
 
         Task { [weak self] in
             guard let self else { return }
@@ -178,15 +189,41 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
+    /// Takes a `Worktree` so main's "no name" rule is enforced on the read path too, on the same
+    /// terms as `status(for:)`. A stored value that is empty once trimmed reads as no name.
+    func name(for wt: Worktree) -> String? {
+        guard !wt.isMain, let stored = names[wt.id] else { return nil }
+        return stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : stored
+    }
+
+    /// Publishes the name at once and writes it to the worktree's own git config behind the write
+    /// chain, so the sidebar never waits on `git`. A `nil`, empty or whitespace-only name clears
+    /// both. The main worktree can never carry one, so it is silently ignored.
+    func setName(_ name: String?, for wt: Worktree) {
+        guard !wt.isMain, let path = wt.path else { return }
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            names.removeValue(forKey: wt.id)
+        } else {
+            names[wt.id] = trimmed
+        }
+        let configStore = configStore
+        enqueueWrite {
+            await configStore.set(trimmed, forKey: WorktreeConfigStore.nameKey, worktreeAt: path)
+        }
+    }
+
     func setGrouping(_ grouping: WorktreeGrouping) {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
         save()
     }
 
-    /// Strips any stored worktree ID that is no longer present in the live list.
-    /// Saves only if any IDs were removed.
+    /// Strips any stored worktree ID that is no longer present in the live list, and re-reads the
+    /// live worktrees' own git config. Saves only if any IDs were removed; the config reload runs
+    /// either way, because it is what publishes a name written outside this manager's lifetime.
     func reconcile(_ worktrees: [Worktree]) {
+        Task { await self.reloadConfig(for: worktrees) }
         let knownWorktreeIds = Set(worktrees.map(\.id))
         var updated = groups
         var changed = false
@@ -212,12 +249,13 @@ final class WorktreeGroupManager: ObservableObject {
     /// True when the worktree should survive the sidebar's search field.
     ///
     /// An empty query matches everything. Otherwise the query is compared, case-insensitively,
-    /// against the worktree's display name, the task title the caller resolved for its branch,
-    /// the name of the group holding it, and its status's display name.
+    /// against the worktree's display name, its stored name, the task title the caller resolved
+    /// for its branch, the name of the group holding it, and its status's display name.
     func matches(_ wt: Worktree, query: String, taskTitle: String?) -> Bool {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
         if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
+        if let name = name(for: wt), name.localizedCaseInsensitiveContains(query) { return true }
         if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
         if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
            group.name.localizedCaseInsensitiveContains(query) { return true }
@@ -301,6 +339,45 @@ final class WorktreeGroupManager: ObservableObject {
     private func partitionedByStatus(_ worktrees: [Worktree]) -> [Worktree] {
         let buckets = Dictionary(grouping: worktrees) { status(for: $0) }
         return (buckets[nil] ?? []) + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
+    }
+
+    // MARK: - Worktree config
+
+    /// Re-reads every non-main worktree's `clearway.*` config, one process per worktree and all of
+    /// them concurrently. Awaiting the write chain first is what stops the reload a freshly
+    /// created worktree triggers from publishing over a name that has not been written yet.
+    private func reloadConfig(for worktrees: [Worktree]) async {
+        await writeChain?.value
+        let targets = worktrees.compactMap { wt -> (id: String, path: String)? in
+            guard !wt.isMain, let path = wt.path else { return nil }
+            return (wt.id, path)
+        }
+        let configStore = configStore
+        let loaded = await withTaskGroup(of: (String, [String: String]).self) { group in
+            for target in targets {
+                group.addTask { (target.id, await configStore.values(forWorktreeAt: target.path)) }
+            }
+            var result: [String: [String: String]] = [:]
+            for await (id, values) in group { result[id] = values }
+            return result
+        }
+
+        var reloadedNames: [String: String] = [:]
+        for (id, values) in loaded {
+            guard let name = values[WorktreeConfigStore.nameKey], !name.isEmpty else { continue }
+            reloadedNames[id] = name
+        }
+        if reloadedNames != names { names = reloadedNames }
+    }
+
+    /// Serialises config writes: each one awaits the previous, so two gestures on the same key
+    /// land in the order they were made and a read can await the whole chain.
+    private func enqueueWrite(_ work: @escaping @Sendable () async -> Void) {
+        let previous = writeChain
+        writeChain = Task {
+            await previous?.value
+            await work()
+        }
     }
 
     // MARK: - Private Helpers

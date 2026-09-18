@@ -94,6 +94,31 @@ struct GitRepoFixture {
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Enables the extension the way `WorktreeConfigStore`'s bootstrap does, for the tests that
+    /// seed worktree config directly instead of going through the store.
+    func enableWorktreeConfig() throws {
+        let worktreeConfig = (root as NSString).appendingPathComponent(".git/config.worktree")
+        if let bare = try value(ofLocalKey: "core.bare") {
+            try Self.git(["config", "--file", worktreeConfig, "core.bare", bare], in: root)
+        }
+        try Self.git(["config", "--local", "extensions.worktreeConfig", "true"], in: root)
+        _ = try Self.capture(["config", "--local", "--unset", "core.bare"], in: root)
+    }
+
+    func setValue(_ value: String, ofKey key: String, atWorktree path: String) throws {
+        try Self.git(["-C", path, "config", "--worktree", key, value], in: root)
+    }
+
+    func unsetValue(ofKey key: String, atWorktree path: String) throws {
+        try Self.git(["-C", path, "config", "--worktree", "--unset", key], in: root)
+    }
+
+    private func value(ofLocalKey key: String) throws -> String? {
+        let result = try Self.capture(["config", "--local", "--get", key], in: root)
+        guard result.status == 0 else { return nil }
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func localConfigContents() throws -> String {
         try String(
             contentsOfFile: (root as NSString).appendingPathComponent(".git/config"),
@@ -165,6 +190,7 @@ class WorktreeGroupManagerTestCase: TempRootTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        try prepareProjectRoot()
         manager = WorktreeGroupManager(projectPath: tempRoot)
         // Allow the manager's init Task (store.load + startWatching) to complete before
         // each test body runs. Without this, the background load() can race with early
@@ -174,6 +200,27 @@ class WorktreeGroupManagerTestCase: TempRootTestCase {
 
     override func tearDown() async throws {
         manager = nil
+        try await super.tearDown()
+    }
+
+    /// Runs after the scratch root exists and before the manager is built over it.
+    func prepareProjectRoot() throws {}
+}
+
+/// Base for the suites whose manager must write real worktree config: the scratch root is a git
+/// repository before the manager is built over it.
+class WorktreeGroupManagerGitTestCase: WorktreeGroupManagerTestCase {
+
+    override class var tempRootPrefix: String { "clearway-manager-git-tests" }
+
+    var repo: GitRepoFixture!
+
+    override func prepareProjectRoot() throws {
+        repo = try GitRepoFixture.make(at: tempRoot)
+    }
+
+    override func tearDown() async throws {
+        repo = nil
         try await super.tearDown()
     }
 }
