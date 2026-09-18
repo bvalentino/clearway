@@ -79,6 +79,7 @@ struct ProjectContentView: View {
     @StateObject private var workTaskCoordinator: WorkTaskCoordinator
     @StateObject private var claudeActivityMonitor = ClaudeActivityMonitor()
     @StateObject private var promptManager: PromptManager
+    @StateObject private var savedCommandManager = SavedCommandManager()
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -112,7 +113,9 @@ struct ProjectContentView: View {
             .environmentObject(claudeActivityMonitor)
             .environmentObject(promptManager)
             .environmentObject(groupManager)
+            .environmentObject(savedCommandManager)
             .focusedSceneObject(groupManager)
+            .task { await savedCommandManager.load() }
             .onAppear {
                 promptManager.startWatching()
             }
