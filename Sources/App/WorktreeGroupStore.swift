@@ -13,11 +13,13 @@ struct WorktreeGroupsPayload: Codable, Equatable {
 
     static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [], statuses: [:], grouping: .group)
 
+    /// No defaults: `save()` builds the whole document, so a field added later must be a
+    /// compile error there rather than an omission that erases it from disk on the next write.
     init(
         groups: [WorktreeGroup],
         defaultOrder: [String],
-        statuses: [String: WorktreeStatus] = [:],
-        grouping: WorktreeGrouping = .group
+        statuses: [String: WorktreeStatus],
+        grouping: WorktreeGrouping
     ) {
         self.groups = groups
         self.defaultOrder = defaultOrder
@@ -27,18 +29,21 @@ struct WorktreeGroupsPayload: Codable, Equatable {
 
     /// Decodes leniently so no file this app has ever written is rejected: `groups` and
     /// `defaultOrder` stay required — their absence is what routes a legacy bare-array file to
-    /// the fallback in `load()` — while an absent or unrecognised `statuses` entry or `grouping`
-    /// slug degrades to the default. A throw here would take every group in the project with it.
+    /// the fallback in `load()` — while anything unreadable under `statuses` or `grouping`
+    /// degrades to the default. A throw here would take every group in the project with it, and
+    /// `load()` would then write `.empty` back over the file.
+    ///
+    /// `try?` rather than `decodeIfPresent`, which throws on a value of the wrong shape:
+    /// `"statuses": []` or a half-written file reaching the watcher is exactly the case that
+    /// must not cost the user their groups.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         groups = try container.decode([WorktreeGroup].self, forKey: .groups)
         defaultOrder = try container.decode([String].self, forKey: .defaultOrder)
-        statuses = try container
-            .decodeIfPresent([String: String].self, forKey: .statuses)?
-            .compactMapValues(WorktreeStatus.init(rawValue:)) ?? [:]
-        grouping = try container
-            .decodeIfPresent(String.self, forKey: .grouping)
-            .flatMap(WorktreeGrouping.init(rawValue:)) ?? .group
+        let statusSlugs = try? container.decode([String: String].self, forKey: .statuses)
+        statuses = statusSlugs?.compactMapValues(WorktreeStatus.init(rawValue:)) ?? [:]
+        let groupingSlug = try? container.decode(String.self, forKey: .grouping)
+        grouping = groupingSlug.flatMap(WorktreeGrouping.init(rawValue:)) ?? .group
     }
 }
 
@@ -95,7 +100,7 @@ final class WorktreeGroupStore: Sendable {
                 return payload
             }
             if let legacy = try? JSONDecoder().decode([WorktreeGroup].self, from: data) {
-                return WorktreeGroupsPayload(groups: legacy, defaultOrder: [])
+                return WorktreeGroupsPayload(groups: legacy, defaultOrder: [], statuses: [:], grouping: .group)
             }
             Ghostty.logger.warning("groups.json is corrupt — resetting to empty.")
             return .empty

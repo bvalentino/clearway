@@ -87,6 +87,37 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         XCTAssertEqual(payload.statuses, ["/a": .todo])
     }
 
+    /// A wrong-shaped value, not just a wrong slug: `groups.json` is hand-editable and the
+    /// watcher fires on `.write`, so an editor that truncates before rewriting hands the
+    /// decoder a value of the wrong type. That must cost the statuses, never the groups —
+    /// `load()` answers a throw with `.empty`, which the next save writes over the file.
+    func testDecodeKeepsGroupsWhenStatusesHasTheWrongShape() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"statuses\":[]")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.statuses, [:])
+    }
+
+    func testDecodeKeepsGroupsWhenAStatusValueIsNotAString() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"statuses\":{\"/a\":1}")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.statuses, [:])
+    }
+
+    func testDecodeKeepsGroupsWhenGroupingHasTheWrongShape() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"grouping\":0")
+
+        let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+
+        assertGroupsIntact(payload)
+        XCTAssertEqual(payload.grouping, .group)
+    }
+
     func testDecodeFallsBackToGroupForUnrecognisedGroupingSlug() throws {
         let data = Self.payloadJSON(extraKeys: ",\"grouping\":\"bogus\"")
 
@@ -182,7 +213,12 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
             worktreeIds: [],
             createdAt: Date()
         )
-        let payload = WorktreeGroupsPayload(groups: [group], defaultOrder: ["main"])
+        let payload = WorktreeGroupsPayload(
+            groups: [group],
+            defaultOrder: ["main"],
+            statuses: [:],
+            grouping: .group
+        )
         try await store.save(payload)
 
         XCTAssertTrue(

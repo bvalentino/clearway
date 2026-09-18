@@ -48,3 +48,32 @@ class TempRootTestCase: XCTestCase {
         )
     }
 }
+
+/// Base for the `WorktreeGroupManager` suites: a manager over the scratch root, plus the
+/// `groups.json` probe the "writes nothing" cases assert on.
+class WorktreeGroupManagerTestCase: TempRootTestCase {
+
+    override class var tempRootPrefix: String { "clearway-manager-tests" }
+
+    var manager: WorktreeGroupManager!
+
+    var groupsFileExists: Bool {
+        FileManager.default.fileExists(
+            atPath: (tempRoot as NSString).appendingPathComponent(".clearway/groups.json")
+        )
+    }
+
+    override func setUp() async throws {
+        try await super.setUp()
+        manager = WorktreeGroupManager(projectPath: tempRoot)
+        // Allow the manager's init Task (store.load + startWatching) to complete before
+        // each test body runs. Without this, the background load() can race with early
+        // createGroup() calls and overwrite the in-memory groups with [].
+        try await Task.sleep(nanoseconds: 100_000_000)
+    }
+
+    override func tearDown() async throws {
+        manager = nil
+        try await super.tearDown()
+    }
+}

@@ -161,7 +161,7 @@ and never `git add -A`.
 | `Sources/App/WorktreeGroupManager.swift` | Published `statuses` / `grouping`, `setStatus`, `setGrouping`, `status(for:)`, `matches(_:query:taskTitle:)`, `sidebarOrderedWorktrees` reading `grouping` itself, status pruning in `reconcile`, both persisted through the existing `save()`. |
 | `Sources/App/GroupByMenu.swift` (new) | The sidebar header's gear menu: the Group by picker over `WorktreeGrouping`, then Worktree Settings. |
 | `Sources/App/SidebarView.swift` | Sections are built per view mode; the Status submenu joins the row context menu; header drops and drag/move gating follow decisions 18 and 19. Shrinks by the rows moved to `WorktreeRow.swift` and the gear moved to `GroupByMenu.swift`. |
-| `Tests/WorktreeGroupManagerTests.swift` | Ordering per mode, status round-trip, main-is-ignored, pruning, search predicate. |
+| `Tests/WorktreeGroupManagerTests.swift` | Ordering per mode, status round-trip, main-is-ignored, pruning, search predicate. Split at review: the status cases moved to `Tests/WorktreeGroupManagerStatusTests.swift` and the shared setup to `WorktreeGroupManagerTestCase` in `Tests/TestHelpers.swift`, because 877 lines crossed SwiftLint's 700-line `file_length` warning — criterion 12. |
 | `Tests/WorktreeGroupStoreTests.swift` | Old wire format decodes; unknown slug is dropped. |
 | `Tests/WorktreeStatusTests.swift` (new) | `WorktreeStatus` and `WorktreeGrouping` case order, persisted slugs, unknown-slug decode, display names and colours. |
 | `docs/superpowers/specs/2026-09-17-worktrees-with-status.md` | This document. |

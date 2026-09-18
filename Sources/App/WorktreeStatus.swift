@@ -2,7 +2,12 @@ import SwiftUI
 
 /// A worktree's workflow state. The case names are the slugs persisted in a project's
 /// `groups.json`, so renaming one changes the on-disk format.
-enum WorktreeStatus: String, Codable, CaseIterable, Identifiable, Hashable {
+///
+/// `Encodable` and not `Codable`: reading a slug goes through `init(rawValue:)` in
+/// `WorktreeGroupsPayload.init(from:)`, which drops an unrecognised one. A synthesised
+/// `Decodable` would let a later `decode([String: WorktreeStatus].self)` compile and throw
+/// the whole map away instead.
+enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
     case todo
     case inProgress
     case inReview
@@ -32,8 +37,9 @@ enum WorktreeStatus: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// How the sidebar sections its worktrees. Persisted beside the statuses under the same slug rule.
-enum WorktreeGrouping: String, Codable, CaseIterable, Identifiable, Hashable {
+/// How the sidebar sections its worktrees. Persisted beside the statuses under the same slug
+/// rule, and `Encodable` only for the same reason.
+enum WorktreeGrouping: String, Encodable, CaseIterable, Identifiable, Hashable {
     case group
     case status
     case none

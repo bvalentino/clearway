@@ -160,8 +160,13 @@ final class WorktreeGroupManager: ObservableObject {
         groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.id
     }
 
-    func status(for worktreeId: String) -> WorktreeStatus? {
-        statuses[worktreeId]
+    /// Takes a `Worktree` rather than an ID so main's "no status" rule is enforced on the read
+    /// path too: `setStatus` refuses main, but a hand-edited or merged `groups.json` can still
+    /// carry its path, `reconcile` keeps the entry because main is always live, and no gesture
+    /// in the app could clear it. Honouring it would drop main out of the top of the by-status
+    /// order and move `⌘1` with it.
+    func status(for wt: Worktree) -> WorktreeStatus? {
+        wt.isMain ? nil : statuses[wt.id]
     }
 
     /// Clears the status when `status` is `nil`. The main worktree can never carry one,
@@ -215,7 +220,7 @@ final class WorktreeGroupManager: ObservableObject {
         if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
         if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
            group.name.localizedCaseInsensitiveContains(query) { return true }
-        if let status = status(for: wt.id),
+        if let status = status(for: wt),
            status.displayName.localizedCaseInsensitiveContains(query) { return true }
         return false
     }
@@ -236,7 +241,7 @@ final class WorktreeGroupManager: ObservableObject {
     /// `.group` and `.none` both return that order — they differ only in how the sidebar
     /// sections it. `.status` stably partitions it into no-status first then the five
     /// statuses in `allCases` order, so each bucket keeps its members' relative order and
-    /// main (which can carry no status) stays first.
+    /// main (which `status(for:)` never reports a status for) stays first.
     func sidebarOrderedWorktrees(
         _ worktrees: [Worktree],
         showingDetached: Bool,
@@ -293,7 +298,7 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// `Dictionary(grouping:)` keeps each bucket in input order, so the partition is stable.
     private func partitionedByStatus(_ worktrees: [Worktree]) -> [Worktree] {
-        let buckets = Dictionary(grouping: worktrees) { statuses[$0.id] }
+        let buckets = Dictionary(grouping: worktrees) { status(for: $0) }
         return (buckets[nil] ?? []) + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
     }
 

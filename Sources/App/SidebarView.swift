@@ -33,7 +33,7 @@ struct SidebarView: View {
     @State private var targetedGroupId: UUID?
     @State private var targetedStatus: WorktreeStatus?
 
-    private var isSearching: Bool { !searchText.isEmpty }
+    private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var projectName: String {
         URL(fileURLWithPath: worktreeManager.projectPath).lastPathComponent
@@ -222,7 +222,7 @@ struct SidebarView: View {
                 groupSection(group, rows: byGroup[group.id] ?? [], titles: titles, shortcuts: shortcuts)
             }
         case .status:
-            let byStatus = Dictionary(grouping: ordered) { groupManager.status(for: $0.id) }
+            let byStatus = Dictionary(grouping: ordered) { groupManager.status(for: $0) }
             worktreesSection(rows: byStatus[nil] ?? [], titles: titles, shortcuts: shortcuts, reorderable: false)
             ForEach(WorktreeStatus.allCases) { status in
                 statusSection(status, rows: byStatus[status] ?? [], titles: titles, shortcuts: shortcuts)
@@ -410,7 +410,7 @@ struct SidebarView: View {
         if !wt.isMain {
             Menu("Status") {
                 Picker("Status", selection: Binding(
-                    get: { groupManager.status(for: wt.id) },
+                    get: { groupManager.status(for: wt) },
                     set: { groupManager.setStatus($0, for: wt) }
                 )) {
                     Text("None").tag(WorktreeStatus?.none)
@@ -501,7 +501,7 @@ struct SidebarView: View {
             hasNotification: hasNotification,
             isWorking: isWorking,
             shortcutIndex: shortcut,
-            status: groupManager.grouping == .status ? nil : groupManager.status(for: wt.id)
+            status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
