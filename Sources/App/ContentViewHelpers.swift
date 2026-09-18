@@ -76,8 +76,7 @@ class ColumnWidthTracker {
     var width: CGFloat = 340
 }
 
-/// Status bar showing the worktree path, PR status and the secondary terminal toggle at the bottom
-/// of the detail pane.
+/// Status bar at the bottom of the detail pane.
 struct WorktreeStatusBar: View {
     let path: String
     let worktree: Worktree?
@@ -85,6 +84,10 @@ struct WorktreeStatusBar: View {
     let secondaryVisible: Bool
     let onToggleSecondary: () -> Void
     @EnvironmentObject private var worktreeManager: WorktreeManager
+
+    private var secondaryToggleLabel: String {
+        secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal"
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -112,7 +115,8 @@ struct WorktreeStatusBar: View {
                         .foregroundStyle(secondaryVisible ? .primary : .secondary)
                 }
                 .buttonStyle(.plain)
-                .help(secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal")
+                .help(secondaryToggleLabel)
+                .accessibilityLabel(secondaryToggleLabel)
                 .pointerCursorOnHover()
             }
         }

@@ -28,7 +28,7 @@ the separator it no longer needs. Nothing about what the control does changes.
 | 11 | Spacing between the PR status and the toggle? | The two trailing items go in an `HStack(spacing: 12)` placed after the existing `Spacer()`; the outer `HStack(spacing: 0)` is unchanged. 12pt matches the bar's vertical rhythm and keeps the PR title's tail from touching the glyph. | Spec author |
 | 12 | Which file does the button live in? | `Sources/App/ContentViewHelpers.swift`, inside `WorktreeStatusBar`. It is 188 lines against SwiftLint's 700-line warning, and `ContentView.swift` is at 1028 lines and only builds because of its file-wide `// swiftlint:disable file_length` (`ContentView.swift:1`). This change *removes* lines from `ContentView.swift`. No new file, so nothing new depends on `xcodegen generate` — `./scripts/ci.sh` runs it regardless. | Spec author |
 | 13 | Does `AppKeyboardShortcuts` change? | No. The button declared no key equivalent in the toolbar and declares none in the bar. The `claims` table and its pins are untouched. | Spec author |
-| 14 | Does this add a test? | No. The change is view-only and introduces no decision rule: the visibility read (`terminalManager.isSecondaryVisible`) and the mutation (`toggleSecondary`) are already pinned in `Tests/TerminalManagerTests.swift:11,26,74-84`, and `WorktreeStatusBar` is a SwiftUI `View` with no output XCTest can inspect. There is no pure helper worth lifting out — unlike `TerminalManager.revealSecondaryForHook`, which encodes a rule. `./scripts/ci.sh` stays the regression check and the moved control is confirmed by hand in the running app. | Spec author |
+| 14 | Does this add a test? | No. The change is view-only and introduces no decision rule: the visibility read (`terminalManager.isSecondaryVisible`) and the mutation (`toggleSecondary`) are already pinned in `Tests/TerminalManagerTests.swift` — the read throughout, the mutation at line 57 — and `WorktreeStatusBar` is a SwiftUI `View` with no output XCTest can inspect. There is no pure helper worth lifting out — unlike `TerminalManager.revealSecondaryForHook`, which encodes a rule. `./scripts/ci.sh` stays the regression check and the moved control is confirmed by hand in the running app. | Spec author |
 
 ## Assumptions
 
@@ -46,11 +46,18 @@ written, into the repo or the scratchpad.
 3. **The new home is reached under a stricter condition than the toolbar's, and the difference is
    an improvement, not a regression.** The toolbar hangs off `detailView` and renders whenever
    `selectedWorktree != nil` (`ContentView.swift:195`), including while `ghosttyApp.readiness` is
-   `.loading` or `.error`. The status bar renders only under `.ready` with a live
-   `terminalManager.activePane` (`ContentView.swift:801-816`). In the loading and error states the
-   toolbar button is present but `toggleSecondary` has no pane to reveal, so the control was
-   rendering enabled and doing nothing visible — the same defect CLAUDE.md records for a
-   `PanelToggle` whose `nil` gate misses a precondition. Moving it fixes that incidentally.
+   `.loading` or `.error`. The status bar's gate is narrower than "readiness is `.ready`": it needs
+   `terminalManager.activePane`, `terminalManager.activeSurfaceId` and
+   `detailSelection?.worktree != nil` (`ContentView.swift:806-809`) plus a non-nil path
+   (`ContentView.swift:924`). In the loading and error states the toolbar button was present but
+   `toggleSecondary` had no pane to reveal, so the control rendered enabled and did nothing visible
+   — the same defect CLAUDE.md records for a `PanelToggle` whose `nil` gate misses a precondition.
+   The move closes that door for the mouse. It does **not** fix the defect: ⌘J reaches the same
+   action in the same states through `bottomPanel`'s `.secondaryTerminal` case
+   (`ContentView.swift:109-110`), which returns a non-`nil` `PanelToggle` with no readiness or pane
+   precondition — unlike `.taskTerminal` one line below, which guards `ghosttyApp.app`. Worse, the
+   menu item then re-titles itself to "Hide Bottom Panel" for a panel that does not exist. ⌘J is
+   out of scope here (decision 5), so that half is owed a follow-up task.
 4. **`Worktree.path` is `String?` (`Worktree.swift:22`), so the status bar's `if let` is in
    principle narrower than the toolbar's `selectedWorktree != nil`.** In practice it is not:
    `Worktree.id` is `path ?? branch ?? ""` (`Worktree.swift:19`) and every worktree is parsed from
@@ -116,7 +123,7 @@ Expect the un-gitignored `default.profraw` in the repo root after any Debug laun
 
 | File | Change |
 | --- | --- |
-| `Sources/App/ContentViewHelpers.swift` | `WorktreeStatusBar` gains `secondaryVisible: Bool` and `onToggleSecondary: () -> Void`; its trailing `HStack(spacing: 12)` holds `prStatusView` and the new button. The doc comment gains the control. |
+| `Sources/App/ContentViewHelpers.swift` | `WorktreeStatusBar` gains `secondaryVisible: Bool` and `onToggleSecondary: () -> Void`; its trailing `HStack(spacing: 12)` holds `prStatusView` and the new button, which carries an `.accessibilityLabel` because it is icon-only. The doc comment stops enumerating the bar's contents. |
 | `Sources/App/ContentView.swift` | Delete the secondary-terminal `ToolbarItem` and one of its two bracketing `ToolbarGroupBreak()`s (lines 217-225); pass `secondaryVisible:` and `onToggleSecondary: toggleSecondaryTerminal` at the `WorktreeStatusBar` call site (lines 932-938). |
 | `docs/superpowers/specs/2026-09-18-move-secondary-terminal-toggle-to-status-bar.md` | This document. |
 | `docs/superpowers/plans/2026-09-18-move-secondary-terminal-toggle-to-status-bar.md` | The plan, written by the next stage. |
