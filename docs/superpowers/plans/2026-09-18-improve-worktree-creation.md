@@ -958,3 +958,88 @@ showed the four modified files and nothing untracked.
 `./scripts/ci.sh` — `Executed 492 tests, with 0 failures (0 unexpected) in 71.705 seconds`,
 `==> CI passed.` Re-run after the chain-await was restored. No SwiftLint output for any touched
 file; `WorktreeGroupManager.swift` is 420 lines, under the 700-line warning.
+
+### T5: Statuses move to worktree config, and `groups.json` stops carrying them
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupStore.swift` | `WorktreeGroupsPayload` drops `statuses` from its properties, its `CodingKeys` and its memberwise initialiser, and gains `legacyStatuses`, populated only by `init(from:)` through a private `LegacyCodingKeys`. The lenient contract is unchanged. The bare-array fallback in `load()` and `.empty` use the three-argument initialiser. |
+| `Sources/App/WorktreeGroupManager.swift` | `setStatus` requires a path, publishes optimistically and enqueues a `WorktreeConfigStore.set` on the write chain instead of calling `save()`. `reloadConfig(for:)` builds `statuses` in the same pass as `names`, dropping an unrecognised slug. `reconcile(_:)` loses its status-pruning branch. `save()` stops passing statuses. `init` calls the new `migrateLegacyStatuses(_:)`. The watcher's reload closure no longer compares or assigns `statuses`. |
+| `Sources/App/WorktreeStatus.swift` | Two doc comments only: the slugs are `clearway.status` in worktree config, not `groups.json`. |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | Re-pointed at `WorktreeGroupManagerGitTestCase`. Persistence cases read `git config --worktree --get clearway.status`; `groupsFileExists` probes became "writes no status into the file". Three new cases: the migration, the migration skipping a vanished path, and a file that never carried the key. |
+| `Tests/WorktreeGroupStoreTests.swift` | `legacyStatuses` replaces `statuses` in the decode cases; `testPayloadRoundTripsStatusesAndGrouping` became `testPayloadRoundTripsGrouping`; new `testEncodeOmitsTheStatusesKey` asserts over encoded bytes. |
+| `Tests/TestHelpers.swift` | `WorktreeGroupManagerTestCase` gains `groupsFilePath`, which `groupsFileExists` now uses. |
+
+**Evidence**
+
+The suite was rewritten first and `./scripts/ci.sh` run against the unchanged manager and store.
+Twelve failures in `WorktreeGroupManagerStatusTests`, eleven of them the intended reds:
+
+```
+✖ testSetStatusPublishesAndPersistsToWorktreeConfig, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("inReview")") - stored status at …/.worktrees/feature
+✖ testSetStatusPublishesAndPersistsToWorktreeConfig, XCTAssertFalse failed
+  - a status must write nothing into groups.json
+✖ testSetStatusNilClearsThePublishedEntryAndTheStoredKey, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("done")")
+✖ testLegacyStatusesMigrateIntoWorktreeConfigAndLeaveTheFile, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("onHold")")
+✖ testLegacyStatusesMigrateIntoWorktreeConfigAndLeaveTheFile, XCTAssertEqual failed:
+  ("true") is not equal to ("false") - groups.json still carries statuses
+✖ testLegacyMigrationSkipsAPathThatNoLongerExists, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("inReview")")
+✖ testLegacyMigrationSkipsAPathThatNoLongerExists, XCTAssertEqual failed:
+  ("true") is not equal to ("false") - groups.json still carries statuses
+✖ testReconcilePopulatesStatusesFromWorktreeConfig, XCTAssertEqual failed:
+  ("[:]") is not equal to ("[".../.worktrees/alive": Clearway.WorktreeStatus.inReview]")
+✖ testReconcileDropsAnAbsentWorktreeWithoutSaving, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("onHold")")
+✖ testReconcileDropsAnAbsentWorktreeWithoutSaving, XCTAssertFalse failed
+  - reconcile no longer saves a status prune
+✖ testExternalWriteRepublishesGroupingAndIgnoresAStatusesKey, XCTAssertTrue failed
+  - the watcher no longer republishes statuses from the file
+Executed 19 tests, with 12 failures (0 unexpected) in 56.811 seconds
+```
+
+The twelfth was not planned for and is a finding of its own:
+
+```
+✖ testStatusGroupingStablyPartitionsTheBaseOrder, XCTAssertEqual failed:
+  ("["/tmp/main", "/tmp/alpha", "/tmp/bravo", "/tmp/charlie", "/tmp/delta"]") is not equal to
+  ("["/tmp/main", "/tmp/delta", "/tmp/bravo", "/tmp/alpha", "/tmp/charlie"]")
+```
+
+Rewriting the case dropped the fixed `Task.sleep` the old code needed between consecutive
+`setStatus` calls, because the new `setStatus` publishes synchronously. Under the *old* code three
+saves in one turn raced the store's own watcher, whose reload closure then republished a stale
+`statuses` map over the in-memory one and the partition came back unpartitioned. That is the
+behaviour this task removes — the watcher no longer touches `statuses` — so the case passes on the
+implemented tree with no sleep at all.
+
+**Deviations from the plan**
+
+- *`setStatus` requires `wt.path`, not just `!wt.isMain`.* The plan said it "keeps its main guard";
+  a config write needs a directory, so the guard is `guard !wt.isMain, let path = wt.path`, the
+  shape `setName` already has. A worktree with no path has `id == branch ?? ""`, which was never a
+  writable target.
+- *`WorktreeGroupManagerStatusTests` keeps synthetic paths for the ordering and `matches` cases.*
+  Only the cases that assert on stored state build a real worktree. A status set against
+  `/tmp/alpha` still publishes; its write fails inside `git` and is logged, which is exactly the
+  optimistic-publish contract, and adding four `git worktree add` calls per ordering case would buy
+  nothing.
+- *Criterion 6 is pinned twice.* `testInitLoadsAFileThatNeverCarriedStatuses` at the manager
+  joins the store's decode case, because the old `testInitLoadsStatusesAndGrouping` was the only
+  thing standing between a relaunch and a `grouping` reset and its replacement had to keep that job.
+- *`testEncodeOmitsTheStatusesKey` encodes a payload decoded from legacy bytes*, so the assertion
+  covers both halves of decision 14 at once: a non-empty `legacyStatuses` is what would leak if the
+  key were still in `CodingKeys`.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 498 tests, with 0 failures (0 unexpected) in 84.706 seconds`,
+`==> CI passed.` Run after the last edit. `swiftlint lint --quiet` prints nothing for any touched
+file; `WorktreeGroupManager.swift` is 455 lines, under the 700-line warning.
+`ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
+showed the six modified files and nothing untracked.

@@ -8,23 +8,34 @@ import os
 struct WorktreeGroupsPayload: Codable, Equatable {
     var groups: [WorktreeGroup]
     var defaultOrder: [String]
-    var statuses: [String: WorktreeStatus]
     var grouping: WorktreeGrouping
 
-    static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [], statuses: [:], grouping: .group)
+    /// Statuses written by a version that kept them in this file. Populated only by
+    /// `init(from:)`, through `LegacyCodingKeys`; there is no `CodingKeys` case for it, so the
+    /// synthesised `encode(to:)` cannot write the key back. `WorktreeGroupManager` migrates a
+    /// non-empty map into each worktree's own git config on load and saves at once.
+    var legacyStatuses: [String: WorktreeStatus]
+
+    /// `statuses` is deliberately absent: it is the key this payload no longer owns.
+    enum CodingKeys: String, CodingKey {
+        case groups
+        case defaultOrder
+        case grouping
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case statuses
+    }
+
+    static let empty = WorktreeGroupsPayload(groups: [], defaultOrder: [], grouping: .group)
 
     /// No defaults: `save()` builds the whole document, so a field added later must be a
     /// compile error there rather than an omission that erases it from disk on the next write.
-    init(
-        groups: [WorktreeGroup],
-        defaultOrder: [String],
-        statuses: [String: WorktreeStatus],
-        grouping: WorktreeGrouping
-    ) {
+    init(groups: [WorktreeGroup], defaultOrder: [String], grouping: WorktreeGrouping) {
         self.groups = groups
         self.defaultOrder = defaultOrder
-        self.statuses = statuses
         self.grouping = grouping
+        self.legacyStatuses = [:]
     }
 
     /// Decodes leniently so no file this app has ever written is rejected: `groups` and
@@ -40,10 +51,11 @@ struct WorktreeGroupsPayload: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         groups = try container.decode([WorktreeGroup].self, forKey: .groups)
         defaultOrder = try container.decode([String].self, forKey: .defaultOrder)
-        let statusSlugs = try? container.decode([String: String].self, forKey: .statuses)
-        statuses = statusSlugs?.compactMapValues(WorktreeStatus.init(rawValue:)) ?? [:]
         let groupingSlug = try? container.decode(String.self, forKey: .grouping)
         grouping = groupingSlug.flatMap(WorktreeGrouping.init(rawValue:)) ?? .group
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let statusSlugs = try? legacyContainer.decode([String: String].self, forKey: .statuses)
+        legacyStatuses = statusSlugs?.compactMapValues(WorktreeStatus.init(rawValue:)) ?? [:]
     }
 }
 
@@ -100,7 +112,7 @@ final class WorktreeGroupStore: Sendable {
                 return payload
             }
             if let legacy = try? JSONDecoder().decode([WorktreeGroup].self, from: data) {
-                return WorktreeGroupsPayload(groups: legacy, defaultOrder: [], statuses: [:], grouping: .group)
+                return WorktreeGroupsPayload(groups: legacy, defaultOrder: [], grouping: .group)
             }
             Ghostty.logger.warning("groups.json is corrupt — resetting to empty.")
             return .empty

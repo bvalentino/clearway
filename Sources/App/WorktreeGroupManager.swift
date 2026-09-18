@@ -13,7 +13,8 @@ final class WorktreeGroupManager: ObservableObject {
     /// User-defined order of non-main worktrees in the ungrouped "default" section.
     /// Main is always pinned to the top and is not tracked here.
     @Published private(set) var defaultOrder: [String] = []
-    /// Per-worktree status, keyed by `Worktree.id`. Main is never a key.
+    /// Per-worktree status, keyed by `Worktree.id`, backed by each worktree's own git config.
+    /// Main is never a key.
     @Published private(set) var statuses: [String: WorktreeStatus] = [:]
     /// Per-worktree display name, keyed by `Worktree.id`, backed by each worktree's own git
     /// config. Main is never a key.
@@ -39,8 +40,8 @@ final class WorktreeGroupManager: ObservableObject {
             let loaded = await self.store.load()
             self.groups = WorktreeGroup.sortedByCreation(loaded.groups)
             self.defaultOrder = loaded.defaultOrder
-            self.statuses = loaded.statuses
             self.grouping = loaded.grouping
+            self.migrateLegacyStatuses(loaded.legacyStatuses)
 
             self.store.startWatching { [weak self] in
                 Task { @MainActor [weak self] in
@@ -51,7 +52,6 @@ final class WorktreeGroupManager: ObservableObject {
                     if reloaded.defaultOrder != self.defaultOrder {
                         self.defaultOrder = reloaded.defaultOrder
                     }
-                    if reloaded.statuses != self.statuses { self.statuses = reloaded.statuses }
                     if reloaded.grouping != self.grouping { self.grouping = reloaded.grouping }
                 }
             }
@@ -173,20 +173,28 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Takes a `Worktree` rather than an ID so main's "no status" rule is enforced on the read
     /// path too: `setStatus` refuses main, but a hand-edited or merged `groups.json` can still
-    /// carry its path, `reconcile` keeps the entry because main is always live, and no gesture
-    /// in the app could clear it. Honouring it would drop main out of the top of the by-status
-    /// order and move `⌘1` with it.
+    /// carry its path into `migrateLegacyStatuses`, which deliberately does not filter it out,
+    /// and no gesture in the app could then clear it. Honouring it would drop main out of the
+    /// top of the by-status order and move `⌘1` with it.
     func status(for wt: Worktree) -> WorktreeStatus? {
         wt.isMain ? nil : statuses[wt.id]
     }
 
-    /// Clears the status when `status` is `nil`. The main worktree can never carry one,
-    /// so it is silently ignored.
+    /// Publishes the status at once and writes it to the worktree's own git config behind the
+    /// write chain, on the same terms as `setName`. Clears both when `status` is `nil`. The main
+    /// worktree can never carry one, so it is silently ignored.
     func setStatus(_ status: WorktreeStatus?, for wt: Worktree) {
-        guard !wt.isMain else { return }
+        guard !wt.isMain, let path = wt.path else { return }
         guard statuses[wt.id] != status else { return }
         statuses[wt.id] = status
-        save()
+        let configStore = configStore
+        enqueueWrite {
+            await configStore.set(
+                status?.rawValue,
+                forKey: WorktreeConfigStore.statusKey,
+                worktreeAt: path
+            )
+        }
     }
 
     /// Takes a `Worktree` so main's "no name" rule is enforced on the read path too, on the same
@@ -219,9 +227,11 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Strips any stored worktree ID that is no longer present in the live list, and re-reads the
-    /// live worktrees' own git config. Saves only if any IDs were removed; the config reload runs
-    /// either way, because it is what publishes a name written outside this manager's lifetime.
+    /// Strips any grouped or ordered worktree ID that is no longer present in the live list, and
+    /// re-reads the live worktrees' own git config. Saves only if any IDs were removed; the
+    /// config reload runs either way, because it is what publishes a name or status written
+    /// outside this manager's lifetime. Names and statuses are never pruned here — `git worktree
+    /// remove` deletes the worktree's `config.worktree` with it.
     func reconcile(_ worktrees: [Worktree]) {
         Task { await self.reloadConfig(for: worktrees) }
         let knownWorktreeIds = Set(worktrees.map(\.id))
@@ -237,12 +247,9 @@ final class WorktreeGroupManager: ObservableObject {
         }
         let prunedDefault = defaultOrder.filter { knownWorktreeIds.contains($0) }
         let defaultChanged = prunedDefault != defaultOrder
-        let prunedStatuses = statuses.filter { knownWorktreeIds.contains($0.key) }
-        let statusesChanged = prunedStatuses != statuses
-        guard changed || defaultChanged || statusesChanged else { return }
+        guard changed || defaultChanged else { return }
         groups = updated
         defaultOrder = prunedDefault
-        statuses = prunedStatuses
         save()
     }
 
@@ -363,11 +370,40 @@ final class WorktreeGroupManager: ObservableObject {
         }
 
         var reloadedNames: [String: String] = [:]
+        var reloadedStatuses: [String: WorktreeStatus] = [:]
         for (id, values) in loaded {
-            guard let name = values[WorktreeConfigStore.nameKey], !name.isEmpty else { continue }
-            reloadedNames[id] = name
+            if let name = values[WorktreeConfigStore.nameKey], !name.isEmpty {
+                reloadedNames[id] = name
+            }
+            // An unrecognised slug is dropped rather than published, the same rule the payload's
+            // decoder applied while `groups.json` held these.
+            if let slug = values[WorktreeConfigStore.statusKey],
+               let status = WorktreeStatus(rawValue: slug) {
+                reloadedStatuses[id] = status
+            }
         }
         if reloadedNames != names { names = reloadedNames }
+        if reloadedStatuses != statuses { statuses = reloadedStatuses }
+    }
+
+    /// The one-shot migration of statuses out of `groups.json`. They are published before any
+    /// subprocess runs, so a launch is never briefly unstatused, enqueued on the write chain that
+    /// the first reload awaits, and the file is rewritten at once without the key. A key that is
+    /// no longer a worktree path fails inside `git` and is skipped.
+    private func migrateLegacyStatuses(_ legacy: [String: WorktreeStatus]) {
+        guard !legacy.isEmpty else { return }
+        statuses = legacy
+        let configStore = configStore
+        enqueueWrite {
+            for (path, status) in legacy {
+                await configStore.set(
+                    status.rawValue,
+                    forKey: WorktreeConfigStore.statusKey,
+                    worktreeAt: path
+                )
+            }
+        }
+        save()
     }
 
     /// Serialises config writes: each one awaits the previous, so two gestures on the same key
@@ -406,7 +442,6 @@ final class WorktreeGroupManager: ObservableObject {
         let payload = WorktreeGroupsPayload(
             groups: groups,
             defaultOrder: defaultOrder,
-            statuses: statuses,
             grouping: grouping
         )
         Task {

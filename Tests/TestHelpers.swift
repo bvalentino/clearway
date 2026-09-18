@@ -182,10 +182,12 @@ class WorktreeGroupManagerTestCase: TempRootTestCase {
 
     var manager: WorktreeGroupManager!
 
+    var groupsFilePath: String {
+        (tempRoot as NSString).appendingPathComponent(".clearway/groups.json")
+    }
+
     var groupsFileExists: Bool {
-        FileManager.default.fileExists(
-            atPath: (tempRoot as NSString).appendingPathComponent(".clearway/groups.json")
-        )
+        FileManager.default.fileExists(atPath: groupsFilePath)
     }
 
     override func setUp() async throws {
