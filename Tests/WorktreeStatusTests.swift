@@ -42,7 +42,7 @@ final class WorktreeStatusTests: XCTestCase {
                         "checkmark.circle.fill", "pause.circle"])
     }
 
-    func testSymbolsResolve() {
+    func testSymbolsResolveOnBuildHost() {
         for status in WorktreeStatus.allCases {
             XCTAssertNotNil(NSImage(systemSymbolName: status.symbol, accessibilityDescription: nil),
                             status.symbol)
