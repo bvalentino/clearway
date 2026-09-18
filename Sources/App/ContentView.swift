@@ -327,7 +327,7 @@ struct ContentView: View {
             // error zeroes the array, and pruning against an empty known-set would wipe
             // persisted group membership / default order / PR statuses / open terminals.
             if !newWorktrees.isEmpty && worktreeManager.error == nil {
-                groupManager.reconcile(knownWorktreeIds: currentIds)
+                groupManager.reconcile(newWorktrees)
                 groupManager.seedDefaultOrder(with: newWorktrees, openIds: terminalManager.openWorktreeIds)
                 terminalManager.pruneStale(keeping: currentIds)
                 worktreeManager.prunePRStatuses(keeping: currentIds)

@@ -151,7 +151,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         XCTAssertNil(manager.groupId(for: wt.id))
     }
 
-    // MARK: - reconcile(knownWorktreeIds:)
+    // MARK: - reconcile(_:)
 
     func testReconcileDropsPhantomIds() async throws {
         manager.createGroup(named: "RecGroup")
@@ -176,7 +176,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         XCTAssertEqual(manager.groups.first?.worktreeIds.count, 2)
 
         // Reconcile with only the alive worktree known.
-        manager.reconcile(knownWorktreeIds: [alive.id])
+        manager.reconcile([alive])
         try await Task.sleep(nanoseconds: 100_000_000)
 
         let ids = manager.groups.first?.worktreeIds ?? []
@@ -199,7 +199,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         let snapshotGroups = manager.groups
 
         // Reconcile with the worktree still present — nothing should change.
-        manager.reconcile(knownWorktreeIds: [wt.id])
+        manager.reconcile([wt])
 
         XCTAssertEqual(manager.groups, snapshotGroups, "groups must be unchanged when no pruning occurs")
     }

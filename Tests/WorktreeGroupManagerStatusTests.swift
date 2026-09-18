@@ -142,7 +142,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerTestCase {
         manager.setStatus(.onHold, for: dead)
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        manager.reconcile(knownWorktreeIds: [alive.id])
+        manager.reconcile([alive])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.statuses, [alive.id: .todo])

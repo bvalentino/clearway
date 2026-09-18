@@ -186,7 +186,8 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Strips any stored worktree ID that is no longer present in the live list.
     /// Saves only if any IDs were removed.
-    func reconcile(knownWorktreeIds: Set<String>) {
+    func reconcile(_ worktrees: [Worktree]) {
+        let knownWorktreeIds = Set(worktrees.map(\.id))
         var updated = groups
         var changed = false
         for index in updated.indices {

@@ -849,3 +849,48 @@ implementation then turned all 14 green.
 `./scripts/ci.sh` — `Executed 485 tests, with 0 failures (0 unexpected) in 65.028 seconds`,
 `==> CI passed.` Run after the last edit. No SwiftLint output for either new file.
 `ShellPathResolverTests` did not flake on this run.
+
+### T3: Widen `reconcile` to take the live worktrees
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `reconcile(knownWorktreeIds: Set<String>)` → `reconcile(_ worktrees: [Worktree])`, deriving the ID set on its first line. The pruning body, the `changed`/`defaultChanged`/`statusesChanged` guard and the `save()` are byte-identical. |
+| `Sources/App/ContentView.swift` | One line: `groupManager.reconcile(currentIds)` → `groupManager.reconcile(newWorktrees)`. `currentIds` stays — `terminalManager.pruneStale` and `worktreeManager.prunePRStatuses` still take it. |
+| `Tests/WorktreeGroupManagerTests.swift` | Two call sites (`:179`, `:202`) pass `[alive]` / `[wt]`; the `MARK` heading renamed. No assertion changed. |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | One call site (`:145`) passes `[alive]`. The status-pruning test is left passing, as the plan's note requires; T5 re-points it. |
+
+**Evidence**
+
+The three call sites were converted to the new signature first and `./scripts/ci.sh` was run
+against the unchanged manager:
+
+```
+❌ Tests/WorktreeGroupManagerTests.swift:179:27: missing argument label 'knownWorktreeIds:' in call
+❌ Tests/WorktreeGroupManagerTests.swift:179:27: cannot convert value of type 'Set<Worktree>' to expected argument type 'Set<String>'
+❌ Tests/WorktreeGroupManagerTests.swift:202:27: missing argument label 'knownWorktreeIds:' in call
+❌ Tests/WorktreeGroupManagerStatusTests.swift:145:27: missing argument label 'knownWorktreeIds:' in call
+❌ Tests/WorktreeGroupManagerStatusTests.swift:145:27: cannot convert value of type 'Set<Worktree>' to expected argument type 'Set<String>'
+** TEST FAILED **
+```
+
+A signature change has no behavioural red available: the pruning rules are unchanged, so the two
+carried-over tests assert exactly what they asserted before and would pass under either signature.
+The compile failure is the only watched red, and criterion 4 — no call site of the old signature
+remains — is what it proves.
+
+Criterion 3 is `git diff --stat`: `Sources/App/ContentView.swift | 2 +-`, one changed line and no
+net addition. A `grep -rn knownWorktreeIds Sources Tests` afterwards returns only the four uses of
+the local constant inside `reconcile` itself.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 485 tests, with 0 failures (0 unexpected) in 64.954 seconds`,
+`==> CI passed.` Run after the last edit. No SwiftLint output for any touched file.
+`ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
+showed the four modified files and nothing untracked.
