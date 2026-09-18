@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-17
 **Base:** c19e44ac9f624e305bbe4e72e0cefdcfceb553de
+**PR:** #220
 
 Breaks down `docs/superpowers/specs/2026-09-17-worktrees-with-status.md`. Every design decision
 below is carried from that spec; this document only orders the work and says how each piece is
@@ -812,4 +813,35 @@ were removed.
 
   **Gate.** `./scripts/ci.sh` — exit 0, run after the last edit: `Executed 449 tests, with 0
   failures (0 unexpected)`, `==> CI passed.` SwiftLint clean apart from T4's pre-existing
+  `file_length` and `type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.
+
+- **Review fix (this branch, after `80b973e`).** `sidebarOrderedWorktrees` could emit the same
+  worktree twice. `defaultOrder` may hold a duplicate id — the state `repositioned`'s comment
+  says a hand-edited `groups.json` can record and that a drag only heals on the next reorder —
+  and `orderedNonMain` maps it to two copies of the same `Worktree`. `SidebarView.shortcutIndexes`
+  builds `Dictionary(uniqueKeysWithValues:)` over the first nine of those rows, so such a file
+  trapped on render. Fixed at the source: the ordering now deduplicates by id, keeping each
+  worktree's first position, which also covers a duplicate inside a group's `worktreeIds` and a
+  worktree listed by two groups.
+
+  `SidebarView.shortcutIndexes` stays `uniqueKeysWithValues`. The invariant is the ordering's to
+  hold, and the trap is the only thing that would report it breaking again; `uniquingKeysWith`
+  would convert a future regression into a silently wrong ⌘1…9 map.
+
+  | File | State |
+  | --- | --- |
+  | `Sources/App/WorktreeGroupManager.swift` | `sidebarOrderedWorktrees` runs its result through the new `private static deduplicated(_:)` before the `.status` partition; the doc comment states the once-only invariant. |
+  | `Tests/WorktreeGroupManagerTests.swift` | `testDuplicateStoredDefaultOrderDoesNotDuplicateRows` — stores `[alpha, alpha]`, asserts the duplicate is on record, then asserts one row out. |
+  | `docs/superpowers/specs/2026-09-17-worktrees-with-status.md` | Files touched refreshed: `ContentView.swift` dropped (untouched since `c19e44a`), `GroupByMenu.swift` and `Tests/WorktreeStatusTests.swift` added, the `WorktreeGroupManager` and `SidebarView` rows reworded for the dropped `grouping:` parameter and the moved gear. |
+
+  **Watched failure.** The test against unfixed `HEAD`:
+
+  ```
+  ✖ testDuplicateStoredDefaultOrderDoesNotDuplicateRows, XCTAssertEqual failed:
+  ("["/tmp/alpha", "/tmp/alpha"]") is not equal to ("["/tmp/alpha"]")
+  Executed 450 tests, with 1 failure (0 unexpected)
+  ```
+
+  **Gate.** `./scripts/ci.sh` — exit 0, run after the last edit: `Executed 450 tests, with 0
+  failures (0 unexpected)`, `==> CI passed.` SwiftLint clean apart from the pre-existing
   `file_length` and `type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.

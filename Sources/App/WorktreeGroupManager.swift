@@ -231,7 +231,8 @@ final class WorktreeGroupManager: ObservableObject {
     ///
     /// The view mode is this manager's own `grouping` rather than a parameter, for the same
     /// reason `Worktree.visible` is applied here: the rows, the ⌘N badge and the ⌘1…9 buttons
-    /// must not be able to disagree about which worktrees exist or in what order.
+    /// must not be able to disagree about which worktrees exist or in what order. For the same
+    /// reason no worktree is emitted twice, whatever a stored order records.
     /// `.group` and `.none` both return that order — they differ only in how the sidebar
     /// sections it. `.status` stably partitions it into no-status first then the five
     /// statuses in `allCases` order, so each bucket keeps its members' relative order and
@@ -277,8 +278,17 @@ final class WorktreeGroupManager: ObservableObject {
             result.append(contentsOf: (ordered + sortedUnknown).filter(matches))
         }
 
-        guard grouping == .status else { return result }
-        return partitionedByStatus(result)
+        let ordered = Self.deduplicated(result)
+        guard grouping == .status else { return ordered }
+        return partitionedByStatus(ordered)
+    }
+
+    /// Emits each worktree once, keeping its first position. A `groups.json` can record the
+    /// same id twice in `defaultOrder` or in a group's `worktreeIds` (see `repositioned`), and a
+    /// row emitted twice traps `SidebarView.shortcutIndexes` on its uniquely-keyed dictionary.
+    private static func deduplicated(_ worktrees: [Worktree]) -> [Worktree] {
+        var seen = Set<String>()
+        return worktrees.filter { seen.insert($0.id).inserted }
     }
 
     /// `Dictionary(grouping:)` keeps each bucket in input order, so the partition is stable.

@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-17
 **Base:** c19e44ac9f624e305bbe4e72e0cefdcfceb553de
+**PR:** #220
 
 Groups give the sidebar one axis of organisation, but the thing an operator tracks per worktree is
 a workflow state — todo, in progress, in review, done, on hold — which groups model badly. This
@@ -157,11 +158,12 @@ and never `git add -A`.
 | `Sources/App/WorktreeStatus.swift` (new) | `WorktreeStatus` (five cases, raw value, display name, colour) and `WorktreeGrouping` (`group`, `status`, `none`; never used as an `Optional`). |
 | `Sources/App/WorktreeRow.swift` (new) | `WorktreeRow`, `ShortcutBadge`, `PrimaryBadge` moved out of `SidebarView.swift`, plus the new `StatusBadge`; `WorktreeRow` gains a `status` input. |
 | `Sources/App/WorktreeGroupStore.swift` | `WorktreeGroupsPayload` gains `statuses` and `grouping` with a hand-written lenient `init(from:)` (decisions 9, 10). |
-| `Sources/App/WorktreeGroupManager.swift` | Published `statuses` / `grouping`, `setStatus`, `setGrouping`, `status(for:)`, `matches(_:query:taskTitle:)`, `grouping:` on `sidebarOrderedWorktrees`, status pruning in `reconcile`, both persisted through the existing `save()`. |
-| `Sources/App/SidebarView.swift` | Gear becomes a menu with the Group by picker; sections are built per view mode; the Status submenu joins the row context menu; header drops and drag/move gating follow decisions 18 and 19. Shrinks by the rows moved to `WorktreeRow.swift`. |
-| `Sources/App/ContentView.swift` | Passes `grouping:` to `sidebarOrderedWorktrees` so `⌘1…9` follow the view mode. |
+| `Sources/App/WorktreeGroupManager.swift` | Published `statuses` / `grouping`, `setStatus`, `setGrouping`, `status(for:)`, `matches(_:query:taskTitle:)`, `sidebarOrderedWorktrees` reading `grouping` itself, status pruning in `reconcile`, both persisted through the existing `save()`. |
+| `Sources/App/GroupByMenu.swift` (new) | The sidebar header's gear menu: the Group by picker over `WorktreeGrouping`, then Worktree Settings. |
+| `Sources/App/SidebarView.swift` | Sections are built per view mode; the Status submenu joins the row context menu; header drops and drag/move gating follow decisions 18 and 19. Shrinks by the rows moved to `WorktreeRow.swift` and the gear moved to `GroupByMenu.swift`. |
 | `Tests/WorktreeGroupManagerTests.swift` | Ordering per mode, status round-trip, main-is-ignored, pruning, search predicate. |
 | `Tests/WorktreeGroupStoreTests.swift` | Old wire format decodes; unknown slug is dropped. |
+| `Tests/WorktreeStatusTests.swift` (new) | `WorktreeStatus` and `WorktreeGrouping` case order, persisted slugs, unknown-slug decode, display names and colours. |
 | `docs/superpowers/specs/2026-09-17-worktrees-with-status.md` | This document. |
 | `docs/superpowers/plans/2026-09-17-worktrees-with-status.md` | The plan, written by the next stage. |
 

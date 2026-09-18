@@ -532,6 +532,25 @@ final class WorktreeGroupManagerTests: XCTestCase {
         XCTAssertEqual(manager.defaultOrder, ["/tmp/b", "/tmp/a"])
     }
 
+    /// A stored duplicate survives until a drag collapses it, so the order must emit the
+    /// worktree once regardless: `SidebarView.shortcutIndexes` builds a uniquely-keyed
+    /// dictionary over the first nine rows and traps on a repeat.
+    func testDuplicateStoredDefaultOrderDoesNotDuplicateRows() async throws {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        manager.setDefaultOrder([alpha.id, alpha.id])
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(manager.defaultOrder, [alpha.id, alpha.id], "precondition: the duplicate is stored")
+
+        let result = manager.sidebarOrderedWorktrees(
+            [alpha],
+            showingDetached: false,
+            openIds: [],
+            matches: { _ in true }
+        )
+
+        XCTAssertEqual(result.map(\.id), [alpha.id])
+    }
+
     // MARK: - Visibility
 
     /// `sidebarOrderedWorktrees` applies `Worktree.visible` before ordering, so every
