@@ -198,14 +198,7 @@ struct SidebarView: View {
         Label {
             Text(title)
         } icon: {
-            Group {
-                if ctrlHeld {
-                    ShortcutBadge(text: shortcutHint)
-                } else {
-                    Image(systemName: systemImage)
-                }
-            }
-            .sidebarIconSlot()
+            SidebarIcon(systemImage: systemImage, shortcut: ctrlHeld ? shortcutHint : nil)
         }
     }
 
@@ -386,9 +379,8 @@ struct SidebarView: View {
                 }
             } header: {
                 HStack(spacing: SidebarRowMetrics.labelIconSpacing) {
-                    Image(systemName: status.symbol)
+                    SidebarIcon(systemImage: status.symbol)
                         .foregroundStyle(status.color)
-                        .sidebarIconSlot()
                     Text(status.displayName)
                         .foregroundStyle(.primary)
                 }

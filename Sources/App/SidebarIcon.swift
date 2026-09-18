@@ -1,0 +1,48 @@
+import SwiftUI
+
+// MARK: - Sidebar Icon Column
+
+/// The geometry of the sidebar's icon column. Worktree rows, the top-level destinations and the
+/// status section headers all draw their glyph through `SidebarIcon`, which is what keeps the
+/// three on one column.
+enum SidebarRowMetrics {
+    static let iconWidth: CGFloat = 18
+    /// A status header's own icon-to-title gap. Set here rather than taken from `Label`, whose
+    /// spacing is not readable and would leave `statusRowIndent` a guess about it.
+    static let labelIconSpacing: CGFloat = 6
+    /// A `Section` header is inset less than a list row; this makes up the difference.
+    static let headerLeadingInset: CGFloat = 4
+    /// How far inside its own `Text` frame the header title's first glyph begins inking.
+    static let titleLeadingBearing: CGFloat = 3
+    /// Lands a row's icon on the letter its status header's title starts with.
+    static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing - titleLeadingBearing
+}
+
+/// One slot of that column: the `⌘N` / `⌃N` hint while there is one, else the symbol. Leading
+/// alignment rather than centred, so a narrow glyph starts where a wide one does — centring inset
+/// each glyph by half its own slack inside the slot and left the column visibly ragged.
+struct SidebarIcon: View {
+    let systemImage: String
+    var shortcut: String? = nil
+
+    var body: some View {
+        Group {
+            if let shortcut {
+                ShortcutBadge(text: shortcut)
+            } else {
+                Image(systemName: systemImage)
+            }
+        }
+        .frame(width: SidebarRowMetrics.iconWidth, alignment: .leading)
+    }
+}
+
+private struct ShortcutBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.monospaced())
+            .foregroundStyle(.tertiary)
+    }
+}

@@ -76,6 +76,7 @@
 		78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */; };
 		7948BECFE863C3076C46407D /* WorkTaskManagerWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09830C5C5C57BECC73694B93 /* WorkTaskManagerWatcherTests.swift */; };
 		7A9CB2F32586AF5ACE4C955F /* SidebarVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */; };
+		7ABB8DB2EE946934DF57C60F /* SidebarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571E374B49343C4C3F5A926A /* SidebarIcon.swift */; };
 		7D3A21FD5999F0D194550EAC /* ShellPathStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4B326E23A2331E2809D9A8 /* ShellPathStore.swift */; };
 		7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A3868EDD642635D44655B0 /* AgentLaunch.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
@@ -186,6 +187,7 @@
 		54E4F120F042C2615893DCE6 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		559C61A49130CBB58157612B /* TerminalManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManagerTests.swift; sourceTree = "<group>"; };
 		565AC0451DC45348A309739E /* TerminalSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSurface.swift; sourceTree = "<group>"; };
+		571E374B49343C4C3F5A926A /* SidebarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarIcon.swift; sourceTree = "<group>"; };
 		579A3C4FCC4BBC0F1EA9B71E /* OpenInAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppTests.swift; sourceTree = "<group>"; };
 		5A687B79E4CF9B494E2A6391 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
 		5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationObservation.swift; sourceTree = "<group>"; };
@@ -406,6 +408,7 @@
 				EC4B326E23A2331E2809D9A8 /* ShellPathStore.swift */,
 				B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */,
 				2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */,
+				571E374B49343C4C3F5A926A /* SidebarIcon.swift */,
 				B81142617650A73C69973357 /* SidebarSheets.swift */,
 				1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */,
 				0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */,
@@ -785,6 +788,7 @@
 				7D3A21FD5999F0D194550EAC /* ShellPathStore.swift in Sources */,
 				8F86E5A8BC2C125266589818 /* ShellPathValidation.swift in Sources */,
 				A5F032BA8995C6B45FC6001B /* SidebarHeaderControls.swift in Sources */,
+				7ABB8DB2EE946934DF57C60F /* SidebarIcon.swift in Sources */,
 				6D33DC48A8F6646366418B8E /* SidebarSheets.swift in Sources */,
 				2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */,
 				69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */,

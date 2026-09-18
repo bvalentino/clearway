@@ -1,34 +1,5 @@
 import SwiftUI
 
-// MARK: - Sidebar Row Metrics
-
-/// The sidebar's icon grid: rows and status section headers size their icon slot to
-/// `iconWidth`, and a header — which the list insets less than a row — makes up the
-/// difference with `headerLeadingInset`, so both sit on the same grid. A status section
-/// header sets its own icon-to-title gap to `labelIconSpacing` rather than taking `Label`'s
-/// opaque default, which is what lets `statusRowIndent` be the width of that whole icon
-/// column: a row inside the section starts its icon where its header starts its title.
-/// `titleLeadingBearing` is the last term: the header's title is a `Text`, and its first glyph's
-/// ink starts that far inside the `Text`'s own leading edge, so a row's icon has to come back by
-/// the same amount to land on the letter rather than on the frame that holds it.
-enum SidebarRowMetrics {
-    static let iconWidth: CGFloat = 18
-    static let labelIconSpacing: CGFloat = 6
-    static let headerLeadingInset: CGFloat = 4
-    static let titleLeadingBearing: CGFloat = 3
-    static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing - titleLeadingBearing
-}
-
-extension View {
-    /// One slot of that grid, with the glyph flush to the slot's leading edge. Centring it inset
-    /// every glyph by half its own slack inside `iconWidth`, which left `statusRowIndent` true of
-    /// the slots and visibly false of what is drawn in them: a header's title starts at its own
-    /// leading edge, so a row's icon has to start at the slot's.
-    func sidebarIconSlot() -> some View {
-        frame(width: SidebarRowMetrics.iconWidth, alignment: .leading)
-    }
-}
-
 // MARK: - Worktree Row
 
 struct WorktreeRow: View {
@@ -85,28 +56,11 @@ struct WorktreeRow: View {
                 .animation(.easeOut(duration: 0.6), value: isWorking)
             }
         } icon: {
-            Group {
-                if let index = shortcutIndex {
-                    ShortcutBadge(text: "⌘\(index)")
-                } else {
-                    Image(systemName: "square.on.square.intersection.dashed")
-                }
-            }
-            .sidebarIconSlot()
+            SidebarIcon(
+                systemImage: "square.on.square.intersection.dashed",
+                shortcut: shortcutIndex.map { "⌘\($0)" }
+            )
         }
-    }
-}
-
-// MARK: - Shortcut Badge
-
-/// Keyboard-shortcut hint shown in place of a sidebar row's icon.
-struct ShortcutBadge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
     }
 }
 

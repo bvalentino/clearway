@@ -657,3 +657,26 @@ was needed.
 
 `git status --porcelain` before the commit listed only the source above, the spec and this plan.
 No `default.profraw` — the app was not launched here; the operator owns the visual check.
+
+### 2026-09-18 — Simplify pass
+
+`/simplify` over the branch. Quality only; no rendered outcome changes and the four
+`SidebarRowMetrics` values and `statusRowIndent`'s composition are untouched.
+
+- `Sources/App/SidebarIcon.swift` (new) now owns the icon column: `SidebarRowMetrics`, a
+  `SidebarIcon` view, and `ShortcutBadge` (private, its only caller is now `SidebarIcon`). The
+  metrics and the slot modifier previously sat in `WorktreeRow.swift`, which `SidebarView` reached
+  into for three constants and a module-wide `View` extension it had no other reason to open.
+- The `Group { if badge … else Image }.sidebarIconSlot()` block was written verbatim in
+  `WorktreeRow`'s and `destinationRow`'s `icon:` closures. Both now call `SidebarIcon`, as does the
+  status header, so the slot's geometry is a type rather than a convention each new icon site has
+  to remember. `sidebarIconSlot()` is gone, folded into `SidebarIcon.body`.
+- The metrics doc comment became one line per constant, dropping the prose that restated
+  `statusRowIndent`'s expression and narrated the rejected centring experiment — that history is in
+  the two changelog entries above.
+
+Skipped: hoisting `worktreeRowView`'s `leadingIndent` to `statusSection`'s call site (it would pull
+the indent gutter out of the row's `.contextMenu`/`.draggableIf` regions — an interaction change);
+a `WorktreeStatus.icon` view (the three sites need the slot, `Label`'s own column, and no tint at
+all respectively); dropping `testSymbols` in favour of `testSymbolsResolve` (T1 pins it as an
+acceptance criterion).
