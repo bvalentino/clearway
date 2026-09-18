@@ -198,11 +198,7 @@ struct SidebarView: View {
         Label {
             Text(title)
         } icon: {
-            if ctrlHeld {
-                ShortcutBadge(text: shortcutHint)
-            } else {
-                Image(systemName: systemImage)
-            }
+            SidebarIcon(systemImage: systemImage, shortcut: ctrlHeld ? shortcutHint : nil)
         }
     }
 
@@ -373,16 +369,28 @@ struct SidebarView: View {
         if !(isSearching && rows.isEmpty) {
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
+                    worktreeRowView(
+                        for: wt,
+                        titles: titles,
+                        shortcuts: shortcuts,
+                        moveDisabled: true,
+                        leadingIndent: SidebarRowMetrics.statusRowIndent
+                    )
                 }
             } header: {
-                Text(status.displayName)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
-                    .dropDestination(for: String.self) { ids, _ in
-                        applyStatus(status, to: ids)
-                        return true
-                    } isTargeted: { targetedStatus = $0 ? status : nil }
+                HStack(spacing: SidebarRowMetrics.headerIconSpacing) {
+                    SidebarIcon(systemImage: status.symbol)
+                        .foregroundStyle(status.color)
+                    Text(status.displayName)
+                        .foregroundStyle(.primary)
+                }
+                .padding(.leading, SidebarRowMetrics.headerLeadingInset)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
+                .dropDestination(for: String.self) { ids, _ in
+                    applyStatus(status, to: ids)
+                    return true
+                } isTargeted: { targetedStatus = $0 ? status : nil }
             }
         }
     }
@@ -415,7 +423,13 @@ struct SidebarView: View {
                 )) {
                     Text("None").tag(WorktreeStatus?.none)
                     ForEach(WorktreeStatus.allCases) { status in
-                        Text(status.displayName).tag(Optional(status))
+                        Label {
+                            Text(status.displayName)
+                        } icon: {
+                            Image(systemName: status.symbol)
+                                .foregroundStyle(status.color)
+                        }
+                        .tag(Optional(status))
                     }
                 }
                 .pickerStyle(.inline)
@@ -484,7 +498,8 @@ struct SidebarView: View {
         for wt: Worktree,
         titles: [String: String],
         shortcuts: [String: Int],
-        moveDisabled: Bool
+        moveDisabled: Bool,
+        leadingIndent: CGFloat = 0
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
@@ -503,6 +518,7 @@ struct SidebarView: View {
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
+            .padding(.leading, leadingIndent)
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }

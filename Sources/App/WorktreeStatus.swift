@@ -29,10 +29,20 @@ enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
     var color: Color {
         switch self {
         case .todo: return .gray
-        case .inProgress: return .blue
-        case .inReview: return .purple
-        case .done: return .green
-        case .onHold: return .orange
+        case .inProgress: return .yellow
+        case .inReview: return .green
+        case .done: return .indigo
+        case .onHold: return .gray
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .todo: return "circle"
+        case .inProgress: return "circle.lefthalf.filled"
+        case .inReview: return "circle.inset.filled"
+        case .done: return "checkmark.circle.fill"
+        case .onHold: return "pause.circle"
         }
     }
 }

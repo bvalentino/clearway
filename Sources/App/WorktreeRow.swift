@@ -56,25 +56,11 @@ struct WorktreeRow: View {
                 .animation(.easeOut(duration: 0.6), value: isWorking)
             }
         } icon: {
-            if let index = shortcutIndex {
-                ShortcutBadge(text: "⌘\(index)")
-            } else {
-                Image(systemName: "square.on.square.intersection.dashed")
-            }
+            SidebarIcon(
+                systemImage: "square.on.square.intersection.dashed",
+                shortcut: shortcutIndex.map { "⌘\($0)" }
+            )
         }
-    }
-}
-
-// MARK: - Shortcut Badge
-
-/// Keyboard-shortcut hint shown in place of a sidebar row's icon.
-struct ShortcutBadge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
     }
 }
 
@@ -94,9 +80,12 @@ private struct StatusBadge: View {
     let status: WorktreeStatus
 
     var body: some View {
-        Text(status.displayName.lowercased())
-            .foregroundStyle(status.color)
-            .rowBadge(status.color.opacity(0.15))
+        HStack(spacing: 3) {
+            Image(systemName: status.symbol)
+            Text(status.displayName.lowercased())
+        }
+        .foregroundStyle(status.color)
+        .rowBadge(status.color.opacity(0.15))
     }
 }
 

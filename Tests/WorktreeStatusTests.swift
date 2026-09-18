@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import XCTest
 @testable import Clearway
@@ -32,7 +33,20 @@ final class WorktreeStatusTests: XCTestCase {
 
     func testColorsAreSystemColors() {
         XCTAssertEqual(WorktreeStatus.allCases.map(\.color),
-                       [.gray, .blue, .purple, .green, .orange])
+                       [.gray, .yellow, .green, .indigo, .gray])
+    }
+
+    func testSymbols() {
+        XCTAssertEqual(WorktreeStatus.allCases.map(\.symbol),
+                       ["circle", "circle.lefthalf.filled", "circle.inset.filled",
+                        "checkmark.circle.fill", "pause.circle"])
+    }
+
+    func testSymbolsResolveOnBuildHost() {
+        for status in WorktreeStatus.allCases {
+            XCTAssertNotNil(NSImage(systemSymbolName: status.symbol, accessibilityDescription: nil),
+                            status.symbol)
+        }
     }
 
     // MARK: - WorktreeGrouping
