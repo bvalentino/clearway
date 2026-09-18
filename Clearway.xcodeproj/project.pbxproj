@@ -96,6 +96,7 @@
 		A339C206B98BF9EBC379258D /* WorktreeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */; };
 		A414031A15F3D086AC02BD9C /* OpenInAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579A3C4FCC4BBC0F1EA9B71E /* OpenInAppTests.swift */; };
 		A594DF0DFD5CE4A2CF336DE9 /* SavedCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D39D30CC314308803C5426 /* SavedCommand.swift */; };
+		A5F032BA8995C6B45FC6001B /* SidebarHeaderControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
 		A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */; };
 		AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */; };
@@ -165,6 +166,7 @@
 		267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupManagerTests.swift; sourceTree = "<group>"; };
 		285166667E4C68C074F90329 /* ShellEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvironmentTests.swift; sourceTree = "<group>"; };
 		2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectorView.swift; sourceTree = "<group>"; };
+		2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarHeaderControls.swift; sourceTree = "<group>"; };
 		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
 		391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRow.swift; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				3E72B54161DD09066136784D /* ShellPathResolver.swift */,
 				EC4B326E23A2331E2809D9A8 /* ShellPathStore.swift */,
 				B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */,
+				2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */,
 				B81142617650A73C69973357 /* SidebarSheets.swift */,
 				1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */,
 				0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */,
@@ -781,6 +784,7 @@
 				81EF1B0856D4F302835AC01A /* ShellPathResolver.swift in Sources */,
 				7D3A21FD5999F0D194550EAC /* ShellPathStore.swift in Sources */,
 				8F86E5A8BC2C125266589818 /* ShellPathValidation.swift in Sources */,
+				A5F032BA8995C6B45FC6001B /* SidebarHeaderControls.swift in Sources */,
 				6D33DC48A8F6646366418B8E /* SidebarSheets.swift in Sources */,
 				2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */,
 				69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */,

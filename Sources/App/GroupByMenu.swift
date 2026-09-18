@@ -24,24 +24,3 @@ struct GroupByMenu: View {
         }
     }
 }
-
-/// A borderless menu sized to match `SidebarHeaderButton`, for the sidebar's section headers.
-struct SidebarHeaderMenu<Content: View>: View {
-    let systemImage: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        Menu {
-            content
-        } label: {
-            Image(systemName: systemImage)
-                .font(.body)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-    }
-}

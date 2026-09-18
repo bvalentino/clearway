@@ -845,3 +845,24 @@ were removed.
   **Gate.** `./scripts/ci.sh` — exit 0, run after the last edit: `Executed 450 tests, with 0
   failures (0 unexpected)`, `==> CI passed.` SwiftLint clean apart from the pre-existing
   `file_length` and `type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.
+
+- **Review fix (this branch, after `38bf438`).** `SidebarHeaderMenu` copied `SidebarHeaderButton`'s
+  chrome but not its hover highlight, so the Worktrees header's gear stayed secondary under the
+  pointer while the refresh and plus buttons beside it brightened, and `GroupSectionHeader`'s
+  ellipsis had the same gap. Both controls now render one shared `SidebarHeaderIcon`, which takes
+  the hover flag and owns the size, shape and colour; each container keeps its own `@State` +
+  `.onHover`, the shape that already works on the button — `.onHover` on the label inside a
+  `.borderlessButton` `Menu` is not reliably delivered, and moving it inside would have put the
+  working buttons on that same path.
+
+  | File | State |
+  | --- | --- |
+  | `Sources/App/SidebarHeaderControls.swift` | New. Holds `SidebarHeaderIcon` (private), `SidebarHeaderButton` and `SidebarHeaderMenu` — one file for the sidebar header chrome both headers share. |
+  | `Sources/App/SidebarView.swift` | `SidebarHeaderButton` moved out; the stale `// MARK: - Sidebar Header Button` above `SearchField` removed. |
+  | `Sources/App/GroupByMenu.swift` | `SidebarHeaderMenu` moved out; the file is now just `GroupByMenu`. |
+
+  No test: nothing on either view is reachable from XCTest, and the hover state is AppKit tracking
+  rather than a decision rule worth lifting out. Verified by hand in the running app.
+
+  **Gate.** `./scripts/ci.sh` — exit 0, run after the last edit: `Executed 457 tests, with 0
+  failures (0 unexpected)`, `==> CI passed.` `swiftlint lint --quiet` — exit 0, no output.

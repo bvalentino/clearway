@@ -580,8 +580,6 @@ private struct GroupSectionHeader: View {
     }
 }
 
-// MARK: - Sidebar Header Button
-
 /// Native NSSearchField wrapped for SwiftUI — matches the system search field appearance.
 private struct SearchField: NSViewRepresentable {
     @Binding var text: String
@@ -637,24 +635,6 @@ private struct FloatingSidebarButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
-    }
-}
-
-private struct SidebarHeaderButton: View {
-    let systemImage: String
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-                .foregroundStyle(isHovering ? .primary : .secondary)
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
     }
 }
 
