@@ -104,6 +104,19 @@ final class RAIICleanupTests: TempRootTestCase {
         XCTAssertNil(weakManager, "WorkTaskManager leaked; its pending reload is never cancelled")
     }
 
+    /// `PortMonitor`'s poll task is the `[weak self]` CLAUDE.md records as a recurring review
+    /// suggestion to remove. A strong capture retains the monitor through the task it owns, so the
+    /// `deinit` never runs and the machine-wide scan keeps going for the life of the process.
+    func testPortMonitorDeallocates() {
+        weak var weakMonitor: PortMonitor?
+        autoreleasepool {
+            let monitor = PortMonitor()
+            weakMonitor = monitor
+            XCTAssertNotNil(weakMonitor)
+        }
+        XCTAssertNil(weakMonitor, "PortMonitor leaked; its poll task is never cancelled")
+    }
+
     func testPromptAndTodoManagersDeallocate() {
         weak var weakPrompt: PromptManager?
         weak var weakTodo: TodoManager?
