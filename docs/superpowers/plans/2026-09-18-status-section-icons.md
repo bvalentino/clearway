@@ -537,3 +537,70 @@ SwiftUI view builder and cannot reach `ShellPathResolver`.
 
 `git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
 No `default.profraw` — the app was not launched here; the operator owns the visual check.
+
+### 2026-09-18 — Operator change from the hands-on check: align the row icons on the header's title
+
+Requested by the operator after trying d551971 by hand: "The icons of indented worktrees are not
+starting at the same level as the text of the status." The rule they gave: a row's icon column — the
+icon, or the `⌘N` badge that replaces it — must start at the same x as the header's title text.
+Recorded here so no later stage reverts it as unintentional. Spec decision 17 carries the amended
+ruling.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | New `View.sidebarIconSlot()` beside `SidebarRowMetrics`: `frame(width: SidebarRowMetrics.iconWidth, alignment: .leading)`, the one home for the icon column's geometry. `WorktreeRow`'s icon `Group` calls it in place of its bare `.frame(width:)`. The four constants are unchanged — `statusRowIndent` is still `iconWidth + labelIconSpacing`. |
+| `Sources/App/SidebarView.swift` | `destinationRow`'s icon `Group` and `statusSection`'s header `Image` call `sidebarIconSlot()` in place of the same bare `.frame(width:)`. Nothing else changes: the indent, the header's `HStack` spacing, its `headerLeadingInset` padding, the drop targets and every row modifier are as d551971 left them. |
+
+**Which term was wrong**
+
+Neither the indent nor the insets: the measurement in the previous entry was of frames, and the
+operator's eye is on glyphs. Column positions read off the operator's screenshot (2x, leftmost ink
+per band, decoded rather than eyeballed):
+
+| Element | Ink x (px, 2x) |
+| --- | --- |
+| Main row `⌘1` badge | 38 |
+| Header icon glyph | 35 |
+| Header title text | 77 |
+| Indented row `⌘2` / `⌘3` badge | 86 |
+| Indented row worktree glyph | 85 |
+
+The indent is exact: 86 − 38 = 48 px = 24 pt = `statusRowIndent`. And the frames do align — the
+`⌘N` badge measures 20 px of ink in a 36 px slot, so centring puts its frame at 86 − 8 = 78, against
+the header title's 77. What the operator sees is the 8 px of centring slack, not a double-counted
+`headerLeadingInset`: the header's own icon is centred too (23 px of ink at 35 ⇒ frame at ~29, one
+pixel off the main row's 30, which is decision 16 working as intended), but its *title* has no slot
+and starts at its own leading edge. So the fix is at the slot, not at the sum: with the glyph flush
+to the slot's leading edge the indented icon lands at ~78 against the title's 77, and every other
+icon in the sidebar moves left by its own half-slack (2–4 px) while staying on the one axis it
+shared before — the header's icon and the main row's icon end up at ~29 and 30 instead of 35 and 38.
+
+Leading alignment rather than a smaller indent is what makes the rule hold for a glyph the app does
+not have yet: a wider or narrower symbol changes its slack, and any indent tuned to today's badge
+would drift the moment one arrives. It also keeps `statusRowIndent` the true header-title offset,
+which a literal-shaving 20 would not have been.
+
+**Deviations from the plan**
+
+This is not a plan task; it postdates T1–T3 and the four earlier operator changes. It reverses one
+sentence of the previous entry, which kept the header's glyph centred "so the header's glyph stays
+centred on the same axis as the destination rows' and the worktree rows' glyphs" — they do stay on
+one axis, because all three sites take the same slot.
+
+**Evidence**
+
+No test. This is SwiftUI view geometry inside a rendered `SidebarView`, reachable only with a live
+`WorktreeGroupManager` and `TerminalManager`, so there is no failure to watch and none is quoted
+rather than a test written after the fact. The proof is the screenshot measurement above plus the
+composition: one modifier owns the slot, and all three call sites take it.
+
+**The gate**
+
+`./scripts/ci.sh` after the last source edit, first run: `Test Succeeded` / `==> CI passed.`,
+**`EXIT:0`, 459 tests, 0 failures** in 60.3 s. `xcodegen generate` and `swiftlint lint --quiet` pass
+(the script runs under `set -euo pipefail`). `ShellPathResolverTests` was green — no re-run needed.
+
+`git status --porcelain` before the commit listed only the two sources above, the spec and this plan.
+No `default.profraw` — the app was not launched here; the operator owns the visual check.

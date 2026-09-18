@@ -205,7 +205,7 @@ struct SidebarView: View {
                     Image(systemName: systemImage)
                 }
             }
-            .frame(width: SidebarRowMetrics.iconWidth)
+            .sidebarIconSlot()
         }
     }
 
@@ -388,7 +388,7 @@ struct SidebarView: View {
                 HStack(spacing: SidebarRowMetrics.labelIconSpacing) {
                     Image(systemName: status.symbol)
                         .foregroundStyle(status.color)
-                        .frame(width: SidebarRowMetrics.iconWidth)
+                        .sidebarIconSlot()
                     Text(status.displayName)
                         .foregroundStyle(.primary)
                 }

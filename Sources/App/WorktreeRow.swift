@@ -15,6 +15,16 @@ enum SidebarRowMetrics {
     static let statusRowIndent: CGFloat = iconWidth + labelIconSpacing
 }
 
+extension View {
+    /// One slot of that grid, with the glyph flush to the slot's leading edge. Centring it inset
+    /// every glyph by half its own slack inside `iconWidth`, which left `statusRowIndent` true of
+    /// the slots and visibly false of what is drawn in them: a header's title starts at its own
+    /// leading edge, so a row's icon has to start at the slot's.
+    func sidebarIconSlot() -> some View {
+        frame(width: SidebarRowMetrics.iconWidth, alignment: .leading)
+    }
+}
+
 // MARK: - Worktree Row
 
 struct WorktreeRow: View {
@@ -78,7 +88,7 @@ struct WorktreeRow: View {
                     Image(systemName: "square.on.square.intersection.dashed")
                 }
             }
-            .frame(width: SidebarRowMetrics.iconWidth)
+            .sidebarIconSlot()
         }
     }
 }
