@@ -10,8 +10,7 @@ final class PortMonitor: ObservableObject {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 let scanned = await Task.detached(priority: .utility) { PortScanner.scan() }.value
-                guard let self else { return }
-                if scanned != listeners { listeners = scanned }
+                if let self, scanned != self.listeners { self.listeners = scanned }
                 try? await Task.sleep(for: .seconds(2))
             }
         }

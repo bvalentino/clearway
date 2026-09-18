@@ -134,8 +134,6 @@ struct WorktreeStatusBar: View {
         return PortAttribution.attribute(portMonitor.listeners, to: worktreeManager.worktrees)[worktree.id] ?? []
     }
 
-    /// Empty for a portless worktree rather than a zero-width subview, so the enclosing stack's
-    /// spacing stays 0 and the path keeps every character it has at base.
     @ViewBuilder
     private var livePortsView: some View {
         let ports = livePorts
@@ -153,7 +151,6 @@ struct WorktreeStatusBar: View {
                         .help(PortLink.urlString(port))
                 }
             }
-            .padding(.trailing, 12)
         }
     }
 

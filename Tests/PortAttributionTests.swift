@@ -8,7 +8,7 @@ final class PortAttributionTests: XCTestCase {
         let child = makeWorktree(branch: "feature", path: "/r/.worktrees/a")
         let listeners = [PortScanner.Listener(cwd: "/r/.worktrees/a", port: 8123)]
 
-        let result = PortAttribution.attribute(listeners, to: [main, child])
+        let result = PortAttribution.attribute(listeners, to: [child, main])
 
         XCTAssertEqual(result, ["/r/.worktrees/a": [8123]])
     }
@@ -54,11 +54,15 @@ final class PortAttributionTests: XCTestCase {
         XCTAssertEqual(result, [:])
     }
 
-    func testIPv4AndIPv6BindsOfOnePortCollapse() {
+    /// A forked worker inheriting its parent's listening socket reports its own cwd, so one port
+    /// arrives twice under two directories of the same worktree. One entry, not two. A single
+    /// process's IPv4 and IPv6 binds never reach here as a pair — `PortScanner` returns a `Set`
+    /// per pid — so this is the duplicate attribution actually has to collapse.
+    func testOnePortReachedFromTwoDirectoriesCollapses() {
         let worktree = makeWorktree(branch: "main", path: "/r", isMain: true)
         let listeners = [
             PortScanner.Listener(cwd: "/r", port: 5432),
-            PortScanner.Listener(cwd: "/r", port: 5432)
+            PortScanner.Listener(cwd: "/r/data", port: 5432)
         ]
 
         let result = PortAttribution.attribute(listeners, to: [worktree])

@@ -951,3 +951,58 @@ silent, 472 tests, 0 failures, `==> CI passed.`, exit 0. `git status --porcelain
 listed only `Clearway.xcodeproj/project.pbxproj`, `Sources/App/ContentViewHelpers.swift`,
 `Sources/App/PortScanner.swift`, this plan and the untracked `Tests/PortScannerTests.swift` — no
 `default.profraw`, since the app was never launched.
+
+### Review findings R1–R7
+
+Four reviews over `git diff main...HEAD` (code against CLAUDE.md, test coverage, error handling,
+type design). Seven findings accepted and fixed; the rest either collide with a row in the spec's
+Decisions table, which wins, or are recorded under Follow-ups below.
+
+| # | Finding | Fix |
+| --- | --- | --- |
+| R1 | `livePortsView`'s `.padding(.trailing, 12)` was unconditional, but its job is to separate the ports from the PR info, which does not render for the primary worktree. A primary worktree with a live server sat 32 pt from the bar's right edge against the path's 20 pt. | The gap moved onto `prStatusView(for:)` as `.padding(.leading, 12)`. With no ports it is absorbed by the `Spacer()`, so the no-ports layout is unchanged. |
+| R2 | `livePortsView`'s doc comment claimed the `if` keeps "the enclosing stack's spacing at 0". The enclosing stack is `HStack(spacing: 0)` — a literal — so the claim is false, and the shape needs no defence. | Deleted. |
+| R3 | `scan()`'s doc comment claimed the sort stops a listener "anywhere on the machine" republishing for nothing. The sort fixes ordering churn only; membership churn still flips `!=`. | The ordering rule is now `PortScanner.ordered(_:)`, a pure `nonisolated static` helper `scan()` calls, and the comment claims only order stability. |
+| R4 | `PortScannerTests` asserted `scan()` equals its own comparator applied to its own output — vacuous on a machine with fewer than two listeners, and green even if every `libproc` call fails. | Replaced by two tests: `ordered(_:)` over a fixed fixture, pinning cwd-major/port-minor; and a test that opens a listening socket of its own and asserts `scan()` finds it, so a dead scanner is red. |
+| R5 | `MemoryLayout<T>.size` was passed where C's `sizeof` is meant. `.size` excludes trailing padding; XNU rejects an undersized buffer outright, so an SDK revision adding padding would turn every `proc_pidinfo` call into a permanent, silent empty result. | All six occurrences are `.stride`. Verified behaviour-neutral today: a scratchpad probe prints `size == stride` (792 and 2352) for `socket_fdinfo` and `proc_vnodepathinfo`. |
+| R6 | `guard let self else { return }` held a strong `self` to the end of the loop body, which includes the 2 s sleep, so the monitor could only deallocate during the brief scan window and the `nonisolated deinit` was close to unreachable. | `if let self, scanned != self.listeners { self.listeners = scanned }` — the strong binding ends before the sleep. |
+| R7 | `PortMonitor` was missing from `RAIICleanupTests`' "Owners still deallocate" section, the family it joined. CLAUDE.md records dropping that outer `[weak self]` as a recurring review suggestion, and nothing would have caught it. | `testPortMonitorDeallocates`, in the shape the six neighbouring tests use. |
+
+Two test corrections went with them: both nesting cases in `PortAttributionTests` passed the
+worktrees parent-first, so a regression to a `first(where:)` prefix sweep was only caught in one
+input order — `testNestedWorktreesAttributeToTheLongestMatch` now passes `[child, main]`. And
+`testIPv4AndIPv6BindsOfOnePortCollapse` named a duplicate the scanner cannot emit: `listeningPorts`
+returns a `Set<UInt16>` per pid, so one process's IPv4 and IPv6 binds collapse before attribution
+sees them. It is now `testOnePortReachedFromTwoDirectoriesCollapses`, the fork-inherited-listener
+case, which is the duplicate attribution actually has to collapse.
+
+**Evidence.** R5's premise was verified rather than assumed: `scratchpad/selfscan.swift`, built with
+`swiftc -swift-version 6 -target arm64-apple-macos13.0`, printed `size == stride` for both structs
+and confirmed R4's new test is deterministic — it bound an ephemeral port, found it through the same
+`PROC_PIDLISTFDS`/`PROC_PIDFDSOCKETINFO` path, and printed `cwd match: true` between
+`PROC_PIDVNODEPATHINFO` and `FileManager.default.currentDirectoryPath`, including for a `/private`
+path. The probe stayed in the session scratchpad; nothing was written into the repository. R1, R2,
+R6 and R7 carry no probe: R1 and R2 are layout and a comment, R6 is a scope narrowing with no
+observable behaviour change, and R7 is itself the test.
+
+**Deviations.** None.
+
+**Gate.** Not run here — `sign-off` owns the single full `./scripts/ci.sh` run, per the stage brief.
+`git status --porcelain` before the commit listed only the five touched files and this plan; no
+`default.profraw`, since the app was never launched.
+
+**Follow-ups declined here.** Five, each recorded rather than fixed:
+`PortScanner`'s two-call `libproc` sizing discards the kernel's `written == capacity` truncation
+signal, so a process table that grows between the two calls silently drops the tail for one 2 s
+cycle; a systemic `proc_listpids` failure is byte-identical to a quiet machine and the feature
+carries no `Logger`, against the repo's five-instance convention; `PortMonitor` hard-wires
+`PortScanner.scan` and the 2 s interval, so the `!=` republish guard has no test seam;
+`WorktreeStatusBar.livePorts` rebuilds the whole attribution map on every body pass and discards all
+but one key; and `Task.detached` does not inherit cancellation, so `deinit`'s `cancel()` does not
+stop an in-flight scan. Three further findings were dropped because they collide with the spec's
+Decisions table, which wins: gating the poll on `NSApplication.isActive` (decision 7 fixes the
+cadence at 2 s and rules out activation gating), making `PortLink.url` non-optional (decision 20
+requires it guarded rather than force-unwrapped), and collapsing `PortLink.label` into
+`Text(verbatim:)` (decision 25). A symlink-normalisation concern raised against `PortAttribution`
+was checked and dropped: `git worktree list --porcelain` emits realpaths, as the kernel's cwd does,
+so both sides of the comparison are already resolved.
