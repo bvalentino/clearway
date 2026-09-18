@@ -28,8 +28,7 @@ struct WorktreeGroupsPayload: Codable, Equatable {
     /// Decodes leniently so no file this app has ever written is rejected: `groups` and
     /// `defaultOrder` stay required — their absence is what routes a legacy bare-array file to
     /// the fallback in `load()` — while an absent or unrecognised `statuses` entry or `grouping`
-    /// slug degrades to the default instead of throwing and taking the whole payload, and with
-    /// it every group in the project, down with it.
+    /// slug degrades to the default. A throw here would take every group in the project with it.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         groups = try container.decode([WorktreeGroup].self, forKey: .groups)

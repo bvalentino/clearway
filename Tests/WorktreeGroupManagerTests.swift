@@ -7,6 +7,12 @@ final class WorktreeGroupManagerTests: XCTestCase {
     private var tempRoot: String!
     private var manager: WorktreeGroupManager!
 
+    private var groupsFileExists: Bool {
+        FileManager.default.fileExists(
+            atPath: (tempRoot as NSString).appendingPathComponent(".clearway/groups.json")
+        )
+    }
+
     override func setUp() async throws {
         try await super.setUp()
         tempRoot = (NSTemporaryDirectory() as NSString)
@@ -645,12 +651,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertTrue(manager.statuses.isEmpty)
-        let file = (tempRoot as NSString)
-            .appendingPathComponent(".clearway/groups.json")
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: file),
-            "a main-worktree status must write nothing"
-        )
+        XCTAssertFalse(groupsFileExists, "a main-worktree status must write nothing")
     }
 
     // MARK: - setGrouping
@@ -668,12 +669,7 @@ final class WorktreeGroupManagerTests: XCTestCase {
         manager.setGrouping(.group)
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let file = (tempRoot as NSString)
-            .appendingPathComponent(".clearway/groups.json")
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: file),
-            "an unchanged grouping must not save"
-        )
+        XCTAssertFalse(groupsFileExists, "an unchanged grouping must not save")
     }
 
     // MARK: - reconcile prunes statuses

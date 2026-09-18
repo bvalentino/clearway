@@ -770,3 +770,21 @@ pinned by T3's watched failures. The criteria are confirmed by hand against `./s
 `file_length` and `type_body_length` on `Tests/WorktreeGroupManagerTests.swift`.
 `git status --porcelain` — `Sources/App/SidebarView.swift`, `Sources/App/GroupByMenu.swift`,
 `Clearway.xcodeproj/project.pbxproj` and this build log; no other untracked files.
+
+### Simplify
+
+`SidebarView` now resolves the ordering, `titlesByBranch` and the ⌘N positions once in
+`worktreeSections` and hands each section its rows from one `Dictionary(grouping:)` — `.status` mode
+previously re-ran the whole ordering six times per body evaluation and once more per rendered row.
+`worktreesSection` folds its duplicated `ForEach` into one, `statusSection` drops a `Binding` used
+only through `wrappedValue`, the three drop handlers share `withDroppedWorktrees`, `GroupByMenu` and
+`GroupSectionHeader` share `SidebarHeaderMenu`, and `PrimaryBadge`/`StatusBadge` share a `rowBadge`
+modifier. `WorktreeGroupManager.partitionedByStatus` becomes two lines over `Dictionary(grouping:)`
+and `matches` finds the containing group in one scan. Comments that restated their own signature
+were removed.
+
+**Gate**
+
+`./scripts/ci.sh` — green after the last edit: `Executed 449 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `swiftlint lint --quiet` — exit 0, only T4's pre-existing `file_length` and
+`type_body_length` warnings on `Tests/WorktreeGroupManagerTests.swift`.

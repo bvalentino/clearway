@@ -160,14 +160,12 @@ final class WorktreeGroupManager: ObservableObject {
         groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.id
     }
 
-    /// Returns the status of the given worktree ID, or `nil` when it has none.
     func status(for worktreeId: String) -> WorktreeStatus? {
         statuses[worktreeId]
     }
 
-    /// Sets a worktree's status, or clears it when `status` is `nil`.
-    ///
-    /// The main worktree is silently ignored — it can never carry a status.
+    /// Clears the status when `status` is `nil`. The main worktree can never carry one,
+    /// so it is silently ignored.
     func setStatus(_ status: WorktreeStatus?, for wt: Worktree) {
         guard !wt.isMain else { return }
         guard statuses[wt.id] != status else { return }
@@ -175,7 +173,6 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Sets the axis the sidebar sections by.
     func setGrouping(_ grouping: WorktreeGrouping) {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
@@ -216,8 +213,7 @@ final class WorktreeGroupManager: ObservableObject {
         guard !query.isEmpty else { return true }
         if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
         if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
-        if let groupId = groupId(for: wt.id),
-           let group = groups.first(where: { $0.id == groupId }),
+        if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
            group.name.localizedCaseInsensitiveContains(query) { return true }
         if let status = status(for: wt.id),
            status.displayName.localizedCaseInsensitiveContains(query) { return true }
@@ -280,25 +276,13 @@ final class WorktreeGroupManager: ObservableObject {
         }
 
         guard grouping == .status else { return result }
-        return Self.partitionedByStatus(result, status: { self.status(for: $0.id) })
+        return partitionedByStatus(result)
     }
 
-    /// Stably partitions an ordered list into no-status first, then one bucket per
-    /// `WorktreeStatus.allCases` case in order.
-    private static func partitionedByStatus(
-        _ worktrees: [Worktree],
-        status: (Worktree) -> WorktreeStatus?
-    ) -> [Worktree] {
-        var buckets: [WorktreeStatus: [Worktree]] = [:]
-        var unstatused: [Worktree] = []
-        for wt in worktrees {
-            if let status = status(wt) {
-                buckets[status, default: []].append(wt)
-            } else {
-                unstatused.append(wt)
-            }
-        }
-        return unstatused + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
+    /// `Dictionary(grouping:)` keeps each bucket in input order, so the partition is stable.
+    private func partitionedByStatus(_ worktrees: [Worktree]) -> [Worktree] {
+        let buckets = Dictionary(grouping: worktrees) { statuses[$0.id] }
+        return (buckets[nil] ?? []) + WorktreeStatus.allCases.flatMap { buckets[$0] ?? [] }
     }
 
     // MARK: - Private Helpers

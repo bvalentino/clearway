@@ -208,53 +208,55 @@ struct SidebarView: View {
         }
     }
 
+    /// Resolves the ordering, the task titles and the ⌘N positions once and hands each section
+    /// its rows. Reading them inside a section re-ran the whole ordering once per section, and
+    /// once more per rendered row.
     @ViewBuilder
     private var worktreeSections: some View {
+        let ordered = orderedWorktrees
+        let titles = workTaskManager.titlesByBranch
+        let shortcuts = shortcutIndexes
         switch groupManager.grouping {
         case .group:
-            worktreesSection(
-                rows: orderedWorktrees.filter { groupManager.groupId(for: $0.id) == nil },
-                reorderable: true
-            )
+            let byGroup = Dictionary(grouping: ordered) { groupManager.groupId(for: $0.id) }
+            worktreesSection(rows: byGroup[nil] ?? [], titles: titles, shortcuts: shortcuts, reorderable: true)
             ForEach(groupManager.groups) { group in
-                groupSection(group)
+                groupSection(group, rows: byGroup[group.id] ?? [], titles: titles, shortcuts: shortcuts)
             }
         case .status:
-            worktreesSection(
-                rows: orderedWorktrees.filter { groupManager.status(for: $0.id) == nil },
-                reorderable: false
-            )
+            let byStatus = Dictionary(grouping: ordered) { groupManager.status(for: $0.id) }
+            worktreesSection(rows: byStatus[nil] ?? [], titles: titles, shortcuts: shortcuts, reorderable: false)
             ForEach(WorktreeStatus.allCases) { status in
-                statusSection(status)
+                statusSection(status, rows: byStatus[status] ?? [], titles: titles, shortcuts: shortcuts)
             }
         case .none:
-            worktreesSection(rows: orderedWorktrees, reorderable: false)
+            worktreesSection(rows: ordered, titles: titles, shortcuts: shortcuts, reorderable: false)
         }
     }
 
-    /// The "Worktrees" section. Its rows are whatever the current view mode leaves
-    /// unsectioned: the ungrouped ones in `.group`, the unstatused ones in `.status`,
-    /// every one of them in `.none`. Only `.group` reorders within it.
-    private func worktreesSection(rows: [Worktree], reorderable: Bool) -> some View {
-        let titles = workTaskManager.titlesByBranch
-        return Section {
+    private func worktreesSection(
+        rows: [Worktree],
+        titles: [String: String],
+        shortcuts: [String: Int],
+        reorderable: Bool
+    ) -> some View {
+        Section {
             SearchField(text: $searchText, placeholder: "Filter")
                 .listRowInsets(EdgeInsets(top: 4, leading: -4, bottom: 4, trailing: -4))
                 .listRowSeparator(.hidden)
 
-            if reorderable {
-                ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, moveDisabled: wt.isMain || isSearching)
-                }
-                .onMove { from, to in
-                    var reordered = rows
-                    reordered.move(fromOffsets: from, toOffset: to)
-                    groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
-                }
-            } else {
-                ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, moveDisabled: true)
-                }
+            ForEach(rows) { wt in
+                worktreeRowView(
+                    for: wt,
+                    titles: titles,
+                    shortcuts: shortcuts,
+                    moveDisabled: !reorderable || wt.isMain || isSearching
+                )
+            }
+            .onMove { from, to in
+                var reordered = rows
+                reordered.move(fromOffsets: from, toOffset: to)
+                groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
             }
 
             if worktreeManager.isLoading {
@@ -325,15 +327,18 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private func groupSection(_ group: WorktreeGroup) -> some View {
-        let rows = orderedWorktrees.filter { groupManager.groupId(for: $0.id) == group.id }
-        let titles = workTaskManager.titlesByBranch
+    private func groupSection(
+        _ group: WorktreeGroup,
+        rows: [Worktree],
+        titles: [String: String],
+        shortcuts: [String: Int]
+    ) -> some View {
         // Only an active filter with zero matches hides the section — empty (new) groups stay visible.
         if !(isSearching && rows.isEmpty) {
             let isGroupTargeted = Binding(get: { targetedGroupId == group.id }, set: { targetedGroupId = $0 ? group.id : nil })
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, moveDisabled: isSearching)
+                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: isSearching)
                 }
                 .onMove { from, to in
                     var reordered = rows
@@ -359,26 +364,27 @@ struct SidebarView: View {
         }
     }
 
-    /// One section per status in `.status` mode. All five render unfiltered, even when
-    /// empty; only an active filter with zero matches hides one, the rule groups follow.
+    /// All five statuses render even when empty, the rule groups follow.
     @ViewBuilder
-    private func statusSection(_ status: WorktreeStatus) -> some View {
-        let rows = orderedWorktrees.filter { groupManager.status(for: $0.id) == status }
-        let titles = workTaskManager.titlesByBranch
+    private func statusSection(
+        _ status: WorktreeStatus,
+        rows: [Worktree],
+        titles: [String: String],
+        shortcuts: [String: Int]
+    ) -> some View {
         if !(isSearching && rows.isEmpty) {
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(for: wt, titles: titles, moveDisabled: true)
+                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
                 }
             } header: {
-                let isTargeted = Binding(get: { targetedStatus == status }, set: { targetedStatus = $0 ? status : nil })
                 Text(status.displayName)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(isTargeted.wrappedValue ? Color.accentColor.opacity(0.12) : Color.clear)
+                    .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
                     .dropDestination(for: String.self) { ids, _ in
                         applyStatus(status, to: ids)
                         return true
-                    } isTargeted: { isTargeted.wrappedValue = $0 }
+                    } isTargeted: { targetedStatus = $0 ? status : nil }
             }
         }
     }
@@ -456,9 +462,11 @@ struct SidebarView: View {
 
     // MARK: - Helpers
 
-    private func shortcutIndex(for wt: Worktree) -> Int? {
-        guard let i = sortedWorktrees.firstIndex(where: { $0.id == wt.id }), i < 9 else { return nil }
-        return i + 1
+    /// The ⌘1…9 position of each worktree that has one, keyed by ID.
+    private var shortcutIndexes: [String: Int] {
+        Dictionary(
+            uniqueKeysWithValues: sortedWorktrees.prefix(9).enumerated().map { ($1.id, $0 + 1) }
+        )
     }
 
     /// Computes the (primaryText, subtitle) pair for a worktree row.
@@ -477,12 +485,13 @@ struct SidebarView: View {
     private func worktreeRowView(
         for wt: Worktree,
         titles: [String: String],
+        shortcuts: [String: Int],
         moveDisabled: Bool
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
         let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
-        let shortcut = isSearching || !isOpen ? nil : shortcutIndex(for: wt)
+        let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
         let (primaryText, subtitle) = rowTexts(
             for: wt,
             titles: titles
@@ -504,33 +513,29 @@ struct SidebarView: View {
     }
 
     // Defer @Published mutation past the NSTableView drop delegate to avoid a reentrant-list warning.
-    private func dropIntoGroup(_ ids: [String], groupId: UUID) {
+    private func withDroppedWorktrees(_ ids: [String], _ apply: @escaping (Worktree) -> Void) {
         DispatchQueue.main.async {
             let wts = worktreeManager.worktrees
-            ids.compactMap { id in wts.first { $0.id == id } }
-                .forEach { groupManager.addWorktree($0, toGroup: groupId) }
+            ids.compactMap { id in wts.first { $0.id == id } }.forEach(apply)
         }
     }
 
-    private func dropIntoDefault(_ ids: [String]) {
-        DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
+    private func dropIntoGroup(_ ids: [String], groupId: UUID) {
+        withDroppedWorktrees(ids) { groupManager.addWorktree($0, toGroup: groupId) }
     }
 
     /// The Worktrees header clears whichever axis the current view sections by, never both.
     private func dropIntoWorktreesHeader(_ ids: [String]) {
         switch groupManager.grouping {
-        case .group: dropIntoDefault(ids)
+        case .group:
+            DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
         case .status: applyStatus(nil, to: ids)
         case .none: break
         }
     }
 
     private func applyStatus(_ status: WorktreeStatus?, to ids: [String]) {
-        DispatchQueue.main.async {
-            let wts = worktreeManager.worktrees
-            ids.compactMap { id in wts.first { $0.id == id } }
-                .forEach { groupManager.setStatus(status, for: $0) }
-        }
+        withDroppedWorktrees(ids) { groupManager.setStatus(status, for: $0) }
     }
 }
 
@@ -562,19 +567,10 @@ private struct GroupSectionHeader: View {
             Text(group.name)
                 .lineLimit(1)
             Spacer()
-            Menu {
+            SidebarHeaderMenu(systemImage: "ellipsis") {
                 Button("Rename Group", action: onRename)
                 Button("Delete Group", role: .destructive, action: onDelete)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-                    .foregroundStyle(.secondary)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
             .padding(.trailing, -6)
             SidebarHeaderButton(systemImage: "plus", action: onPlus)
                 .padding(.trailing, 6)

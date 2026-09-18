@@ -83,12 +83,8 @@ struct ShortcutBadge: View {
 private struct PrimaryBadge: View {
     var body: some View {
         Text("primary")
-            .font(.caption2)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.quaternary, in: Capsule())
-            .fixedSize()
+            .rowBadge(.quaternary)
     }
 }
 
@@ -99,11 +95,17 @@ private struct StatusBadge: View {
 
     var body: some View {
         Text(status.displayName.lowercased())
-            .font(.caption2)
             .foregroundStyle(status.color)
+            .rowBadge(status.color.opacity(0.15))
+    }
+}
+
+private extension View {
+    func rowBadge(_ fill: some ShapeStyle) -> some View {
+        font(.caption2)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(status.color.opacity(0.15), in: Capsule())
+            .background(fill, in: Capsule())
             .fixedSize()
     }
 }
