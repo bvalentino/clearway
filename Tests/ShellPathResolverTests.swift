@@ -5,9 +5,13 @@ import XCTest
 /// so the reported defect is reproduced without the affected machine and without Sparkle.
 final class ShellPathResolverTests: XCTestCase {
 
-    /// Long enough to absorb process spawn on a loaded machine, short enough to keep the
-    /// suite fast. Only the production resolver uses the real 5-second limit.
-    private let timeout: TimeInterval = 0.5
+    /// The limit for the cases whose point is that the limit fires. Every attempt in them blocks,
+    /// so load can only make the expiry more certain. Every other case passes no `timeout:` and
+    /// runs at the production limit.
+    private let expiringTimeout: TimeInterval = 0.5
+
+    /// Longer than the largest limit in use, so no amount of load lets a blocked attempt complete.
+    private let blockingSeconds = 20
 
     private let marker = ShellPathResolver.outputMarker
 
@@ -31,22 +35,22 @@ final class ShellPathResolverTests: XCTestCase {
     func testAShellThatPrintsABannerThenBlocksProducesNoPath() throws {
         let shell = try makeFakeShell("""
         echo "Waiting for approval in your browser…"
-        sleep 3
+        sleep \(blockingSeconds)
         echo "\(marker)/usr/bin:/bin"
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .failed)
+        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: expiringTimeout).resolve(), .failed)
     }
 
     func testATimedOutInteractiveAttemptFallsThroughToTheLoginAttempt() throws {
         let shell = try makeFakeShell("""
         case "$1" in
-          *i*) echo "Waiting for approval in your browser…"; sleep 3 ;;
+          *i*) echo "Waiting for approval in your browser…"; sleep \(blockingSeconds) ;;
           *) echo "\(marker)/usr/bin:/bin" ;;
         esac
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .degraded("/usr/bin:/bin"))
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .degraded("/usr/bin:/bin"))
     }
 
     // MARK: - Refusal and fallback
@@ -59,7 +63,7 @@ final class ShellPathResolverTests: XCTestCase {
         esac
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .degraded("/usr/bin:/bin"))
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .degraded("/usr/bin:/bin"))
     }
 
     func testANonZeroExitFallsThroughToTheLoginAttemptEvenWhenTheOutputLooksLikeAPath() throws {
@@ -70,19 +74,19 @@ final class ShellPathResolverTests: XCTestCase {
         esac
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .degraded("/usr/bin:/bin"))
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .degraded("/usr/bin:/bin"))
     }
 
     func testBothAttemptsFailingGivesFailed() throws {
         let shell = try makeFakeShell("exit 127")
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .failed)
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .failed)
     }
 
     func testAMissingShellGivesFailed() {
         let missing = scratch.appendingPathComponent("no-such-shell").path
 
-        XCTAssertEqual(ShellPathResolver(shell: missing, timeout: timeout).resolve(), .failed)
+        XCTAssertEqual(ShellPathResolver(shell: missing).resolve(), .failed)
     }
 
     // MARK: - The healthy path
@@ -94,7 +98,7 @@ final class ShellPathResolverTests: XCTestCase {
         echo "\(marker)/opt/homebrew/bin:/usr/bin:/bin"
         """)
 
-        let outcome = ShellPathResolver(shell: shell, timeout: timeout).resolve()
+        let outcome = ShellPathResolver(shell: shell).resolve()
 
         XCTAssertEqual(outcome, .full("/opt/homebrew/bin:/usr/bin:/bin"))
         XCTAssertEqual(try invocations(at: log), ["-lic"], "A healthy shell must run exactly once")
@@ -109,7 +113,7 @@ final class ShellPathResolverTests: XCTestCase {
         """)
 
         XCTAssertEqual(
-            ShellPathResolver(shell: shell, timeout: timeout).resolve(),
+            ShellPathResolver(shell: shell).resolve(),
             .full("/opt/homebrew/bin:/usr/bin:/bin")
         )
     }
@@ -125,7 +129,7 @@ final class ShellPathResolverTests: XCTestCase {
         """)
 
         XCTAssertEqual(
-            ShellPathResolver(shell: shell, timeout: timeout).resolve(),
+            ShellPathResolver(shell: shell).resolve(),
             .full("/opt/homebrew/bin:/usr/bin:/bin")
         )
     }
@@ -148,7 +152,7 @@ final class ShellPathResolverTests: XCTestCase {
         """)
 
         XCTAssertEqual(
-            ShellPathResolver(shell: shell, timeout: timeout).resolve(),
+            ShellPathResolver(shell: shell).resolve(),
             .full("/opt/homebrew/bin:/usr/bin:/bin")
         )
     }
@@ -160,14 +164,14 @@ final class ShellPathResolverTests: XCTestCase {
         echo "\(marker)/opt/homebrew/bin:/usr/bin:/bin" >&2
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .failed)
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .failed)
     }
 
     /// Profile output alone, with the echo never reached, is not a `PATH` however path-shaped it is.
     func testOutputWithNoMarkedLineGivesFailed() throws {
         let shell = try makeFakeShell(#"echo "/opt/homebrew/bin:/usr/bin""#)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .failed)
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .failed)
     }
 
     func testTheResolvedValueIsTheSanitizedOne() throws {
@@ -175,7 +179,7 @@ final class ShellPathResolverTests: XCTestCase {
         echo "\(marker)/usr/bin::/bin:"
         """)
 
-        XCTAssertEqual(ShellPathResolver(shell: shell, timeout: timeout).resolve(), .full("/usr/bin:/bin"))
+        XCTAssertEqual(ShellPathResolver(shell: shell).resolve(), .full("/usr/bin:/bin"))
     }
 
     // MARK: - Timing
@@ -185,13 +189,13 @@ final class ShellPathResolverTests: XCTestCase {
     }
 
     func testATimedOutAttemptDoesNotWaitLongerThanTheLimit() throws {
-        let shell = try makeFakeShell("sleep 3")
+        let shell = try makeFakeShell("sleep \(blockingSeconds)")
 
         let started = Date()
-        _ = ShellPathResolver(shell: shell, timeout: timeout).resolve()
+        _ = ShellPathResolver(shell: shell, timeout: expiringTimeout).resolve()
         let elapsed = Date().timeIntervalSince(started)
 
-        XCTAssertLessThan(elapsed, timeout * 2 + 1.5, "Both attempts must be bounded by the limit")
+        XCTAssertLessThan(elapsed, 5, "Both attempts must be bounded by the limit")
     }
 
     // MARK: - Helpers
