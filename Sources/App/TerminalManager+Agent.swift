@@ -1,12 +1,68 @@
 import AppKit
 import GhosttyKit
 
-/// Launcher-tab promotion for agent commands.
+/// Opening a main tab that runs an agent.
 ///
-/// Separate from the synchronous `promoteLauncher`: an agent promotion awaits the resolved
-/// PATH first, so a launch that happens before the shell resolution completes still finds
-/// the agent binary. A login shell resolves its own PATH and needs no await.
+/// Separate from the synchronous `appendTab`: an agent tab awaits the resolved PATH first, so a
+/// launch that happens before the shell resolution completes still finds the agent binary. A login
+/// shell resolves its own PATH and needs no await.
 extension TerminalManager {
+
+    /// Claims the worktree's agent launch, reporting whether the claim is this caller's. `false`
+    /// means a launch is already in flight and this one must abandon itself.
+    func beginAgentLaunch(for worktreeId: String) -> Bool {
+        agentLaunchesInFlight.insert(worktreeId).inserted
+    }
+
+    func endAgentLaunch(for worktreeId: String) {
+        agentLaunchesInFlight.remove(worktreeId)
+    }
+
+    /// Open a tab running `command`, an agent, in `worktree`.
+    ///
+    /// Synchronous on purpose: the in-flight claim has to be taken in the caller's runloop turn, or
+    /// the "⌘T for a new tab" empty state renders for the frame before the `Task` starts. The await
+    /// that follows is what the claim covers.
+    ///
+    /// `prompt` empty → the agent runs bare. With `submit` the prompt is handed to the agent as one
+    /// argv element (`buildAgentPromptCommand`); without it the tab opens bare and the prompt is
+    /// pasted unsubmitted once the surface settles — argv delivery cannot stage.
+    @MainActor
+    func startAgentTab(
+        for worktree: Worktree,
+        app: ghostty_app_t,
+        command: String,
+        prompt: String = "",
+        submit: Bool = true
+    ) {
+        guard beginAgentLaunch(for: worktree.id) else { return }
+        let worktreeId = worktree.id
+        Task { @MainActor in
+            let path = await ShellEnvironment.awaitPath()
+
+            guard !prompt.isEmpty, submit else {
+                let surface = appendTab(
+                    for: worktree,
+                    app: app,
+                    command: buildBareCommand(agentCommand: command, path: path)
+                )
+                endAgentLaunch(for: worktreeId)
+                guard !prompt.isEmpty else { return }
+                await Self.awaitShellPrompt(on: surface)
+                surface.sendPaste(prompt)
+                return
+            }
+
+            let launch = buildAgentPromptCommand(
+                agentCommand: command,
+                prompt: prompt,
+                path: path,
+                filePrefix: "clearway-agent-tab"
+            )
+            appendTab(for: worktree, app: app, command: launch.command)
+            endAgentLaunch(for: worktreeId)
+        }
+    }
 
     /// Promote a `.launcher` tab to an agent surface in-place. An empty `prompt` runs the
     /// agent bare; otherwise the prompt is passed as a positional arg (see

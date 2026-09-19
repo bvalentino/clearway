@@ -181,6 +181,12 @@ class TerminalManager: ObservableObject {
 
     // MARK: - Main Tab Management
 
+    /// Worktrees whose agent-tab launch is in flight: the command is not built yet because the
+    /// launch is awaiting the resolved PATH, so no tab exists and the pane can read as empty.
+    /// `@Published` because the empty-state gate in `detailView` is the only thing that changes
+    /// when it is set.
+    @Published var agentLaunchesInFlight: Set<String> = []
+
     /// The surface of the currently active worktree's active main tab.
     ///
     /// Sole accessor for "the currently active main surface" — do not add overloads.
@@ -253,6 +259,40 @@ class TerminalManager: ObservableObject {
     /// UI code cannot reach it directly.
     func mainActiveTabId(for worktreeId: String) -> UUID? {
         panes[worktreeId]?.main.activeId
+    }
+
+    /// Append a tab running `command` — or a login shell when it is nil — and activate it.
+    ///
+    /// Creates the pane on the fly when it does not exist yet. The sole door: every main tab in
+    /// the app is made here.
+    @discardableResult
+    func appendTab(for worktree: Worktree, app: ghostty_app_t, command: String? = nil) -> Ghostty.SurfaceView {
+        let key = worktree.id
+        let existingPane = panes[key]
+        let surface = Ghostty.SurfaceView(
+            app,
+            workingDirectory: existingPane?.secondary.initialWorkingDirectory ?? worktree.path,
+            command: command
+        )
+        let newTab = TerminalTab(id: UUID(), kind: .surface(surface))
+
+        if existingPane != nil {
+            panes[key]!.main.tabs.append(newTab)
+            panes[key]!.main.activeId = newTab.id
+        } else {
+            ghosttyApp = app
+            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path)
+            let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
+            panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
+            if !openWorktreeIds.contains(key) {
+                openWorktreeIds.append(key)
+            }
+            setInitialPanelVisibility(for: key, worktree: worktree)
+        }
+
+        objectWillChange.send()
+        transferFirstResponder(to: surface)
+        return surface
     }
 
     /// Append a new launcher tab (no process) to the given worktree's main terminal and activate it.

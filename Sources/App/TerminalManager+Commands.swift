@@ -54,8 +54,13 @@ extension TerminalManager {
     /// `shellReadinessFallback` is for shells Ghostty injects no integration into, where `pwd` never
     /// arrives — `/bin/dash -i` never reported one, and the wait timed out at 763 ms, after which
     /// both the run and the stage landed cleanly on dash's prompt. 750 ms is ~3.5x the observed
-    /// 200 ms prompt latency, and only a shell that reports nothing ever pays it.
-    private static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
+    /// 200 ms prompt latency, and only a shell that reports nothing ever pays it. An agent tab is
+    /// the same case — it `exec`s over the shell and reports no `pwd` — so `startAgentTab`'s staged
+    /// paste always pays the full fallback window.
+    ///
+    /// Internal (not `private`) so `startAgentTab` can reach it: `private` does not cross a file
+    /// even within a type.
+    static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
         let deadline = ContinuousClock.now + shellReadinessFallback
         while surface.pwd == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: shellReadinessPoll)

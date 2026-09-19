@@ -328,4 +328,41 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
     }
+
+    // MARK: - beginAgentLaunch
+
+    /// An agent tab awaits the resolved PATH before it has a surface, so the worktree's pane has no
+    /// tab for that window. A second Opt+Cmd+T must lose the claim rather than open a second agent.
+    func test_beginAgentLaunch_secondClaimIsRefusedUntilTheFirstEnds() {
+        let manager = TerminalManager()
+        let worktreeId = "feature"
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId))
+        XCTAssertFalse(manager.beginAgentLaunch(for: worktreeId),
+                       "a launch already in flight must refuse the second press")
+
+        manager.endAgentLaunch(for: worktreeId)
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId),
+                      "the claim must be released once the launch has its tab")
+    }
+
+    /// The claim is per worktree: a launch in one must not block a launch in another.
+    func test_beginAgentLaunch_claimsAreIndependentPerWorktree() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.beginAgentLaunch(for: "main"))
+    }
+
+    /// The empty-state gate in `detailView` reads this set, so a claim has to be visible there —
+    /// it is what keeps a worktree whose first tab is an agent from flashing the placeholder.
+    func test_agentLaunchesInFlight_tracksTheClaimedWorktrees() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.agentLaunchesInFlight.contains("feature"))
+
+        manager.endAgentLaunch(for: "feature")
+        XCTAssertFalse(manager.agentLaunchesInFlight.contains("feature"))
+    }
 }
