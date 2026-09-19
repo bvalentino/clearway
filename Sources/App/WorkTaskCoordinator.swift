@@ -4,7 +4,17 @@ import Foundation
 /// into it. Extracted from ContentView to keep the view focused on layout and navigation.
 @MainActor
 class WorkTaskCoordinator: ObservableObject {
-    var pendingLaunch: (id: UUID, branch: String)?
+
+    /// A worktree creation this coordinator is waiting on. `taskId` is optional because a
+    /// hand-made worktree carries no task, and `command` is the agent command to run once the
+    /// worktree is live.
+    struct PendingCreate: Equatable {
+        let taskId: UUID?
+        let branch: String
+        let command: SavedCommand?
+    }
+
+    var pendingCreate: PendingCreate?
 
     // MARK: - Dependencies
 
@@ -39,8 +49,8 @@ class WorkTaskCoordinator: ObservableObject {
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             return .reuse(wt)
         }
-        // No live worktree yet → create it (reusing a prior branch link if present). `pendingLaunch`
-        // is set so `completePendingLaunch` relocates TASK.md into the worktree.
+        // No live worktree yet → create it (reusing a prior branch link if present). `pendingCreate`
+        // is set so `completePendingCreate` relocates TASK.md into the worktree.
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
         let branch = current.worktree
             ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
@@ -52,19 +62,29 @@ class WorkTaskCoordinator: ObservableObject {
             updated.worktree = branch
         }
         guard written != nil else { return .ignored }
-        pendingLaunch = (id: current.id, branch: branch)
+        pendingCreate = PendingCreate(taskId: current.id, branch: branch, command: nil)
         return .createWorktree(branch)
     }
 
-    /// If a task launch was pending for this branch, relocates its TASK.md into the now-live worktree.
-    func completePendingLaunch(branch: String, worktree: Worktree) {
-        guard let pending = pendingLaunch, pending.branch == branch,
-              let task = workTaskManager.tasks.first(where: { $0.id == pending.id }) else { return }
-        pendingLaunch = nil
+    /// Consumes the pending create for this branch: relocates the task's TASK.md into the now-live
+    /// worktree and returns the command to run there, with `{{ task_path }}` resolved to the
+    /// relocated file. A pending create carrying no task leaves the token verbatim — there is no
+    /// path to name (D6).
+    @discardableResult
+    func completePendingCreate(branch: String, worktree: Worktree) -> SavedCommand? {
+        guard let pending = pendingCreate, pending.branch == branch else { return nil }
+        pendingCreate = nil
 
-        if let path = worktree.path {
-            workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path)
+        var taskPath: String?
+        if let taskId = pending.taskId,
+           workTaskManager.tasks.contains(where: { $0.id == taskId }),
+           let path = worktree.path {
+            workTaskManager.relocateTaskToWorktree(id: taskId, worktreePath: path)
+            taskPath = WorkTaskManager.taskMarkdownPath(inWorktree: path)
         }
+
+        guard let command = pending.command else { return nil }
+        return CommandPlaceholders.substituted(command, taskPath: taskPath)
     }
 
     func worktreeForTask(_ task: WorkTask) -> Worktree? {

@@ -46,11 +46,11 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(restarted?.attempt, 1, "a restart counts the attempt")
     }
 
-    // MARK: - Pending launch
+    // MARK: - Pending create
 
-    /// `completePendingLaunch` relocates only for the branch it is holding, and consumes the
-    /// pending launch so a later worktree creation cannot move the file a second time.
-    func testCompletePendingLaunchRelocatesOnlyForTheBranchItIsHolding() throws {
+    /// `completePendingCreate` relocates only for the branch it is holding, and consumes the
+    /// pending create so a later worktree creation cannot move the file a second time.
+    func testCompletePendingCreateRelocatesOnlyForTheBranchItIsHolding() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Relocate me") else {
             XCTFail("createTask returned nil"); return
@@ -62,26 +62,111 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let centralPath = taskManager.filePath(for: seed)
 
         let otherPath = (tempRoot as NSString).appendingPathComponent("wt-other")
-        coordinator.completePendingLaunch(
+        coordinator.completePendingCreate(
             branch: "unrelated",
             worktree: makeWorktree(branch: "unrelated", path: otherPath)
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: centralPath),
                       "an unrelated branch must not relocate this task")
-        XCTAssertNotNil(coordinator.pendingLaunch, "an unrelated branch must not consume the pending launch")
+        XCTAssertNotNil(coordinator.pendingCreate, "an unrelated branch must not consume the pending create")
 
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
         taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
-        coordinator.completePendingLaunch(
+        coordinator.completePendingCreate(
             branch: branch,
             worktree: makeWorktree(branch: branch, path: worktreePath)
         )
-        XCTAssertNil(coordinator.pendingLaunch, "the matching branch consumes the pending launch")
+        XCTAssertNil(coordinator.pendingCreate, "the matching branch consumes the pending create")
         XCTAssertFalse(FileManager.default.fileExists(atPath: centralPath),
                        "the central file moves into the worktree")
         let taskMd = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
         XCTAssertTrue(FileManager.default.fileExists(atPath: taskMd),
                       "the task lands at the worktree's TASK.md")
+    }
+
+    /// The command comes back with `{{ task_path }}` pointing at the file the relocation just
+    /// wrote, absolute — the agent is handed the brief it is being asked to work from.
+    func testCompletePendingCreateResolvesTheTokenToTheRelocatedTaskFile() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Resolve me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        let branch = "resolve-me"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
+        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
+            taskId: seed.id,
+            branch: branch,
+            command: agentCommand(text: "plan {{ task_path }} now")
+        )
+
+        let resolved = coordinator.completePendingCreate(
+            branch: branch,
+            worktree: makeWorktree(branch: branch, path: worktreePath)
+        )
+
+        let taskMd = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+        XCTAssertEqual(resolved?.text, "plan \(taskMd) now")
+        XCTAssertTrue(taskMd.hasPrefix("/"), "the substituted path is absolute")
+    }
+
+    /// A hand-made worktree carries no task, so there is no path to name: the token stays verbatim
+    /// rather than becoming a blank argument the agent would read as a malformed path.
+    func testCompletePendingCreateWithoutATaskLeavesTheTokenVerbatim() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        let coordinator = makeCoordinator(taskManager)
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-manual")
+        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
+            taskId: nil,
+            branch: "manual",
+            command: agentCommand(text: "read {{ task_path }}")
+        )
+
+        let resolved = coordinator.completePendingCreate(
+            branch: "manual",
+            worktree: makeWorktree(branch: "manual", path: worktreePath)
+        )
+
+        XCTAssertEqual(resolved?.text, "read {{ task_path }}")
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+            ),
+            "a pending create with no task relocates nothing"
+        )
+    }
+
+    /// No command picked means nothing to run — the relocation still happens.
+    func testCompletePendingCreateWithoutACommandReturnsNil() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "No command") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        let branch = "no-command"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
+        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
+            taskId: seed.id, branch: branch, command: nil
+        )
+
+        let resolved = coordinator.completePendingCreate(
+            branch: branch,
+            worktree: makeWorktree(branch: branch, path: worktreePath)
+        )
+
+        XCTAssertNil(resolved)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+            ),
+            "the relocation still runs"
+        )
+    }
+
+    private func agentCommand(text: String) -> SavedCommand {
+        SavedCommand(id: UUID(), name: "Plan", kind: .agent, text: text, agent: "claude", autoRun: true)
     }
 
     // MARK: - Start Now freshness

@@ -281,7 +281,7 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// `.clearway/TASK.md` under a worktree root.
-    private static func taskMarkdownPath(inWorktree worktreePath: String) -> String {
+    static func taskMarkdownPath(inWorktree worktreePath: String) -> String {
         let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
         return (clearway as NSString).appendingPathComponent("TASK.md")
     }

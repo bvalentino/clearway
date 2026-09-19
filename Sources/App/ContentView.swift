@@ -300,7 +300,7 @@ struct ContentView: View {
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
 
-            workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt)
+            let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
@@ -315,6 +315,11 @@ struct ContentView: View {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
+            }
+
+            // Last, so the agent opens over a worktree that already has its TASK.md and its hook running.
+            if let afterCreateCommand, let app = ghosttyApp.app {
+                terminalManager.run(afterCreateCommand, in: wt, app: app)
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in

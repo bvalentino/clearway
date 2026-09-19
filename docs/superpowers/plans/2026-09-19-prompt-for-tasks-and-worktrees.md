@@ -540,3 +540,36 @@ ordering, which is the whole point of sharing the chain.
 **Gate**
 
 `./scripts/ci.sh` — passed: 563 tests, 0 failures, SwiftLint zero errors.
+
+### T5: Carry the after-create command on the pending create
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `pendingLaunch` is now `pendingCreate: PendingCreate?` (`taskId: UUID?`, `branch`, `command: SavedCommand?`). `completePendingLaunch` is now `@discardableResult completePendingCreate(branch:worktree:) -> SavedCommand?`: it consumes the record on a branch match, relocates only when the record names a task, and returns its command with `{{ task_path }}` resolved to the relocated `TASK.md` — verbatim when there is no task. `startTask` is otherwise unchanged and records `command: nil`. |
+| `Sources/App/WorkTaskManager.swift` | `taskMarkdownPath(inWorktree:)` is internal, so the coordinator names the destination from `worktree.path` without waiting on the resolver. |
+| `Sources/App/ContentView.swift` | The `lastCreatedBranch` handler keeps the returned command in a local and runs it with `terminalManager.run(_:in:app:)` as the last step, after relocate, shadow task, selection and the afterCreate hook. Until T7 that local is always nil. |
+| `Tests/WorkTaskCoordinatorTests.swift` | The pending-launch case is renamed to `testCompletePendingCreateRelocatesOnlyForTheBranchItIsHolding`; three cases added for the token resolving to the relocated file, the no-task token staying verbatim, and a command-less record returning nil while still relocating. |
+
+**Evidence**
+
+`completePendingCreate` was reverted to `substituted(command, taskPath: nil)` and the suite watched
+fail:
+
+```
+Tests/WorkTaskCoordinatorTests.swift:110: error: -[ClearwayTests.WorkTaskCoordinatorTests testCompletePendingCreateResolvesTheTokenToTheRelocatedTaskFile] : XCTAssertEqual failed: ("Optional("plan {{ task_path }} now")") is not equal to ("Optional("plan /var/folders/…/wt-resolve-me/.clearway/TASK.md now")")
+```
+
+Restoring `taskPath:` turned it green.
+
+**Deviations from the plan**
+
+`completePendingCreate` consumes the record on a branch match alone, where the old
+`completePendingLaunch` guard also required the task to still be in the pool — a record whose task
+has vanished must not survive to move a file on the next unrelated create. Relocation still requires
+both the task and a worktree path.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 566 tests, 0 failures, SwiftLint zero errors.
