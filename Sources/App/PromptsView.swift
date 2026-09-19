@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Displays and manages reusable prompts. Used in both the sidebar detail and worktree aside panel.
+/// Displays and manages reusable prompts in the worktree aside panel.
 struct PromptsView: View {
     @EnvironmentObject private var promptManager: PromptManager
     @Environment(\.openWindow) private var openWindow
@@ -41,22 +41,11 @@ struct PromptsView: View {
                     .padding(8)
                 }
             }
-        }
-        // The break precedes the `+` here, not follows it: this aside panel's toolbar content is
-        // merged after `ContentView.detailView`'s four worktree items, so the break that separates
-        // the `+` from them is the one on its leading side.
-        .toolbar {
-            ToolbarGroupBreak()
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    if let prompt = promptManager.createPrompt() {
-                        openPrompt(prompt)
-                    }
-                } label: {
-                    Image(systemName: "plus")
+            AsideBottomBar(help: "New prompt") {
+                if let prompt = promptManager.createPrompt() {
+                    openPrompt(prompt)
                 }
-                .help("New prompt")
             }
         }
     }

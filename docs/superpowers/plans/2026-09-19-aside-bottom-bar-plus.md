@@ -264,3 +264,37 @@ added, and is committed with them.
 **Gate**
 
 `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.
+
+### T2: Move the Prompts `+` onto the bar
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/PromptsView.swift` | The three-line comment header, the `.toolbar` block, its `ToolbarGroupBreak()` and its `ToolbarItem` deleted (old lines 45-61). `AsideBottomBar(help: "New prompt")` appended as the last child of the root `VStack(spacing: 0)`, after the `if promptManager.prompts.isEmpty / else`; its action is the deleted button's body verbatim — `promptManager.createPrompt()` then `openPrompt(prompt)`. The doc comment on line 4 now reads "Displays and manages reusable prompts in the worktree aside panel.", dropping the stale sidebar-detail claim (spec decision 8). `openPrompt(_:)` and `onSendToTerminal` untouched. |
+
+**Evidence**
+
+No regression test was written: spec decision 18 and plan decision 12 settle that this task adds
+none, and the change is view chrome with no decision rule to lift into a pure helper. There is
+therefore no watched failure to quote. The pin on "nothing else moved" is the existing suite staying
+green unchanged — 535 tests, 0 failures, no file under `Tests/` edited.
+
+Acceptance criteria checked directly:
+
+- `grep -n "toolbar\|ToolbarGroupBreak" Sources/App/PromptsView.swift` → no output, exit 1.
+- `grep -rn "ToolbarGroupBreak()" Sources/` → exactly the five surviving sites the plan names:
+  `PromptListView.swift:39`, `CommandsView.swift:37`, `WorkTaskListView.swift:59` and
+  `ContentView.swift:199, 206, 217`. `Sources/App/ToolbarGroupBreak.swift` is unchanged.
+- `git diff --stat` → `Sources/App/PromptsView.swift` only, 4 insertions and 15 deletions.
+- `swiftlint lint --quiet` → exit 0, the same three pre-existing warnings as T1
+  (`WorktreeConfigStore.swift`, `WorktreeDraft.swift`); none in `PromptsView.swift`.
+
+**Deviations from the plan**
+
+None. Unlike T1 no source file was added, so `Clearway.xcodeproj/project.pbxproj` is byte-identical
+after `xcodegen generate` and the diff is the single file the plan named.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.
