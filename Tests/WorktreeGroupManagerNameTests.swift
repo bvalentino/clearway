@@ -41,6 +41,21 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredName(nil, at: path)
     }
 
+    /// Rename… → Save with an empty field on a project that never used a name or a status. The
+    /// clear has nothing to unset — with the extension off no `clearway.*` value can exist — so it
+    /// must not bootstrap the extension and relocate `core.bare` into `config.worktree`.
+    func testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing() async throws {
+        let path = try repo.addWorktree(branch: "feature")
+        let wt = makeWorktree(branch: "feature", path: path)
+
+        manager.setName("", for: wt)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        let localConfig = try repo.localConfigContents()
+        XCTAssertFalse(localConfig.contains("worktreeConfig"), localConfig)
+        XCTAssertTrue(localConfig.contains("bare = false"), localConfig)
+    }
+
     func testSetNameIgnoresTheMainWorktree() async throws {
         let main = makeWorktree(branch: "main", path: repo.root, isMain: true)
 

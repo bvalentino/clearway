@@ -1324,3 +1324,51 @@ entry already measured, and nothing in these three bodies is reachable from XCTe
 `./scripts/ci.sh` — `Executed 505 tests, with 0 failures (0 unexpected) in 85.436 seconds`,
 `==> CI passed.` Run after the last source edit; only this plan and the spec's Decisions table
 changed afterwards, and neither is compiled. `ShellPathResolverTests` did not flake.
+
+### Clearing a name that was never stored bootstrapped the worktree-config extension
+
+Reported by review after `114f3af`, proven with a temporary test. `WorktreeConfigStore.set` ran
+`guard await enableExtension()` ahead of both branches, so the clear path bootstrapped too. Rename…
+→ Save with an empty field, on a project that had never used a name or a status, wrote
+`extensions.worktreeConfig = true` into the user's `.git/config` and relocated `core.bare` into
+`config.worktree` — to then unset a key that could not exist, because while the extension is off no
+`clearway.*` value is reachable at all.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeConfigStore.swift` | `set` takes the clear branch first and gates it on `isExtensionEnabled()`; only a store still calls `enableExtension()` |
+| `Sources/App/WorktreeGroupManager.swift` | `setName` gains the no-op guard `setStatus` already had, comparing against the trimmed value normalised to `nil` when empty |
+| `Tests/WorktreeConfigStoreTests.swift` | `testClearingWithTheExtensionOffLeavesTheConfigUntouched` pins the store: `.git/config` keeps `core.bare` and gains no `worktreeConfig`, and no `config.worktree` is created |
+| `Tests/WorktreeGroupManagerNameTests.swift` | `testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing` pins the same end state through the manager, which is the door the operator reported |
+
+The two guards are independent. The manager's makes the reported gesture a no-op before any
+subprocess runs; the store's is what keeps every other caller of the clear path — `setStatus(nil)`,
+a name cleared while a reload has not yet published it — from bootstrapping. Clearing with the
+extension already on is unchanged and stays covered by
+`testClearingAKeyThatWasNeverWrittenIsNotAnError`.
+
+**Evidence.** Both tests watched red against `114f3af` before either fix:
+
+```
+Tests/WorktreeConfigStoreTests.swift:182: error: -[ClearwayTests.WorktreeConfigStoreTests
+  testClearingWithTheExtensionOffLeavesTheConfigUntouched] : XCTAssertFalse failed - [core]
+Tests/WorktreeConfigStoreTests.swift:183: ... : XCTAssertTrue failed - [core]
+Tests/WorktreeConfigStoreTests.swift:184: ... : XCTAssertFalse failed - no config.worktree should
+  have been created
+Tests/WorktreeGroupManagerNameTests.swift:55: error: -[ClearwayTests.WorktreeGroupManagerNameTests
+  testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing] : XCTAssertFalse failed - [core]
+Tests/WorktreeGroupManagerNameTests.swift:56: ... : XCTAssertTrue failed - [core]
+```
+
+`[core]` is the dumped `.git/config`: `core.bare` had been moved out and `worktreeConfig` moved in,
+leaving a section header and nothing else.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 506 tests, with 0 failures (0 unexpected) in 81.865 seconds`,
+`==> CI passed.` Run after the last source edit; only this plan changed afterwards and it is not
+compiled. `ShellPathResolverTests` did not flake. `git status --porcelain` before the commit showed
+the four touched files and nothing else — no new Swift file, so `xcodegen generate` rewrote no
+`project.pbxproj`, and no `default.profraw` was left behind.

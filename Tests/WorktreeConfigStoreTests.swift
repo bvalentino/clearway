@@ -169,4 +169,23 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         XCTAssertEqual(values, [:])
         XCTAssertFalse(try repo.localConfigContents().contains("worktreeConfig"))
     }
+
+    /// Clearing is the other read-shaped path: with the extension off no `clearway.*` value can
+    /// exist, so the unset has nothing to remove and the bootstrap would move `core.bare` into a
+    /// `config.worktree` the project never asked for.
+    func testClearingWithTheExtensionOffLeavesTheConfigUntouched() async throws {
+        let worktree = try repo.addWorktree(branch: "feature")
+
+        await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+
+        let localConfig = try repo.localConfigContents()
+        XCTAssertFalse(localConfig.contains("worktreeConfig"), localConfig)
+        XCTAssertTrue(localConfig.contains("bare = false"), localConfig)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: (repo.root as NSString).appendingPathComponent(".git/config.worktree")
+            ),
+            "no config.worktree should have been created"
+        )
+    }
 }

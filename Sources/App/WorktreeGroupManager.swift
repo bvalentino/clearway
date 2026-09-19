@@ -209,10 +209,12 @@ final class WorktreeGroupManager: ObservableObject {
     func setName(_ name: String?, for wt: Worktree) {
         guard !wt.isMain, let path = wt.path else { return }
         let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            names.removeValue(forKey: wt.id)
+        let stored = trimmed.isEmpty ? nil : trimmed
+        guard names[wt.id] != stored else { return }
+        if let stored {
+            names[wt.id] = stored
         } else {
-            names[wt.id] = trimmed
+            names.removeValue(forKey: wt.id)
         }
         enqueueWrite { configStore in
             await configStore.set(trimmed, forKey: WorktreeConfigStore.nameKey, worktreeAt: path)

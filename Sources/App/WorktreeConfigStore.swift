@@ -81,14 +81,17 @@ final class WorktreeConfigStore: Sendable {
     // MARK: - Write
 
     /// Stores `value` against the worktree at `path`, or clears the key when it is `nil` or empty.
-    /// Enables the extension first, and throws nothing: a config write is not worth failing a
+    /// Only a store enables the extension: while it is off no `clearway.*` value can exist, so a
+    /// clear has nothing to unset and bootstrapping for one would relocate the repository's
+    /// `core.bare` for nothing. Throws nothing either way: a config write is not worth failing a
     /// worktree creation over, and the next reload corrects the published map.
     func set(_ value: String?, forKey key: String, worktreeAt path: String) async {
-        guard await enableExtension() else { return }
         guard let value, !value.isEmpty else {
+            guard await isExtensionEnabled() else { return }
             await run(Self.unsetArgs(worktreePath: path, key: key))
             return
         }
+        guard await enableExtension() else { return }
         await run(Self.setArgs(worktreePath: path, key: key, value: value), reportingFailure: true)
     }
 
