@@ -379,8 +379,8 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
-            // Route the launcher decision through the live SettingsManager so clearing
-            // the command at runtime immediately skips the prompt screen on new tabs.
+            // Read Settings → Main Terminal through the live SettingsManager so clearing the
+            // command at runtime immediately makes the next first tab a login shell.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
 
@@ -831,41 +831,6 @@ struct ContentView: View {
                                         }
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     }
-                                } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
-                                    // Resolved once: rendering one agent's name while submitting to
-                                    // another is the failure this single binding rules out.
-                                    let launcherAgent = terminalManager.launcherAgents[activeTab.id]
-                                        ?? settings.resolvedMainTerminalCommand
-                                    PromptLauncherView(
-                                        command: launcherAgent,
-                                        autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
-                                        draft: Binding(
-                                            get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
-                                            set: { terminalManager.launcherDrafts[activeTab.id] = $0 }
-                                        ),
-                                        onSubmit: { prompt in
-                                            guard let app = ghosttyApp.app else { return }
-                                            Task {
-                                                await terminalManager.promoteLauncherToAgent(
-                                                    tabId: activeTab.id,
-                                                    in: worktreeId,
-                                                    app: app,
-                                                    command: launcherAgent,
-                                                    prompt: prompt
-                                                )
-                                            }
-                                        },
-                                        onOpenTerminal: {
-                                            guard let app = ghosttyApp.app else { return }
-                                            terminalManager.promoteLauncher(
-                                                tabId: activeTab.id,
-                                                in: worktreeId,
-                                                app: app
-                                            )
-                                        },
-                                        onConsumeFocus: { terminalManager.pendingFocusTabId = nil }
-                                    )
-                                    .id(activeTab.id)
                                 } else if let activeSurface = pane.main.activeSurface {
                                     FocusableTerminal(
                                         surfaceView: activeSurface,

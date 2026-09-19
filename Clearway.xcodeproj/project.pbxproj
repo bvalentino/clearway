@@ -143,7 +143,6 @@
 		E3FFB76D4901447D99D5DBDE /* WorkTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */; };
 		E633959603439A5BCC3F10E4 /* SavedCommandManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F73E33487879607D16E540D /* SavedCommandManagerTests.swift */; };
 		E772C9D9941AAB1C3AC399DF /* WorkTaskWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF303BDB106268697C4BEB27 /* WorkTaskWindow.swift */; };
-		E8C2DC7EBBC5489F51610A85 /* PromptLauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3396ABC258004DA10D0685 /* PromptLauncherView.swift */; };
 		EB491D3A6BE4934B06A9B67B /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8559C2AABE5237F01B8D0 /* MarkdownRenderer.swift */; };
 		EBE18373B5AC1A72F2197FCF /* Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111635747B13F014EEF1AB32 /* Worktree.swift */; };
 		EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */; };
@@ -203,7 +202,6 @@
 		43C4ECCB3CFD45DB93164068 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
 		4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskEditorBuffersTests.swift; sourceTree = "<group>"; };
 		46B249C5162F943C6A161511 /* WorkTaskRelocationSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskRelocationSafetyTests.swift; sourceTree = "<group>"; };
-		4D3396ABC258004DA10D0685 /* PromptLauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptLauncherView.swift; sourceTree = "<group>"; };
 		4E883DF88CE18CD54F66E35A /* RAIICleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAIICleanupTests.swift; sourceTree = "<group>"; };
 		519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskManager.swift; sourceTree = "<group>"; };
 		54E4F120F042C2615893DCE6 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
@@ -437,7 +435,6 @@
 				5A687B79E4CF9B494E2A6391 /* ProjectWindow.swift */,
 				A1A28DBBCFBC067478FD8795 /* Prompt.swift */,
 				E4FED179216122D158BE6A56 /* PromptDetailView.swift */,
-				4D3396ABC258004DA10D0685 /* PromptLauncherView.swift */,
 				A289D16C8729AD679B9C0921 /* PromptListView.swift */,
 				02A15AF63CD7636A38973624 /* PromptManager.swift */,
 				C00CC5D8B585782655D8A81A /* PromptsView.swift */,
@@ -824,7 +821,6 @@
 				FB4F22980A006328A8B51039 /* ProjectWindow.swift in Sources */,
 				98B18A8F9508E08F7E852BF4 /* Prompt.swift in Sources */,
 				F37D1613C1DF3740CA1802C4 /* PromptDetailView.swift in Sources */,
-				E8C2DC7EBBC5489F51610A85 /* PromptLauncherView.swift in Sources */,
 				38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */,
 				AC4FAE844570FB2DCAEB8A37 /* PromptManager.swift in Sources */,
 				BFE1B15A576FC8B6B2C8424D /* PromptWindow.swift in Sources */,

@@ -219,10 +219,8 @@ class TerminalManager: ObservableObject {
     var launcherAgents: [UUID: String] = [:]
 
     /// One-shot signal: the id of a launcher tab that was *explicitly created* (Cmd+T)
-    /// and should focus its prompt input on mount. Set in `appendLauncherTab`, read by
-    /// `PromptLauncherView` via `ContentView`, and cleared once consumed. Plain selection
-    /// of a worktree whose active tab is a launcher leaves this nil, so the launcher no
-    /// longer steals focus on re-select. Not `@Published`: it is set alongside an
+    /// and should focus its prompt input on mount. Set in `appendLauncherTab`; its reader went
+    /// with the launcher view, so nothing consumes it. Not `@Published`: it is set alongside an
     /// `objectWillChange.send()` and clearing it must not trigger a re-render.
     var pendingFocusTabId: UUID?
 
@@ -365,8 +363,7 @@ class TerminalManager: ObservableObject {
     /// shell when it is nil.
     ///
     /// Keeps the tab id and position so the tab strip and focus-routing needn't special-case
-    /// the transition. No-op (returns nil) if the target tab isn't a launcher — which is also
-    /// how `promoteLauncherToAgent` handles a tab the user closed while the PATH resolved.
+    /// the transition. No-op (returns nil) if the target tab isn't a launcher.
     @discardableResult
     func promoteLauncher(
         tabId: UUID,
