@@ -34,6 +34,8 @@ unchanged.
 | 16 | Where does the bar sit relative to the window status bar? | Above it and inset to the aside's width. The aside is a 380-wide column inside the terminal/aside `HStack` (`ContentView.swift:899-920`); `WorktreeStatusBar` is a sibling of that `HStack` in the enclosing `VStack` (`ContentView.swift:924-932`) and spans the full window width. So the two bars stack, the aside's stopping at the aside's leading divider. | Spec author |
 | 17 | Does the bar show when the list is empty? | Yes, both tabs, pinned to the bottom. Each view's empty state already carries `.frame(maxWidth: .infinity, maxHeight: .infinity)` (`PromptsView.swift:24`, `TodosPanelView.swift:54`) inside a `VStack(spacing: 0)`, so appending the bar to that stack puts it at the bottom in the empty case exactly as in the populated one. Creating the first todo or prompt is precisely when the `+` is most needed. | Spec author |
 | 18 | Any new tests? | No. The change is view chrome with no decision rule to lift out: which tab renders is settled by the existing `switch effectiveSidePanelTab` (`ContentView.swift:904-918`), which `SidePanelTabTests` already covers, and the bar is unconditional within its two branches. There is nothing here of the shape CLAUDE.md asks to be lifted into a pure helper. The criteria are confirmed by hand in the running app, with `./scripts/ci.sh` as the regression check. | Spec author |
+| 19 | What does the bar's control look like after the hands-on check? | A real push button, not the borderless glyph decision 11 chose: `Label("Add Todo", systemImage: "plus")` / `Label("Add Prompt", systemImage: "plus")` with `.labelStyle(.titleAndIcon)`, leading-aligned, styled `.glass` on macOS 26 and later and `.bordered` below. The glyph read as unfinished chrome rather than an action. This supersedes decisions 11, 12 and 13: no `.help` tooltip (a text-labelled button needs none) and no `.accessibilityLabel` (the `Label`'s title is one). The divider, the `.bar` background and the leading alignment stay; the bar's padding becomes 8 horizontal / 6 vertical, since 8 leading / 4 vertical was sized for a 24-pt borderless glyph. `SidebarHeaderButton` therefore has only sidebar callers again, so the follow-up about renaming it is moot. | Operator |
+| 20 | Where does the macOS 26 style split live? | `Sources/App/GlassButtonStyles.swift`, a new file holding `applyGlassButtonStyle()` beside the existing `applyPrimaryActionStyle(tint:)`, which moves there out of `WorkTaskWindow.swift`'s `// MARK: - Glass Styling` extension unchanged. One file owns the `#available(macOS 26.0, *)` check rather than a second copy appearing in `AsideBottomBar`, and a shared button-style helper does not belong in a file named for one window. | Spec author |
 
 ## Assumptions
 
@@ -74,17 +76,17 @@ toolbar's worktree buttons hold still whichever aside tab is showing.
 ### Success criteria
 
 1. With the aside open on **Todos**, a bar spans the bottom of the 380-wide aside column with a
-   divider along its top edge and a `+` on its leading edge. Clicking it starts a new todo row,
-   exactly as the toolbar `+` did.
-2. With the aside open on **Prompts**, the same bar appears and its `+` creates a prompt and opens
-   its window, exactly as the toolbar `+` did.
+   divider along its top edge and an **Add Todo** push button, plus glyph and title both showing, on
+   its leading edge. Clicking it starts a new todo row, exactly as the toolbar `+` did.
+2. With the aside open on **Prompts**, the same bar appears with an **Add Prompt** button that
+   creates a prompt and opens its window, exactly as the toolbar `+` did.
 3. On the **Task** tab the aside shows no bottom bar, and the Create Task CTA is unchanged.
 4. The window toolbar shows only the worktree items — Run, Open in, Remove worktree, Show/Hide
    aside. Switching between Task, Todos and Prompts, and hiding and showing the aside, does not move
    or change them.
 5. Both bars show when their list is empty, pinned to the bottom of the panel.
-6. Hovering the `+` brightens it from secondary to primary; the tooltip reads "New todo" or "New
-   prompt" as before; VoiceOver reads the same string rather than "plus".
+6. The button wears Liquid Glass on macOS 26 and later and `.bordered` below, shows no tooltip, and
+   VoiceOver reads "Add Todo" / "Add Prompt" rather than "plus" (decision 19).
 7. The bar is inset to the aside column and stacks above the full-width worktree status bar; it is
    not drawn over the terminal.
 8. The File menu's New Prompt item behaves exactly as before: enabled on the sidebar's Prompts
@@ -118,7 +120,9 @@ sign-off and never `git add -A`.
 
 | File | Change |
 | --- | --- |
-| `Sources/App/AsideBottomBar.swift` | New. The shared bar: top divider, `.bar` background, leading `SidebarHeaderButton(systemImage: "plus")` carrying `.help` and `.accessibilityLabel` (decisions 9, 11, 12, 13, 14). |
+| `Sources/App/AsideBottomBar.swift` | New. The shared bar: top divider, `.bar` background, and a leading `Button` whose `Label(title, systemImage: "plus")` shows title and icon, styled by `applyGlassButtonStyle()` (decisions 9, 14, 19). |
+| `Sources/App/GlassButtonStyles.swift` | New. `applyGlassButtonStyle()` plus `applyPrimaryActionStyle(tint:)`, moved unchanged out of `WorkTaskWindow.swift` (decision 20). |
+| `Sources/App/WorkTaskWindow.swift` | The `// MARK: - Glass Styling` extension moves out to `GlassButtonStyles.swift`; nothing else changes (decision 20). |
 | `Sources/App/TodosPanelView.swift` | The `.toolbar` block and its `ToolbarGroupBreak` and comment header are removed; an `AsideBottomBar` calling `startCreating()` is appended to the root `VStack` (decisions 3, 7). |
 | `Sources/App/PromptsView.swift` | Same removal; an `AsideBottomBar` calling the existing create-and-open action is appended to the root `VStack`. The stale doc comment on line 4 is corrected (decisions 3, 7, 8). |
 | `CLAUDE.md` | The merge-order paragraph at 161-163 is rewritten to drop `PromptsView` / `TodosPanelView`, which no longer declare toolbar content (decision 6). |
@@ -138,8 +142,7 @@ sign-off and never `git add -A`.
   opened.
 - The aside tab strip, its glass capsule, the 380-point width, tab persistence and
   `resolveSidePanelTab`.
-- Renaming `SidebarHeaderButton` to a name that does not say "sidebar", now that a second surface
-  uses it (decision 11). A pure rename across `SidebarView`, `GroupByMenu` and this new file, owed
-  its own task.
+- Renaming `SidebarHeaderButton`. Decision 19 drops the aside's use of it, so its only callers are
+  sidebar ones again and the rename is moot.
 - Splitting `ContentView.swift` below SwiftLint's `file_length` error. This change adds nothing to
   it (decision 10); the split remains owed.

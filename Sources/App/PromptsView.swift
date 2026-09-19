@@ -42,7 +42,7 @@ struct PromptsView: View {
                 }
             }
 
-            AsideBottomBar(help: "New prompt") {
+            AsideBottomBar(title: "Add Prompt") {
                 if let prompt = promptManager.createPrompt() {
                     openPrompt(prompt)
                 }

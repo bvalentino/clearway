@@ -226,6 +226,32 @@ change adds nothing to that file.
 
 None. Every design decision is settled in the spec.
 
+## Changelog
+
+### C1: The bar's control becomes a titled push button (operator, after the hands-on check)
+
+Operator feedback, verbatim: "why isn't the button at the bottom of the pane shaped as an actual
+button? It looks odd. I was expecting a button with + Add Todo or + Add Prompt with glass style."
+
+`AsideBottomBar` now renders a real bordered push button instead of the borderless
+`SidebarHeaderButton` glyph T1 chose. Its label is `Label("Add Todo", systemImage: "plus")` /
+`Label("Add Prompt", systemImage: "plus")` with `.labelStyle(.titleAndIcon)`, leading-aligned, and
+its style is `.glass` on macOS 26 and later, `.bordered` below. The bar's `help` parameter becomes
+`title`, so the callers pass the button's words. The `.help` tooltip and the `.accessibilityLabel`
+are both dropped: a text-labelled button needs no tooltip and its title is already the
+accessibility label. The divider, the `.bar` background and the leading alignment are unchanged;
+the padding goes from 8 leading / 4 vertical to 8 horizontal / 6 vertical, because the old numbers
+were sized for a 24-pt borderless glyph.
+
+The macOS 26 availability split is not copied into `AsideBottomBar`. The extension that holds it —
+`applyPrimaryActionStyle(tint:)`, previously `WorkTaskWindow.swift`'s `// MARK: - Glass Styling` —
+moves unchanged into a new `Sources/App/GlassButtonStyles.swift` and gains a sibling
+`applyGlassButtonStyle()`, so one file owns the `#available(macOS 26.0, *)` check.
+
+This supersedes spec decisions 11, 12 and 13 and is recorded as spec decisions 19 and 20. Because
+the aside no longer uses `SidebarHeaderButton`, that type has only sidebar callers again and the
+spec's follow-up about renaming it is moot; the Out of scope entry says so.
+
 ## Build log
 
 ### T1: Add AsideBottomBar and move the Todos `+` onto it
@@ -322,6 +348,60 @@ Acceptance criteria checked directly:
 **Deviations from the plan**
 
 None.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.
+
+### C1: The bar's control becomes a titled push button
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/GlassButtonStyles.swift` | New, 24 lines. Holds `applyPrimaryActionStyle(tint:)` moved verbatim out of `WorkTaskWindow.swift` and a new sibling `applyGlassButtonStyle()` — `.glass` on macOS 26 and later, `.bordered` below. One file owns the `#available(macOS 26.0, *)` split. |
+| `Sources/App/WorkTaskWindow.swift` | The `// MARK: - Glass Styling` extension and its 13 lines deleted; the file now ends at the `TaskEditor` type. No other change, and its two callers (`WorkTaskWindow.swift:284`, `WorkTaskListView.swift:65`) are untouched — the helper is internal and all sources are one module. |
+| `Sources/App/AsideBottomBar.swift` | `help` renamed `title`. The `SidebarHeaderButton` glyph, its `.help` and its `.accessibilityLabel` replaced by `Button(action:)` wrapping `Label(title, systemImage: "plus").labelStyle(.titleAndIcon)`, styled `.applyGlassButtonStyle()`. Padding `.leading 8` / `.vertical 4` becomes `.horizontal 8` / `.vertical 6`. The `HStack` + trailing `Spacer()`, the `.frame(maxWidth: .infinity)`, the `.background(.bar)` and the top `Divider()` overlay are unchanged. |
+| `Sources/App/TodosPanelView.swift` | Call site becomes `AsideBottomBar(title: "Add Todo", action: startCreating)`. |
+| `Sources/App/PromptsView.swift` | Call site becomes `AsideBottomBar(title: "Add Prompt") { … }`; the closure body is unchanged. |
+| `docs/superpowers/specs/2026-09-19-aside-bottom-bar-plus.md` | Decisions 19 and 20 added; success criteria 1, 2 and 6 restated for the button; the `Files touched` table gains the two new rows; the `SidebarHeaderButton` rename bullet under Out of scope marked moot. |
+| `docs/superpowers/plans/2026-09-19-aside-bottom-bar-plus.md` | `## Changelog` section added with C1, plus this entry. |
+
+**Evidence**
+
+No regression test was written. Spec decision 18 still holds — this is view chrome with no decision
+rule to lift into a pure helper, and the change is a style and a label, not a behaviour. There is
+therefore no watched failure to quote. The pin on "nothing else moved" is the existing suite staying
+green unchanged: 535 tests, 0 failures, no file under `Tests/` edited.
+
+Checked directly:
+
+- `grep -rn "SidebarHeaderButton" Sources/` → only `SidebarHeaderControls.swift:17` and the three
+  sidebar call sites (`SidebarView.swift:307, 315, 589`). The aside no longer uses it, so the spec's
+  rename follow-up is moot.
+- `grep -rn "#available(macOS 26" Sources/App/` → `GlassButtonStyles.swift` only for button styling;
+  no second copy in `AsideBottomBar.swift`.
+- `grep -n "help" Sources/App/AsideBottomBar.swift Sources/App/TodosPanelView.swift` → no `.help()`
+  on the bar or its callers; `TodosPanelView`'s remaining `help` is `SendToTerminalButton`'s, which
+  this change does not touch.
+- `swiftlint lint --quiet` → exit 0, the same three pre-existing warnings
+  (`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:99, :266`); none in any file this task
+  touched.
+- `git status --porcelain` → the seven files above plus `Clearway.xcodeproj/project.pbxproj`, which
+  `xcodegen generate` rewrote for the new source file. No `default.profraw`: the app was not
+  launched.
+
+**Deviations from the plan**
+
+This is not a plan task. It is operator feedback after the hands-on check, recorded as C1 in
+`## Changelog` above and as spec decisions 19 and 20 so no later step reverts it.
+
+One judgement call the feedback left open: it said to reuse `WorkTaskWindow.swift`'s helper "if it
+is shaped to take a style, otherwise mirror its pattern". It is not — `applyPrimaryActionStyle`
+hard-codes the prominent styles and a tint. Rather than mirror the `#available` check into
+`AsideBottomBar`, the extension moved into `GlassButtonStyles.swift` and gained a sibling, which
+keeps the check in one place and stops a shared button-style helper living in a file named for one
+window.
 
 **Gate**
 

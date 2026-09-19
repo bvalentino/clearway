@@ -81,7 +81,7 @@ struct TodosPanelView: View {
                 }
             }
 
-            AsideBottomBar(help: "New todo", action: startCreating)
+            AsideBottomBar(title: "Add Todo", action: startCreating)
         }
         .confirmationDialog(
             "Delete \"\(todoPendingDeletion?.subject ?? "")\"?",
