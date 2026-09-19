@@ -1,9 +1,10 @@
 import Foundation
 import os
 
-/// Reads and writes Clearway's per-worktree git config — `clearway.name` and `clearway.status` in
-/// each worktree's own `config.worktree`, which `git worktree remove` deletes along with the
-/// worktree, so nothing here needs pruning, reconciling or a watcher.
+/// Reads and writes Clearway's git config in two scopes: the per-worktree keys in each worktree's
+/// own `config.worktree`, which `git worktree remove` deletes along with the worktree, and the
+/// repo-level keys in the shared `.git/config`, which `--local` reaches identically from every
+/// worktree. Nothing here needs pruning, reconciling or a watcher.
 ///
 /// Nonisolated and `Sendable`, the shape `WorktreeGroupStore` has: the manager holds the published
 /// state, the store holds the commands.
@@ -11,6 +12,17 @@ final class WorktreeConfigStore: Sendable {
 
     static let nameKey = "clearway.name"
     static let statusKey = "clearway.status"
+
+    /// Single lowercase words on purpose: `git config --list` lowercases key names and `parseList`
+    /// keys its dictionary on what git printed, while callers look up these constants. Renaming
+    /// either to camel case would silently stop every per-worktree read finding it.
+    static let groupKey = "clearway.group"
+    static let positionKey = "clearway.position"
+
+    /// Repo scope, read with `--get`/`--get-all`, which return values and never key names, so the
+    /// lowercasing above does not apply.
+    static let groupingKey = "clearway.grouping"
+    static let groupOrderKey = "clearway.groupOrder"
 
     private static let keyPrefix = "clearway."
     private static let extensionKey = "extensions.worktreeConfig"
@@ -78,6 +90,37 @@ final class WorktreeConfigStore: Sendable {
         return values
     }
 
+    /// No `-C`: a repo-level command reaches the same shared `.git/config` from any worktree, and
+    /// `run` already starts every process in `projectPath`.
+    static func localGetArgs(key: String) -> [String] {
+        ["git", "config", "--local", "--get", "--null", key]
+    }
+
+    static func localGetAllArgs(key: String) -> [String] {
+        ["git", "config", "--local", "--get-all", "--null", key]
+    }
+
+    static func localSetArgs(key: String, value: String) -> [String] {
+        ["git", "config", "--local", key, value]
+    }
+
+    static func localAddArgs(key: String, value: String) -> [String] {
+        ["git", "config", "--local", "--add", key, value]
+    }
+
+    static func localUnsetAllArgs(key: String) -> [String] {
+        ["git", "config", "--local", "--unset-all", key]
+    }
+
+    /// Parses `--null` value output: each value is NUL-terminated, so the record after the final
+    /// NUL is dropped rather than reported as an empty value. Nothing splits on newlines, which is
+    /// what lets a group name containing one survive whole.
+    static func parseNullSeparated(_ output: String) -> [String] {
+        var values = output.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
+        if values.last?.isEmpty == true { values.removeLast() }
+        return values
+    }
+
     // MARK: - Read
 
     /// The `clearway.*` values stored against the worktree at `path`, `[:]` when there are none or
@@ -101,6 +144,42 @@ final class WorktreeConfigStore: Sendable {
             return [:]
         case .unavailable(let message):
             log("read \(path)", message)
+            return nil
+        }
+    }
+
+    /// Every value stored against the repo-level multivar `key`, in file order. `[]` when the key
+    /// is absent or the extension is off, `nil` when git could not answer — the same three-way
+    /// answer `values(forWorktreeAt:)` gives, for the same reason.
+    ///
+    /// The extension gate is what makes "a project where `extensions.worktreeConfig` cannot be
+    /// enabled shows no groups" one rule rather than two: a registry no worktree could ever join
+    /// is not worth reading.
+    func localValues(forKey key: String) async -> [String]? {
+        await readLocal(Self.localGetAllArgs(key: key), what: "read \(key)")
+    }
+
+    /// The single value stored against the repo-level `key`, or `nil` when it is absent, the
+    /// extension is off, or git could not answer. The three are not kept apart: a single-valued
+    /// key has no caller that would publish "unknown" differently from "unset".
+    func localValue(forKey key: String) async -> String? {
+        await readLocal(Self.localGetArgs(key: key), what: "read \(key)")?.first
+    }
+
+    private func readLocal(_ args: [String], what: String) async -> [String]? {
+        switch await extensionState() {
+        case .off: return []
+        case .unknown: return nil
+        case .on: break
+        }
+        switch await run(args) {
+        case .output(let data):
+            return Self.parseNullSeparated(String(decoding: data, as: UTF8.self))
+        // git-config(1): "Returns error code 1 if key is not present."
+        case .refused:
+            return []
+        case .unavailable(let message):
+            log(what, message)
             return nil
         }
     }
@@ -137,6 +216,58 @@ final class WorktreeConfigStore: Sendable {
         case .output: return true
         case .refused(_, let message), .unavailable(let message):
             log("set \(key) at \(path)", message)
+            return false
+        }
+    }
+
+    /// Stores `value` against the repo-level `key`, or clears it when `nil` or empty, on the same
+    /// terms as `set`: only a store enables the extension, and a clear with the extension off has
+    /// nothing to remove. Single-valued keys only — a store replaces whatever is there, so a
+    /// multivar would be left holding one value of several.
+    @discardableResult
+    func setLocal(_ value: String?, forKey key: String) async -> Bool {
+        guard let value, !value.isEmpty else {
+            switch await extensionState() {
+            case .off: return true
+            case .unknown: return false
+            case .on: break
+            }
+            return await unsetAllLocal(key)
+        }
+        guard await enableExtension() else { return false }
+        switch await run(Self.localSetArgs(key: key, value: value)) {
+        case .output: return true
+        case .refused(_, let message), .unavailable(let message):
+            log("set \(key)", message)
+            return false
+        }
+    }
+
+    /// Rewrites the repo-level multivar `key` whole: unset every value, then add each of `values`
+    /// in order. Never `--replace-all` or a value-regex — these values are arbitrary user text and
+    /// escaping one into a POSIX ERE is a correctness hazard for the saving of two subprocesses.
+    /// An empty array leaves the key unset.
+    @discardableResult
+    func replaceLocalValues(_ values: [String], forKey key: String) async -> Bool {
+        guard await enableExtension() else { return false }
+        guard await unsetAllLocal(key) else { return false }
+        for value in values {
+            switch await run(Self.localAddArgs(key: key, value: value)) {
+            case .output: continue
+            case .refused(_, let message), .unavailable(let message):
+                log("add \(key)", message)
+                return false
+            }
+        }
+        return true
+    }
+
+    private func unsetAllLocal(_ key: String) async -> Bool {
+        switch await run(Self.localUnsetAllArgs(key: key)) {
+        // git-config(1): exit 5 when the key is not there, which is the state asked for.
+        case .output, .refused(5, _): return true
+        case .refused(_, let message), .unavailable(let message):
+            log("unset \(key)", message)
             return false
         }
     }
