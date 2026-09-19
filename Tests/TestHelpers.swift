@@ -124,16 +124,11 @@ struct GitRepoFixture {
     }
 
     /// Every value of the repo-level multivar `key`, in file order, and `[]` when it is absent —
-    /// `--get-all` exits 1 for a missing key. NUL-separated and never split on a newline, so a
-    /// group name containing one comes back whole.
+    /// `--get-all` exits 1 for a missing key.
     func localValues(ofKey key: String) throws -> [String] {
         let result = try Self.capture(["config", "--local", "--get-all", "--null", key], in: root)
         guard result.status == 0 else { return [] }
-        var values = result.stdout
-            .split(separator: "\0", omittingEmptySubsequences: false)
-            .map(String.init)
-        if values.last?.isEmpty == true { values.removeLast() }
-        return values
+        return WorktreeConfigStore.parseNullSeparated(result.stdout)
     }
 
     func mainWorktreeConfigContents() throws -> String {
@@ -249,5 +244,15 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         try await waitFor(expected, describing: "\(key) at \(path)", file: file, line: line) {
             try self.repo.value(ofKey: key, atWorktree: path)
         }
+    }
+
+    /// The IDs the sidebar would render, in order, with no search filter.
+    func renderedOrder(_ worktrees: [Worktree], showingDetached: Bool = false) -> [String] {
+        manager.sidebarOrderedWorktrees(
+            worktrees,
+            showingDetached: showingDetached,
+            openIds: [],
+            matches: { _ in true }
+        ).map(\.id)
     }
 }

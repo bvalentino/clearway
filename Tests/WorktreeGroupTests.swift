@@ -6,38 +6,42 @@ import XCTest
 final class WorktreeGroupTests: XCTestCase {
 
     func testAnUnusedNameIsAvailable() {
-        XCTAssertTrue(WorktreeGroup.isNameAvailable("Backlog", in: []))
-        XCTAssertTrue(WorktreeGroup.isNameAvailable("Backlog", in: ["Shipped"]))
+        XCTAssertEqual(WorktreeGroup.available("Backlog", in: []), "Backlog")
+        XCTAssertEqual(WorktreeGroup.available("Backlog", in: ["Shipped"]), "Backlog")
     }
 
     func testAnEmptyOrWhitespaceOnlyNameIsRefused() {
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("", in: []))
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("   ", in: []))
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("\n\t", in: []))
+        XCTAssertNil(WorktreeGroup.available("", in: []))
+        XCTAssertNil(WorktreeGroup.available("   ", in: []))
+        XCTAssertNil(WorktreeGroup.available("\n\t", in: []))
     }
 
     func testAnExactDuplicateIsRefused() {
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("Backlog", in: ["Backlog"]))
+        XCTAssertNil(WorktreeGroup.available("Backlog", in: ["Backlog"]))
     }
 
     func testTheNameIsTrimmedBeforeComparison() {
-        XCTAssertFalse(WorktreeGroup.isNameAvailable(" Backlog ", in: ["Backlog"]))
+        XCTAssertNil(WorktreeGroup.available(" Backlog ", in: ["Backlog"]))
+    }
+
+    func testTheTrimmedNameIsWhatIsStored() {
+        XCTAssertEqual(WorktreeGroup.available("  Backlog  ", in: []), "Backlog")
     }
 
     func testComparisonIsCaseSensitive() {
-        XCTAssertTrue(WorktreeGroup.isNameAvailable("backlog", in: ["Backlog"]))
+        XCTAssertEqual(WorktreeGroup.available("backlog", in: ["Backlog"]), "backlog")
     }
 
     func testAGroupMayKeepItsOwnNameWhileRenaming() {
-        XCTAssertTrue(WorktreeGroup.isNameAvailable("Backlog", in: ["Backlog"], renaming: "Backlog"))
-        XCTAssertTrue(WorktreeGroup.isNameAvailable(" Backlog ", in: ["Backlog"], renaming: "Backlog"))
+        XCTAssertEqual(WorktreeGroup.available("Backlog", in: ["Backlog"], renaming: "Backlog"), "Backlog")
+        XCTAssertEqual(WorktreeGroup.available(" Backlog ", in: ["Backlog"], renaming: "Backlog"), "Backlog")
     }
 
     func testARenameOntoAnotherGroupsNameIsRefused() {
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("Shipped", in: ["Backlog", "Shipped"], renaming: "Backlog"))
+        XCTAssertNil(WorktreeGroup.available("Shipped", in: ["Backlog", "Shipped"], renaming: "Backlog"))
     }
 
     func testARenameToAnEmptyNameIsRefused() {
-        XCTAssertFalse(WorktreeGroup.isNameAvailable("  ", in: ["Backlog"], renaming: "Backlog"))
+        XCTAssertNil(WorktreeGroup.available("  ", in: ["Backlog"], renaming: "Backlog"))
     }
 }

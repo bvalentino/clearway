@@ -190,15 +190,6 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - Helpers
 
-    private func renderedOrder(_ worktrees: [Worktree]) -> [String] {
-        manager.sidebarOrderedWorktrees(
-            worktrees,
-            showingDetached: false,
-            openIds: [],
-            matches: { _ in true }
-        ).map(\.id)
-    }
-
     private func waitForRegistry(
         _ expected: [String],
         file: StaticString = #filePath,

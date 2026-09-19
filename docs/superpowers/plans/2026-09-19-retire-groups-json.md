@@ -1017,3 +1017,27 @@ would have failed acceptance criterion 1. Rewritten in place, same assertion.
 `./scripts/ci.sh` — green. `Executed 541 tests, with 0 failures (0 unexpected)`, `==> CI passed.`,
 exit status 0 on a re-run after the last edit. `git status --porcelain` shows only this change's
 five files; no `default.profraw`.
+
+### Simplify
+
+`WorktreeGroup.isNameAvailable` became `available`, returning the trimmed name instead of a `Bool`,
+so `createGroup` and `renameGroup` store what the validator checked rather than re-deriving the trim
+at each call site. `renameGroup`, `deleteGroup` and `writeRegistry` collapsed into one
+`writeRegistry(settingGroup:on:)` carrying the members-before-registry rule once. `maxPosition` now
+reads `section(named:)` instead of re-deriving section membership, and `section`'s comparator moved
+to `ordered`'s `?? .max` spelling. The two repo-level reads in `init` and `reloadConfig` became
+`async let`, so the three independent reads of a reload overlap instead of costing three serial
+`git config` spawns. In the tests, `GitRepoFixture.localValues(ofKey:)` now calls
+`WorktreeConfigStore.parseNullSeparated` rather than repeating it, the two `renderedOrder` copies
+moved onto `WorktreeGroupManagerGitTestCase`, and four comments plus the three sleeps they justified
+— all naming the deleted `groups.json` watcher — are gone.
+
+Skipped: folding `localValue`/`localGetArgs` into `localValues` (T1's specified API, and `--get`
+refuses a multivar where `--get-all` would silently take the first value); replacing `createGroup`'s
+whole-registry rewrite with one `--add` (carried decision 6); parallelising the per-member and
+per-position write loops with `withTaskGroup` (more code for a win on a path nothing renders behind);
+and the remaining ~45 fixed `Task.sleep`s in `WorktreeGroupManagerTests` (~6 s per run, pre-existing,
+and auditing each site is its own task).
+
+**Gate:** `./scripts/ci.sh` — green. `Executed 542 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `git status --porcelain` shows only this change's files; no `default.profraw`.

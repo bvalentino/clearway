@@ -46,10 +46,12 @@ final class WorktreeGroupManager: ObservableObject {
         loadTask = Task { [weak self] in
             guard let self else { return }
             let configStore = self.configStore
-            let mode = await configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
-            let registry = await configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
-            if let mode, let grouping = WorktreeGrouping(rawValue: mode) { self.grouping = grouping }
-            if let registry { self.groups = Self.registered(registry) }
+            async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
+            async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
+            if let mode = await modeRead, let grouping = WorktreeGrouping(rawValue: mode) {
+                self.grouping = grouping
+            }
+            if let registry = await registryRead { self.groups = Self.registered(registry) }
         }
     }
 
@@ -57,63 +59,34 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Creates a new group with the given name, trimmed, and appends it to the registry.
     ///
-    /// A group is identified by its name, so a name `WorktreeGroup.isNameAvailable` rejects
-    /// creates nothing: the name-keyed lookups below would otherwise be ambiguous whenever a call
-    /// site forgot to check.
+    /// A group is identified by its name, so a name `WorktreeGroup.available` rejects creates
+    /// nothing: the name-keyed lookups below would otherwise be ambiguous whenever a call site
+    /// forgot to check.
     func createGroup(named name: String) {
-        guard WorktreeGroup.isNameAvailable(name, in: groups.map(\.name)) else { return }
-        groups.append(WorktreeGroup(name: name.trimmingCharacters(in: .whitespacesAndNewlines)))
+        guard let trimmed = WorktreeGroup.available(name, in: groups.map(\.name)) else { return }
+        groups.append(WorktreeGroup(name: trimmed))
         writeRegistry()
     }
 
     /// Renames the group with the given name. No-ops if no group carries it, or if the new name
     /// is one `createGroup` would have refused.
-    ///
-    /// The members are rewritten before the registry, and the registry only if every member write
-    /// landed: a worktree naming an unlisted group renders ungrouped, so a half-applied rename
-    /// that published the new name first would empty the group on the next launch.
     func renameGroup(named name: String, to newName: String) {
         guard let index = groups.firstIndex(where: { $0.name == name }),
-              WorktreeGroup.isNameAvailable(newName, in: groups.map(\.name), renaming: name)
+              let trimmed = WorktreeGroup.available(newName, in: groups.map(\.name), renaming: name)
         else { return }
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         let members = members(ofGroupNamed: name)
         groups[index].name = trimmed
         for id in members { groupNames[id] = trimmed }
-        let registry = groups.map(\.name)
-        enqueueWrite { configStore in
-            for path in members {
-                let written = await configStore.set(
-                    trimmed,
-                    forKey: WorktreeConfigStore.groupKey,
-                    worktreeAt: path
-                )
-                guard written else { return }
-            }
-            await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
-        }
+        writeRegistry(settingGroup: trimmed, on: members)
     }
 
-    /// Deletes the group with the given name, on the same ordering as a rename: its members lose
-    /// their `clearway.group` first, and the registry is rewritten only if every one of them did.
-    /// No-ops if no group carries the name.
+    /// Deletes the group with the given name. No-ops if no group carries it.
     func deleteGroup(named name: String) {
         guard groups.contains(where: { $0.name == name }) else { return }
         let members = members(ofGroupNamed: name)
         groups.removeAll { $0.name == name }
         for id in members { groupNames.removeValue(forKey: id) }
-        let registry = groups.map(\.name)
-        enqueueWrite { configStore in
-            for path in members {
-                let cleared = await configStore.set(
-                    nil,
-                    forKey: WorktreeConfigStore.groupKey,
-                    worktreeAt: path
-                )
-                guard cleared else { return }
-            }
-            await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
-        }
+        writeRegistry(settingGroup: nil, on: members)
     }
 
     /// Adds a worktree to the specified group, at the end of it.
@@ -186,7 +159,6 @@ final class WorktreeGroupManager: ObservableObject {
         applyPositions(seeded)
     }
 
-    /// Returns the name of the group that contains the given worktree ID, or `nil` if ungrouped.
     func groupName(for worktreeId: String) -> String? {
         groupNames[worktreeId]
     }
@@ -319,7 +291,8 @@ final class WorktreeGroupManager: ObservableObject {
     // MARK: - Worktree config
 
     /// Re-reads the repo-level registry and every non-main worktree's `clearway.*` config, one
-    /// process per worktree and all of them concurrently, and publishes the result.
+    /// process per worktree and all of them concurrently — the two repo-level reads included, since
+    /// neither depends on the other — and publishes the result.
     ///
     /// The reads are bracketed by the write chain rather than merely preceded by it: awaiting it
     /// first is what stops a freshly created worktree's reload from reading before the name lands,
@@ -331,13 +304,16 @@ final class WorktreeGroupManager: ObservableObject {
             guard !wt.isMain, let path = wt.path else { return nil }
             return (wt.id, path)
         }
+        let configStore = configStore
         while true {
             await loadTask?.value
             let chain = writeChain
             await chain?.value
-            let mode = await configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
-            let registry = await configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
+            async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
+            async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
             let reloaded = await readConfig(for: targets)
+            let mode = await modeRead
+            let registry = await registryRead
             guard writeChain == chain else { continue }
 
             if let mode, let grouping = WorktreeGrouping(rawValue: mode), grouping != self.grouping {
@@ -423,9 +399,17 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
-    private func writeRegistry() {
+    /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
+    /// registry, and only if every member write landed: a worktree naming an unlisted group renders
+    /// ungrouped, so a half-applied rename that published the registry first would empty the group
+    /// on the next launch.
+    private func writeRegistry(settingGroup name: String? = nil, on members: [String] = []) {
         let registry = groups.map(\.name)
         enqueueWrite { configStore in
+            for path in members {
+                guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+                else { return }
+            }
             await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
         }
     }
@@ -494,7 +478,7 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// `nil` names the ungrouped section.
     private func maxPosition(inSectionNamed name: String?) -> Int? {
-        positions.compactMap { groupNames[$0.key] == name ? $0.value : nil }.max()
+        section(named: name).compactMap(\.position).max()
     }
 
     /// The section's members in display order, for `reassignedPositions`. A member the manager has
@@ -506,10 +490,9 @@ final class WorktreeGroupManager: ObservableObject {
         return ids
             .map { (id: $0, position: positions[$0]) }
             .sorted { lhs, rhs in
-                guard lhs.position != rhs.position else { return lhs.id < rhs.id }
-                guard let left = lhs.position else { return false }
-                guard let right = rhs.position else { return true }
-                return left < right
+                let left = lhs.position ?? .max
+                let right = rhs.position ?? .max
+                return left == right ? lhs.id < rhs.id : left < right
             }
     }
 

@@ -155,7 +155,7 @@ struct SidebarView: View {
                 confirmTitle: "Save",
                 initialName: group.name,
                 isValid: {
-                    WorktreeGroup.isNameAvailable($0, in: groupManager.groups.map(\.name), renaming: group.name)
+                    WorktreeGroup.available($0, in: groupManager.groups.map(\.name), renaming: group.name) != nil
                 }
             ) { newName in
                 groupManager.renameGroup(named: group.name, to: newName)
@@ -166,7 +166,7 @@ struct SidebarView: View {
             NameEntrySheet(
                 title: "New Group",
                 confirmTitle: "Create",
-                isValid: { WorktreeGroup.isNameAvailable($0, in: groupManager.groups.map(\.name)) }
+                isValid: { WorktreeGroup.available($0, in: groupManager.groups.map(\.name)) != nil }
             ) { name in
                 groupManager.createGroup(named: name)
                 showingNewGroupSheet = false

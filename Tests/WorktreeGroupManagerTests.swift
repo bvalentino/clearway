@@ -69,19 +69,12 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
         let wt = makeWorktree(branch: "feature-y", path: "/tmp/feature-y")
 
-        // Add to GroupA first, wait for watcher to settle.
         manager.addWorktree(wt, toGroupNamed: "GroupA")
-        try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(manager.groupName(for: wt.id), "GroupA")
 
-        // Move to GroupB — must no longer appear in GroupA.
-        // Extra sleep ensures the first save's watcher callback completes before
-        // the second addWorktree mutates groups (same race as reconcile test).
+        // A worktree holds one membership, so naming GroupB is also the proof that the move
+        // removed it from GroupA.
         manager.addWorktree(wt, toGroupNamed: "GroupB")
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        // `groupName` answers with the first group holding the id, so GroupB is also the proof
-        // that the move removed it from GroupA.
         XCTAssertEqual(manager.groupName(for: wt.id), "GroupB")
     }
 
@@ -231,13 +224,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let nonMain = makeWorktree(branch: "non-main", path: "/tmp/non-main")
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
 
-        // Add non-main to AGroup; attempt to add main to BGroup (should be a no-op).
-        // Sleep between the two calls so the first save's watcher callback settles
-        // before the second addWorktree (see reconcile test for full explanation).
         manager.addWorktree(nonMain, toGroupNamed: "AGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(main, toGroupNamed: "BGroup") // silent no-op
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let result = manager.sidebarOrderedWorktrees(
             [nonMain, main],
@@ -481,16 +469,5 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
         XCTAssertEqual(hiding.map(\.id), [main.id], "a grouped bare-detached worktree must be dropped too")
         XCTAssertEqual(showing.map(\.id), [main.id, detached.id], "showingDetached must keep it in its group")
-    }
-
-    // MARK: - Helpers
-
-    private func renderedOrder(_ worktrees: [Worktree], showingDetached: Bool = false) -> [String] {
-        manager.sidebarOrderedWorktrees(
-            worktrees,
-            showingDetached: showingDetached,
-            openIds: [],
-            matches: { _ in true }
-        ).map(\.id)
     }
 }
