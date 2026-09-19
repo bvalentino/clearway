@@ -15,10 +15,8 @@ struct RunCommandMenu: View {
                 Button(command.name) { run(command) }
             }
         } label: {
-            Image(systemName: "play")
+            Text("Run")
         }
-        .menuIndicator(.hidden)
-        .help("Run a saved command")
         .disabled(savedCommandManager.commands.isEmpty || ghosttyApp.app == nil)
     }
 

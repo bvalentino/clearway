@@ -261,10 +261,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     list is a configuration the user chose, not a momentarily unavailable action. The sidebar passes
     the right-clicked worktree's path, not the selection's. The toolbar item is the **text** label
     `Text("Open in")` with the system chevron and no `.help()` tooltip — the sidebar submenu carries
-    that same label, lowercase preposition included, the way Reveal in Finder does — while
-    `RunCommandMenu` beside it is icon-only — an operator decision, not drift. `play` names Run on its own;
-    `arrow.up.forward.app` does not name this action, so the row mixes one text item with icon items
-    on purpose. Do not "align" it back to an icon. The menu and the settings section are
+    that same label, lowercase preposition included, the way Reveal in Finder does. `RunCommandMenu`
+    beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()` — because
+    both open a menu rather than acting on a click, which an icon-only button reads as. The remaining
+    toolbar items do act on a click and stay icon-only. The menu and the settings section are
     separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.
