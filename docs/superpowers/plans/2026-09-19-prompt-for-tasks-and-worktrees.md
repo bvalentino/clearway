@@ -613,3 +613,28 @@ Removing the write again turned it green.
 **Gate**
 
 `./scripts/ci.sh` — passed: 574 tests, 0 failures, SwiftLint zero errors.
+
+### T7: The "Run after create" picker
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet` reaches `SavedCommandManager` through `@EnvironmentObject` and holds the picked id in `@State afterCreateCommandId`. The Advanced disclosure gains a "Run after create" `LabeledField` + `Picker` listing None plus `SavedCommand.filter(savedCommandManager.commands, by: .agent)`, tagged `UUID?`. `.onAppear` seeds the selection from `savedCommandManager.afterCreateCommand?.id`, so a stored id that now names nothing or a terminal-kind command shows None without being rewritten. Create resolves the selection through `CommandDefaults.resolve` and hands the command to `confirmCreate`; `setAfterCreateDefault(command?.id)` is written back only on the `.apply` branch of `Self.outcome`. |
+
+**Evidence**
+
+No new test. The picker is SwiftUI wiring XCTest cannot exercise without a running scene, which is
+what the plan's verification for this task says. The two rules it applies are already pinned:
+`SavedCommandTests.testResolve*` for the None-on-stale-or-terminal-id behaviour (T2) and
+`SavedCommandTests.testAgentReturnsOnlyAgentCommandsInInputOrder` for the list contents and their
+order.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 574 tests, 0 failures. `swiftlint lint --quiet` — exit 0, zero errors
+(three pre-existing warnings, none in the changed file).

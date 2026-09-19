@@ -10,6 +10,7 @@ struct CreateWorktreeSheet: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @Environment(\.dismiss) private var dismiss
     @State private var draft: WorktreeDraft
     @State private var status: WorktreeStatus = .inProgress
@@ -17,6 +18,7 @@ struct CreateWorktreeSheet: View {
     @State private var baseBranch = ""
     @State private var fetchBeforeCreate = true
     @State private var isCreating = false
+    @State private var afterCreateCommandId: UUID?
 
     init(targetGroupId: UUID?, startPrefill: WorkTaskCoordinator.StartPrefill? = nil) {
         self.targetGroupId = targetGroupId
@@ -97,6 +99,17 @@ struct CreateWorktreeSheet: View {
 
                     Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
                         .disabled(isCreating)
+
+                    LabeledField("Run after create") {
+                        Picker("Run after create", selection: $afterCreateCommandId) {
+                            Text("None").tag(UUID?.none)
+                            ForEach(SavedCommand.filter(savedCommandManager.commands, by: .agent)) { command in
+                                Text(command.name).tag(UUID?.some(command.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .disabled(isCreating)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -108,8 +121,11 @@ struct CreateWorktreeSheet: View {
                 Spacer()
                 Button {
                     isCreating = true
+                    let command = CommandDefaults.resolve(
+                        afterCreateCommandId, in: savedCommandManager.commands
+                    )
                     workTaskCoordinator.confirmCreate(
-                        taskId: startPrefill?.taskId, branch: draft.branch, command: nil
+                        taskId: startPrefill?.taskId, branch: draft.branch, command: command
                     )
                     Task {
                         let created = await worktreeManager.createWorktree(
@@ -124,6 +140,7 @@ struct CreateWorktreeSheet: View {
                             if let targetGroupId {
                                 groupManager.addWorktree(worktree, toGroup: targetGroupId)
                             }
+                            savedCommandManager.setAfterCreateDefault(command?.id)
                             dismiss()
                         case .reportedFailure:
                             isCreating = false
@@ -149,6 +166,9 @@ struct CreateWorktreeSheet: View {
         }
         .padding(20)
         .frame(width: 320)
+        .onAppear {
+            afterCreateCommandId = savedCommandManager.afterCreateCommand?.id
+        }
     }
 }
 
