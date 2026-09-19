@@ -63,11 +63,10 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         manager.setName("First", for: wt)
         manager.setName("Second", for: wt)
 
-        // The reload awaits the whole chain, so a published "Second" proves both writes are done
-        // and neither reverted the other.
-        manager.reconcile([wt])
-        try await waitForPublishedName("Second", for: wt)
-        XCTAssertEqual(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: path), "Second")
+        // `setName` publishes before it writes, so only the stored value can prove both writes ran
+        // and that neither reverted the other.
+        try await waitForStoredName("Second", at: path)
+        XCTAssertEqual(manager.name(for: wt), "Second")
     }
 
     /// Rename… → Save with an empty field on a project that never used a name or a status. The
@@ -121,10 +120,10 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let wt = makeWorktree(branch: "feature", path: path)
 
         // Seeded first so the assertion below is a transition rather than an absence: waiting for
-        // `nil` on an empty map is satisfied before the reload has run at all.
+        // `nil` on an empty map is satisfied before the reload has run at all. The wait is on the
+        // stored value because the external write below needs the extension the seed bootstraps.
         manager.setName("Seed", for: wt)
-        manager.reconcile([wt])
-        try await waitForPublishedName("Seed", for: wt)
+        try await waitForStoredName("Seed", at: path)
 
         try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         manager.reconcile([wt])

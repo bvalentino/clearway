@@ -122,12 +122,14 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         // Added after the extension is on, so git seeds core.bare into its config.worktree too.
         let sibling = try repo.addWorktree(branch: "other")
 
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: feature))
+        let read = await store.values(forWorktreeAt: feature)
+        let values = try XCTUnwrap(read)
         XCTAssertEqual(values[WorktreeConfigStore.nameKey], "My Name")
         XCTAssertEqual(values[WorktreeConfigStore.statusKey], "inProgress")
         XCTAssertNil(values["core.bare"])
 
-        let siblingValues = try XCTUnwrap(await store.values(forWorktreeAt: sibling))
+        let readSibling = await store.values(forWorktreeAt: sibling)
+        let siblingValues = try XCTUnwrap(readSibling)
         XCTAssertEqual(siblingValues, [:])
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: sibling))
         XCTAssertEqual(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: feature), "My Name")
@@ -141,7 +143,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         let worktree = try repo.addWorktree(branch: "feature")
         try repo.enableWorktreeConfig()
 
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+        let read = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(read)
 
         XCTAssertEqual(values, [:])
     }
@@ -156,7 +159,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         let cleared = await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
         XCTAssertTrue(cleared)
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+        let read = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(read)
         XCTAssertNil(values[WorktreeConfigStore.nameKey])
         XCTAssertEqual(values[WorktreeConfigStore.statusKey], "done")
     }
@@ -172,7 +176,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         // reported as stored — the distinction the migration relies on to keep `groups.json`.
         XCTAssertTrue(clearedNil)
         XCTAssertTrue(clearedEmpty)
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+        let read = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(read)
         XCTAssertEqual(values, [WorktreeConfigStore.statusKey: "done"])
     }
 
@@ -192,7 +197,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
             ),
             "the worktree's config.worktree should have gone with it — nothing prunes it"
         )
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+        let read = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(read)
         XCTAssertEqual(values, [:])
     }
 
@@ -203,7 +209,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
     func testReadingWithTheExtensionOffReturnsNothing() async throws {
         let worktree = try repo.addWorktree(branch: "feature")
 
-        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+        let read = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(read)
 
         XCTAssertEqual(values, [:])
         XCTAssertNil(try repo.value(ofLocalKey: "extensions.worktreeConfig"))

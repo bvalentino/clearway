@@ -1387,3 +1387,72 @@ runs to get there: the first failed only on
 the second only on `ShellPathResolverTests.testATimedOutAttemptDoesNotWaitLongerThanTheLimit`, two
 different load-sensitive 5-second deadlines, each of which passes when its class is run alone.
 `git status --porcelain` was empty before the push, with no `default.profraw`.
+
+### A stale or non-fatal error dropped the new worktree's name and status
+
+Reported by review after `bade4d1`. `CreateWorktreeSheet` applied the name, the status and the group
+only when `worktreeManager.error == nil` after `createWorktree` returned. `createWorktree` sets that
+same property for a **fetch** it could not run and then carries on ("Proceeding with local state."),
+and an error from an earlier refresh is never cleared, so a creation that fully succeeded could land
+a worktree with no name, no status and no group — and dismiss the sheet without saying so.
+
+The returned `Worktree?` is the only signal that creation worked, so the branch keys on it. Spec
+decision 24 records the rule; it is lifted into a pure static rather than left in the body, on the
+precedent decision 19 set for `WorktreeRow.rowTexts`.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet.outcome(created:error:)` — `.apply(worktree)` when creation returned one, `.reportedFailure` when it did not and the manager published why, `.silentFailure` when it did not and nothing explains it. The button's `Task` switches on it: apply and dismiss, or reset `isCreating` and leave the sheet open, logging only the silent case |
+| `Tests/CreateWorktreeOutcomeTests.swift` | New. The four rows of that table, led by the reported one: a returned worktree is applied **even when the manager carries an error** |
+
+The old "creation succeeded but return lookup failed" warning survives as `.silentFailure`: that is
+still the one outcome with nothing to show the operator. It no longer dismisses, because a sheet
+left open is the only way the gesture can be retried.
+
+**Evidence.** The rule was reverted to the old one (`guard error == nil else { return .reportedFailure }`)
+and the suite run:
+
+```
+✖ testAReturnedWorktreeIsAppliedEvenWhenTheManagerCarriesAnError, XCTAssertEqual failed:
+  ("reportedFailure") is not equal to ("apply(Clearway.Worktree(branch: Optional("feature-x"),
+  path: Optional("/tmp/feature-x"), isMain: false, headStatus: Clearway.HeadStatus.attached))")
+```
+
+Restoring it turned that row green with the other three.
+
+**Two repairs this change had to make first, both from `bade4d1`**
+
+That commit's gate cannot have been run: the test target did not compile. `XCTUnwrap`'s expression
+is an autoclosure, so the seven `try XCTUnwrap(await store.values(forWorktreeAt:))` lines it
+introduced are errors — "'async' call in an autoclosure that does not support concurrency" — and
+`** TEST FAILED ** … Testing cancelled because the build failed.` The read is hoisted into a `let`
+above each `XCTUnwrap`, which is the whole fix.
+
+With the target compiling, two of that commit's new `WorktreeGroupManagerNameTests` cases failed on
+every one of three runs — not the load-sensitive flake this suite is known for, but the same test
+bug twice. `setName` publishes before it writes, by design, so `waitForPublishedName` is satisfied
+before the `git config` subprocess has run:
+
+```
+✖ testReconcileDropsAWhitespaceOnlyStoredName, failed: caught error: "Failure(command:
+  "-C …/.worktrees/feature config --worktree clearway.name    ", status: 128, stderr: "fatal:
+  --worktree cannot be used with multiple working trees unless the config extension
+  worktreeConfig is enabled…")"
+✖ testTwoNamesInOneTurnLandInTheOrderTheyWereMade, XCTAssertEqual failed: ("nil") is not equal
+  to ("Optional("Second")")
+```
+
+The first seeds a name and then writes one externally, which needs the extension the seed's write
+bootstraps; the second asserts the stored value straight after a wait that never waited. Both now
+wait on `waitForStoredName`, which polls git. No production code changed for either.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 534 tests, with 0 failures (0 unexpected) in 86.853 seconds`,
+`==> CI passed.`, exit status 0. Run after the last source edit; only this plan and the spec's
+Decisions table changed afterwards, and neither is compiled. `git status --porcelain` before the
+commit showed the four source files, the regenerated `Clearway.xcodeproj/project.pbxproj` that
+`xcodegen generate` rewrote for the new test file, and the two documents; nothing untracked beyond
+`Tests/CreateWorktreeOutcomeTests.swift` itself, and no `default.profraw`.

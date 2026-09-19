@@ -93,18 +93,18 @@ struct CreateWorktreeSheet: View {
                             base: baseBranch.isEmpty ? nil : baseBranch,
                             fetch: fetchBeforeCreate
                         )
-                        if worktreeManager.error == nil {
-                            if let created {
-                                groupManager.setName(draft.name, for: created)
-                                groupManager.setStatus(status, for: created)
-                                if let targetGroupId {
-                                    groupManager.addWorktree(created, toGroup: targetGroupId)
-                                }
-                            } else {
-                                Ghostty.logger.warning("CreateWorktreeSheet: worktree creation succeeded but return lookup failed; new worktree keeps no name, status or group")
+                        switch Self.outcome(created: created, error: worktreeManager.error) {
+                        case .apply(let worktree):
+                            groupManager.setName(draft.name, for: worktree)
+                            groupManager.setStatus(status, for: worktree)
+                            if let targetGroupId {
+                                groupManager.addWorktree(worktree, toGroup: targetGroupId)
                             }
                             dismiss()
-                        } else {
+                        case .reportedFailure:
+                            isCreating = false
+                        case .silentFailure:
+                            Ghostty.logger.warning("CreateWorktreeSheet: creation returned no worktree and no error; the sheet stays open")
                             isCreating = false
                         }
                     }
@@ -125,6 +125,24 @@ struct CreateWorktreeSheet: View {
         }
         .padding(20)
         .frame(width: 320)
+    }
+}
+
+extension CreateWorktreeSheet {
+
+    enum Outcome: Equatable {
+        case apply(Worktree)
+        case reportedFailure
+        case silentFailure
+    }
+
+    /// The returned worktree is the only signal that creation worked: `createWorktree` leaves a
+    /// non-fatal fetch failure in `WorktreeManager.error` and a banner from an earlier refresh
+    /// survives there too, so keying the apply step on `error == nil` dropped the name and status
+    /// the operator had just typed over a creation that succeeded.
+    static func outcome(created: Worktree?, error: String?) -> Outcome {
+        if let created { return .apply(created) }
+        return error == nil ? .silentFailure : .reportedFailure
     }
 }
 
