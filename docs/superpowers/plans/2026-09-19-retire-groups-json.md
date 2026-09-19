@@ -771,3 +771,58 @@ from the scratchpad copy — no `git checkout`, no `git stash`.
 `./scripts/ci.sh` — green. `Executed 529 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 All three manager suites confirmed present in the run's `.xcresult`: `WorktreeGroupManagerTests` 23
 passed, `WorktreeGroupManagerStatusTests` 13 passed, `WorktreeGroupManagerNameTests` 11 passed.
+
+### T4: Group identity becomes the name
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | Every group-identity parameter is the name: `renameGroup(named:to:)`, `deleteGroup(named:)`, `addWorktree(_:toGroupNamed:)`, `setGroupOrder(named:ids:)`, `groupName(for:)`, `removeWorktreeFromGroup(_ wt: Worktree)`, `setUngroupedOrder(_:)`. `createGroup(named:)` trims and refuses what `WorktreeGroup.isNameAvailable` rejects. `seedDefaultOrder` keeps its name, so `ContentView` is untouched. `matches` now reads `groupName(for:)` instead of scanning `worktreeIds`. `repositioned` lost `private` and moved under a new `// MARK: - Ordering`. `groups.json`, `WorktreeGroup`'s `UUID`/`worktreeIds`/`createdAt` and `defaultOrder` are unchanged — this task is identity only. |
+| `Sources/App/SidebarView.swift` | `createWorktreeTargetGroupName: String?`, `targetedGroupName: String?`, `Dictionary(grouping:) { groupManager.groupName(for: $0.id) }`, `byGroup[group.name]`, `dropIntoGroup(_:groupNamed:)`. The `.group` branch of `dropIntoWorktreesHeader` now routes through `withDroppedWorktrees`, which supplies the `Worktree` `removeWorktreeFromGroup` takes and keeps the same next-main-queue-turn deferral the inline `DispatchQueue.main.async` provided. `groupToRename`/`groupToDelete` stay `WorktreeGroup?`. No `UUID` is left in the file. |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet.targetGroupId: UUID?` → `targetGroupName: String?`. No `UUID` left. |
+| `Tests/WorktreeGroupManagerTests.swift` | 24 cases. Every group reference is a name literal, so the `guard let group = manager.groups.first` preambles are gone. The ordering assertions read `sidebarOrderedWorktrees` (via a local `renderedOrder` helper) and `groupName(for:)`; nothing reads `manager.defaultOrder` or `worktreeIds`. New case `testCreateGroupRefusesADuplicateOrEmptyName`. |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | 13 cases, moved to `toGroupNamed:` and `setUngroupedOrder`; three `guard let group` preambles dropped. |
+
+**Evidence**
+
+The one new rule is `createGroup`'s refusal, and it was watched failing. The `isNameAvailable` guard
+and the trim were removed from `createGroup`; `xcodebuild -only-testing:ClearwayTests/WorktreeGroupManagerTests`
+then reported the new case failing where the restored code reports nothing:
+
+```
+Tests/WorktreeGroupManagerTests.swift:26: error: -[ClearwayTests.WorktreeGroupManagerTests testCreateGroupRefusesADuplicateOrEmptyName] : XCTAssertEqual failed: ("["Backlog", "Backlog", "  "]") is not equal to ("["Backlog"]")
+	 Executed 24 tests, with 1 failure (0 unexpected) in 14.898 (14.914) seconds
+** TEST FAILED **
+```
+
+The manager was then restored from a scratchpad copy — no `git checkout`, no `git stash`.
+
+**Deviations from the plan**
+
+- **`renameGroup(named:to:)` carries the same `isNameAvailable` guard as `createGroup`.** The plan
+  names only `createGroup`, but its reason — a name-keyed lookup must not be ambiguous even if a
+  call site forgets to check — applies verbatim to a rename onto another group's name, and the
+  guard is one clause.
+- **`testSetDefaultOrderCollapsesADuplicateStoredId` became `testRepositionedCollapsesADuplicateStoredId`,
+  a direct case on the pure `static`.** The plan asks the four reorder cases to keep their
+  assertions expressed as the order `sidebarOrderedWorktrees` returns; for this one that is
+  impossible, because `deduplicated` collapses a repeated id before the order is published, so the
+  rendered list is identical whether `repositioned` collapsed the duplicate or added a third copy.
+  The assertion is preserved exactly against `repositioned` itself, which T5 retains, and
+  `repositioned` lost `private` to allow it — the same shape T5's acceptance criterion 4 already
+  asks for on `reassignedPositions`.
+- **`testSeedDefaultOrderAppendsOnlyMissingIds` lost its "grouped ids are skipped" assertion.** It
+  was only observable through `defaultOrder`: `sidebarOrderedWorktrees` puts a grouped worktree in
+  its group section whether or not the ungrouped order also names it. The case now renames its
+  pre-recorded worktree to `zebra` so the surviving assertion distinguishes "appended" from
+  "re-sorted", which the old `already`/`fresh` pair did not. T5 removes the rule anyway —
+  `seedPositions` assigns a position to every non-main worktree without one.
+- **`testSeedDefaultOrderIsIdempotent` gained a second worktree**, for the same reason: with one
+  row there is no order for the rendered list to disagree about.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the restore. `Executed 530 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `WorktreeGroupManagerTests` 24, `WorktreeGroupManagerStatusTests` 13,
+`WorktreeGroupManagerNameTests` 11.

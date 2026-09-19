@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Create Worktree Sheet
 
 struct CreateWorktreeSheet: View {
-    let targetGroupId: UUID?
+    let targetGroupName: String?
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @Environment(\.dismiss) private var dismiss
@@ -97,8 +97,8 @@ struct CreateWorktreeSheet: View {
                         case .apply(let worktree):
                             groupManager.setName(draft.name, for: worktree)
                             groupManager.setStatus(status, for: worktree)
-                            if let targetGroupId {
-                                groupManager.addWorktree(worktree, toGroup: targetGroupId)
+                            if let targetGroupName {
+                                groupManager.addWorktree(worktree, toGroupNamed: targetGroupName)
                             }
                             dismiss()
                         case .reportedFailure:

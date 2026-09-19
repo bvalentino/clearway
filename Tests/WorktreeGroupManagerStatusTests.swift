@@ -103,16 +103,11 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.createGroup(named: "G")
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        guard let group = manager.groups.first else {
-            XCTFail("Expected one group")
-            return
-        }
-
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
         let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
-        manager.addWorktree(charlie, toGroup: group.id)
+        manager.addWorktree(charlie, toGroupNamed: "G")
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.done, for: alpha)
 
@@ -142,19 +137,14 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.createGroup(named: "G")
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        guard let group = manager.groups.first else {
-            XCTFail("Expected one group")
-            return
-        }
-
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
         let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
         let delta = makeWorktree(branch: "delta", path: "/tmp/delta")
-        manager.addWorktree(charlie, toGroup: group.id)
+        manager.addWorktree(charlie, toGroupNamed: "G")
         try await Task.sleep(nanoseconds: 150_000_000)
-        manager.addWorktree(delta, toGroup: group.id)
+        manager.addWorktree(delta, toGroupNamed: "G")
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.done, for: alpha)
         manager.setStatus(.todo, for: bravo)
@@ -192,7 +182,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let closed = makeWorktree(branch: "closed", path: "/tmp/closed")
         let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
-        manager.setDefaultOrder([detached.id, closed.id])
+        manager.setUngroupedOrder([detached.id, closed.id])
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.todo, for: closed)
         manager.setGrouping(.status)
@@ -239,13 +229,8 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.createGroup(named: "Backend")
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        guard let group = manager.groups.first else {
-            XCTFail("Expected one group")
-            return
-        }
-
         let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
-        manager.addWorktree(wt, toGroup: group.id)
+        manager.addWorktree(wt, toGroupNamed: "Backend")
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertTrue(manager.matches(wt, query: "backend", taskTitle: nil))

@@ -70,24 +70,37 @@ final class WorktreeGroupManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Creates a new group with the given name and appends it to the sorted list.
+    /// Creates a new group with the given name, trimmed, and appends it to the sorted list.
+    ///
+    /// A group is identified by its name, so a name `WorktreeGroup.isNameAvailable` rejects
+    /// creates nothing: the name-keyed lookups below would otherwise be ambiguous whenever a call
+    /// site forgot to check.
     func createGroup(named name: String) {
-        let group = WorktreeGroup(id: UUID(), name: name, worktreeIds: [], createdAt: Date())
+        guard WorktreeGroup.isNameAvailable(name, in: groups.map(\.name)) else { return }
+        let group = WorktreeGroup(
+            id: UUID(),
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            worktreeIds: [],
+            createdAt: Date()
+        )
         groups.append(group)
         groups = WorktreeGroup.sortedByCreation(groups)
         save()
     }
 
-    /// Renames the group with the given ID. No-ops if the ID is not found.
-    func renameGroup(id: UUID, to name: String) {
-        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
-        groups[index].name = name
+    /// Renames the group with the given name. No-ops if no group carries it, or if the new name
+    /// is one `createGroup` would have refused.
+    func renameGroup(named name: String, to newName: String) {
+        guard let index = groups.firstIndex(where: { $0.name == name }),
+              WorktreeGroup.isNameAvailable(newName, in: groups.map(\.name), renaming: name)
+        else { return }
+        groups[index].name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         save()
     }
 
-    /// Deletes the group with the given ID. No-ops if the ID is not found.
-    func deleteGroup(id: UUID) {
-        groups.removeAll { $0.id == id }
+    /// Deletes the group with the given name. No-ops if no group carries it.
+    func deleteGroup(named name: String) {
+        groups.removeAll { $0.name == name }
         save()
     }
 
@@ -95,13 +108,13 @@ final class WorktreeGroupManager: ObservableObject {
     ///
     /// The main worktree is silently ignored — it can never be placed in a group.
     /// The worktree is removed from any existing group before being added to the target.
-    func addWorktree(_ wt: Worktree, toGroup groupId: UUID) {
+    func addWorktree(_ wt: Worktree, toGroupNamed name: String) {
         guard !wt.isMain else { return }
         let worktreeId = wt.id
         // No-op when the worktree is already in the target group. Without this guard,
         // SwiftUI's List animates a remove+insert round-trip that can crash the backing
         // NSTableView mid-drag when the drop lands on the worktree's own group header.
-        if groups.first(where: { $0.id == groupId })?.worktreeIds.contains(worktreeId) == true { return }
+        if groups.first(where: { $0.name == name })?.worktreeIds.contains(worktreeId) == true { return }
         // Mutate a local copy and publish a single `groups` assignment. Per-index writes
         // against the @Published array would fire objectWillChange N times during a drop,
         // which can re-enter the sidebar's NSTableView mid-animation and crash.
@@ -109,7 +122,7 @@ final class WorktreeGroupManager: ObservableObject {
         for index in updated.indices {
             updated[index].worktreeIds.removeAll { $0 == worktreeId }
         }
-        guard let targetIndex = updated.firstIndex(where: { $0.id == groupId }) else { return }
+        guard let targetIndex = updated.firstIndex(where: { $0.name == name }) else { return }
         updated[targetIndex].worktreeIds.append(worktreeId)
         groups = updated
         // Moving into a group removes the worktree from the default section's order.
@@ -119,10 +132,11 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Removes a worktree ID from every group it appears in. Does not add it to
+    /// Removes the worktree from every group it appears in. Does not add it to
     /// `defaultOrder` — the view treats any non-main worktree missing from
     /// `defaultOrder` as a new arrival and appends it at render time.
-    func removeWorktreeFromAllGroups(_ worktreeId: String) {
+    func removeWorktreeFromGroup(_ wt: Worktree) {
+        let worktreeId = wt.id
         var updated = groups
         var changed = false
         for index in updated.indices where updated[index].worktreeIds.contains(worktreeId) {
@@ -137,7 +151,7 @@ final class WorktreeGroupManager: ObservableObject {
     /// Repositions the given non-main worktree IDs within the ungrouped section's order.
     /// Callers pass the rows the sidebar rendered, which is a subset whenever the detached
     /// filter hides one, so stored IDs the caller omits keep their slot.
-    func setDefaultOrder(_ ids: [String]) {
+    func setUngroupedOrder(_ ids: [String]) {
         let reordered = Self.repositioned(defaultOrder, with: ids)
         guard reordered != defaultOrder else { return }
         defaultOrder = reordered
@@ -152,7 +166,7 @@ final class WorktreeGroupManager: ObservableObject {
     func seedDefaultOrder(with worktrees: [Worktree], openIds: [String]) {
         let missing = worktrees.filter { wt in
             !wt.isMain
-                && groupId(for: wt.id) == nil
+                && groupName(for: wt.id) == nil
                 && !defaultOrder.contains(wt.id)
         }
         guard !missing.isEmpty else { return }
@@ -161,9 +175,9 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Repositions the given worktree IDs within a group, on the same terms as `setDefaultOrder`.
-    func setGroupOrder(id groupId: UUID, ids: [String]) {
-        guard let index = groups.firstIndex(where: { $0.id == groupId }) else { return }
+    /// Repositions the given worktree IDs within a group, on the same terms as `setUngroupedOrder`.
+    func setGroupOrder(named name: String, ids: [String]) {
+        guard let index = groups.firstIndex(where: { $0.name == name }) else { return }
         let reordered = Self.repositioned(groups[index].worktreeIds, with: ids)
         guard reordered != groups[index].worktreeIds else { return }
         var updated = groups
@@ -172,9 +186,9 @@ final class WorktreeGroupManager: ObservableObject {
         save()
     }
 
-    /// Returns the ID of the group that contains the given worktree ID, or `nil` if ungrouped.
-    func groupId(for worktreeId: String) -> UUID? {
-        groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.id
+    /// Returns the name of the group that contains the given worktree ID, or `nil` if ungrouped.
+    func groupName(for worktreeId: String) -> String? {
+        groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.name
     }
 
     /// Takes a `Worktree` rather than an ID so main's "no status" rule is enforced on the read
@@ -270,8 +284,8 @@ final class WorktreeGroupManager: ObservableObject {
         if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
         if let name = name(for: wt), name.localizedCaseInsensitiveContains(query) { return true }
         if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
-        if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
-           group.name.localizedCaseInsensitiveContains(query) { return true }
+        if let group = groupName(for: wt.id),
+           group.localizedCaseInsensitiveContains(query) { return true }
         if let status = status(for: wt),
            status.displayName.localizedCaseInsensitiveContains(query) { return true }
         return false
@@ -303,7 +317,7 @@ final class WorktreeGroupManager: ObservableObject {
         let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)
 
         // Default section: worktrees not in any group (includes main).
-        let defaultSlice = worktrees.filter { groupId(for: $0.id) == nil }
+        let defaultSlice = worktrees.filter { groupName(for: $0.id) == nil }
         let defaultById = Dictionary(uniqueKeysWithValues: defaultSlice.map { ($0.id, $0) })
         let main = defaultSlice.first(where: { $0.isMain })
         let orderedNonMain = defaultOrder.compactMap { id -> Worktree? in
@@ -329,7 +343,7 @@ final class WorktreeGroupManager: ObservableObject {
             let ordered = group.worktreeIds.compactMap { groupById[$0] }
             let unknown = worktrees.filter { wt in
                 group.worktreeIds.contains(wt.id) == false &&
-                groupId(for: wt.id) == group.id
+                groupName(for: wt.id) == group.name
             }
             let sortedUnknown = Worktree.sorted(unknown, openIds: openIds)
             result.append(contentsOf: (ordered + sortedUnknown).filter(matches))
@@ -466,11 +480,11 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Ordering
 
     /// Places `ids` into the slots `stored` gives them, in the new order, leaving every other
     /// stored ID where it was. IDs `stored` does not hold yet are appended.
-    private static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
+    static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
         let moving = Set(ids)
         var incoming = ids[...]
         var result: [String] = []
@@ -486,6 +500,8 @@ final class WorktreeGroupManager: ObservableObject {
         result.append(contentsOf: incoming)
         return result
     }
+
+    // MARK: - Private Helpers
 
     /// Fire-and-forget save. Logs errors; does not crash or revert in-memory state.
     private func save() {

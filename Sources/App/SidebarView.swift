@@ -26,12 +26,12 @@ struct SidebarView: View {
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
     @State private var worktreeToRename: Worktree?
-    @State private var createWorktreeTargetGroupId: UUID?
+    @State private var createWorktreeTargetGroupName: String?
     @State private var groupToRename: WorktreeGroup?
     @State private var groupToDelete: WorktreeGroup?
     @State private var showingNewGroupSheet: Bool = false
     @State private var defaultSectionTargeted: Bool = false
-    @State private var targetedGroupId: UUID?
+    @State private var targetedGroupName: String?
     @State private var targetedStatus: WorktreeStatus?
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -88,10 +88,10 @@ struct SidebarView: View {
         .frame(minWidth: 200)
         .onChange(of: searchText) { onSearchActiveChanged?(!$0.isEmpty) }
         .onChange(of: worktreeManager.projectPath) { _ in searchText = "" }
-        .sheet(item: $activeSheet, onDismiss: { createWorktreeTargetGroupId = nil }) { sheet in
+        .sheet(item: $activeSheet, onDismiss: { createWorktreeTargetGroupName = nil }) { sheet in
             switch sheet {
             case .createWorktree:
-                CreateWorktreeSheet(targetGroupId: createWorktreeTargetGroupId)
+                CreateWorktreeSheet(targetGroupName: createWorktreeTargetGroupName)
             case .debugTerminal:
                 DebugTerminalSheet(
                     error: worktreeManager.error ?? "",
@@ -158,7 +158,7 @@ struct SidebarView: View {
                     WorktreeGroup.isNameAvailable($0, in: groupManager.groups.map(\.name), renaming: group.name)
                 }
             ) { newName in
-                groupManager.renameGroup(id: group.id, to: newName)
+                groupManager.renameGroup(named: group.name, to: newName)
                 groupToRename = nil
             }
         }
@@ -188,7 +188,7 @@ struct SidebarView: View {
         ) {
             Button("Delete Group", role: .destructive) {
                 if let group = groupToDelete {
-                    groupManager.deleteGroup(id: group.id)
+                    groupManager.deleteGroup(named: group.name)
                 }
                 groupToDelete = nil
             }
@@ -235,10 +235,10 @@ struct SidebarView: View {
         let shortcuts = shortcutIndexes
         switch groupManager.grouping {
         case .group:
-            let byGroup = Dictionary(grouping: ordered) { groupManager.groupId(for: $0.id) }
+            let byGroup = Dictionary(grouping: ordered) { groupManager.groupName(for: $0.id) }
             worktreesSection(rows: byGroup[nil] ?? [], titles: titles, shortcuts: shortcuts, reorderable: true)
             ForEach(groupManager.groups) { group in
-                groupSection(group, rows: byGroup[group.id] ?? [], titles: titles, shortcuts: shortcuts)
+                groupSection(group, rows: byGroup[group.name] ?? [], titles: titles, shortcuts: shortcuts)
             }
         case .status:
             let byStatus = Dictionary(grouping: ordered) { groupManager.status(for: $0) }
@@ -273,7 +273,7 @@ struct SidebarView: View {
             .onMove { from, to in
                 var reordered = rows
                 reordered.move(fromOffsets: from, toOffset: to)
-                groupManager.setDefaultOrder(reordered.filter { !$0.isMain }.map(\.id))
+                groupManager.setUngroupedOrder(reordered.filter { !$0.isMain }.map(\.id))
             }
 
             if worktreeManager.isLoading {
@@ -324,7 +324,7 @@ struct SidebarView: View {
                 .padding(.trailing, -6)
 
             SidebarHeaderButton(systemImage: "plus") {
-                createWorktreeTargetGroupId = nil
+                createWorktreeTargetGroupName = nil
                 activeSheet = .createWorktree
             }
             .padding(.trailing, 6)
@@ -352,7 +352,10 @@ struct SidebarView: View {
     ) -> some View {
         // Only an active filter with zero matches hides the section — empty (new) groups stay visible.
         if !(isSearching && rows.isEmpty) {
-            let isGroupTargeted = Binding(get: { targetedGroupId == group.id }, set: { targetedGroupId = $0 ? group.id : nil })
+            let isGroupTargeted = Binding(
+                get: { targetedGroupName == group.name },
+                set: { targetedGroupName = $0 ? group.name : nil }
+            )
             Section {
                 ForEach(rows) { wt in
                     worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: isSearching)
@@ -360,13 +363,13 @@ struct SidebarView: View {
                 .onMove { from, to in
                     var reordered = rows
                     reordered.move(fromOffsets: from, toOffset: to)
-                    groupManager.setGroupOrder(id: group.id, ids: reordered.map(\.id))
+                    groupManager.setGroupOrder(named: group.name, ids: reordered.map(\.id))
                 }
             } header: {
                 GroupSectionHeader(
                     group: group,
                     onPlus: {
-                        createWorktreeTargetGroupId = group.id
+                        createWorktreeTargetGroupName = group.name
                         activeSheet = .createWorktree
                     },
                     onRename: { groupToRename = group },
@@ -374,7 +377,7 @@ struct SidebarView: View {
                 )
                 .background(isGroupTargeted.wrappedValue ? Color.accentColor.opacity(0.12) : Color.clear)
                 .dropDestination(for: String.self) { ids, _ in
-                    dropIntoGroup(ids, groupId: group.id)
+                    dropIntoGroup(ids, groupNamed: group.name)
                     return true
                 } isTargeted: { isGroupTargeted.wrappedValue = $0 }
             }
@@ -545,15 +548,15 @@ struct SidebarView: View {
         }
     }
 
-    private func dropIntoGroup(_ ids: [String], groupId: UUID) {
-        withDroppedWorktrees(ids) { groupManager.addWorktree($0, toGroup: groupId) }
+    private func dropIntoGroup(_ ids: [String], groupNamed name: String) {
+        withDroppedWorktrees(ids) { groupManager.addWorktree($0, toGroupNamed: name) }
     }
 
     /// The Worktrees header clears whichever axis the current view sections by, never both.
     private func dropIntoWorktreesHeader(_ ids: [String]) {
         switch groupManager.grouping {
         case .group:
-            DispatchQueue.main.async { ids.forEach { groupManager.removeWorktreeFromAllGroups($0) } }
+            withDroppedWorktrees(ids) { groupManager.removeWorktreeFromGroup($0) }
         case .status: applyStatus(nil, to: ids)
         case .none: break
         }
