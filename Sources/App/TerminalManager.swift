@@ -261,8 +261,8 @@ class TerminalManager: ObservableObject {
         let newTab = TerminalTab(id: UUID(), surface: surface)
 
         if existingPane != nil {
-            panes[key]!.main.tabs.append(newTab)
-            panes[key]!.main.activeId = newTab.id
+            panes[key]?.main.tabs.append(newTab)
+            panes[key]?.main.activeId = newTab.id
         } else {
             ghosttyApp = app
             let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path)

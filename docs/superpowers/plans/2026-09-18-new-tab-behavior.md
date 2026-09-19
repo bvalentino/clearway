@@ -1039,3 +1039,22 @@ login shell. Reopening is opening a worktree that already exists.
 `./scripts/ci.sh` — green, 537 tests, 0 failures. `git status --porcelain` clean apart from the
 committed change.
 
+
+### Simplify pass
+
+Four cleanup fixes, no behaviour change: dropped the now-unused `import AppKit` from
+`TerminalManager+Agent.swift` and flattened `startAgentTab`'s `guard`-inside-`else` into one
+`launchCommand` choice plus a single `appendTab`/`endAgentLaunch`; collapsed the `+` menu's
+duplicated agent `Button` into one that takes an optional `KeyboardShortcut`; lifted the empty-state
+`.frame` in `ContentView` onto a single `Group`; replaced `appendTab`'s two re-looked-up force
+unwraps with optional chaining.
+
+Skipped as either settled or over-abstraction: factoring `beginAgentLaunch`/`beginTaskLaunch` into a
+generic claim tracker (two `Set` one-liners; the stdlib call *is* the shared mechanism), deleting
+`AgentMenuRow`/`agentMenuRows` (T1's testable-rule split, the repo's own pattern for view logic that
+needs no `ghostty_app_t`), passing Main Terminal into `MainTerminalTabStrip` as a `let` instead of
+`@EnvironmentObject` (`ContentView` re-renders the strip on any settings change anyway, and ambient
+`SettingsManager` is the pattern in six other views), and dropping the `+` menu's duplicate ⌘T/⌥⌘T
+glyphs (CLAUDE.md records that declaration as deliberate).
+
+**Gate**: `./scripts/ci.sh` — exit status 0, `Executed 537 tests, with 0 failures`.

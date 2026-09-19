@@ -816,22 +816,23 @@ struct ContentView: View {
                             MainTerminalTabStrip(worktreeId: worktreeId, onCloseTab: beginCloseTab)
                             Group {
                                 if pane.main.tabs.isEmpty {
-                                    if terminalManager.agentLaunchesInFlight.contains(worktreeId) {
-                                        // An agent tab is on its way; hold the space rather than
-                                        // flashing the empty state. `Color.clear` and not
-                                        // `EmptyView` so the panels below do not jump for a frame.
-                                        Color.clear
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    } else {
-                                        VStack(spacing: 12) {
-                                            Image(systemName: "terminal")
-                                                .font(.system(size: 28))
-                                                .foregroundStyle(.tertiary)
-                                            Text("⌘T for a new tab")
-                                                .foregroundStyle(.secondary)
+                                    Group {
+                                        if terminalManager.agentLaunchesInFlight.contains(worktreeId) {
+                                            // An agent tab is on its way; hold the space rather than
+                                            // flashing the empty state. `Color.clear` and not
+                                            // `EmptyView` so the panels below do not jump for a frame.
+                                            Color.clear
+                                        } else {
+                                            VStack(spacing: 12) {
+                                                Image(systemName: "terminal")
+                                                    .font(.system(size: 28))
+                                                    .foregroundStyle(.tertiary)
+                                                Text("⌘T for a new tab")
+                                                    .foregroundStyle(.secondary)
+                                            }
                                         }
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeSurface = pane.main.activeSurface {
                                     FocusableTerminal(
                                         surfaceView: activeSurface,

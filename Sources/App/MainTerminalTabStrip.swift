@@ -182,12 +182,12 @@ struct MainTerminalTabStrip: View {
                 agentMenuRows(agents: agentAllowlist, mainCommand: settings.configuredMainTerminalCommand),
                 id: \.command
             ) { row in
-                if row.carriesMainTerminalShortcut {
-                    Button(row.title) { newAgent(row.command) }
-                        .keyboardShortcut("t", modifiers: [.command, .option])
-                } else {
-                    Button(row.title) { newAgent(row.command) }
-                }
+                Button(row.title) { newAgent(row.command) }
+                    .keyboardShortcut(
+                        row.carriesMainTerminalShortcut
+                            ? KeyboardShortcut("t", modifiers: [.command, .option])
+                            : nil
+                    )
             }
         } label: {
             Image(systemName: "plus")

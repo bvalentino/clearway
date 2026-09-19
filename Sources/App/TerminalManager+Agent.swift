@@ -1,4 +1,3 @@
-import AppKit
 import GhosttyKit
 
 /// Opening a main tab that runs an agent.
@@ -39,28 +38,20 @@ extension TerminalManager {
         let worktreeId = worktree.id
         Task { @MainActor in
             let path = await ShellEnvironment.awaitPath()
-
-            guard !prompt.isEmpty, submit else {
-                let surface = appendTab(
-                    for: worktree,
-                    app: app,
-                    command: buildBareCommand(agentCommand: command, path: path)
-                )
-                endAgentLaunch(for: worktreeId)
-                guard !prompt.isEmpty else { return }
-                await Self.awaitShellPrompt(on: surface)
-                surface.sendPaste(prompt)
-                return
-            }
-
-            let launch = buildAgentPromptCommand(
-                agentCommand: command,
-                prompt: prompt,
-                path: path,
-                filePrefix: "clearway-agent-tab"
-            )
-            appendTab(for: worktree, app: app, command: launch.command)
+            let launchCommand = prompt.isEmpty || !submit
+                ? buildBareCommand(agentCommand: command, path: path)
+                : buildAgentPromptCommand(
+                    agentCommand: command,
+                    prompt: prompt,
+                    path: path,
+                    filePrefix: "clearway-agent-tab"
+                ).command
+            let surface = appendTab(for: worktree, app: app, command: launchCommand)
             endAgentLaunch(for: worktreeId)
+
+            guard !prompt.isEmpty, !submit else { return }
+            await Self.awaitShellPrompt(on: surface)
+            surface.sendPaste(prompt)
         }
     }
 
