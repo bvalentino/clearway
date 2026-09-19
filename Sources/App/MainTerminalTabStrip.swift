@@ -89,6 +89,7 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var settings: SettingsManager
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
@@ -99,7 +100,7 @@ struct MainTerminalTabStrip: View {
         } else {
             HStack(spacing: 8) {
                 tabsCapsule
-                plusButton
+                plusMenu
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
@@ -169,19 +170,49 @@ struct MainTerminalTabStrip: View {
         }
     }
 
-    private var plusButton: some View {
-        Button {
-            guard let app = ghosttyApp.app,
-                  let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }) else { return }
-            terminalManager.appendLauncherTab(for: worktree, app: app)
+    /// ⌘T and ⌥⌘T are declared here a second time — the File menu items declare them first. Both
+    /// declarations run the same action on the same worktree, so whichever layer wins is correct,
+    /// and `.keyboardShortcut` is the only way SwiftUI draws the glyph beside a menu row. Do not
+    /// "fix" this by dropping them.
+    private var plusMenu: some View {
+        Menu {
+            Button("New Terminal") { newTerminal() }
+                .keyboardShortcut("t", modifiers: .command)
+            ForEach(
+                agentMenuRows(agents: agentAllowlist, mainCommand: settings.configuredMainTerminalCommand),
+                id: \.command
+            ) { row in
+                if row.carriesMainTerminalShortcut {
+                    Button(row.title) { newAgent(row.command) }
+                        .keyboardShortcut("t", modifiers: [.command, .option])
+                } else {
+                    Button(row.title) { newAgent(row.command) }
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .medium))
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
+        .menuIndicator(.hidden)
+        .menuStyle(.button)
         .buttonStyle(.plain)
         .disabled(ghosttyApp.app == nil)
+    }
+
+    private var worktree: Worktree? {
+        worktreeManager.worktrees.first(where: { $0.id == worktreeId })
+    }
+
+    private func newTerminal() {
+        guard let app = ghosttyApp.app, let worktree else { return }
+        terminalManager.appendTab(for: worktree, app: app)
+    }
+
+    private func newAgent(_ command: String) {
+        guard let app = ghosttyApp.app, let worktree else { return }
+        terminalManager.startAgentTab(for: worktree, app: app, command: command)
     }
 
     @ViewBuilder

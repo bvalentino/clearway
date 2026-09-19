@@ -129,16 +129,16 @@ struct ContentView: View {
         guard let worktree = selectedWorktree else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.appendLauncherTab(for: worktree, app: app)
+            terminalManager.appendTab(for: worktree, app: app)
         }
     }
 
-    /// Cmd+Shift+T: append a tab that skips the launcher and drops directly into a shell.
+    /// Cmd+Shift+T: append a tab running a login shell. Retired in favour of ⌥⌘T.
     private var newShellTabAction: (() -> Void)? {
         guard let worktree = selectedWorktree else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.appendShellTab(for: worktree, app: app)
+            terminalManager.appendTab(for: worktree, app: app)
         }
     }
 
@@ -813,14 +813,22 @@ struct ContentView: View {
                             MainTerminalTabStrip(worktreeId: worktreeId, onCloseTab: beginCloseTab)
                             Group {
                                 if pane.main.tabs.isEmpty {
-                                    VStack(spacing: 12) {
-                                        Image(systemName: "terminal")
-                                            .font(.system(size: 28))
-                                            .foregroundStyle(.tertiary)
-                                        Text("⌘T for a new tab")
-                                            .foregroundStyle(.secondary)
+                                    if terminalManager.agentLaunchesInFlight.contains(worktreeId) {
+                                        // An agent tab is on its way; hold the space rather than
+                                        // flashing the empty state. `Color.clear` and not
+                                        // `EmptyView` so the panels below do not jump for a frame.
+                                        Color.clear
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    } else {
+                                        VStack(spacing: 12) {
+                                            Image(systemName: "terminal")
+                                                .font(.system(size: 28))
+                                                .foregroundStyle(.tertiary)
+                                            Text("⌘T for a new tab")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
                                     // Resolved once: rendering one agent's name while submitting to
                                     // another is the failure this single binding rules out.

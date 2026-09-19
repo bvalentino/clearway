@@ -738,3 +738,45 @@ Three, all additive.
 **Gate**
 
 `./scripts/ci.sh` — exit status 0, `Executed 484 tests, with 0 failures`.
+
+### T3: Every door opens a running tab
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `pane(for:app:projectPath:)` registers the pane with `MainTerminal(tabs: [], activeId: nil)`, calls `setInitialPanelVisibility`, then makes the first tab through `startAgentTab` (Main Terminal set) or `appendTab` (at "None"). `mainCommandProvider`'s doc comment restated: it is the Settings → Main Terminal command, no longer a launcher decision. `appendLauncherTab`, `appendShellTab` and `promoteLauncher` are untouched and now have no callers. |
+| `Sources/App/TerminalManager+Commands.swift` | `run`'s `.shell` case appends through `appendTab` (the optional-return `guard` is gone); its `.agent` case is one `startAgentTab` call carrying `prompt` and `submit`. |
+| `Sources/App/MainTerminalTabStrip.swift` | `plusButton` → `plusMenu`: New Terminal (⌘T) then `agentMenuRows(agents: agentAllowlist, mainCommand:)`, the matching row carrying ⌥⌘T. Gains `@EnvironmentObject settings` and the `worktree` / `newTerminal` / `newAgent` helpers. |
+| `Sources/App/ContentView.swift` | `newTabAction` calls `appendTab`. The empty-state gate holds `Color.clear` while `agentLaunchesInFlight` contains the worktree. `newShellTabAction` also calls `appendTab`, so ⌘⇧T keeps opening a login shell with no launcher tab in between. |
+
+No code path creates a `TerminalTab(id:kind: .launcher)` any more. `appendLauncherTab`, `appendShellTab`,
+`promoteLauncher`, `promoteLauncherToAgent` and `detailView`'s launcher branch are all still compiled
+and now unreachable; T5 and T6 delete them.
+
+**Evidence**
+
+No test was watched red for this task, and none is added. Every rule T3 moves is already pinned by a
+pure helper landed in T1 and T2 — `agentMenuRows`, `buildBareCommand`, `buildAgentPromptCommand`,
+`ShellSend.steps`, `beginAgentLaunch` — and what changed here is which call site reads them. The four
+doors all need a live `ghostty_app_t`, which XCTest cannot produce, so their acceptance is the
+operator's by-hand pass (plan verification for T3 says exactly this).
+
+**Deviations**
+
+Two.
+
+- `newShellTabAction` (⌘⇧T) was switched to `appendTab` as well, though the plan lists only
+  `newTabAction` under `ContentView.swift`. Left on `appendShellTab` it would have been the one
+  surviving path that creates a launcher tab, contradicting T3's own acceptance criterion and its
+  `appendLauncherTab`-has-no-callers check. The shortcut keeps doing what it did — open a login
+  shell — until T4 retires it, which is what the dependency graph asks for.
+- The plan's `plusMenu` sketch ends `.menuStyle(.borderlessButton)`. `BorderlessButtonMenuStyle` is
+  deprecated from macOS 12, and the deployment target is 13.0, so it would have introduced a
+  warning in new code. `.menuStyle(.button)` + `.buttonStyle(.plain)` is its documented replacement
+  and renders the same borderless `+`.
+
+**Gate**
+
+`./scripts/ci.sh` — exit status 0, `Executed 484 tests, with 0 failures`. No new compiler warnings in
+the four touched files.

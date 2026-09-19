@@ -11,7 +11,7 @@ extension TerminalManager {
     func run(_ command: SavedCommand, in worktree: Worktree, app: ghostty_app_t) {
         switch CommandLaunch.launch(for: command) {
         case .shell(let send):
-            guard let surface = appendShellTab(for: worktree, app: app) else { return }
+            let surface = appendTab(for: worktree, app: app)
             Task { @MainActor in
                 await Self.awaitShellPrompt(on: surface)
                 for step in send.steps {
@@ -23,22 +23,7 @@ extension TerminalManager {
             }
 
         case .agent(let agent, let prompt, let submit):
-            let worktreeId = worktree.id
-            let tabId = appendLauncherTab(for: worktree, app: app, agentOverride: agent)
-            guard submit else {
-                objectWillChange.send()
-                launcherDrafts[tabId] = prompt
-                return
-            }
-            Task { @MainActor in
-                await promoteLauncherToAgent(
-                    tabId: tabId,
-                    in: worktreeId,
-                    app: app,
-                    command: agent,
-                    prompt: prompt
-                )
-            }
+            startAgentTab(for: worktree, app: app, command: agent, prompt: prompt, submit: submit)
         }
     }
 

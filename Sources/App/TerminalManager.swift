@@ -139,11 +139,8 @@ class TerminalManager: ObservableObject {
         let dir = worktree.path ?? projectPath
         let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
 
-        // Main tab starts as a launcher; no Ghostty surface until the user submits
-        // a prompt or clicks "Open terminal".
-        let initialTab = TerminalTab(id: UUID(), kind: .launcher)
-        let main = MainTerminal(tabs: [initialTab], activeId: initialTab.id)
-        let tp = TerminalPane(main: main, secondary: secondary)
+        // Registered with no tabs so the first one is made through `appendTab` like every other.
+        let tp = TerminalPane(main: MainTerminal(tabs: [], activeId: nil), secondary: secondary)
         panes[key] = tp
         if !openWorktreeIds.contains(key) {
             openWorktreeIds.append(key)
@@ -151,17 +148,21 @@ class TerminalManager: ObservableObject {
 
         setInitialPanelVisibility(for: key, worktree: worktree)
 
-        // No main command configured → skip the launcher screen entirely.
-        if mainCommandProvider() == nil {
-            promoteLauncher(tabId: initialTab.id, in: key, app: app)
+        // A worktree's first tab follows the ⌥⌘T rule: the Settings → Main Terminal command when
+        // one is set, a login shell otherwise. The agent branch returns a pane with no tabs yet —
+        // `detailView`'s in-flight gate is what keeps the empty state off the screen meanwhile.
+        if let command = mainCommandProvider() {
+            startAgentTab(for: worktree, app: app, command: command)
+        } else {
+            appendTab(for: worktree, app: app)
         }
 
         return panes[key] ?? tp
     }
 
-    /// Provides the user's configured main terminal command (nil when unset).
-    /// When it returns nil, new main tabs open a login shell directly instead of
-    /// showing the prompt launcher. Wired from `ContentView` to `SettingsManager`.
+    /// The Settings → Main Terminal command (nil when unset). Read for a worktree's first tab, by
+    /// ⌥⌘T, and by `WorkTaskCoordinator.taskTerminalLaunchCommand`. Wired from `ContentView` to
+    /// `SettingsManager` so clearing the command at runtime takes effect immediately.
     var mainCommandProvider: () -> String? = { nil }
 
     /// "Open secondary terminal on start" preference. Consulted only at pane
