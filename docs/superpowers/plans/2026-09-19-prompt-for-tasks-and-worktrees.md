@@ -468,3 +468,39 @@ decodes a missing key as nil — neither needs writing out.
 **Gate**
 
 `./scripts/ci.sh` — passed: 548 tests, 0 failures, SwiftLint zero errors.
+
+### T3: Persist the defaults file
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | Gains `defaultsFile` / `defaultsTempFile` (`command-defaults.json`, `.tmp`), `loadDefaults()` and `saveDefaults(_:)`. A missing, unreadable or undecodable defaults file reads as `CommandDefaults()` and is left in place — it is never moved aside. |
+| `Tests/SavedCommandStoreTests.swift` | Gains a `Defaults` section: six cases covering the acceptance criteria. |
+
+**Evidence**
+
+The six cases were written first and watched fail against the absent methods — `./scripts/ci.sh`
+stopped at the test target's compile:
+
+```
+❌ Tests/SavedCommandStoreTests.swift:262:34: value of type 'SavedCommandStore' has no member 'loadDefaults'
+❌ Tests/SavedCommandStoreTests.swift:267:25: value of type 'SavedCommandStore' has no member 'saveDefaults'
+❌ Tests/SavedCommandStoreTests.swift:276:34: value of type 'SavedCommandStore' has no member 'loadDefaults'
+❌ Tests/SavedCommandStoreTests.swift:286:34: value of type 'SavedCommandStore' has no member 'loadDefaults'
+❌ Tests/SavedCommandStoreTests.swift:300:25: value of type 'SavedCommandStore' has no member 'saveDefaults'
+❌ Tests/SavedCommandStoreTests.swift:317:26: value of type 'SavedCommandStore' has no member 'saveDefaults'
+```
+
+**Deviations from the plan**
+
+The plan said the two saves mirror each other. Rather than a second copy of the thirty-line atomic
+write, `save` and `saveDefaults` each encode their value and hand it to one private
+`write(_:to:via:)` carrying the existing `writeQueue`, `0o700` directory creation, `0o600`
+`createFile` and `replaceItemAt` — so both files are written by the same code and cannot drift.
+`loadDefaults` does not mirror `load`'s `fileExists`-then-`contents` split: missing and unreadable
+take the same branch there, because neither is quarantined.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 555 tests, 0 failures, SwiftLint zero errors.
