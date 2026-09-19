@@ -573,3 +573,43 @@ both the task and a worktree path.
 **Gate**
 
 `./scripts/ci.sh` — passed: 566 tests, 0 failures, SwiftLint zero errors.
+
+### T6: Start Now opens a prefilled Start Task sheet
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `startTask` is split. `StartPrefill` (`taskId`, `title`, `branch`, `Identifiable` on `taskId`) is the new `StartResult.prefill` payload, replacing `.createWorktree(String)`. `resolveStart(_:)` re-resolves by id, refuses anything that is neither `new` nor `canceled`, returns `.reuse` for a live branch and otherwise a prefill — and writes nothing. `confirmCreate(taskId:branch:command:)` carries the write that moved out (the `canceled → attempt + 1` rule included) and records `pendingCreate`. |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet` gains `startPrefill`, defaulted `nil` through an explicit initializer so `SidebarView`'s construction is untouched. Non-nil retitles the headline to "Start Task", adds a read-only Task row above Name, and seeds `draft` from the new `static func prefill(name:branch:)`. Both presentations call `confirmCreate` before `createWorktree`. |
+| `Sources/App/ContentView.swift` | `startWorkTask` calls `resolveStart`; `handleStartResult` sets a `startPrefill` `@State`, and one `.sheet(item:)` beside `.sheet(item: $hookSheet)` presents `CreateWorktreeSheet(targetGroupId: nil, startPrefill:)`. Ten lines net. |
+| `Tests/WorkTaskCoordinatorTests.swift` | Four `resolveStart` cases (writes nothing and returns the task's title; saved branch preferred over derived; derived when absent; `.reuse`; `.ignored`), three `confirmCreate` cases (status + confirmed branch + pending record; the canceled attempt count, renamed from the `startTask` case; no task id writes no file and still records). The two cases that used `startTask` for setup now drive `resolveStart` + `confirmCreate`. |
+| `Tests/CreateWorktreeOutcomeTests.swift` | Two `prefill(name:branch:)` cases: the draft carries the given name and branch, and the branch survives a later `setName`. |
+
+**Evidence**
+
+`resolveStart` was reverted to write the frontmatter the way `startTask` did, and the suite watched
+fail:
+
+```
+✖ testResolveStartWritesNothing, XCTAssertTrue failed - resolving leaves the task on its backlog marker
+✖ testResolveStartWritesNothing, XCTAssertFalse failed - resolving writes no branch link
+Executed 574 tests, with 2 failures (0 unexpected)
+```
+
+Removing the write again turned it green.
+
+**Deviations from the plan**
+
+- The plan wrote `startPrefill` as a `var` with a `nil` default. It is a `let` fed by an explicit
+  initializer instead, because `@State private var draft` has to be seeded from it — the same shape
+  `NameEntrySheet` already uses in this file. The default argument keeps `SidebarView`'s call site
+  unchanged.
+- The plan justified `prefill`'s `setName`-then-`setBranch` order as what marks the branch
+  hand-edited. A probe with the order reversed did **not** fail: `setBranch` marks the flag either
+  way, so the two orders produce an identical draft. The comment and the test now say what is
+  actually load-bearing — that the branch goes through `setBranch` at all.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 574 tests, 0 failures, SwiftLint zero errors.

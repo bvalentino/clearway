@@ -5,6 +5,16 @@ import Foundation
 @MainActor
 class WorkTaskCoordinator: ObservableObject {
 
+    /// What the Start Task sheet opens with. The branch is resolved here rather than in the view
+    /// so `deriveBranchName` stays beside the rest of the task logic.
+    struct StartPrefill: Equatable, Identifiable {
+        let taskId: UUID
+        let title: String
+        let branch: String
+
+        var id: UUID { taskId }
+    }
+
     /// A worktree creation this coordinator is waiting on. `taskId` is optional because a
     /// hand-made worktree carries no task, and `command` is the agent command to run once the
     /// worktree is live.
@@ -33,10 +43,12 @@ class WorkTaskCoordinator: ObservableObject {
     enum StartResult {
         case ignored
         case reuse(Worktree)
-        case createWorktree(String)
+        case prefill(StartPrefill)
     }
 
-    func startTask(_ task: WorkTask) -> StartResult {
+    /// Start Now. Resolves what the task would start as and writes nothing: the frontmatter write
+    /// belongs to Create, so a sheet the user cancels leaves the task on its backlog marker.
+    func resolveStart(_ task: WorkTask) -> StartResult {
         // Content authority is disk/pool by id — never the UI-captured snapshot (a stale title/body
         // would otherwise clobber whatever the task terminal just wrote, on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
@@ -49,21 +61,27 @@ class WorkTaskCoordinator: ObservableObject {
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             return .reuse(wt)
         }
-        // No live worktree yet → create it (reusing a prior branch link if present). `pendingCreate`
-        // is set so `completePendingCreate` relocates TASK.md into the worktree.
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
         let branch = current.worktree
             ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
-        let written = workTaskManager.updateFields(id: current.id) { updated in
-            if updated.status == WorkTask.ReservedStatus.canceled {
-                updated.attempt = (updated.attempt ?? 0) + 1
+        return .prefill(StartPrefill(taskId: current.id, title: current.title, branch: branch))
+    }
+
+    /// The Create button on either presentation of the worktree sheet. Links the task to the branch
+    /// the operator confirmed and records the pending create so `completePendingCreate` can relocate
+    /// TASK.md and run the command once the worktree is live. A hand-made worktree passes no task id
+    /// and so writes no task file.
+    func confirmCreate(taskId: UUID?, branch: String, command: SavedCommand?) {
+        if let taskId {
+            workTaskManager.updateFields(id: taskId) { updated in
+                if updated.status == WorkTask.ReservedStatus.canceled {
+                    updated.attempt = (updated.attempt ?? 0) + 1
+                }
+                updated.status = WorkTask.ReservedStatus.inProgress
+                updated.worktree = branch
             }
-            updated.status = WorkTask.ReservedStatus.inProgress
-            updated.worktree = branch
         }
-        guard written != nil else { return .ignored }
-        pendingCreate = PendingCreate(taskId: current.id, branch: branch, command: nil)
-        return .createWorktree(branch)
+        pendingCreate = PendingCreate(taskId: taskId, branch: branch, command: command)
     }
 
     /// Consumes the pending create for this branch: relocates the task's TASK.md into the now-live

@@ -4,21 +4,42 @@ import SwiftUI
 
 struct CreateWorktreeSheet: View {
     let targetGroupId: UUID?
+    /// Non-nil when Start Now opened the sheet: it retitles the sheet, adds the read-only Task row
+    /// and seeds the draft, and its task id is what `confirmCreate` links to the new branch.
+    let startPrefill: WorkTaskCoordinator.StartPrefill?
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = WorktreeDraft()
+    @State private var draft: WorktreeDraft
     @State private var status: WorktreeStatus = .inProgress
     @State private var showingAdvanced = false
     @State private var baseBranch = ""
     @State private var fetchBeforeCreate = true
     @State private var isCreating = false
 
+    init(targetGroupId: UUID?, startPrefill: WorkTaskCoordinator.StartPrefill? = nil) {
+        self.targetGroupId = targetGroupId
+        self.startPrefill = startPrefill
+        _draft = State(initialValue: startPrefill.map {
+            Self.prefill(name: $0.title, branch: $0.branch)
+        } ?? WorktreeDraft())
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New Worktree")
+            Text(startPrefill == nil ? "New Worktree" : "Start Task")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
+
+            if let startPrefill {
+                LabeledField("Task") {
+                    Text(startPrefill.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
 
             LabeledField("Name") {
                 TextField("", text: Binding(
@@ -87,6 +108,9 @@ struct CreateWorktreeSheet: View {
                 Spacer()
                 Button {
                     isCreating = true
+                    workTaskCoordinator.confirmCreate(
+                        taskId: startPrefill?.taskId, branch: draft.branch, command: nil
+                    )
                     Task {
                         let created = await worktreeManager.createWorktree(
                             branch: draft.branch,
@@ -129,6 +153,15 @@ struct CreateWorktreeSheet: View {
 }
 
 extension CreateWorktreeSheet {
+
+    /// A draft seeded from a task. The branch goes through `setBranch`, which marks it
+    /// hand-edited, so a later Name keystroke cannot regenerate over a collision-resolved branch.
+    static func prefill(name: String, branch: String) -> WorktreeDraft {
+        var draft = WorktreeDraft()
+        draft.setName(name)
+        draft.setBranch(branch)
+        return draft
+    }
 
     enum Outcome: Equatable {
         case apply(Worktree)

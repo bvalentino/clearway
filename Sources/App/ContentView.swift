@@ -78,6 +78,7 @@ struct ContentView: View {
     @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
+    @State private var startPrefill: WorkTaskCoordinator.StartPrefill?
     @State private var selectedTaskId: UUID?
     /// One-shot: id of a task just created via an explicit "New Task" action. The matching
     /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
@@ -227,6 +228,9 @@ struct ContentView: View {
         }
         .sheet(item: $hookSheet) { hook in
             HookTerminalSheet(hook: hook)
+        }
+        .sheet(item: $startPrefill) { prefill in
+            CreateWorktreeSheet(targetGroupId: nil, startPrefill: prefill)
         }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
@@ -704,15 +708,15 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        handleStartResult(workTaskCoordinator.startTask(task))
+        handleStartResult(workTaskCoordinator.resolveStart(task))
     }
 
     private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {
         switch result {
         case .reuse(let wt):
             selectedTaskId = nil; detailSelection = .worktree(wt)
-        case .createWorktree(let branch):
-            selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
+        case .prefill(let prefill):
+            startPrefill = prefill
         case .ignored: break
         }
     }
