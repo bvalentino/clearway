@@ -2,21 +2,17 @@ import Foundation
 
 // MARK: - Model
 
-struct WorktreeGroup: Identifiable, Codable, Hashable {
-    let id: UUID
+/// A sidebar group. The name is the identity: it is unique per repository, and it is what each
+/// member worktree stores as `clearway.group`.
+struct WorktreeGroup: Identifiable, Hashable {
     var name: String
-    var worktreeIds: [String]
-    let createdAt: Date
+
+    var id: String { name }
 }
 
 // MARK: - Helpers
 
 extension WorktreeGroup {
-    /// Returns groups sorted oldest-first by creation date.
-    static func sortedByCreation(_ groups: [WorktreeGroup]) -> [WorktreeGroup] {
-        groups.sorted { $0.createdAt < $1.createdAt }
-    }
-
     /// Whether `name` may be created, or renamed to. `renaming` is the current name of the group
     /// being renamed, which is allowed to keep its own name.
     static func isNameAvailable(_ name: String, in existing: [String], renaming: String? = nil) -> Bool {

@@ -55,6 +55,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
             atWorktree: path
         )
         let alive = makeWorktree(branch: "alive", path: path)
+        await restartManager()
 
         manager.reconcile([alive])
 
@@ -69,6 +70,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         try repo.setValue("bogus", ofKey: WorktreeConfigStore.statusKey, atWorktree: path)
         try repo.setValue("Stored name", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         let alive = makeWorktree(branch: "alive", path: path)
+        await restartManager()
 
         manager.reconcile([alive])
 

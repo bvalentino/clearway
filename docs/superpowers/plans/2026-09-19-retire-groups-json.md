@@ -826,3 +826,82 @@ The manager was then restored from a scratchpad copy — no `git checkout`, no `
 `./scripts/ci.sh` — green, run after the restore. `Executed 530 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `WorktreeGroupManagerTests` 24, `WorktreeGroupManagerStatusTests` 13,
 `WorktreeGroupManagerNameTests` 11.
+
+### T5: Storage moves to git config; `WorktreeGroupStore` is deleted
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroup.swift` | One stored property, `name`, with `id` derived from it. `Codable`, `UUID`, `createdAt`, `worktreeIds` and `sortedByCreation` gone; `isNameAvailable` unchanged. |
+| `Sources/App/WorktreeStatus.swift` | `WorktreeStatus` and `WorktreeGrouping` drop `Encodable` and the two comments explaining it; `WorktreeGrouping`'s doc now names `clearway.grouping`. |
+| `Sources/App/WorktreeGroupStore.swift` | Deleted, taking `WorktreeGroupsPayload`, both `DispatchSource` watchers and the file-descriptor leak with it. |
+| `Sources/App/WorktreeGroupManager.swift` | `groupNames` and `positions` replace `defaultOrder` and `WorktreeGroup.worktreeIds`. `store`, `deinit`, `save()`, `migrateLegacyStatuses` and `deduplicated` gone. `loadTask` reads `clearway.grouping` and `clearway.groupOrder`; `reloadConfig` re-reads both beside the per-worktree pair and `readConfig` pulls `clearway.group` and `clearway.position` out of the `--worktree --list` output it already had. Every gesture publishes optimistically and enqueues one `writeChain` job; rename and delete write the members first and the registry only if every member write landed. New pure `static reassignedPositions(section:newOrder:)` beside the retained `repositioned`. `seedDefaultOrder(with:openIds:)` → `seedPositions(for:openIds:)`; `reconcile` is the config reload alone. |
+| `Sources/App/ContentView.swift` | Follows the `seedPositions` rename; the pruning comment no longer claims group membership and the default order are at stake, since nothing prunes them. |
+| `Tests/TestHelpers.swift` | `waitForInitialLoad`'s `.clearway` poll replaced by `await manager.loadTask?.value`. New `restartManager()` — see Deviations. |
+| `Tests/WorktreeGroupManagerTests.swift` | 26 cases. The two `seedDefaultOrder` cases follow the rename, `testGroupsAppearInCreatedAtAscendingOrder` → `testGroupsAppearInCreationOrder`, and two new direct cases on `reassignedPositions`. |
+| `Tests/WorktreeGroupManagerNameTests.swift`, `Tests/WorktreeGroupManagerStatusTests.swift` | One `await restartManager()` each in the three cases that enable `extensions.worktreeConfig` through the fixture — see Deviations. |
+
+**Ordering rules as implemented**
+
+`sidebarOrderedWorktrees` sections by `groupNames` and orders each section by `positions` ascending;
+a worktree without one follows those that have one, in `Worktree.sorted` order, which is also the
+tie-break. Main stays pinned to the top of the ungrouped section and never carries a position.
+`reassignedPositions` permutes the section's stored ids with `repositioned`, then zips the values the
+section already occupied — ascending, padded above the maximum for members and new ids without one —
+back onto the permuted order, returning only the entries whose value changed. That is what keeps a
+row the caller omitted, hidden by the detached filter or the search field, in the slot it had.
+
+**Evidence**
+
+`reassignedPositions` was watched failing. The value pool and the changed-only filter were replaced
+by a bare `enumerated()` over the permuted ids;
+`xcodebuild -only-testing:ClearwayTests/WorktreeGroupManagerTests` then reported both new cases
+failing where the restored code reports none:
+
+```
+Tests/WorktreeGroupManagerTests.swift:408: error: testReassignedPositionsAppendsAboveTheSectionMaximum :
+  XCTAssertEqual failed: ("["/tmp/stored": 1, "/tmp/fresh": 0, "/tmp/unpositioned": 2]")
+  is not equal to ("["/tmp/stored": 6, "/tmp/unpositioned": 7, "/tmp/fresh": 5]")
+Tests/WorktreeGroupManagerTests.swift:396: error: testReassignedPositionsWritesOnlyTheRowsThatMoved :
+  XCTAssertEqual failed: ("["/tmp/b": 0, "/tmp/hidden": 1, "/tmp/a": 2]")
+  is not equal to ("["/tmp/b": 0, "/tmp/a": 2]")
+	 Executed 26 tests, with 2 failures (0 unexpected) in 13.388 (13.400) seconds
+** TEST FAILED **
+```
+
+The manager was then restored from a scratchpad copy — no `git checkout`, no `git stash`.
+
+**Deviations from the plan**
+
+- **The initial-load signal is `manager.loadTask?.value`, not a poll.** T3's build log flagged that
+  deleting the store removes the `.clearway` directory the guard waited on. `loadTask` lost `private`
+  (keeping `private(set)`), the same shape T4 gave `repositioned`, and the test base awaits it
+  directly. That is exact rather than approximate, and it is what T6 case 8 — no `.clearway/`
+  directory is created — requires.
+- **Three test files outside the plan's file list changed.** `ContentView` is not the only caller of
+  the renamed `seedDefaultOrder`: two manager cases call it too, and a test file that does not
+  compile is not a smaller diff. The same three suites needed `await restartManager()` in the three
+  cases that enable `extensions.worktreeConfig` through `GitRepoFixture` behind the manager's back:
+  `WorktreeConfigStore` memoises a probe that found the extension off, and the load now runs one
+  before any test body does. Production is unaffected — the only writer that turns the extension on
+  is `enableExtension()`, which updates the cache itself — but a test that enables it externally now
+  needs a fresh store. `restartManager()` is also the relaunch helper T6 needs.
+- **`seedPositions` assigns within each section, not only the ungrouped one.** The plan says "every
+  non-main worktree without one is assigned in `Worktree.sorted` order"; a grouped worktree without a
+  position needs one as much as an ungrouped one does, and appending it to the ungrouped section's
+  range would collide with that section's values.
+- **The registry is de-duplicated on load.** `Self.registered` drops a repeated name. `groups` is
+  keyed by name and `SidebarView` renders it through `ForEach`, so two sections with the same `id`
+  trap the backing `NSTableView`; a hand-edited `.git/config` can list a name twice. This replaces
+  the `deduplicated` guard the plan retires, at the one place a duplicate can now enter.
+- **Acceptance criterion 1's `startWatching` grep is not empty**, but no hit is this change's:
+  `ClaudeActivityMonitor`, `PromptManager`, `ProjectWindow` and `PromptWindow` each own one and
+  always did. `WorktreeGroupsPayload` returns nothing.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the restore. `Executed 532 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` Suites confirmed present in the run's `.xcresult`: `WorktreeGroupManagerTests` 26,
+`WorktreeGroupManagerStatusTests` 13, `WorktreeGroupManagerNameTests` 11, `WorktreeGroupTests` 8.
+`git status --porcelain` shows only this change's files; no `default.profraw`.

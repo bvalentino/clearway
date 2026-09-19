@@ -104,6 +104,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try repo.enableWorktreeConfig()
         try repo.setValue("Stored name", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         let wt = makeWorktree(branch: "feature", path: path)
+        await restartManager()
 
         manager.reconcile([wt])
         try await waitForPublishedName("Stored name", for: wt)

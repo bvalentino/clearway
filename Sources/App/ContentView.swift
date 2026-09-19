@@ -328,10 +328,10 @@ struct ContentView: View {
             let currentIds = Set(newWorktrees.map(\.id))
             // Skip pruning on a failed or empty refresh — a transient `git worktree list`
             // error zeroes the array, and pruning against an empty known-set would wipe
-            // persisted group membership / default order / PR statuses / open terminals.
+            // PR statuses and open terminals.
             if !newWorktrees.isEmpty && worktreeManager.error == nil {
                 groupManager.reconcile(newWorktrees)
-                groupManager.seedDefaultOrder(with: newWorktrees, openIds: terminalManager.openWorktreeIds)
+                groupManager.seedPositions(for: newWorktrees, openIds: terminalManager.openWorktreeIds)
                 terminalManager.pruneStale(keeping: currentIds)
                 worktreeManager.prunePRStatuses(keeping: currentIds)
             }

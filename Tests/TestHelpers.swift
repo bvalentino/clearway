@@ -184,7 +184,9 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         try await super.setUp()
         repo = try GitRepoFixture.make(at: tempRoot)
         manager = WorktreeGroupManager(projectPath: tempRoot)
-        try await waitForInitialLoad()
+        // The manager's `init` load runs on its own Task and republishes everything it reads from
+        // git config, so a mutation a test body makes before it lands is overwritten.
+        await manager.loadTask?.value
     }
 
     override func tearDown() async throws {
@@ -193,15 +195,15 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         try await super.tearDown()
     }
 
-    /// The manager's `init` load runs on its own Task and republishes everything it owns, so a
-    /// mutation a test body makes before it lands is overwritten. What the load leaves behind is
-    /// the `.clearway` directory: it ends by installing the store's watcher, which falls back to
-    /// watching that directory, and creates it, when there is no file there to open.
-    private func waitForInitialLoad() async throws {
-        let directory = (tempRoot as NSString).appendingPathComponent(".clearway")
-        try await waitFor(true, describing: "the manager's initial load") {
-            FileManager.default.fileExists(atPath: directory)
-        }
+    /// Replaces `manager` with a fresh one over the same root and waits for its load — the
+    /// relaunch every persistence assertion is really about.
+    ///
+    /// Also the only way a test that enables `extensions.worktreeConfig` behind the manager's back
+    /// is seen: `WorktreeConfigStore` memoises a probe that found the extension off, and the load
+    /// runs one before any test body does.
+    func restartManager() async {
+        manager = WorktreeGroupManager(projectPath: tempRoot)
+        await manager.loadTask?.value
     }
 
     /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the

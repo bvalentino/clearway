@@ -157,11 +157,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(result[1].id, grouped.id, "grouped worktree must come after default section")
     }
 
-    /// Groups appear in createdAt ascending order.
-    func testGroupsAppearInCreatedAtAscendingOrder() async throws {
-        // Create two groups in order; createdAt is set to Date() inside createGroup.
-        // 150ms gap ensures distinct createdAt AND lets the first save's watcher
-        // callback settle before the second createGroup fires (same race as elsewhere).
+    /// Group sections follow the registry, which is creation order.
+    func testGroupsAppearInCreationOrder() async throws {
         manager.createGroup(named: "Older")
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.createGroup(named: "Newer")
@@ -256,13 +253,13 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(result[1].id, nonMain.id, "non-main grouped worktree follows the default section")
     }
 
-    // MARK: - seedDefaultOrder
+    // MARK: - seedPositions
 
-    /// Seeding records non-main, ungrouped worktrees in the ungrouped section's order.
-    /// Already-recorded IDs, grouped IDs, and main are untouched. `zebra` is recorded first and
+    /// Seeding gives a position to every non-main worktree without one, appending it to its own
+    /// section. Already-positioned IDs and main are untouched. `zebra` is positioned first and
     /// sorts last alphabetically, so an order that re-sorted rather than appended would put
     /// `fresh` ahead of it.
-    func testSeedDefaultOrderAppendsOnlyMissingIds() async throws {
+    func testSeedPositionsAppendsOnlyMissingIds() async throws {
         manager.createGroup(named: "SomeGroup")
         try await Task.sleep(nanoseconds: 150_000_000)
 
@@ -276,7 +273,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         manager.addWorktree(grouped, toGroupNamed: "SomeGroup")
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        manager.seedDefaultOrder(with: [main, already, grouped, fresh], openIds: [])
+        manager.seedPositions(for: [main, already, grouped, fresh], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
@@ -286,22 +283,21 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         )
     }
 
-    /// seedDefaultOrder is a no-op when every candidate is already recorded: nothing is reordered
-    /// and nothing is recorded twice.
-    func testSeedDefaultOrderIsIdempotent() async throws {
+    /// Seeding is a no-op when every candidate already carries a position: nothing is reordered.
+    func testSeedPositionsIsIdempotent() async throws {
         let zulu = makeWorktree(branch: "zulu", path: "/tmp/zulu")
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         manager.setUngroupedOrder([zulu.id, alpha.id])
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(renderedOrder([zulu, alpha]), [zulu.id, alpha.id])
 
-        manager.seedDefaultOrder(with: [zulu, alpha], openIds: [])
+        manager.seedPositions(for: [zulu, alpha], openIds: [])
         try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(renderedOrder([zulu, alpha]), [zulu.id, alpha.id])
     }
 
-    /// Once every non-main worktree is recorded in the ungrouped order, mutating
+    /// Once every non-main worktree carries a position, mutating
     /// `openIds` (click-to-open simulation) must not change the rendered order.
     func testSidebarOrderStableAcrossOpenStateChanges() async throws {
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
@@ -310,7 +306,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let wt3 = makeWorktree(branch: "three", path: "/tmp/three")
         let worktrees = [main, wt1, wt2, wt3]
 
-        manager.seedDefaultOrder(with: worktrees, openIds: [])
+        manager.seedPositions(for: worktrees, openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], matches: { _ in true })
@@ -382,9 +378,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(renderedOrder([stored, fresh]), [fresh.id, stored.id])
     }
 
-    /// A stored order can record the same id twice. A drag must collapse that, not add a third
-    /// copy. The rule is pinned on `repositioned` itself because the rendered order deduplicates
-    /// before the sidebar sees it, so no published value can tell the two apart.
+    /// Two slots holding the same id must collapse to one rather than grow a third copy.
     func testRepositionedCollapsesADuplicateStoredId() {
         XCTAssertEqual(
             WorktreeGroupManager.repositioned(
@@ -392,6 +386,31 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
                 with: ["/tmp/b", "/tmp/a"]
             ),
             ["/tmp/b", "/tmp/a"]
+        )
+    }
+
+    /// A drag reassigns the values the section already occupied, so the omitted row keeps its own
+    /// and is not written at all. Pinned on the `static` because a position that is merely
+    /// rewritten to the value it already held is invisible in the rendered order.
+    func testReassignedPositionsWritesOnlyTheRowsThatMoved() {
+        XCTAssertEqual(
+            WorktreeGroupManager.reassignedPositions(
+                section: [("/tmp/a", 0), ("/tmp/hidden", 1), ("/tmp/b", 2)],
+                newOrder: ["/tmp/b", "/tmp/a"]
+            ),
+            ["/tmp/b": 0, "/tmp/a": 2]
+        )
+    }
+
+    /// An id the section does not hold — a row appended at render time, or one whose position was
+    /// never written — takes the next integer above the section's maximum.
+    func testReassignedPositionsAppendsAboveTheSectionMaximum() {
+        XCTAssertEqual(
+            WorktreeGroupManager.reassignedPositions(
+                section: [("/tmp/stored", 5), ("/tmp/unpositioned", nil)],
+                newOrder: ["/tmp/fresh", "/tmp/stored", "/tmp/unpositioned"]
+            ),
+            ["/tmp/fresh": 5, "/tmp/stored": 6, "/tmp/unpositioned": 7]
         )
     }
 
