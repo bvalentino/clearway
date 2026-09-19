@@ -1456,3 +1456,70 @@ Decisions table changed afterwards, and neither is compiled. `git status --porce
 commit showed the four source files, the regenerated `Clearway.xcodeproj/project.pbxproj` that
 `xcodegen generate` rewrote for the new test file, and the two documents; nothing untracked beyond
 `Tests/CreateWorktreeOutcomeTests.swift` itself, and no `default.profraw`.
+
+### `groups.json` kept its statuses when the migrating manager was released first
+
+Reported by GitHub Actions run 35447074594 on PR #226 (tip `ac2b05d`), which failed `Build & Test`
+on one case the local gate had passed:
+
+```
+Tests/WorktreeGroupManagerStatusTests.swift:107: error:
+  -[ClearwayTests.WorktreeGroupManagerStatusTests testLegacyMigrationSkipsAPathThatNoLongerExists]
+  : XCTAssertEqual failed: ("false") is not equal to ("true") - groups.json rewritten without statuses
+```
+
+**Cause.** `migrateLegacyStatuses` enqueued its writes with `[weak self]` and ended with
+`await self?.save()` — the rewrite that deletes the old copy. The case discards the manager
+(`_ = try await reopenedManager()`), so `self` is gone as soon as the helper's 150 ms grace
+expires. On a loaded runner the migration's git subprocesses — the extension probe, the four-command
+bootstrap, then the `config --worktree` write — outran that grace, `self` was nil when they
+returned, and the rewrite was silently skipped. The failing run proves it: line 106's
+`waitForStoredStatus(.inReview)` passed, so git held the status and `migrated` was `true`, and the
+only branch that reaches `guard migrated else` and still writes nothing is the one where `self` has
+gone.
+
+Neither hypothesis in the brief survives that evidence. The vanished path does not hold the rewrite
+back — `live` drops it before any write runs, which is spec decision 14's "writing to a path that no
+longer exists fails and is skipped" — and the CI log shows the live status landing anyway. The
+5-second deadline is not it either: it was waiting on an event that could no longer happen.
+
+**The rule.** Writing the statuses to git and deleting the old copy are two halves of one one-shot
+job. Splitting them across an object lifetime leaves `groups.json` claiming to own statuses git
+already holds until some later launch finishes the job. So the migration's enqueued write captures
+`self` strongly — the retain ends with that task, so it is a bounded lifetime rather than a cycle,
+and it is the only write in the class that does: every other one has a correction the next reload
+makes, and keeps the `[weak self]` the project's concurrency rules ask for.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `migrateLegacyStatuses` enqueues its write with a strong `self` and `await self.save()`, with the comment saying why this one differs |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | `testLegacyMigrationRewritesTheFileAfterItsManagerIsReleased` — releases the manager the moment the migration publishes, which is before the first `git` of the chain can have returned, so the rule is pinned without depending on machine load |
+
+**Evidence.** The new case watched red against `ac2b05d`, with no delay injected and the identical
+assertion the runner reported:
+
+```
+Tests/WorktreeGroupManagerStatusTests.swift:129: error:
+  -[ClearwayTests.WorktreeGroupManagerStatusTests testLegacyMigrationRewritesTheFileAfterItsManagerIsReleased]
+  : XCTAssertEqual failed: ("false") is not equal to ("true") - groups.json rewritten without statuses
+Test Case '…testLegacyMigrationRewritesTheFileAfterItsManagerIsReleased' failed (5.622 seconds).
+Test Case '…testLegacyMigrationSkipsAPathThatNoLongerExists' passed (0.715 seconds).
+```
+
+The second line is the point: the case CI failed on passes locally on the same unfixed code, because
+the local machine's subprocesses fit inside its grace period. Both are green with the fix.
+
+**Gate**
+
+`./scripts/ci.sh` — `Executed 535 tests, with 0 failures (0 unexpected) in 85.356 seconds`,
+`==> CI passed.`, exit status 0. Run after the last source edit; only this plan changed afterwards
+and it is not compiled. `git status --porcelain` before the commit showed the two touched files and
+nothing else — no new Swift file, so `xcodegen generate` rewrote no `project.pbxproj`, and no
+`default.profraw` was left behind.
+
+**Follow-up, not taken here.** The manager suites' 5-second polling deadlines share
+`ShellPathResolverTests`' load sensitivity: they are generous enough today, but every one of them
+is a wall-clock bet against a CI runner rather than a wait on a signal. This failure was not one of
+them, so nothing was raised or restructured.

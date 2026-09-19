@@ -428,11 +428,17 @@ final class WorktreeGroupManager: ObservableObject {
     /// written would otherwise lose the whole map with nothing but a log line to show for it.
     /// A key that is no longer a directory is dropped before the writes rather than left to fail
     /// inside `git`, so the one failure with nothing to recover cannot hold the rewrite back.
+    ///
+    /// The one enqueued write in this class that captures `self` strongly, because the rewrite is
+    /// the half of the job that deletes the old copy: a manager released while the subprocesses
+    /// run must not take it with it and leave `groups.json` claiming to own statuses git already
+    /// holds. The retain ends with this one-shot task, so it is a bounded lifetime rather than a
+    /// cycle — every other write must stay `[weak self]`, having a correction the next reload makes.
     private func migrateLegacyStatuses(_ legacy: [String: WorktreeStatus]) {
         guard !legacy.isEmpty else { return }
         let live = legacy.filter { FileManager.default.fileExists(atPath: $0.key) }
         statuses = live
-        enqueueWrite { [weak self] configStore in
+        enqueueWrite { configStore in
             var migrated = true
             for (path, status) in live {
                 let stored = await configStore.set(
@@ -443,7 +449,7 @@ final class WorktreeGroupManager: ObservableObject {
                 migrated = migrated && stored
             }
             guard migrated else { return }
-            await self?.save()
+            await self.save()
         }
     }
 

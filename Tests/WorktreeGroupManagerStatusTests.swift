@@ -107,6 +107,28 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         try await waitForGroupsFileWithoutStatuses()
     }
 
+    /// Writing the statuses to git and deleting the old copy are two halves of one job, and a
+    /// manager released between them would leave `groups.json` claiming to own statuses git
+    /// already holds. The release here is deterministic — it happens as soon as the migration
+    /// publishes, which is before the first `git` of the write chain can have returned — where
+    /// the case above only loses the rewrite when the subprocesses outrun its grace period.
+    func testLegacyMigrationRewritesTheFileAfterItsManagerIsReleased() async throws {
+        let path = try repo.addWorktree(branch: "feature")
+        let wt = makeWorktree(branch: "feature", path: path)
+        try writeGroupsFile(legacyStatuses: [wt.id: .todo], grouping: .group)
+
+        var reopened: WorktreeGroupManager? = WorktreeGroupManager(projectPath: tempRoot)
+        let deadline = Date().addingTimeInterval(5)
+        while reopened?.statuses.isEmpty != false, Date() < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(reopened?.statuses, [wt.id: .todo], "the migration never started")
+        reopened = nil
+
+        try await waitForStoredStatus(.todo, at: path)
+        try await waitForGroupsFileWithoutStatuses()
+    }
+
     func testInitLoadsAFileThatNeverCarriedStatuses() async throws {
         try writeGroupsFile(json: #"{"groups":[],"defaultOrder":["/a","/b"],"grouping":"none"}"#)
 
