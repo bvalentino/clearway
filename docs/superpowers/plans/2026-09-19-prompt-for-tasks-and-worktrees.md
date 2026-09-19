@@ -638,3 +638,44 @@ None.
 
 `./scripts/ci.sh` — passed: 574 tests, 0 failures. `swiftlint lint --quiet` — exit 0, zero errors
 (three pre-existing warnings, none in the changed file).
+
+### T8: The Plan menu
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `import GhosttyKit`, plus `planCommand(for:using:)` (pure: re-resolves by id, substitutes `{{ task_path }}` with `filePath(for:)`) and `planTask(_:using:app:)` (resolves `isMain`, calls `TerminalManager.run`). Neither writes to the task. |
+| `Sources/App/WorkTaskListView.swift` | `@EnvironmentObject savedCommandManager`, plus `planMenu(for:)` / `planItems(for:)` / `planIsUnavailable(for:)` / `plan(_:using:)`. The menu is rendered from the toolbar (`selectedTask`) and the row context menu (the right-clicked task). |
+| `Tests/WorkTaskCoordinatorTests.swift` | Four new cases under a `// MARK: - Plan` section. |
+
+**Evidence**
+
+The four cases were written first and watched fail against the absent method — `./scripts/ci.sh`
+stopped at the test target's compile:
+
+```
+❌ Tests/WorkTaskCoordinatorTests.swift:295:36: value of type 'WorkTaskCoordinator' has no member 'planCommand'
+❌ Tests/WorkTaskCoordinatorTests.swift:320:36: value of type 'WorkTaskCoordinator' has no member 'planCommand'
+❌ Tests/WorkTaskCoordinatorTests.swift:329:36: value of type 'WorkTaskCoordinator' has no member 'planCommand'
+❌ Tests/WorkTaskCoordinatorTests.swift:348:25: value of type 'WorkTaskCoordinator' has no member 'planCommand'
+Testing cancelled because the build failed.
+```
+
+**Deviations from the plan**
+
+One shape the plan left open: the menu takes the task as an **optional** parameter rather than
+carrying a separate "no selection" gate for the toolbar. The toolbar passes `selectedTask` and the
+context menu passes its row's task, so the plan's three disable conditions collapse into one
+expression (`task == nil || agentCommands.isEmpty || ghosttyApp.app == nil`) shared by both entry
+points — the same parameterisation `OpenInMenu` uses so the sidebar can act on a worktree that is
+not the selection.
+
+`primaryAction:` cannot be applied conditionally to a `Menu`, so `planMenu(for:)` declares the two
+shapes in an `if`/`else`. The alternative — always declaring `primaryAction:` and making it a no-op
+without a default — is the behaviour D11 rules out.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 578 tests, 0 failures. `swiftlint lint --quiet` — zero errors (three
+pre-existing warnings, none in the changed files).

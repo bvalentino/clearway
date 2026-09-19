@@ -281,6 +281,78 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         )
     }
 
+    // MARK: - Plan
+
+    /// Plan runs against a backlog task, so the token resolves to the central file the task still
+    /// lives in.
+    func testPlanCommandResolvesTheTokenToTheCentralTaskFile() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Shape me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        let resolved = coordinator.planCommand(for: seed, using: agentCommand(text: "plan {{ task_path }}"))
+
+        let central = (taskManager.tasksDirectory as NSString)
+            .appendingPathComponent("\(seed.id.uuidString).md")
+        XCTAssertEqual(resolved?.text, "plan \(central)")
+        XCTAssertTrue(central.hasPrefix("/"), "the substituted path is absolute")
+    }
+
+    /// The rule is `filePath(for:)`, not a second path convention: a task already linked to a live
+    /// worktree resolves to that worktree's `TASK.md`.
+    func testPlanCommandResolvesALinkedTaskThroughFilePath() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Already linked") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let branch = "already-linked"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
+        taskManager.updateFields(id: seed.id) { $0.worktree = branch }
+        taskManager.relocateTaskToWorktree(id: seed.id, worktreePath: worktreePath)
+        guard let linked = taskManager.freshTask(id: seed.id) else {
+            XCTFail("task missing after relocate"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        let resolved = coordinator.planCommand(for: linked, using: agentCommand(text: "plan {{ task_path }}"))
+
+        XCTAssertEqual(resolved?.text, "plan \(taskManager.filePath(for: linked))")
+    }
+
+    /// A task that no longer resolves by id has no path to name, so there is nothing to run.
+    func testPlanCommandReturnsNilForAnUnresolvableTask() throws {
+        let coordinator = makeCoordinator()
+
+        let resolved = coordinator.planCommand(
+            for: WorkTask(title: "Never written"),
+            using: agentCommand(text: "plan {{ task_path }}")
+        )
+
+        XCTAssertNil(resolved)
+    }
+
+    /// Plan changes no status: it hands an agent the brief and leaves the task on its backlog
+    /// marker, in the file it was already in.
+    func testPlanCommandWritesNothingToTheTask() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Untouched") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let path = taskManager.filePath(for: seed)
+        let before = try String(contentsOfFile: path, encoding: .utf8)
+        let coordinator = makeCoordinator(taskManager)
+
+        _ = coordinator.planCommand(for: seed, using: agentCommand(text: "plan {{ task_path }}"))
+
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), before,
+                       "planning rewrites no frontmatter")
+        XCTAssertEqual(taskManager.freshTask(id: seed.id)?.status, WorkTask.ReservedStatus.new)
+        XCTAssertNil(taskManager.freshTask(id: seed.id)?.worktree)
+    }
+
     private func agentCommand(text: String) -> SavedCommand {
         SavedCommand(id: UUID(), name: "Plan", kind: .agent, text: text, agent: "claude", autoRun: true)
     }

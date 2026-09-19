@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyKit
 
 /// Coordinates starting a task: resolving or creating its worktree and relocating its `TASK.md`
 /// into it. Extracted from ContentView to keep the view focused on layout and navigation.
@@ -103,6 +104,23 @@ class WorkTaskCoordinator: ObservableObject {
 
         guard let command = pending.command else { return nil }
         return CommandPlaceholders.substituted(command, taskPath: taskPath)
+    }
+
+    /// The command Plan would run for this task: `{{ task_path }}` resolved to wherever the task
+    /// currently lives, which `filePath(for:)` already decides. Split out of `planTask` because
+    /// that one needs a `ghostty_app_t` XCTest cannot produce.
+    func planCommand(for task: WorkTask, using command: SavedCommand) -> SavedCommand? {
+        guard let current = workTaskManager.freshTask(id: task.id) else { return nil }
+        return CommandPlaceholders.substituted(command, taskPath: workTaskManager.filePath(for: current))
+    }
+
+    /// Plan a backlog task: run the chosen agent command in the primary worktree, where the task
+    /// still lives. Nothing is written to the task — planning shapes the brief, it does not start
+    /// the work.
+    func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
+        guard let resolved = planCommand(for: task, using: command),
+              let main = worktreeManager.worktrees.first(where: \.isMain) else { return }
+        terminalManager.run(resolved, in: main, app: app)
     }
 
     func worktreeForTask(_ task: WorkTask) -> Worktree? {

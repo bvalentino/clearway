@@ -7,6 +7,7 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
@@ -57,6 +58,10 @@ struct WorkTaskListView: View {
             }
 
             ToolbarGroupBreak()
+
+            ToolbarItem(placement: .primaryAction) {
+                planMenu(for: selectedTask)
+            }
 
             ToolbarItem(placement: .primaryAction) {
                 Button("Start Now") {
@@ -186,6 +191,7 @@ struct WorkTaskListView: View {
                 WorkTaskRow(task: task, hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id))
                     .tag(task.id)
                     .contextMenu {
+                        planMenu(for: task)
                         Button { startTask(task) } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
@@ -201,6 +207,56 @@ struct WorkTaskListView: View {
 
         }
         .listStyle(.inset)
+    }
+
+    // MARK: - Plan
+
+    private var agentCommands: [SavedCommand] {
+        SavedCommand.filter(savedCommandManager.commands, by: .agent)
+    }
+
+    /// The Plan dropdown, rendered by both the toolbar and the row context menu. The task is a
+    /// parameter so the context menu plans the right-clicked row rather than the selection; a nil
+    /// task is the toolbar with nothing selected.
+    ///
+    /// `primaryAction:` is declared only while the project has a plan default, so the first click
+    /// opens the list when there is nothing to repeat.
+    @ViewBuilder
+    private func planMenu(for task: WorkTask?) -> some View {
+        if let preferred = savedCommandManager.planCommand {
+            Menu {
+                planItems(for: task)
+            } label: {
+                Text("Plan")
+            } primaryAction: {
+                plan(task, using: preferred)
+            }
+            .disabled(planIsUnavailable(for: task))
+        } else {
+            Menu {
+                planItems(for: task)
+            } label: {
+                Text("Plan")
+            }
+            .disabled(planIsUnavailable(for: task))
+        }
+    }
+
+    @ViewBuilder
+    private func planItems(for task: WorkTask?) -> some View {
+        ForEach(agentCommands) { command in
+            Button(command.name) { plan(task, using: command) }
+        }
+    }
+
+    private func planIsUnavailable(for task: WorkTask?) -> Bool {
+        task == nil || agentCommands.isEmpty || ghosttyApp.app == nil
+    }
+
+    private func plan(_ task: WorkTask?, using command: SavedCommand) {
+        guard let task, let app = ghosttyApp.app else { return }
+        workTaskCoordinator.planTask(task, using: command, app: app)
+        savedCommandManager.setPlanDefault(command.id)
     }
 
     private func createAndEdit() {
