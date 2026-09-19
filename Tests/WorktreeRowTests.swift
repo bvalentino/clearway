@@ -2,7 +2,8 @@ import XCTest
 @testable import Clearway
 
 /// Pins the row-text precedence lifted out of `SidebarView`. Nothing in a SwiftUI body is
-/// reachable from XCTest, which is why the rule is a pure static on `WorktreeRow`.
+/// reachable from XCTest, which is why the rule is a pure static on `WorktreeRow`. The name
+/// arrives already trimmed — `WorktreeGroupManager` owns that rule and is tested for it there.
 final class WorktreeRowTextTests: XCTestCase {
 
     func testAStoredNameWinsOverATaskTitle() {
@@ -39,26 +40,6 @@ final class WorktreeRowTextTests: XCTestCase {
         let texts = WorktreeRow.rowTexts(
             for: makeWorktree(branch: "feature-x", path: "/tmp/feature-x"),
             name: nil,
-            taskTitle: nil
-        )
-        XCTAssertNil(texts.primaryText)
-        XCTAssertNil(texts.subtitle)
-    }
-
-    func testAWhitespaceOnlyNameIsAbsent() {
-        let texts = WorktreeRow.rowTexts(
-            for: makeWorktree(branch: "feature-x", path: "/tmp/feature-x"),
-            name: "   ",
-            taskTitle: "Retry the flaky login"
-        )
-        XCTAssertEqual(texts.primaryText, "Retry the flaky login")
-        XCTAssertEqual(texts.subtitle, "feature-x")
-    }
-
-    func testAnEmptyNameAndNoTaskTitleLeavesBothNil() {
-        let texts = WorktreeRow.rowTexts(
-            for: makeWorktree(branch: "feature-x", path: "/tmp/feature-x"),
-            name: "",
             taskTitle: nil
         )
         XCTAssertNil(texts.primaryText)

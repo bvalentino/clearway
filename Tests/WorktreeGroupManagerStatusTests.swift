@@ -371,11 +371,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
     }
 
     private func writeGroupsFile(json: String) throws {
-        try FileManager.default.createDirectory(
-            atPath: (groupsFilePath as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try Data(json.utf8).write(to: URL(fileURLWithPath: groupsFilePath), options: .atomic)
+        try GroupsFile.write(Data(json.utf8), inProjectRoot: tempRoot)
     }
 
     /// A second manager over the same root, standing in for a relaunch.
@@ -385,22 +381,19 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         return reopened
     }
 
-    /// Polls rather than sleeping a fixed span: a status write is a git subprocess, behind the
-    /// extension bootstrap on its first call.
     private func waitForStoredStatus(
         _ expected: WorktreeStatus?,
         at path: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
-        try await waitFor(
+        try await waitForStoredValue(
             expected?.rawValue,
-            describing: "stored status at \(path)",
+            ofKey: WorktreeConfigStore.statusKey,
+            at: path,
             file: file,
             line: line
-        ) {
-            try self.repo.value(ofKey: WorktreeConfigStore.statusKey, atWorktree: path)
-        }
+        )
     }
 
     private func waitForPublishedStatuses(
@@ -422,20 +415,4 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         }
     }
 
-    private func waitFor<Value: Equatable>(
-        _ expected: Value,
-        describing subject: String,
-        timeout: TimeInterval = 5,
-        file: StaticString = #filePath,
-        line: UInt = #line,
-        reading read: () throws -> Value
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = try read()
-        while last != expected, Date() < deadline {
-            try await Task.sleep(nanoseconds: 20_000_000)
-            last = try read()
-        }
-        XCTAssertEqual(last, expected, subject, file: file, line: line)
-    }
 }

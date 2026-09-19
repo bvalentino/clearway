@@ -41,13 +41,8 @@ struct CreateWorktreeSheet: View {
             LabeledField("Status") {
                 Picker("Status", selection: $status) {
                     ForEach(WorktreeStatus.allCases) { option in
-                        Label {
-                            Text(option.displayName)
-                        } icon: {
-                            Image(systemName: option.symbol)
-                                .foregroundStyle(option.color)
-                        }
-                        .tag(option)
+                        WorktreeStatusLabel(status: option)
+                            .tag(option)
                     }
                 }
                 .labelsHidden()
@@ -77,7 +72,6 @@ struct CreateWorktreeSheet: View {
                         TextField("", text: $baseBranch)
                             .textFieldStyle(.roundedBorder)
                             .disabled(isCreating)
-                            .opacity(isCreating ? 0.5 : 1.0)
                     }
 
                     Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
@@ -134,21 +128,36 @@ struct CreateWorktreeSheet: View {
     }
 }
 
-// MARK: - Rename Worktree Sheet
+// MARK: - Name Entry Sheet
 
-struct RenameWorktreeSheet: View {
-    let onSave: (String) -> Void
+/// The one sheet behind Rename Worktree, Rename Group and New Group: a headline, a single Name
+/// field and a Cancel/confirm row. `allowsEmptyName` is what separates them — a worktree name is
+/// cleared by saving an empty field, while a group must always have one.
+struct NameEntrySheet: View {
+    let title: String
+    let confirmTitle: String
+    let allowsEmptyName: Bool
+    let onConfirm: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
 
-    init(currentName: String, onSave: @escaping (String) -> Void) {
-        self.onSave = onSave
-        _name = State(initialValue: currentName)
+    init(
+        title: String,
+        confirmTitle: String,
+        initialName: String = "",
+        allowsEmptyName: Bool = false,
+        onConfirm: @escaping (String) -> Void
+    ) {
+        self.title = title
+        self.confirmTitle = confirmTitle
+        self.allowsEmptyName = allowsEmptyName
+        self.onConfirm = onConfirm
+        _name = State(initialValue: initialName)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Rename Worktree")
+            Text(title)
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -161,89 +170,12 @@ struct RenameWorktreeSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                // Unlike RenameGroupSheet, an empty field saves: it is how a name is cleared.
-                Button("Save") {
-                    onSave(name)
+                Button(confirmTitle) {
+                    onConfirm(name)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(width: 320)
-    }
-}
-
-// MARK: - Rename Group Sheet
-
-struct RenameGroupSheet: View {
-    let group: WorktreeGroup
-    let onSave: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-
-    init(group: WorktreeGroup, onSave: @escaping (String) -> Void) {
-        self.group = group
-        self.onSave = onSave
-        _name = State(initialValue: group.name)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Rename Group")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            LabeledField("Name") {
-                TextField("", text: $name)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save") {
-                    onSave(name)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 320)
-    }
-}
-
-// MARK: - New Group Sheet
-
-struct NewGroupSheet: View {
-    let onCreate: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("New Group")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            LabeledField("Name") {
-                TextField("", text: $name)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Create") {
-                    onCreate(name)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!allowsEmptyName && name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(20)

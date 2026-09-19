@@ -21,10 +21,7 @@ struct WorktreeRow: View {
         name: String?,
         taskTitle: String?
     ) -> (primaryText: String?, subtitle: String?) {
-        let storedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let primaryText = storedName.flatMap({ $0.isEmpty ? nil : $0 }) ?? taskTitle else {
-            return (nil, nil)
-        }
+        guard let primaryText = name ?? taskTitle else { return (nil, nil) }
         return (primaryText, wt.displayName)
     }
 

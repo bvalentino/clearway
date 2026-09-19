@@ -71,6 +71,21 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try await waitForPublishedName(nil, for: wt)
     }
 
+    /// The one place a name is normalised: a hand-written config value that is whitespace only
+    /// never reaches `names`, which is what lets `name(for:)` and the sidebar row trust the map.
+    func testReconcileDropsAWhitespaceOnlyStoredName() async throws {
+        let path = try repo.addWorktree(branch: "feature")
+        try repo.enableWorktreeConfig()
+        try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
+        let wt = makeWorktree(branch: "feature", path: path)
+
+        manager.reconcile([wt])
+
+        try await waitForPublishedName(nil, for: wt)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(manager.names.isEmpty)
+    }
+
     /// Creating a worktree writes a name *and* changes the live worktree list, which fires the
     /// reload in the same turn. Without the manager's write chain the reload reads the config
     /// before the write lands and publishes an empty name over the one just typed.
@@ -101,33 +116,34 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - Helpers
 
-    /// Polls rather than sleeping a fixed span: the write runs a git subprocess, behind the
-    /// extension bootstrap on its first call.
-    private func waitForStoredName(_ expected: String?, at path: String) async throws {
-        try await waitFor(expected, describing: "stored name at \(path)") {
-            try self.repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        }
+    private func waitForStoredName(
+        _ expected: String?,
+        at path: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        try await waitForStoredValue(
+            expected,
+            ofKey: WorktreeConfigStore.nameKey,
+            at: path,
+            file: file,
+            line: line
+        )
     }
 
-    private func waitForPublishedName(_ expected: String?, for wt: Worktree) async throws {
-        try await waitFor(expected, describing: "published name for \(wt.id)") {
+    private func waitForPublishedName(
+        _ expected: String?,
+        for wt: Worktree,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        try await waitFor(
+            expected,
+            describing: "published name for \(wt.id)",
+            file: file,
+            line: line
+        ) {
             self.manager.name(for: wt)
         }
-    }
-
-    private func waitFor(
-        _ expected: String?,
-        describing subject: String,
-        timeout: TimeInterval = 5,
-        reading read: () throws -> String?
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last: String?
-        repeat {
-            last = try read()
-            if last == expected { return }
-            try await Task.sleep(nanoseconds: 20_000_000)
-        } while Date() < deadline
-        XCTAssertEqual(last, expected, subject)
     }
 }

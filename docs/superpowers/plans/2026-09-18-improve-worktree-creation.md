@@ -1175,6 +1175,24 @@ file; `SidebarView.swift` is 669 lines, under the 700-line warning.
 `ShellPathResolverTests` did not flake on this run. `git status --porcelain` before the commit
 showed two modified source files and the modified plan, nothing untracked.
 
+### Simplify pass
+
+Quality only, no behaviour change. The three near-identical name-entry sheets became one
+`NameEntrySheet` (`allowsEmptyName` is the only thing that separated them); the status picker row
+became `WorktreeStatusLabel`, shared by the sheet and the sidebar's Status submenu; the name's
+whitespace rule moved from three layers (`name(for:)`, `rowTexts`, `setName`) to the one storage
+boundary in `reloadConfig`, with its test moving to `WorktreeGroupManagerNameTests`; the extension
+probe is cached as its `Task` so a concurrent reload shares one `git` spawn instead of one each;
+`enqueueWrite` hands the store to its body, dropping four `let configStore = configStore` lines;
+`reloadConfig` fills its two maps directly instead of an intermediate dictionary. In tests, the
+duplicated `waitFor` polling helper moved to `WorktreeGroupManagerGitTestCase`, the duplicated
+`groups.json` writer became `GroupsFile`, and the fixture's two `git config` spawns folded into the
+commit via `-c`.
+
+**Gate**: `./scripts/ci.sh` — `Executed 504 tests, with 0 failures (0 unexpected)`, `==> CI passed.`,
+exit status 0, run after the last edit. `git status --porcelain` showed only the modified files,
+nothing untracked.
+
 ## Changelog
 
 Operator-reported fixes made after a hands-on check, outside the task list. A later step must not

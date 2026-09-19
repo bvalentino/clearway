@@ -176,10 +176,7 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
     }
 
     private func writeGroupsFile(_ data: Data) throws {
-        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
-        let groupsFile = (clearwayDir as NSString).appendingPathComponent("groups.json")
-        FileManager.default.createFile(atPath: groupsFile, contents: data)
+        try GroupsFile.write(data, inProjectRoot: tempRoot)
     }
 
     // MARK: - load() on missing file returns []

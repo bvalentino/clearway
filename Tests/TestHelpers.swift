@@ -69,13 +69,17 @@ struct GitRepoFixture {
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
         let resolved = URL(fileURLWithPath: root).resolvingSymlinksInPath().path
         try git(["init", "-q", "."], in: resolved)
-        try git(["config", "user.name", "Clearway Tests"], in: resolved)
-        try git(["config", "user.email", "tests@example.com"], in: resolved)
-        try git(["commit", "-q", "--allow-empty", "-m", "init"], in: resolved)
+        try git(
+            [
+                "-c", "user.name=Clearway Tests",
+                "-c", "user.email=tests@example.com",
+                "commit", "-q", "--allow-empty", "-m", "init"
+            ],
+            in: resolved
+        )
         return GitRepoFixture(root: resolved)
     }
 
-    @discardableResult
     func addWorktree(branch: String) throws -> String {
         let path = (root as NSString).appendingPathComponent(".worktrees/\(branch)")
         try Self.git(["worktree", "add", "-q", path, "-b", branch], in: root)
@@ -174,6 +178,23 @@ struct GitRepoFixture {
     }
 }
 
+/// `<root>/.clearway/groups.json`, for the suites that seed or inspect the file directly.
+enum GroupsFile {
+
+    static func path(inProjectRoot root: String) -> String {
+        (root as NSString).appendingPathComponent(".clearway/groups.json")
+    }
+
+    static func write(_ contents: Data, inProjectRoot root: String) throws {
+        let file = path(inProjectRoot: root)
+        try FileManager.default.createDirectory(
+            atPath: (file as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        try contents.write(to: URL(fileURLWithPath: file), options: .atomic)
+    }
+}
+
 /// Base for the `WorktreeGroupManager` suites: a manager over the scratch root, plus the
 /// `groups.json` probe the "writes nothing" cases assert on.
 class WorktreeGroupManagerTestCase: TempRootTestCase {
@@ -183,7 +204,7 @@ class WorktreeGroupManagerTestCase: TempRootTestCase {
     var manager: WorktreeGroupManager!
 
     var groupsFilePath: String {
-        (tempRoot as NSString).appendingPathComponent(".clearway/groups.json")
+        GroupsFile.path(inProjectRoot: tempRoot)
     }
 
     var groupsFileExists: Bool {
@@ -224,5 +245,37 @@ class WorktreeGroupManagerGitTestCase: WorktreeGroupManagerTestCase {
     override func tearDown() async throws {
         repo = nil
         try await super.tearDown()
+    }
+
+    /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the
+    /// extension bootstrap on its first call.
+    func waitFor<Value: Equatable>(
+        _ expected: Value,
+        describing subject: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        reading read: () throws -> Value
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = try read()
+        while last != expected, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            last = try read()
+        }
+        XCTAssertEqual(last, expected, subject, file: file, line: line)
+    }
+
+    /// The `clearway.*` value git has on disk for one worktree, once the write lands.
+    func waitForStoredValue(
+        _ expected: String?,
+        ofKey key: String,
+        at path: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        try await waitFor(expected, describing: "\(key) at \(path)", file: file, line: line) {
+            try self.repo.value(ofKey: key, atWorktree: path)
+        }
     }
 }

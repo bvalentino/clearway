@@ -139,19 +139,24 @@ struct SidebarView: View {
             Text("There are processes still running in this worktree's terminals.")
         }
         .sheet(item: $worktreeToRename) { wt in
-            RenameWorktreeSheet(currentName: groupManager.name(for: wt) ?? "") { newName in
+            NameEntrySheet(
+                title: "Rename Worktree",
+                confirmTitle: "Save",
+                initialName: groupManager.name(for: wt) ?? "",
+                allowsEmptyName: true
+            ) { newName in
                 groupManager.setName(newName, for: wt)
                 worktreeToRename = nil
             }
         }
         .sheet(item: $groupToRename) { group in
-            RenameGroupSheet(group: group) { newName in
+            NameEntrySheet(title: "Rename Group", confirmTitle: "Save", initialName: group.name) { newName in
                 groupManager.renameGroup(id: group.id, to: newName)
                 groupToRename = nil
             }
         }
         .sheet(isPresented: $showingNewGroupSheet) {
-            NewGroupSheet { name in
+            NameEntrySheet(title: "New Group", confirmTitle: "Create") { name in
                 groupManager.createGroup(named: name)
                 showingNewGroupSheet = false
             }
@@ -434,13 +439,8 @@ struct SidebarView: View {
                 )) {
                     Text("None").tag(WorktreeStatus?.none)
                     ForEach(WorktreeStatus.allCases) { status in
-                        Label {
-                            Text(status.displayName)
-                        } icon: {
-                            Image(systemName: status.symbol)
-                                .foregroundStyle(status.color)
-                        }
-                        .tag(Optional(status))
+                        WorktreeStatusLabel(status: status)
+                            .tag(Optional(status))
                     }
                 }
                 .pickerStyle(.inline)

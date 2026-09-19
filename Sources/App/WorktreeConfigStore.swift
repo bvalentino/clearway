@@ -11,8 +11,8 @@ final class WorktreeConfigStore: Sendable {
 
     static let nameKey = "clearway.name"
     static let statusKey = "clearway.status"
-    static let keyPrefix = "clearway."
 
+    private static let keyPrefix = "clearway."
     private static let extensionKey = "extensions.worktreeConfig"
 
     /// The two keys git-worktree(1) requires be moved out of `$GIT_DIR/config` before the
@@ -26,7 +26,11 @@ final class WorktreeConfigStore: Sendable {
     /// `--worktree` as "the same as `--local`", so a write would land in the shared `.git/config`
     /// where every worktree then reads one value. Reads answer `[:]` rather than falling back,
     /// which also costs a project that never used the feature zero processes per refresh.
-    private let extensionEnabled = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+    ///
+    /// The probe is held as the `Task` rather than its result so the callers that arrive while it
+    /// is still running await that one subprocess instead of each spawning their own: a reload
+    /// reads every worktree concurrently, and all of them start on a cold cache.
+    private let extensionProbe = OSAllocatedUnfairLock<Task<Bool, Never>?>(initialState: nil)
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -91,11 +95,18 @@ final class WorktreeConfigStore: Sendable {
     // MARK: - Extension bootstrap
 
     private func isExtensionEnabled() async -> Bool {
-        if let cached = extensionEnabled.withLock({ $0 }) { return cached }
-        let data = await run(["git", "config", "--local", "--get", "--type=bool", Self.extensionKey])
-        let enabled = data.map { trimmed($0) == "true" } ?? false
-        extensionEnabled.withLock { $0 = enabled }
-        return enabled
+        let probe = extensionProbe.withLock { stored -> Task<Bool, Never> in
+            if let stored { return stored }
+            let task = Task {
+                let data = await self.run(
+                    ["git", "config", "--local", "--get", "--type=bool", Self.extensionKey]
+                )
+                return data.map { self.trimmed($0) == "true" } ?? false
+            }
+            stored = task
+            return task
+        }
+        return await probe.value
     }
 
     /// Copy, then enable, then unset: no window exists in which `core.bare` is live in neither
@@ -136,7 +147,7 @@ final class WorktreeConfigStore: Sendable {
         for key in moved {
             await run(["git", "config", "--local", "--unset", key])
         }
-        extensionEnabled.withLock { $0 = true }
+        extensionProbe.withLock { $0 = Task { true } }
         return true
     }
 

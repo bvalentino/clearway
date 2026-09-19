@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// A form row: a persistent label above its control. Shared so the app's sheets cannot drift into
-/// placeholder-only fields.
+/// Shared so the app's sheets cannot drift into placeholder-only fields.
 struct LabeledField<Content: View>: View {
     private let label: String
     private let content: Content

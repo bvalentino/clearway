@@ -187,8 +187,7 @@ final class WorktreeGroupManager: ObservableObject {
         guard !wt.isMain, let path = wt.path else { return }
         guard statuses[wt.id] != status else { return }
         statuses[wt.id] = status
-        let configStore = configStore
-        enqueueWrite {
+        enqueueWrite { configStore in
             await configStore.set(
                 status?.rawValue,
                 forKey: WorktreeConfigStore.statusKey,
@@ -198,10 +197,10 @@ final class WorktreeGroupManager: ObservableObject {
     }
 
     /// Takes a `Worktree` so main's "no name" rule is enforced on the read path too, on the same
-    /// terms as `status(for:)`. A stored value that is empty once trimmed reads as no name.
+    /// terms as `status(for:)`. Every writer of `names` trims first and drops what is left empty,
+    /// so there is nothing to normalise here.
     func name(for wt: Worktree) -> String? {
-        guard !wt.isMain, let stored = names[wt.id] else { return nil }
-        return stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : stored
+        wt.isMain ? nil : names[wt.id]
     }
 
     /// Publishes the name at once and writes it to the worktree's own git config behind the write
@@ -215,8 +214,7 @@ final class WorktreeGroupManager: ObservableObject {
         } else {
             names[wt.id] = trimmed
         }
-        let configStore = configStore
-        enqueueWrite {
+        enqueueWrite { configStore in
             await configStore.set(trimmed, forKey: WorktreeConfigStore.nameKey, worktreeAt: path)
         }
     }
@@ -360,26 +358,24 @@ final class WorktreeGroupManager: ObservableObject {
             return (wt.id, path)
         }
         let configStore = configStore
-        let loaded = await withTaskGroup(of: (String, [String: String]).self) { group in
+        var reloadedNames: [String: String] = [:]
+        var reloadedStatuses: [String: WorktreeStatus] = [:]
+        await withTaskGroup(of: (String, [String: String]).self) { group in
             for target in targets {
                 group.addTask { (target.id, await configStore.values(forWorktreeAt: target.path)) }
             }
-            var result: [String: [String: String]] = [:]
-            for await (id, values) in group { result[id] = values }
-            return result
-        }
-
-        var reloadedNames: [String: String] = [:]
-        var reloadedStatuses: [String: WorktreeStatus] = [:]
-        for (id, values) in loaded {
-            if let name = values[WorktreeConfigStore.nameKey], !name.isEmpty {
-                reloadedNames[id] = name
-            }
-            // An unrecognised slug is dropped rather than published, the same rule the payload's
-            // decoder applied while `groups.json` held these.
-            if let slug = values[WorktreeConfigStore.statusKey],
-               let status = WorktreeStatus(rawValue: slug) {
-                reloadedStatuses[id] = status
+            for await (id, values) in group {
+                // Trimmed here because this is where a hand-written config value enters the map,
+                // and `name(for:)` and the sidebar both rely on what it holds already being clean.
+                let name = values[WorktreeConfigStore.nameKey]?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !name.isEmpty { reloadedNames[id] = name }
+                // An unrecognised slug is dropped rather than published, the same rule the payload's
+                // decoder applied while `groups.json` held these.
+                if let slug = values[WorktreeConfigStore.statusKey],
+                   let status = WorktreeStatus(rawValue: slug) {
+                    reloadedStatuses[id] = status
+                }
             }
         }
         if reloadedNames != names { names = reloadedNames }
@@ -393,8 +389,7 @@ final class WorktreeGroupManager: ObservableObject {
     private func migrateLegacyStatuses(_ legacy: [String: WorktreeStatus]) {
         guard !legacy.isEmpty else { return }
         statuses = legacy
-        let configStore = configStore
-        enqueueWrite {
+        enqueueWrite { configStore in
             for (path, status) in legacy {
                 await configStore.set(
                     status.rawValue,
@@ -407,12 +402,15 @@ final class WorktreeGroupManager: ObservableObject {
     }
 
     /// Serialises config writes: each one awaits the previous, so two gestures on the same key
-    /// land in the order they were made and a read can await the whole chain.
-    private func enqueueWrite(_ work: @escaping @Sendable () async -> Void) {
+    /// land in the order they were made and a read can await the whole chain. The store is handed
+    /// to `work` rather than captured by it, because a `@MainActor` caller cannot reach `self` from
+    /// inside the `@Sendable` body.
+    private func enqueueWrite(_ work: @escaping @Sendable (WorktreeConfigStore) async -> Void) {
         let previous = writeChain
+        let configStore = configStore
         writeChain = Task {
             await previous?.value
-            await work()
+            await work(configStore)
         }
     }
 

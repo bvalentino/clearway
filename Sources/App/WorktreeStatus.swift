@@ -46,6 +46,21 @@ enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// One status as a picker row: the tinted symbol beside the display name. Shared by the New
+/// Worktree sheet and the sidebar's Status submenu so the two rows cannot drift apart.
+struct WorktreeStatusLabel: View {
+    let status: WorktreeStatus
+
+    var body: some View {
+        Label {
+            Text(status.displayName)
+        } icon: {
+            Image(systemName: status.symbol)
+                .foregroundStyle(status.color)
+        }
+    }
+}
+
 /// How the sidebar sections its worktrees. Persisted in `groups.json` under the same slug rule,
 /// and `Encodable` only for the same reason.
 enum WorktreeGrouping: String, Encodable, CaseIterable, Identifiable, Hashable {
