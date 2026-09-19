@@ -395,4 +395,30 @@ final class TerminalManagerTests: XCTestCase {
         manager.endAgentLaunch(for: "feature")
         XCTAssertFalse(manager.agentLaunchesInFlight.contains("feature"))
     }
+
+    // MARK: - proceedsWithLaunch
+
+    /// The four doors, as Decision 20 draws them. Row three is the one that already regressed: a
+    /// saved agent command started during another launch's PATH wait opened nothing.
+    func test_proceedsWithLaunch_onlyARefusingDoorLosesToAnotherLaunch() {
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: true),
+                      "Opt+Cmd+T with no launch in flight")
+        XCTAssertFalse(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: true),
+                       "a second Opt+Cmd+T during the wait is a repeat of the first")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: false),
+                      "a door that does not refuse opens its tab even when another launch holds the marker")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: false))
+    }
+
+    // MARK: - promptDelivery
+
+    /// Which builder an agent tab uses, and whether it stages afterwards. `submit` is the user's
+    /// "Append Enter to run immediately" toggle, so reading it backwards runs a prompt they staged.
+    func test_promptDelivery_submitOnlyMattersWithAPrompt() {
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: true), .bare,
+                       "Opt+Cmd+T passes no prompt and must not build an empty argv element")
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: false), .bare)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: true), .argv)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: false), .staged)
+    }
 }

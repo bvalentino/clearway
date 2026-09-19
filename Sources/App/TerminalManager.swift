@@ -125,6 +125,10 @@ class TerminalManager: ObservableObject {
         notifiedWorktrees.remove(worktreeId)
     }
 
+    /// Whether the worktree still has terminals. Read by `startAgentTab` after its await, where the
+    /// pane may have been torn down since the launch started.
+    func hasPane(for worktreeId: String) -> Bool { panes[worktreeId] != nil }
+
     /// Get or create terminal panes for the given worktree.
     func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
         ghosttyApp = app
@@ -149,7 +153,8 @@ class TerminalManager: ObservableObject {
         // The agent branch returns a pane with no tabs yet — `detailView`'s in-flight gate is what
         // keeps the empty state off the screen meanwhile.
         if let command = takeFirstTabCommand(for: key) {
-            startAgentTab(for: worktree, app: app, command: command)
+            // Not the ⌥⌘T door: this tab is the worktree's own and refuses nothing.
+            startAgentTab(for: worktree, app: app, command: command, refuseWhenInFlight: false)
         } else {
             appendTab(for: worktree, app: app)
         }

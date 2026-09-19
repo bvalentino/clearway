@@ -698,6 +698,46 @@ no later stage reverts it as unintentional.
    review-findings task. The file is 999 lines; `CLAUDE.md` said "is past" the 1000-line
    `file_length` error. Reworded to "sits at"; the split-before-growing rule is unchanged.
 
+8. **A staged agent prompt is sent with `sendText`, not `sendPaste`** — carried by the review-PR
+   task. `Ghostty.SurfaceView.sendPaste` trims the text and then calls `sendEnter`, so the
+   `submit == false` path ran the prompt the user's "Append Enter to run immediately" toggle said
+   to stage — inverting the toggle with no undo. `sendText` is the same primitive the shell path's
+   `ShellSend.Step.text` uses for the line it deliberately leaves unrun. Spec Decision 13 already
+   said "unsubmitted"; the code now matches it.
+
+9. **An in-flight agent launch no longer resurrects a torn-down pane** — carried by the review-PR
+   task. Nothing cancels `startAgentTab`'s `Task`, so when the pane was closed, pruned or deleted
+   during `await ShellEnvironment.awaitPath()`, `appendTab` took its pane-creation branch and
+   rebuilt the pane, spawned a fresh secondary surface and put the worktree back in
+   `openWorktreeIds`. The continuation now re-checks `TerminalManager.hasPane` before appending —
+   ahead of building the command, so the argv path allocates no orphan prompt file — and the owner
+   ends its claim on that path. This is the guard `promoteLauncher`'s `isLauncher` check used to
+   provide before the launcher was collapsed.
+
+10. **`refuseWhenInFlight` is a property of the door, so it lost its default** — carried by the
+    review-PR task. Defaulting to `true` made the `+` menu's Codex and Grok rows, and a created
+    worktree's first tab, refuse on a marker held by an unrelated launch: picking Codex from the
+    `+` menu while a Claude launch awaited PATH did nothing at all. Spec Decision 20 says the
+    refusal is "the ⌥⌘T door alone", so the parameter now has no default and each of the four call
+    sites states it — `true` from `ContentView.newAgentTabAction` and from the one `+` row where
+    `carriesMainTerminalShortcut`, `false` everywhere else.
+
+11. **The `+` menu's gate carries both preconditions** — carried by the review-PR task. It was
+    `.disabled(ghosttyApp.app == nil)` while `newTerminal`/`newAgent` also guard on resolving the
+    worktree out of `worktreeManager.worktrees`, which `ContentView` deliberately lets go empty on a
+    transient `git worktree list` failure without pruning the live panes. In that state the menu
+    opened and every row did nothing — and because the strip declares ⌘T a second time and the view
+    hierarchy wins over the main menu, it also swallowed ⌘T, which the File menu item would have
+    served from `detailSelection`. Now `.disabled(ghosttyApp.app == nil || worktree == nil)`, per
+    `CLAUDE.md`'s rule that a nil gate must carry every precondition its action would guard.
+
+12. **`promptDelivery` and `proceedsWithLaunch` lifted to `static`** — carried by the review-PR
+    task. `startAgentTab` expressed the prompt rule twice in two shapes (`prompt.isEmpty || !submit`
+    choosing the builder, `!prompt.isEmpty, !submit` choosing the paste) and the marker rule as an
+    untested two-clause guard — the same expression Changelog entry 4 had already regressed once.
+    Both are now pure statics pinned by `TerminalManagerTests`, the split `CLAUDE.md` prescribes for
+    rules on a path that needs a `ghostty_app_t`.
+
 ## Build log
 
 <!-- Each build task appends its entry here. -->

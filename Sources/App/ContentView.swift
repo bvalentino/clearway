@@ -140,7 +140,7 @@ struct ContentView: View {
               let command = settings.configuredMainTerminalCommand else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.startAgentTab(for: worktree, app: app, command: command)
+            terminalManager.startAgentTab(for: worktree, app: app, command: command, refuseWhenInFlight: true)
         }
     }
 

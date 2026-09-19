@@ -208,11 +208,23 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     turn, because the `await ShellEnvironment.awaitPath()` that follows leaves the pane with no tabs
     and `detailView` would render the "⌘T for a new tab" empty state for that frame. A login-shell tab
     awaits nothing — the shell resolves its own PATH — so ⌘T never defers a frame and takes no claim.
-    The marker is a **rendering gate first**. Refusing a second launch is `refuseWhenInFlight`, on
-    top of it and true only for ⌥⌘T, where a second press during the wait is a repeat of the first.
-    A saved `.agent` command passes `false`: it is a tab the user named, and two of them started
-    within the same cold-launch PATH wait must both open. Only the launch that owns the marker ends
-    it, so a passing launch cannot clear the gate out from under its owner.
+    The marker is a **rendering gate first**. Refusing on it is `refuseWhenInFlight`, a property of
+    the **door** rather than of the launch, so it carries no default and every call site states it.
+    Only ⌥⌘T passes `true` — the File menu item and the one `+` row that carries the same key —
+    because a second press during the wait is a repeat of the first. The `+` menu's other agent
+    rows, a saved `.agent` command and a created worktree's first tab pass `false`: each names a tab
+    the user asked for by itself, and two of them started within the same cold-launch PATH wait must
+    both open. Only the launch that owns the marker ends it, so a passing launch cannot clear the
+    gate out from under its owner.
+    Across the await the pane may be gone — closed, pruned, or the worktree deleted — so the `Task`
+    re-checks `hasPane` before appending. Without it `appendTab`'s pane-creation branch rebuilds the
+    pane and re-registers a worktree the user just tore down. The check sits *ahead* of building the
+    command so the argv path allocates no orphan prompt file. Nothing cancels the `Task`, which is
+    why the owner ends its claim on that path too rather than leaving the gate set.
+    The staged case (`submit` off) sends the prompt with **`sendText`, never `sendPaste`** —
+    `sendPaste` appends Enter, which runs the prompt the user's toggle said to stage.
+    `promptDelivery` and `proceedsWithLaunch` are `static` so both rules are testable without a
+    `ghostty_app_t`.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
     `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
     wait and the shell-vs-agent branch live on the coordinator with the rest of the tab logic.

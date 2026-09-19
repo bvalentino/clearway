@@ -174,6 +174,13 @@ struct MainTerminalTabStrip: View {
     /// declarations run the same action on the same worktree, so whichever layer wins is correct,
     /// and `.keyboardShortcut` is the only way SwiftUI draws the glyph beside a menu row. Do not
     /// "fix" this by dropping them.
+    ///
+    /// That equivalence is what the `.disabled` below protects. The view hierarchy is offered a key
+    /// equivalent before the main menu, so this menu answers ⌘T whenever it is enabled — and it
+    /// resolves its worktree out of `worktreeManager.worktrees`, which `ContentView` deliberately
+    /// lets go empty on a transient `git worktree list` failure rather than pruning live panes. The
+    /// File menu's twin reads the stored `detailSelection` and survives that. Disabling on a nil
+    /// worktree is what hands ⌘T back to it instead of swallowing the key.
     private var plusMenu: some View {
         Menu {
             Button("New Terminal") { newTerminal() }
@@ -182,7 +189,9 @@ struct MainTerminalTabStrip: View {
                 agentMenuRows(agents: agentAllowlist, mainCommand: settings.configuredMainTerminalCommand),
                 id: \.command
             ) { row in
-                Button(row.title) { newAgent(row.command) }
+                // Only the row carrying ⌥⌘T is the ⌥⌘T door, so only it refuses a launch already
+                // in flight; picking a different agent is never a repeat of that press.
+                Button(row.title) { newAgent(row.command, refuseWhenInFlight: row.carriesMainTerminalShortcut) }
                     .keyboardShortcut(
                         row.carriesMainTerminalShortcut
                             ? KeyboardShortcut("t", modifiers: [.command, .option])
@@ -198,7 +207,9 @@ struct MainTerminalTabStrip: View {
         .menuIndicator(.hidden)
         .menuStyle(.button)
         .buttonStyle(.plain)
-        .disabled(ghosttyApp.app == nil)
+        // Both preconditions its actions guard, or the menu opens and every row does nothing: a
+        // transient `git worktree list` failure zeroes `worktrees` while these panes stay alive.
+        .disabled(ghosttyApp.app == nil || worktree == nil)
     }
 
     private var worktree: Worktree? {
@@ -210,9 +221,14 @@ struct MainTerminalTabStrip: View {
         terminalManager.appendTab(for: worktree, app: app)
     }
 
-    private func newAgent(_ command: String) {
+    private func newAgent(_ command: String, refuseWhenInFlight: Bool) {
         guard let app = ghosttyApp.app, let worktree else { return }
-        terminalManager.startAgentTab(for: worktree, app: app, command: command)
+        terminalManager.startAgentTab(
+            for: worktree,
+            app: app,
+            command: command,
+            refuseWhenInFlight: refuseWhenInFlight
+        )
     }
 
     private func chip(for tab: TerminalTab, isActive: Bool) -> some View {
