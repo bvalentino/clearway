@@ -400,7 +400,7 @@ class WorktreeManager: ObservableObject {
         guard process.terminationStatus == 0 else {
             let stderrString = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let cmd = args.joined(separator: " ")
-            throw WorktreeError.commandFailed(cmd, stderr: stderrString)
+            throw WorktreeError.commandFailed(cmd, stderr: stderrString, status: process.terminationStatus)
         }
 
         return stdoutData
@@ -426,12 +426,16 @@ class WorktreeManager: ObservableObject {
         return PRStatus(number: number, title: title, url: url)
     }
 
+    /// A command that ran and exited non-zero. `status` is what lets a caller tell git's
+    /// documented "nothing to report" answers — `config --get`/`--list` exit 1, `--unset` exits 5 —
+    /// from a genuine failure. A command that could never be spawned throws Foundation's own
+    /// error instead, so this case always carries a status git chose.
     enum WorktreeError: LocalizedError {
-        case commandFailed(String, stderr: String)
+        case commandFailed(String, stderr: String, status: Int32)
 
         var errorDescription: String? {
             switch self {
-            case .commandFailed(let cmd, let stderr):
+            case .commandFailed(let cmd, let stderr, _):
                 if !stderr.isEmpty { return stderr }
                 return "Command failed: \(cmd)"
             }

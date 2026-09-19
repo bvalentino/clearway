@@ -40,8 +40,8 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
 
         XCTAssertTrue(manager.statuses.isEmpty)
         XCTAssertFalse(groupsFileExists, "a main-worktree status must write nothing")
-        XCTAssertFalse(
-            try repo.localConfigContents().contains("worktreeConfig"),
+        XCTAssertNil(
+            try repo.value(ofLocalKey: "extensions.worktreeConfig"),
             "a main-worktree status must not even bootstrap the extension"
         )
     }
@@ -168,6 +168,23 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.reconcile([alive])
 
         try await waitForPublishedStatuses([alive.id: .inReview])
+    }
+
+    /// `config.worktree` is hand-editable and a slug rename is a format change, so an
+    /// unrecognised status is dropped — and must not take the name stored beside it with it.
+    func testReconcileDropsAnUnrecognisedStatusSlugAndKeepsTheName() async throws {
+        let path = try repo.addWorktree(branch: "alive")
+        try repo.enableWorktreeConfig()
+        try repo.setValue("bogus", ofKey: WorktreeConfigStore.statusKey, atWorktree: path)
+        try repo.setValue("Stored name", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
+        let alive = makeWorktree(branch: "alive", path: path)
+
+        manager.reconcile([alive])
+
+        try await waitFor("Stored name" as String?, describing: "published name for \(alive.id)") {
+            self.manager.name(for: alive)
+        }
+        XCTAssertTrue(manager.statuses.isEmpty)
     }
 
     /// A status whose worktree has gone leaves the published map because the reload rebuilds it
@@ -410,8 +427,11 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
-        try await waitFor(false, describing: "groups.json still carries statuses", file: file, line: line) {
-            try String(contentsOfFile: self.groupsFilePath, encoding: .utf8).contains("statuses")
+        // Decoded rather than grepped: a group or worktree path spelled "statuses" would satisfy
+        // a substring check, and `legacyStatuses` is the only thing the old key can decode into.
+        try await waitFor(true, describing: "groups.json rewritten without statuses", file: file, line: line) {
+            let data = try Data(contentsOf: URL(fileURLWithPath: self.groupsFilePath))
+            return try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data).legacyStatuses.isEmpty
         }
     }
 

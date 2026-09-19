@@ -117,17 +117,10 @@ struct GitRepoFixture {
         try Self.git(["-C", path, "config", "--worktree", "--unset", key], in: root)
     }
 
-    private func value(ofLocalKey key: String) throws -> String? {
+    func value(ofLocalKey key: String) throws -> String? {
         let result = try Self.capture(["config", "--local", "--get", key], in: root)
         guard result.status == 0 else { return nil }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func localConfigContents() throws -> String {
-        try String(
-            contentsOfFile: (root as NSString).appendingPathComponent(".git/config"),
-            encoding: .utf8
-        )
     }
 
     func mainWorktreeConfigContents() throws -> String {

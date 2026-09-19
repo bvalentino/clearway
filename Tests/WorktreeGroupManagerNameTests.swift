@@ -41,6 +41,35 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredName(nil, at: path)
     }
 
+    /// The published map is the one the sidebar row trusts to be clean, so a name with padding is
+    /// trimmed rather than stored as typed.
+    func testSetNameTrimsSurroundingWhitespace() async throws {
+        let path = try repo.addWorktree(branch: "feature")
+        let wt = makeWorktree(branch: "feature", path: path)
+
+        manager.setName("  Login rewrite  ", for: wt)
+
+        XCTAssertEqual(manager.name(for: wt), "Login rewrite")
+        try await waitForStoredName("Login rewrite", at: path)
+    }
+
+    /// The write chain's whole job. Unserialised, the two gestures are two `git config` processes
+    /// contending the same `config.lock`, and the loser is swallowed to a log line — so a name can
+    /// silently revert to the one typed before it.
+    func testTwoNamesInOneTurnLandInTheOrderTheyWereMade() async throws {
+        let path = try repo.addWorktree(branch: "feature")
+        let wt = makeWorktree(branch: "feature", path: path)
+
+        manager.setName("First", for: wt)
+        manager.setName("Second", for: wt)
+
+        // The reload awaits the whole chain, so a published "Second" proves both writes are done
+        // and neither reverted the other.
+        manager.reconcile([wt])
+        try await waitForPublishedName("Second", for: wt)
+        XCTAssertEqual(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: path), "Second")
+    }
+
     /// Rename… → Save with an empty field on a project that never used a name or a status. The
     /// clear has nothing to unset — with the extension off no `clearway.*` value can exist — so it
     /// must not bootstrap the extension and relocate `core.bare` into `config.worktree`.
@@ -51,9 +80,8 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         manager.setName("", for: wt)
         try await Task.sleep(nanoseconds: 300_000_000)
 
-        let localConfig = try repo.localConfigContents()
-        XCTAssertFalse(localConfig.contains("worktreeConfig"), localConfig)
-        XCTAssertTrue(localConfig.contains("bare = false"), localConfig)
+        XCTAssertNil(try repo.value(ofLocalKey: "extensions.worktreeConfig"))
+        XCTAssertEqual(try repo.value(ofLocalKey: "core.bare"), "false")
     }
 
     func testSetNameIgnoresTheMainWorktree() async throws {
@@ -64,8 +92,8 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
 
         XCTAssertTrue(manager.names.isEmpty)
         XCTAssertNil(manager.name(for: main))
-        XCTAssertFalse(
-            try repo.localConfigContents().contains("worktreeConfig"),
+        XCTAssertNil(
+            try repo.value(ofLocalKey: "extensions.worktreeConfig"),
             "a main-worktree name must not even bootstrap the extension"
         )
     }
@@ -90,14 +118,18 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
     /// never reaches `names`, which is what lets `name(for:)` and the sidebar row trust the map.
     func testReconcileDropsAWhitespaceOnlyStoredName() async throws {
         let path = try repo.addWorktree(branch: "feature")
-        try repo.enableWorktreeConfig()
-        try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         let wt = makeWorktree(branch: "feature", path: path)
 
+        // Seeded first so the assertion below is a transition rather than an absence: waiting for
+        // `nil` on an empty map is satisfied before the reload has run at all.
+        manager.setName("Seed", for: wt)
+        manager.reconcile([wt])
+        try await waitForPublishedName("Seed", for: wt)
+
+        try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         manager.reconcile([wt])
 
         try await waitForPublishedName(nil, for: wt)
-        try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertTrue(manager.names.isEmpty)
     }
 

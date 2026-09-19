@@ -20,6 +20,14 @@ final class WorktreeConfigStore: Sendable {
     /// `config.worktree` of the main worktree."
     private static let keysMovedByBootstrap = ["core.bare", "core.worktree"]
 
+    /// Whether `extensions.worktreeConfig` is on. `unknown` is not a third kind of "off": it means
+    /// git never answered, so nothing may be concluded about what is stored.
+    private enum ExtensionState {
+        case on
+        case off
+        case unknown
+    }
+
     private let projectPath: String
 
     /// `nil` until probed. While `extensions.worktreeConfig` is off, git-config(1) documents
@@ -29,8 +37,10 @@ final class WorktreeConfigStore: Sendable {
     ///
     /// The probe is held as the `Task` rather than its result so the callers that arrive while it
     /// is still running await that one subprocess instead of each spawning their own: a reload
-    /// reads every worktree concurrently, and all of them start on a cold cache.
-    private let extensionProbe = OSAllocatedUnfairLock<Task<Bool, Never>?>(initialState: nil)
+    /// reads every worktree concurrently, and all of them start on a cold cache. An `unknown`
+    /// answer is dropped from the cache instead of being kept: memoising a failed probe would
+    /// blank every name and status for the store's whole lifetime.
+    private let extensionProbe = OSAllocatedUnfairLock<Task<ExtensionState, Never>?>(initialState: nil)
 
     init(projectPath: String) {
         self.projectPath = projectPath
@@ -70,46 +80,94 @@ final class WorktreeConfigStore: Sendable {
 
     // MARK: - Read
 
-    /// The `clearway.*` values stored against the worktree at `path`, or `[:]` when there are
-    /// none, when the extension is off, or when the worktree has no `config.worktree` yet.
-    func values(forWorktreeAt path: String) async -> [String: String] {
-        guard await isExtensionEnabled() else { return [:] }
-        guard let data = await run(Self.listArgs(worktreePath: path)) else { return [:] }
-        return Self.parseList(String(data: data, encoding: .utf8) ?? "")
+    /// The `clearway.*` values stored against the worktree at `path`, `[:]` when there are none or
+    /// the extension is off, and `nil` when git could not answer.
+    ///
+    /// `nil` and `[:]` are kept apart because the caller publishes the result: a worktree whose
+    /// read could not be performed must keep the name and status it is already showing, while one
+    /// that genuinely holds nothing must lose them. Any refusal git chose is the second kind —
+    /// `--list` exits 128 on a worktree that has no `config.worktree` yet, and that is the common
+    /// case for a worktree Clearway has never written to.
+    func values(forWorktreeAt path: String) async -> [String: String]? {
+        switch await extensionState() {
+        case .off: return [:]
+        case .unknown: return nil
+        case .on: break
+        }
+        switch await run(Self.listArgs(worktreePath: path)) {
+        case .output(let data):
+            return Self.parseList(String(decoding: data, as: UTF8.self))
+        case .refused:
+            return [:]
+        case .unavailable(let message):
+            log("read \(path)", message)
+            return nil
+        }
     }
 
     // MARK: - Write
 
-    /// Stores `value` against the worktree at `path`, or clears the key when it is `nil` or empty.
-    /// Only a store enables the extension: while it is off no `clearway.*` value can exist, so a
-    /// clear has nothing to unset and bootstrapping for one would relocate the repository's
-    /// `core.bare` for nothing. Throws nothing either way: a config write is not worth failing a
-    /// worktree creation over, and the next reload corrects the published map.
-    func set(_ value: String?, forKey key: String, worktreeAt path: String) async {
+    /// Stores `value` against the worktree at `path`, or clears the key when it is `nil` or empty,
+    /// and reports whether git holds what was asked for. Only a store enables the extension: while
+    /// it is off no `clearway.*` value can exist, so a clear has nothing to unset and
+    /// bootstrapping for one would relocate the repository's `core.bare` for nothing.
+    ///
+    /// Throws nothing either way — a config write is not worth failing a worktree creation over —
+    /// but it does answer, because the one caller that cannot simply be corrected by the next
+    /// reload is the migration out of `groups.json`, which must not delete the old copy of a
+    /// status it failed to rewrite.
+    @discardableResult
+    func set(_ value: String?, forKey key: String, worktreeAt path: String) async -> Bool {
         guard let value, !value.isEmpty else {
-            guard await isExtensionEnabled() else { return }
-            await run(Self.unsetArgs(worktreePath: path, key: key))
-            return
+            switch await extensionState() {
+            case .off: return true
+            case .unknown: return false
+            case .on: break
+            }
+            switch await run(Self.unsetArgs(worktreePath: path, key: key)) {
+            // git-config(1): `--unset` exits 5 when the key is not there, which is the state asked for.
+            case .output, .refused(5, _): return true
+            case .refused(_, let message), .unavailable(let message):
+                log("unset \(key) at \(path)", message)
+                return false
+            }
         }
-        guard await enableExtension() else { return }
-        await run(Self.setArgs(worktreePath: path, key: key, value: value), reportingFailure: true)
+        guard await enableExtension() else { return false }
+        switch await run(Self.setArgs(worktreePath: path, key: key, value: value)) {
+        case .output: return true
+        case .refused(_, let message), .unavailable(let message):
+            log("set \(key) at \(path)", message)
+            return false
+        }
     }
 
     // MARK: - Extension bootstrap
 
-    private func isExtensionEnabled() async -> Bool {
-        let probe = extensionProbe.withLock { stored -> Task<Bool, Never> in
+    private func extensionState() async -> ExtensionState {
+        let probe = extensionProbe.withLock { stored -> Task<ExtensionState, Never> in
             if let stored { return stored }
-            let task = Task {
-                let data = await self.run(
-                    ["git", "config", "--local", "--get", "--type=bool", Self.extensionKey]
-                )
-                return data.map { self.trimmed($0) == "true" } ?? false
-            }
+            let task = Task { await self.probeExtension() }
             stored = task
             return task
         }
-        return await probe.value
+        let state = await probe.value
+        if case .unknown = state {
+            extensionProbe.withLock { if $0 == probe { $0 = nil } }
+        }
+        return state
+    }
+
+    private func probeExtension() async -> ExtensionState {
+        switch await run(["git", "config", "--local", "--get", "--type=bool", Self.extensionKey]) {
+        case .output(let data):
+            return trimmed(data) == "true" ? .on : .off
+        // git-config(1): "Returns error code 1 if key is not present."
+        case .refused:
+            return .off
+        case .unavailable(let message):
+            log("probe \(Self.extensionKey)", message)
+            return .unknown
+        }
     }
 
     /// Copy, then enable, then unset: no window exists in which `core.bare` is live in neither
@@ -120,60 +178,91 @@ final class WorktreeConfigStore: Sendable {
     /// this never needs main's worktree path — which matters, because `projectPath` is routinely
     /// a linked worktree.
     private func enableExtension() async -> Bool {
-        if await isExtensionEnabled() { return true }
+        switch await extensionState() {
+        case .on: return true
+        case .unknown: return false
+        case .off: break
+        }
 
-        guard let commonDirData = await run(
+        guard case .output(let commonDirData) = await run(
             ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
             reportingFailure: true
         ) else { return false }
         let commonDir = trimmed(commonDirData)
-        guard !commonDir.isEmpty else { return false }
+        guard !commonDir.isEmpty else {
+            log("locate the common dir", "git printed no path")
+            return false
+        }
         let worktreeConfig = (commonDir as NSString).appendingPathComponent("config.worktree")
 
         var moved: [String] = []
         for key in Self.keysMovedByBootstrap {
-            guard let data = await run(["git", "config", "--local", "--get", key]) else { continue }
+            guard case .output(let data) = await run(["git", "config", "--local", "--get", key]) else { continue }
             let value = trimmed(data)
             guard !value.isEmpty else { continue }
-            guard await run(
+            guard case .output = await run(
                 ["git", "config", "--file", worktreeConfig, key, value],
                 reportingFailure: true
-            ) != nil else { return false }
+            ) else { return false }
             moved.append(key)
         }
 
-        guard await run(
+        guard case .output = await run(
             ["git", "config", "--local", Self.extensionKey, "true"],
             reportingFailure: true
-        ) != nil else { return false }
+        ) else { return false }
 
+        // Reported, not fatal: the extension is on and the copy landed, so the repository works.
+        // Leaving `core.worktree` behind in `$GIT_DIR/config` is the state git-worktree(1) warns
+        // about, though, and it is invisible in the app — the log is the only way to find it.
         for key in moved {
-            await run(["git", "config", "--local", "--unset", key])
+            await run(["git", "config", "--local", "--unset", key], reportingFailure: true)
         }
-        extensionProbe.withLock { $0 = Task { true } }
+        extensionProbe.withLock { $0 = Task<ExtensionState, Never> { .on } }
         return true
     }
 
     // MARK: - Process helpers
 
-    /// Returns nil when git fails. A miss is an ordinary answer on the read and clear paths —
-    /// `--get` exits 1 on an absent key, `--unset` exits 5, and `--list` fails outright on a
-    /// worktree that has no `config.worktree` yet — so only the callers that must change state
-    /// pass `reportingFailure`.
+    /// One `git` invocation's outcome, split by the question the callers actually ask: did git
+    /// answer?
+    ///
+    /// A refusal is an answer. Every "nothing to report" git has is a non-zero exit — `--get`
+    /// exits 1, `--unset` exits 5, `--list` exits 128 on a worktree with no `config.worktree` at
+    /// all — so a read treats one as "stores nothing" and only a write treats one as a failure.
+    /// `unavailable` is the case that is not an answer: git never ran, so nothing may be
+    /// concluded, and publishing "no value" from it would clear the sidebar on a spawn failure.
+    private enum GitOutcome {
+        case output(Data)
+        case refused(status: Int32, message: String)
+        case unavailable(String)
+    }
+
     @discardableResult
-    private func run(_ args: [String], reportingFailure: Bool = false) async -> Data? {
+    private func run(_ args: [String], reportingFailure: Bool = false) async -> GitOutcome {
+        let outcome: GitOutcome
         do {
-            return try await WorktreeManager.runCommand(args, in: projectPath)
+            outcome = .output(try await WorktreeManager.runCommand(args, in: projectPath))
+        } catch WorktreeManager.WorktreeError.commandFailed(_, let stderr, let status) {
+            outcome = .refused(status: status, message: stderr.isEmpty ? "exit \(status)" : stderr)
         } catch {
-            if reportingFailure {
-                let command = args.joined(separator: " ")
-                Ghostty.logger.warning("worktree config: \(command) failed: \(error.localizedDescription)")
-            }
-            return nil
+            outcome = .unavailable(error.localizedDescription)
         }
+        if reportingFailure {
+            switch outcome {
+            case .output: break
+            case .refused(_, let message), .unavailable(let message):
+                log(args.joined(separator: " "), message)
+            }
+        }
+        return outcome
+    }
+
+    private func log(_ what: String, _ message: String) {
+        Ghostty.logger.warning("worktree config: \(what) failed: \(message)")
     }
 
     private func trimmed(_ data: Data) -> String {
-        (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

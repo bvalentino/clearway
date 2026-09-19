@@ -62,6 +62,20 @@ final class WorktreeDraftTests: XCTestCase {
         XCTAssertEqual(draft.branch, "fix-login-bug")
     }
 
+    /// Resuming generation is not refilling the field: the branch stays empty until the next name
+    /// keystroke, which is what decision 4's "clearing it back to empty resumes it" asks for. A
+    /// field that refills itself under the cursor would be a different rule.
+    func testClearingTheBranchLeavesItEmptyUntilTheNameChanges() {
+        var draft = WorktreeDraft()
+        draft.setName("Fix login")
+        draft.setBranch("my-own-branch")
+
+        draft.setBranch("")
+
+        XCTAssertEqual(draft.branch, "")
+        XCTAssertFalse(draft.branchIsHandEdited)
+    }
+
     func testHandEditTurnsSpacesIntoHyphens() {
         var draft = WorktreeDraft()
         draft.setBranch("my own branch")

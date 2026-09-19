@@ -14,7 +14,7 @@ struct WorktreeGroupsPayload: Codable, Equatable {
     /// `init(from:)`, through `LegacyCodingKeys`; there is no `CodingKeys` case for it, so the
     /// synthesised `encode(to:)` cannot write the key back. `WorktreeGroupManager` migrates a
     /// non-empty map into each worktree's own git config on load and saves at once.
-    var legacyStatuses: [String: WorktreeStatus]
+    private(set) var legacyStatuses: [String: WorktreeStatus]
 
     /// `statuses` is deliberately absent: it is the key this payload no longer owns.
     enum CodingKeys: String, CodingKey {

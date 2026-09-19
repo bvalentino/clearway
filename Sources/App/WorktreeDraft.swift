@@ -11,6 +11,11 @@ struct WorktreeDraft: Equatable {
     private(set) var branch: String = ""
     private(set) var branchIsHandEdited: Bool = false
 
+    /// Declared so the synthesized memberwise initializer is not: `private(set)` does not
+    /// suppress it, and it would let a caller build a hand-edited draft with an empty branch —
+    /// a state no mutator can reach, which neither regenerates from the name nor creates.
+    init() {}
+
     /// Lowercases, keeps ASCII letters and digits, turns every other run of characters into a
     /// single hyphen, and trims the leading and trailing ones. No prefix, and no
     /// transliteration: `"Café Ausflug"` is `caf-ausflug`.

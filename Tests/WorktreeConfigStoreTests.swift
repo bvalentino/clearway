@@ -86,13 +86,28 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
     func testFirstWriteEnablesTheExtensionAndMovesCoreBare() async throws {
         let worktree = try repo.addWorktree(branch: "feature")
 
-        await store.set("My Name", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+        let stored = await store.set("My Name", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
-        let localConfig = try repo.localConfigContents()
-        XCTAssertTrue(localConfig.contains("worktreeConfig = true"), localConfig)
-        XCTAssertFalse(localConfig.contains("bare ="), localConfig)
+        XCTAssertTrue(stored)
+        XCTAssertEqual(try repo.value(ofLocalKey: "extensions.worktreeConfig"), "true")
+        XCTAssertNil(try repo.value(ofLocalKey: "core.bare"))
         XCTAssertTrue(try repo.mainWorktreeConfigContents().contains("bare = false"))
 
+        XCTAssertTrue(try repo.statusSucceeds(in: repo.root))
+        XCTAssertTrue(try repo.statusSucceeds(in: worktree))
+    }
+
+    /// The bootstrap moves two keys, and a plain `git init` only ever has one of them. A repo
+    /// created with `--separate-git-dir` carries `core.worktree`, and leaving that behind in
+    /// `$GIT_DIR/config` is the state git-worktree(1) says breaks the repository.
+    func testFirstWriteAlsoMovesCoreWorktree() async throws {
+        try GitRepoFixture.git(["config", "--local", "core.worktree", repo.root], in: repo.root)
+        let worktree = try repo.addWorktree(branch: "feature")
+
+        await store.set("My Name", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+
+        XCTAssertNil(try repo.value(ofLocalKey: "core.worktree"))
+        XCTAssertTrue(try repo.mainWorktreeConfigContents().contains("worktree = "))
         XCTAssertTrue(try repo.statusSucceeds(in: repo.root))
         XCTAssertTrue(try repo.statusSucceeds(in: worktree))
     }
@@ -107,15 +122,28 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         // Added after the extension is on, so git seeds core.bare into its config.worktree too.
         let sibling = try repo.addWorktree(branch: "other")
 
-        let values = await store.values(forWorktreeAt: feature)
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: feature))
         XCTAssertEqual(values[WorktreeConfigStore.nameKey], "My Name")
         XCTAssertEqual(values[WorktreeConfigStore.statusKey], "inProgress")
         XCTAssertNil(values["core.bare"])
 
-        let siblingValues = await store.values(forWorktreeAt: sibling)
+        let siblingValues = try XCTUnwrap(await store.values(forWorktreeAt: sibling))
         XCTAssertEqual(siblingValues, [:])
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: sibling))
         XCTAssertEqual(try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: feature), "My Name")
+    }
+
+    /// A worktree Clearway has never written to has no `config.worktree` at all, and git answers
+    /// `--list` with exit 128 rather than with empty output. That refusal is still an answer —
+    /// "stores nothing" — and must not be reported as a read that could not be performed, which
+    /// would leave the worktree showing whatever the sidebar already had.
+    func testAWorktreeWithNoConfigWorktreeReadsAsEmptyRatherThanUnknown() async throws {
+        let worktree = try repo.addWorktree(branch: "feature")
+        try repo.enableWorktreeConfig()
+
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
+
+        XCTAssertEqual(values, [:])
     }
 
     // MARK: - Clearing
@@ -125,9 +153,10 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         await store.set("My Name", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
         await store.set("done", forKey: WorktreeConfigStore.statusKey, worktreeAt: worktree)
 
-        await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+        let cleared = await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
-        let values = await store.values(forWorktreeAt: worktree)
+        XCTAssertTrue(cleared)
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
         XCTAssertNil(values[WorktreeConfigStore.nameKey])
         XCTAssertEqual(values[WorktreeConfigStore.statusKey], "done")
     }
@@ -136,10 +165,14 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         let worktree = try repo.addWorktree(branch: "feature")
         await store.set("done", forKey: WorktreeConfigStore.statusKey, worktreeAt: worktree)
 
-        await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
-        await store.set("", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+        let clearedNil = await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
+        let clearedEmpty = await store.set("", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
-        let values = await store.values(forWorktreeAt: worktree)
+        // git exits 5 on an unset with nothing to remove, which is the state asked for and so is
+        // reported as stored — the distinction the migration relies on to keep `groups.json`.
+        XCTAssertTrue(clearedNil)
+        XCTAssertTrue(clearedEmpty)
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
         XCTAssertEqual(values, [WorktreeConfigStore.statusKey: "done"])
     }
 
@@ -153,7 +186,13 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         try repo.removeWorktree(at: worktree)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: worktree))
-        let values = await store.values(forWorktreeAt: worktree)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: (repo.root as NSString).appendingPathComponent(".git/worktrees/feature")
+            ),
+            "the worktree's config.worktree should have gone with it — nothing prunes it"
+        )
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
         XCTAssertEqual(values, [:])
     }
 
@@ -164,10 +203,10 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
     func testReadingWithTheExtensionOffReturnsNothing() async throws {
         let worktree = try repo.addWorktree(branch: "feature")
 
-        let values = await store.values(forWorktreeAt: worktree)
+        let values = try XCTUnwrap(await store.values(forWorktreeAt: worktree))
 
         XCTAssertEqual(values, [:])
-        XCTAssertFalse(try repo.localConfigContents().contains("worktreeConfig"))
+        XCTAssertNil(try repo.value(ofLocalKey: "extensions.worktreeConfig"))
     }
 
     /// Clearing is the other read-shaped path: with the extension off no `clearway.*` value can
@@ -178,9 +217,8 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
 
         await store.set(nil, forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
-        let localConfig = try repo.localConfigContents()
-        XCTAssertFalse(localConfig.contains("worktreeConfig"), localConfig)
-        XCTAssertTrue(localConfig.contains("bare = false"), localConfig)
+        XCTAssertNil(try repo.value(ofLocalKey: "extensions.worktreeConfig"))
+        XCTAssertEqual(try repo.value(ofLocalKey: "core.bare"), "false")
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: (repo.root as NSString).appendingPathComponent(".git/config.worktree")
