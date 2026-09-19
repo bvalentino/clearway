@@ -298,3 +298,31 @@ after `xcodegen generate` and the diff is the single file the plan named.
 **Gate**
 
 `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.
+
+### T3: Update the toolbar merge-order paragraph in CLAUDE.md
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | The two sentences at 161-163 rewritten. They no longer name `PromptsView` / `TodosPanelView`, which declare no toolbar content after T1 and T2, and state the merge-order rule on its own: a nested view's toolbar content merges after the enclosing view's, so a nested view puts the break that separates the two groups before its own items where a top-level view puts it after. Same length, three lines. The `ToolbarGroupBreak` sentence that follows is byte-identical, and no other paragraph changed. |
+
+**Evidence**
+
+No regression test was written: spec decision 18 and plan decision 12 settle that this task adds
+none, and this task edits no code at all. There is therefore no watched failure to quote. The pin is
+the existing suite staying green unchanged — 535 tests, 0 failures, no file under `Tests/` edited.
+
+Acceptance criteria checked directly:
+
+- `grep -n "PromptsView\|TodosPanelView" CLAUDE.md` → no output, exit 1.
+- `git diff CLAUDE.md` → one hunk, 3 lines replaced by 3, inside the `.toolbar` paragraph only.
+- `git diff --name-only` → `CLAUDE.md` and this plan document; no Swift source changed.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.

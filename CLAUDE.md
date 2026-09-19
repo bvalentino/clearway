@@ -158,9 +158,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
     `placement:` — which is why the worktree toolbar now hangs off `detailView` rather than the split
     view, and why `CommandsView` declares its own `+` and filter picker on its own root view.
-    A nested view's toolbar content merges **after** the enclosing view's, so the aside panels'
-    (`PromptsView`, `TodosPanelView`) items arrive behind `detailView`'s four worktree buttons: the
-    spacer that separates their `+` from those buttons precedes it, where every other view's follows.
+    A nested view's toolbar content merges **after** the enclosing view's, so its items arrive
+    behind them: a nested view puts the break that separates the two groups before its own items,
+    where a top-level view puts it after.
     Every such break is a `ToolbarGroupBreak` (`Sources/App/ToolbarGroupBreak.swift`), which holds
     the macOS 26 availability check `ToolbarSpacer` needs in one place.
     `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
