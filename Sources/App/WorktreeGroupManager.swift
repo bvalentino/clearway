@@ -11,14 +11,25 @@ import SwiftUI
 @MainActor
 final class WorktreeGroupManager: ObservableObject {
     @Published private(set) var groups: [WorktreeGroup] = []
-    /// Group membership, keyed by `Worktree.id`, backed by each worktree's own `clearway.group`.
-    /// A worktree naming a group the registry does not list is absent here, so it renders
-    /// ungrouped. Main is never a key.
-    @Published private(set) var groupNames: [String: String] = [:]
-    /// Sidebar position within a section, keyed by `Worktree.id` and backed by each worktree's own
-    /// `clearway.position`. A worktree without one sorts after those that have one. Main is never
-    /// a key.
-    @Published private(set) var positions: [String: Int] = [:]
+
+    /// Where each non-main worktree sits in the sidebar. A drop changes both halves at once, and
+    /// `mutatePlacement` is the only way either changes, so one gesture publishes one value.
+    private struct Placement: Equatable {
+        /// Group membership, keyed by `Worktree.id`, backed by each worktree's own
+        /// `clearway.group`. A worktree naming a group the registry does not list is absent here,
+        /// so it renders ungrouped. Main is never a key.
+        var groupNames: [String: String] = [:]
+        /// Position within a section, keyed by `Worktree.id` and backed by each worktree's own
+        /// `clearway.position`. A worktree without one sorts after those that have one. Main is
+        /// never a key.
+        var positions: [String: Int] = [:]
+    }
+
+    @Published private var placement = Placement()
+
+    var groupNames: [String: String] { placement.groupNames }
+    var positions: [String: Int] { placement.positions }
+
     /// Per-worktree status, keyed by `Worktree.id`, backed by each worktree's own git config.
     /// Main is never a key.
     @Published private(set) var statuses: [String: WorktreeStatus] = [:]
@@ -82,7 +93,9 @@ final class WorktreeGroupManager: ObservableObject {
         else { return }
         let members = members(ofGroupNamed: name)
         groups[index].name = trimmed
-        for id in members { groupNames[id] = trimmed }
+        mutatePlacement { placement in
+            for id in members { placement.groupNames[id] = trimmed }
+        }
         writeRegistry(settingGroup: trimmed, on: members)
     }
 
@@ -102,8 +115,11 @@ final class WorktreeGroupManager: ObservableObject {
             next += 1
         }
         groups.removeAll { $0.name == name }
-        for id in members { groupNames.removeValue(forKey: id) }
-        applyPositions(appended)
+        mutatePlacement { placement in
+            for id in members { placement.groupNames.removeValue(forKey: id) }
+            for (id, position) in appended { placement.positions[id] = position }
+        }
+        writePositions(appended)
         writeRegistry(settingGroup: nil, on: members)
     }
 
@@ -118,8 +134,10 @@ final class WorktreeGroupManager: ObservableObject {
         // NSTableView mid-drag when the drop lands on the worktree's own group header.
         guard groupNames[wt.id] != name else { return }
         let position = (maxPosition(inSectionNamed: name) ?? -1) + 1
-        groupNames[wt.id] = name
-        positions[wt.id] = position
+        mutatePlacement { placement in
+            placement.groupNames[wt.id] = name
+            placement.positions[wt.id] = position
+        }
         enqueueWrite { configStore in
             await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
             await configStore.set(
@@ -134,8 +152,10 @@ final class WorktreeGroupManager: ObservableObject {
     func removeWorktreeFromGroup(_ wt: Worktree) {
         guard let path = wt.path, groupNames[wt.id] != nil else { return }
         let position = (maxPosition(inSectionNamed: nil) ?? -1) + 1
-        groupNames.removeValue(forKey: wt.id)
-        positions[wt.id] = position
+        mutatePlacement { placement in
+            placement.groupNames.removeValue(forKey: wt.id)
+            placement.positions[wt.id] = position
+        }
         enqueueWrite { configStore in
             await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
             await configStore.set(
@@ -367,8 +387,10 @@ final class WorktreeGroupManager: ObservableObject {
             // does not list is dropped rather than rendering a phantom section.
             let listed = Set(reloadedGroups.map(\.name))
             let reloadedNames = reloaded.groupNames.filter { listed.contains($0.value) }
-            if reloadedNames != groupNames { groupNames = reloadedNames }
-            if reloaded.positions != positions { positions = reloaded.positions }
+            mutatePlacement { placement in
+                placement.groupNames = reloadedNames
+                placement.positions = reloaded.positions
+            }
             if reloaded.names != names { names = reloaded.names }
             if reloaded.statuses != statuses { statuses = reloaded.statuses }
             return
@@ -545,9 +567,22 @@ final class WorktreeGroupManager: ObservableObject {
         return ordered(members, openIds: openIds).map { (id: $0.id, position: positions[$0.id]) }
     }
 
+    private func mutatePlacement(_ change: (inout Placement) -> Void) {
+        var next = placement
+        change(&next)
+        guard next != placement else { return }
+        placement = next
+    }
+
     private func applyPositions(_ changed: [String: Int]) {
+        mutatePlacement { placement in
+            for (id, position) in changed { placement.positions[id] = position }
+        }
+        writePositions(changed)
+    }
+
+    private func writePositions(_ changed: [String: Int]) {
         guard !changed.isEmpty else { return }
-        for (id, position) in changed { positions[id] = position }
         enqueueWrite { configStore in
             for (path, position) in changed {
                 await configStore.set(

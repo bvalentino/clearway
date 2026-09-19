@@ -1157,3 +1157,36 @@ ones git still held. Only exit 1 means absent, and every other refusal now answe
 **Finding 5 (nit, fixed) — a blank registry value rendered a nameless section** with a live drop
 target whose drop `set` discards as a clear, so the row snapped back on the next reload.
 `registered` drops it alongside the repeat it already dropped.
+
+### One publish per drop
+
+The PR review's remaining finding: `addWorktree` published twice per drop where `ec12656` mutated a
+local copy and published a single `groups` assignment. A reorder was worse — `applyPositions` wrote
+`positions[id]` per changed row, so `objectWillChange` fired once per row moved.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `groupNames` and `positions` moved into one `private struct Placement` behind `@Published private var placement`, read through two computed accessors of the same names. Every mutation of either goes through `mutatePlacement`, which builds the whole change on a local copy and publishes one assignment. `applyPositions` split into the publish and `writePositions`, so `deleteGroup` publishes its members' membership *and* their new slots in one mutation. `reloadConfig`'s two `if … != … { … = … }` lines became one. |
+| `Tests/WorktreeGroupManagerTests.swift` | Gains `testAddWorktreePublishesOnce` and `testReorderPublishesOnce`, counting `objectWillChange` emissions over the gesture through a private `countingEmissions` helper. |
+
+**Evidence.** Both watched failing against `9651a2d`'s exact `WorktreeGroupManager.swift`, restored
+into the tree from the session scratchpad afterwards — nothing reverted through git:
+
+```
+✖ testAddWorktreePublishesOnce, XCTAssertEqual failed: ("2") is not equal to ("1")
+✖ testReorderPublishesOnce, XCTAssertEqual failed: ("2") is not equal to ("1")
+```
+
+A first attempt reproduced the bug by having `mutatePlacement` pass `&placement` straight through,
+and both tests passed: an `inout` access to a `@Published` property is one read-modify-write, so it
+publishes once however many mutations the callee makes. Only separate statements against the wrapped
+value publish separately, which is why the shape the fix replaces had to be restored in full to see
+it fail.
+
+The explanatory comment `ec12656` carried was not reintroduced; `Placement` and `mutatePlacement`
+carry the rule, and the two tests hold it.
+
+**Gate:** `./scripts/ci.sh` — green. `Executed 550 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` This run also covers `9651a2d`, which was committed without one.

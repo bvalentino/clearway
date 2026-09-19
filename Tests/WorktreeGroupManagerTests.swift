@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Clearway
 
@@ -123,6 +124,49 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertNil(manager.groupName(for: wt.id))
+    }
+
+    // MARK: - One publish per drop
+
+    /// A drop changes a worktree's group and its slot together. Publishing them as two mutations
+    /// fires `objectWillChange` twice, which re-enters the sidebar's `NSTableView` mid-animation
+    /// and crashes it.
+    func testAddWorktreePublishesOnce() async throws {
+        manager.createGroup(named: "Group")
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
+
+        let emissions = countingEmissions {
+            manager.addWorktree(wt, toGroupNamed: "Group")
+        }
+
+        XCTAssertEqual(emissions, 1)
+    }
+
+    /// Same rule for the reorder drop, which moves a slot per row: writing the slots one by one
+    /// fires once per row moved.
+    func testReorderPublishesOnce() async throws {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
+        let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
+        let all = [alpha, bravo, charlie]
+        manager.seedPositions(for: all, openIds: [])
+
+        let emissions = countingEmissions {
+            manager.setUngroupedOrder([charlie.id, bravo.id, alpha.id], in: all, openIds: [])
+        }
+
+        XCTAssertEqual(manager.positions.count, 3, "the reorder moved more than one row")
+        XCTAssertEqual(emissions, 1)
+    }
+
+    /// `objectWillChange` emissions while `body` runs. Nothing else publishes: the base class has
+    /// already awaited the load, and a config write publishes nothing of its own.
+    private func countingEmissions(_ body: () -> Void) -> Int {
+        var emissions = 0
+        let subscription = manager.objectWillChange.sink { emissions += 1 }
+        body()
+        subscription.cancel()
+        return emissions
     }
 
     // MARK: - groupName(for:)
