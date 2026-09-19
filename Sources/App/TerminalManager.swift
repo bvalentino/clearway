@@ -149,7 +149,7 @@ class TerminalManager: ObservableObject {
             openWorktreeIds.append(key)
         }
 
-        setInitialPanelVisibility(for: key, worktree: worktree)
+        setInitialPanelVisibility(for: key)
 
         // No main command configured → skip the launcher screen entirely.
         if mainCommandProvider() == nil {
@@ -168,14 +168,11 @@ class TerminalManager: ObservableObject {
     /// creation so manual Cmd+J toggles afterwards are preserved.
     var openSecondaryOnStartProvider: () -> Bool = { false }
 
-    /// Initial panel visibility for a fresh pane. Aside is main-gated; secondary
-    /// follows `openSecondaryOnStartProvider()` for every worktree.
+    /// Initial panel visibility for a fresh pane. The aside stays hidden until the user
+    /// opens it; secondary follows `openSecondaryOnStartProvider()` for every worktree.
     /// Internal (not private) so unit tests can drive it without spinning up a
     /// real `ghostty_app_t` to reach it via `pane(for:app:projectPath:)`.
-    func setInitialPanelVisibility(for key: String, worktree: Worktree) {
-        if !worktree.isMain {
-            asideVisible[key] = true
-        }
+    func setInitialPanelVisibility(for key: String) {
         secondaryVisible[key] = openSecondaryOnStartProvider()
     }
 
@@ -287,7 +284,7 @@ class TerminalManager: ObservableObject {
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
             }
-            setInitialPanelVisibility(for: key, worktree: worktree)
+            setInitialPanelVisibility(for: key)
         }
 
         // A login shell focuses via `promoteLauncher`. Otherwise the tab stays a launcher, so

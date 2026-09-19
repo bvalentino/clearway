@@ -8,35 +8,31 @@ final class TerminalManagerTests: XCTestCase {
 
     // MARK: - setInitialPanelVisibility
 
-    func test_setInitialPanelVisibility_mainWorktree_secondaryFollowsProvider() {
-        let manager = TerminalManager()
-        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
-
-        manager.openSecondaryOnStartProvider = { false }
-        manager.setInitialPanelVisibility(for: main.id, worktree: main)
-        XCTAssertFalse(manager.isSecondaryVisible(for: main.id))
-        XCTAssertFalse(manager.isAsideVisible(for: main.id), "aside stays hidden on the main worktree")
-
-        let other = makeWorktree(branch: "main-2", path: "/tmp/main-2", isMain: true)
-        manager.openSecondaryOnStartProvider = { true }
-        manager.setInitialPanelVisibility(for: other.id, worktree: other)
-        XCTAssertTrue(manager.isSecondaryVisible(for: other.id))
-    }
-
-    func test_setInitialPanelVisibility_nonMainWorktree_asideAlwaysOn_secondaryFollowsProvider() {
+    func test_setInitialPanelVisibility_secondaryFollowsProvider() {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
 
         manager.openSecondaryOnStartProvider = { false }
-        manager.setInitialPanelVisibility(for: wt.id, worktree: wt)
-        XCTAssertTrue(manager.isAsideVisible(for: wt.id))
+        manager.setInitialPanelVisibility(for: wt.id)
         XCTAssertFalse(manager.isSecondaryVisible(for: wt.id))
 
         let wt2 = makeWorktree(branch: "feature-2", path: "/tmp/feature-2", isMain: false)
         manager.openSecondaryOnStartProvider = { true }
-        manager.setInitialPanelVisibility(for: wt2.id, worktree: wt2)
-        XCTAssertTrue(manager.isAsideVisible(for: wt2.id))
+        manager.setInitialPanelVisibility(for: wt2.id)
         XCTAssertTrue(manager.isSecondaryVisible(for: wt2.id))
+    }
+
+    func test_setInitialPanelVisibility_asideStaysHidden() {
+        let manager = TerminalManager()
+        let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+
+        manager.setInitialPanelVisibility(for: main.id)
+        manager.setInitialPanelVisibility(for: wt.id)
+
+        XCTAssertFalse(manager.isAsideVisible(for: main.id))
+        XCTAssertFalse(manager.isAsideVisible(for: wt.id),
+                       "the aside opens only when the user asks for it")
     }
 
     func test_setInitialPanelVisibility_providerChangeDoesNotMutateExistingPane() {
@@ -44,7 +40,7 @@ final class TerminalManagerTests: XCTestCase {
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
 
         manager.openSecondaryOnStartProvider = { true }
-        manager.setInitialPanelVisibility(for: wt.id, worktree: wt)
+        manager.setInitialPanelVisibility(for: wt.id)
         XCTAssertTrue(manager.isSecondaryVisible(for: wt.id))
 
         // Flipping the setting after the pane was seeded must not move existing panes —
@@ -64,7 +60,7 @@ final class TerminalManagerTests: XCTestCase {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
 
-        manager.setInitialPanelVisibility(for: wt.id, worktree: wt)
+        manager.setInitialPanelVisibility(for: wt.id)
         XCTAssertFalse(manager.isSecondaryVisible(for: wt.id),
                        "unwired provider must default to the opt-in-safe `false` path")
     }
@@ -80,7 +76,7 @@ final class TerminalManagerTests: XCTestCase {
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
 
         manager.openSecondaryOnStartProvider = { false }
-        manager.setInitialPanelVisibility(for: wt.id, worktree: wt)
+        manager.setInitialPanelVisibility(for: wt.id)
         XCTAssertFalse(manager.isSecondaryVisible(for: wt.id), "precondition: secondary starts hidden")
 
         manager.revealSecondaryForHook(for: wt.id)
