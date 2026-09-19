@@ -14,8 +14,6 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Main Terminal")
-            } footer: {
-                Text("Choose \"None\" to open new tabs directly in a login shell.")
             }
 
             Section("Appearance") {

@@ -600,6 +600,7 @@ XCTest, which is why the decision rules were lifted into `agentMenuRows`, `build
 **Files touched**
 
 - `CLAUDE.md`
+- `Sources/App/SettingsView.swift` (Changelog entry 1)
 
 **What it does**
 
@@ -628,12 +629,13 @@ Brings the architecture notes in line with what shipped. No behaviour change.
 
 - `CLAUDE.md` names no removed symbol.
 - The retired-shortcut convention lists ⌘⇧T.
+- Settings → Main Terminal renders its picker with no footer (Changelog entry 1).
 
 **Verification**
 
 - `grep -n 'appendLauncherTab\|startsAsLoginShell\|newShellTabAction\|prompt launcher' CLAUDE.md`
   returns nothing.
-- `./scripts/ci.sh` passes (unchanged by this task, run because sign-off follows it).
+- `./scripts/ci.sh` passes (run because sign-off follows it).
 
 ## Risks
 
@@ -642,9 +644,20 @@ Brings the architecture notes in line with what shipped. No behaviour change.
 | The `+` menu declares ⌘T and ⌥⌘T a second time, and a view-hierarchy declaration beats a menu item (`CLAUDE.md`, `PanelCommands.swift`) | Low | Both declarations run the same action on the same worktree, so whichever wins is correct. `.keyboardShortcut` is the only way to render the glyph the spec requires. Noted in the source beside the menu. |
 | A cold first launch makes `awaitPath()` slow, so a worktree's first agent tab holds an empty panel for seconds | Low | The in-flight marker means it holds blank rather than flashing the empty state, and `ClearwayApp.init` starts the resolution eagerly (spec Assumption 5). No spinner: the spec asks for no new copy. |
 | `ContentView.swift` is past SwiftLint's `file_length` error and survives on a file-wide disable | Low | T3 adds three lines and T5 removes ~35. If the build agent trips the limit in T3, split the file before adding. |
-| Settings → Main Terminal's footer ("Choose \"None\" to open new tabs directly in a login shell") is now inaccurate — ⌘T always opens a login shell | Low | Explicitly out of scope per the spec. Left as-is; recorded as a follow-up. |
+| Settings → Main Terminal's footer ("Choose \"None\" to open new tabs directly in a login shell") is now inaccurate — ⌘T always opens a login shell | Low | Resolved: the operator folded its removal into T7 (spec Decision 18, Changelog entry 1). |
 | A staged agent prompt (autoRun off) always pays `awaitShellPrompt`'s full 750 ms, since an agent emits no OSC 7 `pwd` | Low | Accepted by spec Decision 13 — argv delivery cannot stage, and this is the closest surviving equivalent. |
 | A prompt temp file leaks when its tab is closed before the agent exits (SIGHUP skips the recipe's `rm -f`) | Low | Pre-existing for every agent tab; the launcher had the same exposure after promotion. Not fixed here. |
+
+## Changelog
+
+Scope the operator added after the plan was written. Each entry names the task that carried it, so
+no later stage reverts it as unintentional.
+
+1. **Remove Settings → Main Terminal's footer copy** — carried by T7. The footer read
+   "Choose \"None\" to open new tabs directly in a login shell", which is false now that ⌘T always
+   opens a login shell whatever the setting holds. Removed rather than reworded: the standing rule
+   is no helper text beneath a setting by default. Recorded as spec Decision 18; the plan's Risks
+   row that deferred it is marked resolved.
 
 ## Build log
 
@@ -913,3 +926,53 @@ Two, both forced by the greps the task's own verification runs.
 `./scripts/ci.sh` — exit status 0 (`==> CI passed.`), `Executed 474 tests, with 0 failures`. Eleven
 fewer than T5's 485: the nine cases in `TerminalTabKindTests` and the two deleted
 `TerminalManagerTests` cases. `git status --porcelain` shows only the tracked files above.
+
+### T7: Update CLAUDE.md
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` — `AppKeyboardShortcuts.swift` bullet | Declaration sites gain the tab strip's `+` menu rows, with the note that they declare ⌘T and ⌥⌘T a second time on purpose (the glyph) and why that duplicate is harmless where `PanelCommands.swift`'s would not be. The retired-pin list is now ⌘⌃2, ⌘⌃3, ⌘⇧T. |
+| `CLAUDE.md` — `PanelCommands.swift` bullet | `newTabAction` / `newShellTabAction` → `newTabAction` / `newAgentTabAction`. |
+| `CLAUDE.md` — `AgentLaunch.swift` bullet | `agentAllowlist` is `claude`, `codex`, `grok` and has two readers: the Settings picker and `agentMenuRows`, described as the pure `+`-menu row rule living beside the list. `buildAgentPromptCommand` "backs a saved agent command's prompt"; its unquoted-`$1` paragraph is verbatim apart from "the launcher's prompts" → "typical agent prompts". |
+| `CLAUDE.md` — `TerminalManager.appendLauncherTab` bullet | Replaced by an `appendTab` / `startAgentTab` bullet: `appendTab` is the one door, ⌘T and New Terminal pass no command, ⌥⌘T / the agent rows / a worktree's first tab pass a `buildBareCommand` command, and `startAgentTab` is synchronous so its `agentLaunchesInFlight` claim lands before `detailView` can render the empty state. The `startsAsLoginShell` truth table is gone with the method. |
+| `CLAUDE.md` — `TerminalManager.run` bullet | "stage-vs-promote branch" → "shell-vs-agent branch"; nothing promotes any more. |
+| `CLAUDE.md` — `OpenInAppLauncher` bullet | "hung new launcher tabs" → "hung new agent tabs". The parked-pool exposure is unchanged — `startAgentTab` awaits `ShellPathStore` on that same queue — only the name of what hangs. |
+| `Sources/App/SettingsView.swift` | Main Terminal's `footer:` closure deleted (Changelog entry 1). The header, the picker and its "None" row are untouched. |
+| `Sources/App/TerminalManager+Commands.swift` | Type doc no longer says `run` "picks between staging the prompt and promoting the tab" — it opens the tab and either waits for the shell's first prompt or hands the prompt to an agent tab. |
+
+**Evidence**
+
+No test was watched red, and none is added. T7 changes documentation and deletes one `Text` from a
+`Form`; neither has behaviour a test can pin, and `SettingsView` needs a running `SettingsManager`
+scene. Acceptance is structural:
+
+```
+$ grep -n 'appendLauncherTab\|startsAsLoginShell\|newShellTabAction\|prompt launcher\|promoteLauncher\|isLauncher\|PromptLauncherView\|launcherDrafts\|launcherAgents\|stage-vs-promote' CLAUDE.md
+(no output)
+$ grep -ni launcher CLAUDE.md
+232:  - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
+234:    launcher, the one menu view both entry points render, and the Settings section that edits the
+251:    The launcher is `nonisolated` throughout and uses **no** `Process.terminationHandler`: that is a
+```
+
+All three remaining hits are the "Open In" app launcher, which spec success criterion 9 exempts.
+
+**Deviations**
+
+Three, all of them CLAUDE.md or source lines the branch made false that the plan's T7 list did not
+enumerate.
+
+- The `TerminalManager.run` bullet's "stage-vs-promote branch" named a promotion that no longer
+  exists. Reworded; the plan lists five bullets and this is a sixth.
+- The `OpenInAppLauncher` bullet's "hung new launcher tabs" likewise. Reworded rather than deleted:
+  the hazard it records is live, and `startAgentTab` is now what would hang.
+- `Sources/App/TerminalManager+Commands.swift` was touched, though T7 is scoped to `CLAUDE.md`. Its
+  type doc claimed `run` "picks between staging the prompt and promoting the tab", which T3 made
+  false and T6 did not catch. One sentence, no code.
+
+**Gate**
+
+`./scripts/ci.sh` — exit status 0 (`==> CI passed.`), `Executed 474 tests, with 0 failures`. Same
+count as T6: this task adds and removes no test.

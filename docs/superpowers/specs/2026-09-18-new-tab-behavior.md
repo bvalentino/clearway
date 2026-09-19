@@ -33,6 +33,7 @@ terminal it is running in.
 | 15 | Does `canSendToActiveMainTab` survive? | Yes, with its meaning narrowed to "there is an active surface". `TodosPanelView.swift:40` is its one reader and still needs a gate; folding it into `activeMainSurface != nil` at that call site would put the rule in the view. | Spec |
 | 16 | Does `TerminalManager+Launcher.swift` survive? | The file is renamed to `TerminalManager+Agent.swift` and keeps `buildBareCommand` (read by `WorkTaskCoordinator.taskTerminalLaunchCommand`, `WorkTaskCoordinator+TaskTerminal.swift:49`) plus the new async agent-tab append. `promoteLauncherToAgent` goes. | Spec |
 | 17 | Does the "⌘T for a new tab" empty-state copy change? | No. ⌘T still opens a tab, and the strip still hides itself at zero tabs (`MainTerminalTabStrip.swift:96-99`). | Spec |
+| 18 | What happens to Settings → Main Terminal's footer ("Choose \"None\" to open new tabs directly in a login shell")? | Removed entirely, not reworded. It is false now that ⌘T always opens a login shell, and the standing rule is no helper text beneath a setting by default. The "None" picker row stays. | Operator (added at T7) |
 
 ## Assumptions
 
@@ -160,6 +161,7 @@ and `SurfaceView.claimsShortcut` already make:
 | `Sources/App/ClearwayApp.swift` | `NewShellTabMenuItem` and its focused value replaced by a ⌥⌘T "New Agent Tab" item |
 | `Sources/App/AppKeyboardShortcuts.swift` | `[.command, .option]` gains `"t"`; `[.command, .shift]` loses `"t"` |
 | `Sources/App/AgentLaunch.swift` | `agentAllowlist` reordered to claude, codex, grok |
+| `Sources/App/SettingsView.swift` | Main Terminal's footer copy removed (Decision 18) |
 | `Tests/TerminalTabKindTests.swift` | Launcher and draft cases removed; the surviving `MainTerminal` cases kept |
 | `Tests/TerminalManagerTests.swift` | `launcherAgents` and `startsAsLoginShell` cases removed; `buildAgentPromptCommand` / `buildBareCommand` cases kept |
 | `Tests/AppKeyboardShortcutsTests.swift` | ⌘⇧T flips to a not-claimed pin; ⌥⌘T claimed |
@@ -168,7 +170,7 @@ and `SurfaceView.claimsShortcut` already make:
 ## Out of scope
 
 - **The Settings → Main Terminal picker's contents.** Only `agentAllowlist`'s order changes; no
-  agent is added or removed, and the "None" row and its footer copy stay as they are.
+  agent is added or removed, and the "None" row stays. Its footer copy is deleted per Decision 18.
 - **The task terminal.** `WorkTaskCoordinator.toggleTaskTerminal` already skips the launcher and runs
   `buildBareCommand` directly (`WorkTaskCoordinator+TaskTerminal.swift:42-51`). Untouched.
 - **The secondary terminal.** Always a plain shell; no launcher ever reached it.

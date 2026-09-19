@@ -3,8 +3,8 @@ import GhosttyKit
 /// Running a `SavedCommand` in a worktree.
 ///
 /// On the manager rather than in the Run dropdown because a view resolves no worktree and awaits
-/// nothing: this opens the tab, waits for the shell's first prompt, and picks between staging the
-/// prompt and promoting the tab.
+/// nothing: this opens the tab and either waits for the shell's first prompt before sending the
+/// command, or hands the prompt to an agent tab.
 extension TerminalManager {
 
     /// Open a new main-terminal tab in `worktree` and hand it `command`.
