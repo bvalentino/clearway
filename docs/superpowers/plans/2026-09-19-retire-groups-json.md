@@ -678,3 +678,47 @@ because only `setLocal` has a caller that clears on a project that never wrote a
 
 `./scripts/ci.sh` — green. `Executed 551 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 Both config suites present in the run (16 and 17 tests).
+
+### T2: The group-name rule and `NameEntrySheet.isValid`
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroup.swift` | `static isNameAvailable(_:in:renaming:)` beside `sortedByCreation`. Trims whitespace and newlines, rejects an empty result, rejects an exact case-sensitive match in `existing` unless that match is `renaming`. The model is otherwise untouched — `UUID`, `worktreeIds` and `createdAt` stay until T5. |
+| `Sources/App/SidebarSheets.swift` | `NameEntrySheet.allowsEmptyName: Bool` replaced by `isValid: (String) -> Bool`; the confirm button's `.disabled` reads `!isValid(name)`. The type's doc comment names `isValid` as what separates the three call sites. |
+| `Sources/App/SidebarView.swift` | Rename Worktree passes `isValid: { _ in true }` (clearing the field is how a worktree name is removed). New Group and Rename Group pass `WorktreeGroup.isNameAvailable` over `groupManager.groups.map(\.name)`, Rename Group with `renaming: group.name`. |
+| `Tests/WorktreeGroupTests.swift` (new) | Eight cases: unused name, empty and whitespace-only, exact duplicate, trim-before-compare, case sensitivity, a group keeping its own name while renaming, a rename onto another group's name, a rename to an empty name. |
+
+**Evidence**
+
+The rule was watched failing. `isNameAvailable` was reverted to the naive `!existing.contains(name)`
+— no trim, no empty rejection, no `renaming` exemption — and `xcodebuild -only-testing` on the new
+suite reported 6 of 8 failing where the restored code reports none:
+
+```
+WorktreeGroupTests.swift:32: testAGroupMayKeepItsOwnNameWhileRenaming : XCTAssertTrue failed
+WorktreeGroupTests.swift:14: testAnEmptyOrWhitespaceOnlyNameIsRefused : XCTAssertFalse failed
+WorktreeGroupTests.swift:15: testAnEmptyOrWhitespaceOnlyNameIsRefused : XCTAssertFalse failed
+WorktreeGroupTests.swift:16: testAnEmptyOrWhitespaceOnlyNameIsRefused : XCTAssertFalse failed
+WorktreeGroupTests.swift:41: testARenameToAnEmptyNameIsRefused : XCTAssertFalse failed
+WorktreeGroupTests.swift:24: testTheNameIsTrimmedBeforeComparison : XCTAssertFalse failed
+     Executed 8 tests, with 6 failures (0 unexpected)
+** TEST FAILED **
+```
+
+The model was then restored from a scratchpad copy — no `git checkout` or `git stash`.
+
+**Deviations from the plan**
+
+`isValid` has **no default value**; all three call sites pass one explicitly. The plan asked for a
+default non-empty-after-trim rule "so the Rename Worktree call site keeps today's behaviour without
+passing anything", but Rename Worktree's behaviour today is `allowsEmptyName: true` — the plan says
+so itself two paragraphs later, and passes `{ _ in true }` there. With every call site passing a
+rule, a default would have had no user. Acceptance criterion 2 (`allowsEmptyName` gone, every call
+site compiles) is met either way.
+
+**Gate**
+
+`./scripts/ci.sh` — green. `Executed 559 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
+`WorktreeGroupTests`' eight cases confirmed present in the run's `.xcresult`, all passed.

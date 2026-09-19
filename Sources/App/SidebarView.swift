@@ -143,20 +143,31 @@ struct SidebarView: View {
                 title: "Rename Worktree",
                 confirmTitle: "Save",
                 initialName: groupManager.name(for: wt) ?? "",
-                allowsEmptyName: true
+                isValid: { _ in true }
             ) { newName in
                 groupManager.setName(newName, for: wt)
                 worktreeToRename = nil
             }
         }
         .sheet(item: $groupToRename) { group in
-            NameEntrySheet(title: "Rename Group", confirmTitle: "Save", initialName: group.name) { newName in
+            NameEntrySheet(
+                title: "Rename Group",
+                confirmTitle: "Save",
+                initialName: group.name,
+                isValid: {
+                    WorktreeGroup.isNameAvailable($0, in: groupManager.groups.map(\.name), renaming: group.name)
+                }
+            ) { newName in
                 groupManager.renameGroup(id: group.id, to: newName)
                 groupToRename = nil
             }
         }
         .sheet(isPresented: $showingNewGroupSheet) {
-            NameEntrySheet(title: "New Group", confirmTitle: "Create") { name in
+            NameEntrySheet(
+                title: "New Group",
+                confirmTitle: "Create",
+                isValid: { WorktreeGroup.isNameAvailable($0, in: groupManager.groups.map(\.name)) }
+            ) { name in
                 groupManager.createGroup(named: name)
                 showingNewGroupSheet = false
             }
