@@ -159,8 +159,8 @@ struct MainTerminalTabStrip: View {
             .onChange(of: tabs.last?.id) { newLastId in
                 guard let newLastId else { return }
                 // Defer to the next runloop tick so SwiftUI finishes laying out
-                // the appended chip (and any synchronous follow-up mutations like
-                // `promoteLauncher`) before we ask for the new trailing offset.
+                // the appended chip before we ask for the new trailing offset — an agent
+                // tab is appended from a `Task`, so the chip arrives after this fires.
                 DispatchQueue.main.async {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(newLastId, anchor: .trailing)
@@ -215,7 +215,6 @@ struct MainTerminalTabStrip: View {
         terminalManager.startAgentTab(for: worktree, app: app, command: command)
     }
 
-    @ViewBuilder
     private func chip(for tab: TerminalTab, isActive: Bool) -> some View {
         let onActivate = { terminalManager.activateMainTab(id: tab.id, in: worktreeId) }
         let onClose = { onCloseTab(tab.id, worktreeId) }
@@ -230,25 +229,13 @@ struct MainTerminalTabStrip: View {
             }
         }
 
-        switch tab.kind {
-        case .launcher:
-            TabChip(
-                title: "New Tab",
-                isActive: isActive,
-                onActivate: onActivate,
-                onClose: onClose,
-                onCloseOthers: onCloseOthers,
-                onCloseAll: onCloseAll
-            )
-        case .surface(let surface):
-            TerminalTabChip(
-                surface: surface,
-                isActive: isActive,
-                onActivate: onActivate,
-                onClose: onClose,
-                onCloseOthers: onCloseOthers,
-                onCloseAll: onCloseAll
-            )
-        }
+        return TerminalTabChip(
+            surface: tab.surface,
+            isActive: isActive,
+            onActivate: onActivate,
+            onClose: onClose,
+            onCloseOthers: onCloseOthers,
+            onCloseAll: onCloseAll
+        )
     }
 }

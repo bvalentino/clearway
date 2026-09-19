@@ -27,7 +27,6 @@
 		2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1F48D279D802C46C9A7164 /* WorkTask.swift */; };
 		2678B9560A2D12B8CC5C1076 /* ContentViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */; };
 		269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4224CF2CA76BDF5405FD737D /* Ghostty.swift */; };
-		2780C26D99F1C1FCAA846A07 /* TerminalTabKindTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6AC6A1436F22549F83FB805 /* TerminalTabKindTests.swift */; };
 		2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */; };
 		2B1679975B653C03C0C03FFF /* WorkTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819821F4A2EB895AB2B55BA7 /* WorkTaskTests.swift */; };
 		2C1E1DCD291D6CADCBD570B2 /* ShellEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285166667E4C68C074F90329 /* ShellEnvironmentTests.swift */; };
@@ -305,7 +304,6 @@
 		EEAFD2DD699CB260EDDA8BE4 /* PortScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortScanner.swift; sourceTree = "<group>"; };
 		EF5D6B020A6E238AE1AE099E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F58C19D17C1DABAEC75CBD3C /* WorktreeSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeSettingsSheet.swift; sourceTree = "<group>"; };
-		F6AC6A1436F22549F83FB805 /* TerminalTabKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabKindTests.swift; sourceTree = "<group>"; };
 		F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinator.swift; sourceTree = "<group>"; };
 		F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyShellTests.swift; sourceTree = "<group>"; };
 		FA1D6938F91E5CBDA6AFF4C9 /* LabeledField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabeledField.swift; sourceTree = "<group>"; };
@@ -369,7 +367,6 @@
 				4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */,
 				FDF7B3E29694A7B5EB76D1CC /* TaskTerminalLaunchCommandTests.swift */,
 				559C61A49130CBB58157612B /* TerminalManagerTests.swift */,
-				F6AC6A1436F22549F83FB805 /* TerminalTabKindTests.swift */,
 				0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */,
 				1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */,
 				945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */,
@@ -907,7 +904,6 @@
 				AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */,
 				E102F5FC5B4AA0762DEB4A33 /* TaskTerminalLaunchCommandTests.swift in Sources */,
 				75AE7FFC553C6C15E5FEC328 /* TerminalManagerTests.swift in Sources */,
-				2780C26D99F1C1FCAA846A07 /* TerminalTabKindTests.swift in Sources */,
 				D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */,
 				1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */,
 				12AD5E5827F35FCBB3875D86 /* WorkTaskManagerTests.swift in Sources */,

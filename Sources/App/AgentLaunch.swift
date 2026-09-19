@@ -31,7 +31,7 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 ///
 /// Practical ceiling: the full prompt becomes one argv element for the agent process.
 /// Prompts near the OS `ARG_MAX` (~1 MB on recent macOS) can fail with "Argument list too
-/// long". Typical prompt-launcher prompts are well under that.
+/// long". Typical agent prompts are well under that.
 ///
 /// - Returns: The shell command string and the prompt file path (callers that tear down
 ///   surfaces early can delete the file if the agent never ran).

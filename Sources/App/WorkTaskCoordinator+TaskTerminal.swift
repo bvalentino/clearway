@@ -42,8 +42,8 @@ extension WorkTaskCoordinator {
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.
     func taskTerminalLaunchCommand() -> ((String) -> String)? {
-        // The same seam the launcher asks "is a main terminal command configured, or do we drop
-        // straight to a login shell?" — trimmed, and nil when the setting is blank.
+        // The same seam a worktree's first tab asks: is a main terminal command configured, or do
+        // we drop straight to a login shell? Nil when the setting is blank.
         guard let command = terminalManager.mainCommandProvider() else { return nil }
         return { [terminalManager] path in
             terminalManager.buildBareCommand(agentCommand: command, path: path)
