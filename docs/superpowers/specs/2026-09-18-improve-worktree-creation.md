@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-18
 **Base:** 7ae81c1e (`Add worktree statuses and three sidebar view modes (#220)`)
+**PR:** #226
 
 The New Worktree sheet takes a branch name, a base branch and a fetch toggle — three pieces of git
 plumbing and nothing about the work. This change puts a **Name** and a **Status** at the top of the
