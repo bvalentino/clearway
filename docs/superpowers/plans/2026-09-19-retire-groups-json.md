@@ -722,3 +722,52 @@ site compiles) is met either way.
 
 `./scripts/ci.sh` — green. `Executed 559 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 `WorktreeGroupTests`' eight cases confirmed present in the run's `.xcresult`, all passed.
+
+### T3: One git-backed manager test base; retired cases deleted
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupStoreTests.swift` | Deleted (17 cases). The store it covers goes in T5. |
+| `Tests/TestHelpers.swift` | `GroupsFile`, `groupsFilePath` and `groupsFileExists` gone. `WorktreeGroupManagerTestCase` and `WorktreeGroupManagerGitTestCase` merged into the latter: one base, which builds the `GitRepoFixture` over the scratch root and then the manager, with `prepareProjectRoot()` collapsed into `setUp`. The fixed 100 ms `setUp` sleep is replaced by `waitForInitialLoad()`, a `waitFor` poll. |
+| `Tests/WorktreeGroupManagerTests.swift` | Superclass is the merged base. `testRoundTripPersistsToDisk`, `testReconcileDropsPhantomIds`, `testReconcileNoOpWhenNoPruningNeeded`, `testDuplicateStoredDefaultOrderDoesNotDuplicateRows` and `testIdStoredInTwoGroupsDoesNotDuplicateRows` deleted, with the now-empty `reconcile(_:)` MARK. 23 cases remain. |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | The migration block and the `setGrouping` pair deleted, along with `writeGroupsFile` (both overloads), `reopenedManager` and `waitForGroupsFileWithoutStatuses`; the three `groupsFileExists` assertions dropped. 13 cases remain. |
+
+Nothing in `Sources/` changed. `Clearway.xcodeproj/project.pbxproj` lost the deleted file's three
+entries when `ci.sh` ran `xcodegen generate`.
+
+**Deviations from the plan**
+
+- The plan's `:75-177` range for the migration block also spans `// MARK: - setGrouping`. Both of
+  its cases went with it, and they had to: `testSetGroupingPublishesAndPersists` asserts through
+  `WorktreeGroupStore(projectPath:)` and `testSetGroupingToTheCurrentValueWritesNothing` through
+  `groupsFileExists`, which acceptance criterion 1 forbids. T6 case 7 re-adds the round trip.
+- `testStatusStoredAgainstMainIsIgnoredOnTheReadPath` was deleted too, though the plan does not name
+  it. It seeds `statuses` by writing a legacy `groups.json` through `GroupsFile`, so it cannot
+  survive the helper's removal, and after T5 nothing can put main's id into `statuses` at all —
+  `readConfig` skips main. `setStatus`'s own refusal of main stays covered by
+  `testSetStatusIgnoresTheMainWorktree`.
+- `testReconcileDropsAnAbsentWorktreeWithoutSaving` lost its `groupsFileExists` assertion and is
+  renamed `testReconcileDropsAnAbsentWorktree`; the surviving assertion is the published map.
+- Two surviving doc comments that named `groups.json` were reworded rather than left for T7, whose
+  file list does not include this suite. `Tests/WorktreeConfigStoreTests.swift:226` still names the
+  file and is not in T7's list either — see Follow-ups.
+
+**Evidence**
+
+There is no new behaviour here, so there is no regression test to watch fail. The one new mechanism
+is `waitForInitialLoad`, and it was probed rather than assumed: `TestHelpers.swift` was copied to
+the session scratchpad, the call removed from `setUp`, and the two manager suites run on their own.
+They **passed** — `Executed 36 tests, with 0 failures (0 unexpected)`, `** TEST SUCCEEDED **` — so
+the clobber the deleted sleep guarded against does not reproduce on this machine. The guard is
+therefore carried over, not newly proven: the race it covers is an ordering one (the `init` load
+republishing `groups` over a mutation a test body already made), and losing the only protection
+against it on one green run would be trading a documented guard for nothing. The file was restored
+from the scratchpad copy — no `git checkout`, no `git stash`.
+
+**Gate**
+
+`./scripts/ci.sh` — green. `Executed 529 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
+All three manager suites confirmed present in the run's `.xcresult`: `WorktreeGroupManagerTests` 23
+passed, `WorktreeGroupManagerStatusTests` 13 passed, `WorktreeGroupManagerNameTests` 11 passed.

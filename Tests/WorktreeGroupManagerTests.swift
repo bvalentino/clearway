@@ -1,7 +1,7 @@
 import XCTest
 @testable import Clearway
 
-final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
+final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - createGroup / renameGroup / deleteGroup round-trip
 
@@ -41,17 +41,6 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertTrue(manager.groups.isEmpty)
-    }
-
-    func testRoundTripPersistsToDisk() async throws {
-        manager.createGroup(named: "Persisted")
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        // Re-load a fresh manager from the same path.
-        let manager2 = WorktreeGroupManager(projectPath: tempRoot)
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        XCTAssertEqual(manager2.groups.map(\.name), ["Persisted"])
     }
 
     // MARK: - addWorktree / removeWorktreeFromAllGroups
@@ -149,59 +138,6 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
     func testGroupIdForUngroupedWorktreeIsNil() {
         let wt = makeWorktree(branch: "ungrouped", path: "/tmp/ungrouped")
         XCTAssertNil(manager.groupId(for: wt.id))
-    }
-
-    // MARK: - reconcile(_:)
-
-    func testReconcileDropsPhantomIds() async throws {
-        manager.createGroup(named: "RecGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        guard let group = manager.groups.first else {
-            XCTFail("Expected one group")
-            return
-        }
-
-        let alive = makeWorktree(branch: "alive", path: "/tmp/alive")
-        let dead = makeWorktree(branch: "dead", path: "/tmp/dead")
-        manager.addWorktree(alive, toGroup: group.id)
-        // Sleep between adds so the first save's watcher callback settles before
-        // the second addWorktree mutates state. Without the sleep the watcher can
-        // reload the just-written ["alive"] file and overwrite the in-memory
-        // ["alive", "dead"] state (the equality guard doesn't protect against this
-        // because the callback sees ["alive"] != ["alive", "dead"]).
-        try await Task.sleep(nanoseconds: 150_000_000)
-        manager.addWorktree(dead, toGroup: group.id)
-        try await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertEqual(manager.groups.first?.worktreeIds.count, 2)
-
-        // Reconcile with only the alive worktree known.
-        manager.reconcile([alive])
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        let ids = manager.groups.first?.worktreeIds ?? []
-        XCTAssertEqual(ids, [alive.id], "phantom id should be pruned")
-    }
-
-    func testReconcileNoOpWhenNoPruningNeeded() async throws {
-        manager.createGroup(named: "StableGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        guard let group = manager.groups.first else {
-            XCTFail("Expected one group")
-            return
-        }
-
-        let wt = makeWorktree(branch: "stable", path: "/tmp/stable")
-        manager.addWorktree(wt, toGroup: group.id)
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        let snapshotGroups = manager.groups
-
-        // Reconcile with the worktree still present — nothing should change.
-        manager.reconcile([wt])
-
-        XCTAssertEqual(manager.groups, snapshotGroups, "groups must be unchanged when no pruning occurs")
     }
 
     // MARK: - sidebarOrderedWorktrees
@@ -489,8 +425,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         XCTAssertEqual(manager.defaultOrder, [fresh.id, stored.id])
     }
 
-    /// An externally edited `groups.json` can record the same id twice, which renders the row
-    /// twice. A drag must collapse that, not add a third copy.
+    /// A stored order can record the same id twice, which renders the row twice. A drag must
+    /// collapse that, not add a third copy.
     func testSetDefaultOrderCollapsesADuplicateStoredId() async throws {
         manager.setDefaultOrder(["/tmp/a", "/tmp/a", "/tmp/b"])
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -500,56 +436,6 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.defaultOrder, ["/tmp/b", "/tmp/a"])
-    }
-
-    /// A stored duplicate survives until a drag collapses it, so the order must emit the
-    /// worktree once regardless: `SidebarView.shortcutIndexes` builds a uniquely-keyed
-    /// dictionary over the first nine rows and traps on a repeat.
-    func testDuplicateStoredDefaultOrderDoesNotDuplicateRows() async throws {
-        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
-        manager.setDefaultOrder([alpha.id, alpha.id])
-        try await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertEqual(manager.defaultOrder, [alpha.id, alpha.id], "precondition: the duplicate is stored")
-
-        let result = manager.sidebarOrderedWorktrees(
-            [alpha],
-            showingDetached: false,
-            openIds: [],
-            matches: { _ in true }
-        )
-
-        XCTAssertEqual(result.map(\.id), [alpha.id])
-    }
-
-    /// The other feeder of that trap, and the reachable one: `addWorktree` strips the id from
-    /// every group first, but a hand-edited or merged `groups.json` can list it in two, and
-    /// `groupId(for:)` resolves only the first — so both group loops emit the same row.
-    func testIdStoredInTwoGroupsDoesNotDuplicateRows() async throws {
-        manager.createGroup(named: "Alpha")
-        try await Task.sleep(nanoseconds: 150_000_000)
-        manager.createGroup(named: "Bravo")
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        let ids = manager.groups.map(\.id)
-        guard ids.count == 2 else {
-            XCTFail("Expected two groups, got \(ids.count)")
-            return
-        }
-
-        let shared = makeWorktree(branch: "shared", path: "/tmp/shared")
-        manager.setGroupOrder(id: ids[0], ids: [shared.id])
-        try await Task.sleep(nanoseconds: 150_000_000)
-        manager.setGroupOrder(id: ids[1], ids: [shared.id])
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        let result = manager.sidebarOrderedWorktrees(
-            [shared],
-            showingDetached: false,
-            openIds: [],
-            matches: { _ in true }
-        )
-
-        XCTAssertEqual(result.map(\.id), [shared.id])
     }
 
     // MARK: - Visibility

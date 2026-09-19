@@ -171,73 +171,37 @@ struct GitRepoFixture {
     }
 }
 
-/// `<root>/.clearway/groups.json`, for the suites that seed or inspect the file directly.
-enum GroupsFile {
-
-    static func path(inProjectRoot root: String) -> String {
-        (root as NSString).appendingPathComponent(".clearway/groups.json")
-    }
-
-    static func write(_ contents: Data, inProjectRoot root: String) throws {
-        let file = path(inProjectRoot: root)
-        try FileManager.default.createDirectory(
-            atPath: (file as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try contents.write(to: URL(fileURLWithPath: file), options: .atomic)
-    }
-}
-
-/// Base for the `WorktreeGroupManager` suites: a manager over the scratch root, plus the
-/// `groups.json` probe the "writes nothing" cases assert on.
-class WorktreeGroupManagerTestCase: TempRootTestCase {
+/// Base for the `WorktreeGroupManager` suites. Every value the manager owns is kept in git
+/// config, so the scratch root is a repository before the manager is built over it.
+class WorktreeGroupManagerGitTestCase: TempRootTestCase {
 
     override class var tempRootPrefix: String { "clearway-manager-tests" }
 
+    var repo: GitRepoFixture!
     var manager: WorktreeGroupManager!
-
-    var groupsFilePath: String {
-        GroupsFile.path(inProjectRoot: tempRoot)
-    }
-
-    var groupsFileExists: Bool {
-        FileManager.default.fileExists(atPath: groupsFilePath)
-    }
 
     override func setUp() async throws {
         try await super.setUp()
-        try prepareProjectRoot()
+        repo = try GitRepoFixture.make(at: tempRoot)
         manager = WorktreeGroupManager(projectPath: tempRoot)
-        // Allow the manager's init Task (store.load + startWatching) to complete before
-        // each test body runs. Without this, the background load() can race with early
-        // createGroup() calls and overwrite the in-memory groups with [].
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitForInitialLoad()
     }
 
     override func tearDown() async throws {
         manager = nil
-        try await super.tearDown()
-    }
-
-    /// Runs after the scratch root exists and before the manager is built over it.
-    func prepareProjectRoot() throws {}
-}
-
-/// Base for the suites whose manager must write real worktree config: the scratch root is a git
-/// repository before the manager is built over it.
-class WorktreeGroupManagerGitTestCase: WorktreeGroupManagerTestCase {
-
-    override class var tempRootPrefix: String { "clearway-manager-git-tests" }
-
-    var repo: GitRepoFixture!
-
-    override func prepareProjectRoot() throws {
-        repo = try GitRepoFixture.make(at: tempRoot)
-    }
-
-    override func tearDown() async throws {
         repo = nil
         try await super.tearDown()
+    }
+
+    /// The manager's `init` load runs on its own Task and republishes everything it owns, so a
+    /// mutation a test body makes before it lands is overwritten. What the load leaves behind is
+    /// the `.clearway` directory: it ends by installing the store's watcher, which falls back to
+    /// watching that directory, and creates it, when there is no file there to open.
+    private func waitForInitialLoad() async throws {
+        let directory = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try await waitFor(true, describing: "the manager's initial load") {
+            FileManager.default.fileExists(atPath: directory)
+        }
     }
 
     /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the

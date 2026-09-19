@@ -17,7 +17,6 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(manager.statuses, [wt.id: .inReview], "the sidebar must not wait on git")
         XCTAssertEqual(manager.status(for: wt), .inReview)
         try await waitForStoredStatus(.inReview, at: path)
-        XCTAssertFalse(groupsFileExists, "a status must write nothing into groups.json")
     }
 
     func testSetStatusNilClearsThePublishedEntryAndTheStoredKey() async throws {
@@ -39,140 +38,10 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         try await Task.sleep(nanoseconds: 300_000_000)
 
         XCTAssertTrue(manager.statuses.isEmpty)
-        XCTAssertFalse(groupsFileExists, "a main-worktree status must write nothing")
         XCTAssertNil(
             try repo.value(ofLocalKey: "extensions.worktreeConfig"),
             "a main-worktree status must not even bootstrap the extension"
         )
-    }
-
-    /// `setStatus` is not the only way an entry lands in `statuses`: a `groups.json` written
-    /// before statuses moved can still carry main's id, and the migration deliberately does not
-    /// filter it out. Honouring one would drop main out of the top of the by-status order with
-    /// no badge or menu to explain it.
-    func testStatusStoredAgainstMainIsIgnoredOnTheReadPath() async throws {
-        let main = makeWorktree(branch: "main", path: repo.root, isMain: true)
-        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
-        try writeGroupsFile(legacyStatuses: [main.id: .done], grouping: .status)
-
-        let reopened = try await reopenedManager()
-
-        XCTAssertNil(reopened.status(for: main))
-        XCTAssertFalse(reopened.matches(main, query: "done", taskTitle: nil))
-        let ordered = reopened.sidebarOrderedWorktrees(
-            [main, alpha],
-            showingDetached: false,
-            openIds: [],
-            matches: { _ in true }
-        )
-        XCTAssertEqual(
-            ordered.map(\.id),
-            [main.id, alpha.id],
-            "main stays ahead of the no-status bucket instead of sinking into Done"
-        )
-    }
-
-    // MARK: - The one-shot groups.json migration
-
-    func testLegacyStatusesMigrateIntoWorktreeConfigAndLeaveTheFile() async throws {
-        let path = try repo.addWorktree(branch: "feature")
-        let wt = makeWorktree(branch: "feature", path: path)
-        try writeGroupsFile(legacyStatuses: [wt.id: .onHold], grouping: .status)
-
-        let reopened = try await reopenedManager()
-
-        XCTAssertEqual(
-            reopened.statuses,
-            [wt.id: .onHold],
-            "published before any subprocess runs, so a launch is never briefly unstatused"
-        )
-        XCTAssertEqual(reopened.grouping, .status)
-        try await waitForStoredStatus(.onHold, at: path)
-        try await waitForGroupsFileWithoutStatuses()
-    }
-
-    /// The migration writes one worktree at a time and a key that is no longer a worktree path
-    /// fails inside `git`. The live one must still land.
-    func testLegacyMigrationSkipsAPathThatNoLongerExists() async throws {
-        let path = try repo.addWorktree(branch: "feature")
-        let wt = makeWorktree(branch: "feature", path: path)
-        try writeGroupsFile(
-            legacyStatuses: [wt.id: .inReview, "/tmp/gone-\(UUID().uuidString)": .done],
-            grouping: .group
-        )
-
-        _ = try await reopenedManager()
-
-        try await waitForStoredStatus(.inReview, at: path)
-        try await waitForGroupsFileWithoutStatuses()
-    }
-
-    /// Writing the statuses to git and deleting the old copy are two halves of one job, and a
-    /// manager released between them would leave `groups.json` claiming to own statuses git
-    /// already holds. The release here is deterministic — it happens as soon as the migration
-    /// publishes, which is before the first `git` of the write chain can have returned — where
-    /// the case above only loses the rewrite when the subprocesses outrun its grace period.
-    func testLegacyMigrationRewritesTheFileAfterItsManagerIsReleased() async throws {
-        let path = try repo.addWorktree(branch: "feature")
-        let wt = makeWorktree(branch: "feature", path: path)
-        try writeGroupsFile(legacyStatuses: [wt.id: .todo], grouping: .group)
-
-        var reopened: WorktreeGroupManager? = WorktreeGroupManager(projectPath: tempRoot)
-        let deadline = Date().addingTimeInterval(5)
-        while reopened?.statuses.isEmpty != false, Date() < deadline {
-            try await Task.sleep(nanoseconds: 1_000_000)
-        }
-        XCTAssertEqual(reopened?.statuses, [wt.id: .todo], "the migration never started")
-        reopened = nil
-
-        try await waitForStoredStatus(.todo, at: path)
-        try await waitForGroupsFileWithoutStatuses()
-    }
-
-    func testInitLoadsAFileThatNeverCarriedStatuses() async throws {
-        try writeGroupsFile(json: #"{"groups":[],"defaultOrder":["/a","/b"],"grouping":"none"}"#)
-
-        let reopened = try await reopenedManager()
-
-        XCTAssertEqual(reopened.defaultOrder, ["/a", "/b"])
-        XCTAssertEqual(reopened.grouping, .none)
-        XCTAssertTrue(reopened.statuses.isEmpty)
-    }
-
-    /// The watcher republishes what the file still owns and nothing else: a hand-edited
-    /// `statuses` key is no longer a source of truth.
-    func testExternalWriteRepublishesGroupingAndIgnoresAStatusesKey() async throws {
-        let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
-
-        try writeGroupsFile(legacyStatuses: [wt.id: .inProgress], grouping: .none)
-
-        let deadline = Date().addingTimeInterval(5)
-        while manager.grouping == .group, Date() < deadline {
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
-        XCTAssertEqual(manager.grouping, .none)
-        XCTAssertTrue(
-            manager.statuses.isEmpty,
-            "the watcher no longer republishes statuses from the file"
-        )
-    }
-
-    // MARK: - setGrouping
-
-    func testSetGroupingPublishesAndPersists() async throws {
-        manager.setGrouping(.status)
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        XCTAssertEqual(manager.grouping, .status)
-        let reloaded = await WorktreeGroupStore(projectPath: tempRoot).load()
-        XCTAssertEqual(reloaded.grouping, .status)
-    }
-
-    func testSetGroupingToTheCurrentValueWritesNothing() async throws {
-        manager.setGrouping(.group)
-        try await Task.sleep(nanoseconds: 150_000_000)
-
-        XCTAssertFalse(groupsFileExists, "an unchanged grouping must not save")
     }
 
     // MARK: - reconcile reads statuses instead of pruning them
@@ -210,8 +79,8 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// A status whose worktree has gone leaves the published map because the reload rebuilds it
-    /// from the live list — not because `reconcile` prunes it, which is why nothing is saved.
-    func testReconcileDropsAnAbsentWorktreeWithoutSaving() async throws {
+    /// from the live list, not because `reconcile` prunes it.
+    func testReconcileDropsAnAbsentWorktree() async throws {
         let alivePath = try repo.addWorktree(branch: "alive")
         let deadPath = try repo.addWorktree(branch: "dead")
         let alive = makeWorktree(branch: "alive", path: alivePath)
@@ -224,7 +93,6 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.reconcile([alive])
 
         try await waitForPublishedStatuses([alive.id: .todo])
-        XCTAssertFalse(groupsFileExists, "reconcile no longer saves a status prune")
     }
 
     // MARK: - sidebarOrderedWorktrees per grouping
@@ -393,33 +261,6 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - Helpers
 
-    /// Writes the pre-change wire format by hand: the payload can no longer encode `statuses`,
-    /// which is the whole point of the migration these cases exercise.
-    private func writeGroupsFile(
-        legacyStatuses: [String: WorktreeStatus],
-        grouping: WorktreeGrouping
-    ) throws {
-        let entries = legacyStatuses
-            .map { "\"\($0.key)\":\"\($0.value.rawValue)\"" }
-            .joined(separator: ",")
-        try writeGroupsFile(
-            json: """
-            {"groups":[],"defaultOrder":[],"statuses":{\(entries)},"grouping":"\(grouping.rawValue)"}
-            """
-        )
-    }
-
-    private func writeGroupsFile(json: String) throws {
-        try GroupsFile.write(Data(json.utf8), inProjectRoot: tempRoot)
-    }
-
-    /// A second manager over the same root, standing in for a relaunch.
-    private func reopenedManager() async throws -> WorktreeGroupManager {
-        let reopened = WorktreeGroupManager(projectPath: tempRoot)
-        try await Task.sleep(nanoseconds: 150_000_000)
-        return reopened
-    }
-
     private func waitForStoredStatus(
         _ expected: WorktreeStatus?,
         at path: String,
@@ -444,17 +285,4 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
             self.manager.statuses
         }
     }
-
-    private func waitForGroupsFileWithoutStatuses(
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        // Decoded rather than grepped: a group or worktree path spelled "statuses" would satisfy
-        // a substring check, and `legacyStatuses` is the only thing the old key can decode into.
-        try await waitFor(true, describing: "groups.json rewritten without statuses", file: file, line: line) {
-            let data = try Data(contentsOf: URL(fileURLWithPath: self.groupsFilePath))
-            return try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data).legacyStatuses.isEmpty
-        }
-    }
-
 }
