@@ -1372,3 +1372,18 @@ leaving a section header and nothing else.
 compiled. `ShellPathResolverTests` did not flake. `git status --porcelain` before the commit showed
 the four touched files and nothing else — no new Swift file, so `xcodegen generate` rewrote no
 `project.pbxproj`, and no `default.profraw` was left behind.
+
+### Rebased onto `origin/main` after #224 and #225
+
+PR #226 went conflicting once `6b1977a` landed on `main`. The only conflicting file was the
+generated `Clearway.xcodeproj/project.pbxproj`, where both sides had added file entries; no source
+file overlapped. All fourteen commits were replayed onto `6b1977a` with `git rebase origin/main`,
+and each of the two conflicting commits was resolved by running `xcodegen generate` and staging the
+regenerated `project.pbxproj` rather than hand-merging it. No commit was otherwise edited; the new
+tip is `f179b43`. `./scripts/ci.sh` passed on the rebased branch — `Executed 524 tests, with 0
+failures (0 unexpected)`, `==> CI passed.`, exit status 0, run after the last edit. It took three
+runs to get there: the first failed only on
+`WorktreeGroupManagerNameTests.testSetNameWhitespaceOnlyClearsThePublishedEntryAndTheStoredKey` and
+the second only on `ShellPathResolverTests.testATimedOutAttemptDoesNotWaitLongerThanTheLimit`, two
+different load-sensitive 5-second deadlines, each of which passes when its class is run alone.
+`git status --porcelain` was empty before the push, with no `default.profraw`.
