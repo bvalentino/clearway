@@ -104,12 +104,13 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try repo.enableWorktreeConfig()
         try repo.setValue("Stored name", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         let wt = makeWorktree(branch: "feature", path: path)
+        await restartManager()
 
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
         try await waitForPublishedName("Stored name", for: wt)
 
         try repo.unsetValue(ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
         try await waitForPublishedName(nil, for: wt)
     }
 
@@ -126,7 +127,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredName("Seed", at: path)
 
         try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
 
         try await waitForPublishedName(nil, for: wt)
         XCTAssertTrue(manager.names.isEmpty)
@@ -140,7 +141,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let wt = makeWorktree(branch: "feature", path: path)
 
         manager.setName("Fresh name", for: wt)
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
 
         try await waitForStoredName("Fresh name", at: path)
         try await Task.sleep(nanoseconds: 300_000_000)

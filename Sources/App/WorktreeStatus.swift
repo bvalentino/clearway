@@ -2,11 +2,7 @@ import SwiftUI
 
 /// A worktree's workflow state. The case names are the slugs stored as `clearway.status` in each
 /// worktree's own git config, so renaming one changes the stored format.
-///
-/// `Encodable` and not `Codable`: reading a slug goes through `init(rawValue:)`, which drops an
-/// unrecognised one. A synthesised `Decodable` would let a `decode([String: WorktreeStatus].self)`
-/// of the legacy `groups.json` key compile and throw the whole map away instead.
-enum WorktreeStatus: String, Encodable, CaseIterable, Identifiable, Hashable {
+enum WorktreeStatus: String, CaseIterable, Identifiable, Hashable {
     case todo
     case inProgress
     case inReview
@@ -61,9 +57,9 @@ struct WorktreeStatusLabel: View {
     }
 }
 
-/// How the sidebar sections its worktrees. Persisted in `groups.json` under the same slug rule,
-/// and `Encodable` only for the same reason.
-enum WorktreeGrouping: String, Encodable, CaseIterable, Identifiable, Hashable {
+/// How the sidebar sections its worktrees. The case names are the slugs stored as the repo-level
+/// `clearway.grouping`, under the same rule.
+enum WorktreeGrouping: String, CaseIterable, Identifiable, Hashable {
     case group
     case status
     case none

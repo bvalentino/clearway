@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Create Worktree Sheet
 
 struct CreateWorktreeSheet: View {
-    let targetGroupId: UUID?
+    let targetGroupName: String?
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @Environment(\.dismiss) private var dismiss
@@ -97,8 +97,8 @@ struct CreateWorktreeSheet: View {
                         case .apply(let worktree):
                             groupManager.setName(draft.name, for: worktree)
                             groupManager.setStatus(status, for: worktree)
-                            if let targetGroupId {
-                                groupManager.addWorktree(worktree, toGroup: targetGroupId)
+                            if let targetGroupName {
+                                groupManager.addWorktree(worktree, toGroupNamed: targetGroupName)
                             }
                             dismiss()
                         case .reportedFailure:
@@ -149,12 +149,12 @@ extension CreateWorktreeSheet {
 // MARK: - Name Entry Sheet
 
 /// The one sheet behind Rename Worktree, Rename Group and New Group: a headline, a single Name
-/// field and a Cancel/confirm row. `allowsEmptyName` is what separates them — a worktree name is
-/// cleared by saving an empty field, while a group must always have one.
+/// field and a Cancel/confirm row. `isValid` is what separates them — a worktree name is cleared
+/// by saving an empty field, while a group's must be non-empty and not already taken.
 struct NameEntrySheet: View {
     let title: String
     let confirmTitle: String
-    let allowsEmptyName: Bool
+    let isValid: (String) -> Bool
     let onConfirm: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
@@ -163,12 +163,12 @@ struct NameEntrySheet: View {
         title: String,
         confirmTitle: String,
         initialName: String = "",
-        allowsEmptyName: Bool = false,
+        isValid: @escaping (String) -> Bool,
         onConfirm: @escaping (String) -> Void
     ) {
         self.title = title
         self.confirmTitle = confirmTitle
-        self.allowsEmptyName = allowsEmptyName
+        self.isValid = isValid
         self.onConfirm = onConfirm
         _name = State(initialValue: initialName)
     }
@@ -193,7 +193,7 @@ struct NameEntrySheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!allowsEmptyName && name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!isValid(name))
             }
         }
         .padding(20)

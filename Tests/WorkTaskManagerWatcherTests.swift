@@ -4,8 +4,7 @@ import XCTest
 /// Integration tests for the production DispatchSource path (not `reloadFromDisk()`).
 ///
 /// These exercise real file-system events + the 0.3s debounce. They can flake under heavy
-/// machine load; a 3s timeout matches `WorktreeGroupStoreTests.testWatcherFiresOnExternalWrite`.
-/// Rerun once before treating a timeout as a real failure.
+/// machine load; rerun once before treating a 3s timeout as a real failure.
 @MainActor
 final class WorkTaskManagerWatcherTests: TempRootTestCase {
 

@@ -94,8 +94,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   converted these silently; `SWIFT_VERSION: "6.0"` turns them into hard traps. So **every**
   `DispatchSource` goes through `ClaudeSessionFiles.makeWatcher`, which is `nonisolated static` and
   takes the handler as a plain `() -> Void`. Never call `setEventHandler`/`setCancelHandler` from an
-  isolated method. `WorktreeGroupStore` builds its own sources safely only because the type is
-  `Sendable` rather than `@MainActor`, so its methods are already nonisolated.
+  isolated method.
 - A minimal probe of that shape does not reproduce the trap; it runs the body off-main silently.
   Verify by disassembling the built binary (`lldb -b -o "disassemble -a <addr>"`) and looking for
   `MainActor.shared` / `swift_task_isCurrentExecutor` in the closure's prologue.
@@ -233,8 +232,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     last line is the rule most worth pinning.
   - `SavedCommandStore.swift` owns `<projectPath>/.clearway/commands.json`, one saved-command list
     per project, shared by every worktree of that repo. The store takes the project path and owns the
-    `.clearway` component itself, the way `WorktreeGroupStore` does, and the list is always read from
-    the project root rather than the selected worktree — a `commands.json` checked out differently on
+    `.clearway` component itself — `commands.json` is the only file under it — and the list is always
+    read from the project root rather than the selected worktree — a `commands.json` checked out differently on
     a branch must not change what the Run dropdown shows. Array order **is** display order — nothing
     sorts it, and a reorder rewrites the file. There is deliberately no watcher: `SavedCommandManager`
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
@@ -302,10 +301,24 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.
     The menu claims **no** keyboard shortcut, so `AppKeyboardShortcuts` has no entry for it.
-  - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
-    installs a new source over the old one without cancelling it, so the old cancel handler never
-    runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the
-    Swift 6 migration because fixing it is a behaviour change; it needs its own task.
+  - `WorktreeGroupManager.swift` — sidebar grouping, stored entirely in git config through
+    `WorktreeConfigStore`. Four keys: repo-level `clearway.grouping` (the sectioning axis) and
+    `clearway.groupOrder` (a multivar, one value per group name in creation order — the registry),
+    and per worktree `clearway.group` and `clearway.position` in its own `config.worktree`. A group
+    is identified by its name; the registry is the only source of which groups exist, so a worktree
+    naming a group the registry does not list renders ungrouped. Nothing prunes a stale membership
+    or position, and nothing watches git config — values are re-read when the worktree list changes.
+    **The registry is written last**: a rename rewrites every member's `clearway.group` and a delete
+    unsets it, and either abandons the registry write if a member did not land, so a half-applied
+    rename never empties the group. **Positions are numbered per section from zero**, so every
+    gesture that moves a worktree between sections renumbers it at the target's maximum plus one —
+    `addWorktree`, `removeWorktreeFromGroup` and `deleteGroup` alike. A delete that skipped this
+    dropped its members onto slots the ungrouped rows already held, and they stayed interleaved
+    across relaunches because nothing renumbers a worktree that already has a position.
+    The two worktree keys must stay **single lowercase words** —
+    `git config --list` lowercases key names and `WorktreeConfigStore.parseList` keys its dictionary
+    on what git printed; the repo-level keys are read with `--get`/`--get-all`, which return values
+    only, so `clearway.groupOrder` keeps its camel case.
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 - **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
 - swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.

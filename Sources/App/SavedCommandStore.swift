@@ -1,8 +1,7 @@
 import Foundation
 import os
 
-/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`, beside
-/// that project's `groups.json`.
+/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`.
 ///
 /// The array is stored and returned in order — that order is the display order, so nothing here
 /// sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as empty
