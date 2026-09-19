@@ -57,7 +57,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let alive = makeWorktree(branch: "alive", path: path)
         await restartManager()
 
-        manager.reconcile([alive])
+        manager.reconcile([alive], openIds: [])
 
         try await waitForPublishedStatuses([alive.id: .inReview])
     }
@@ -72,7 +72,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let alive = makeWorktree(branch: "alive", path: path)
         await restartManager()
 
-        manager.reconcile([alive])
+        manager.reconcile([alive], openIds: [])
 
         try await waitFor("Stored name" as String?, describing: "published name for \(alive.id)") {
             self.manager.name(for: alive)
@@ -92,7 +92,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.setStatus(.onHold, for: dead)
         try await waitForStoredStatus(.onHold, at: deadPath)
 
-        manager.reconcile([alive])
+        manager.reconcile([alive], openIds: [])
 
         try await waitForPublishedStatuses([alive.id: .todo])
     }
@@ -184,7 +184,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let closed = makeWorktree(branch: "closed", path: "/tmp/closed")
         let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
-        manager.setUngroupedOrder([detached.id, closed.id])
+        manager.setUngroupedOrder([detached.id, closed.id], in: [detached, closed], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.todo, for: closed)
         manager.setGrouping(.status)

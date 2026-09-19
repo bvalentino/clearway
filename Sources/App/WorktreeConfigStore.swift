@@ -138,7 +138,7 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(Self.listArgs(worktreePath: path)) {
         case .output(let data):
-            return Self.parseList(String(decoding: data, as: UTF8.self))
+            return Self.parseList(Self.decoded(data))
         case .refused:
             return [:]
         case .unavailable(let message):
@@ -173,7 +173,7 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(args) {
         case .output(let data):
-            return Self.parseNullSeparated(String(decoding: data, as: UTF8.self))
+            return Self.parseNullSeparated(Self.decoded(data))
         // git-config(1): "Returns error code 1 if key is not present."
         case .refused:
             return []
@@ -393,6 +393,12 @@ final class WorktreeConfigStore: Sendable {
     }
 
     private func trimmed(_ data: Data) -> String {
-        String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.decoded(data).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// git's bytes as text, in the one place that decides how. A config value is whatever the user
+    /// typed, so an invalid sequence is replaced rather than failing the whole read.
+    private static func decoded(_ data: Data) -> String {
+        String(decoding: data, as: UTF8.self)
     }
 }

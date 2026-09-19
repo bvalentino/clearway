@@ -1041,3 +1041,71 @@ and auditing each site is its own task).
 
 **Gate:** `./scripts/ci.sh` — green. `Executed 542 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `git status --porcelain` shows only this change's files; no `default.profraw`.
+
+## Changelog
+
+### Review fixes
+
+The review stage's four findings, resolved in one commit with the two proof tests it left in the
+tree.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `reconcile(_:openIds:)` now awaits `reloadConfig` and *then* seeds, so the two are one entry point. `section` takes the live worktrees and orders them with `ordered` — render order, not ID order — and sources the ungrouped section from the worktree list rather than `positions.keys`. `setUngroupedOrder`/`setGroupOrder` gained `in:`/`openIds:`. `maxPosition` reads `positions` directly instead of going through `section`. |
+| `Sources/App/ContentView.swift` | The two calls at `:330-331` became one `reconcile(newWorktrees, openIds:)`. One line removed; the file is still on its file-wide `file_length` disable. |
+| `Sources/App/SidebarView.swift` | Both `.onMove` handlers collapsed into one `reorder(_:from:to:inGroupNamed:)` that passes `worktreeManager.worktrees` and `terminalManager.openWorktreeIds`. Written as one helper because the inline form pushed the type past SwiftLint's 500-line `type_body_length` warning. |
+| `Sources/App/WorktreeConfigStore.swift` | One private `decoded(_:)` now holds the `Data` → `String` conversion for all three call sites. |
+| `Tests/WorktreeGroupManagerTests.swift` | Gains `testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid`, reframed (see below) and moved here from the persistence suite, where it belongs beside the other reorder cases. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | Gains `testTheStoredOrderSurvivesContentViewsReloadSequence` and `testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched` — the "New tests" entry the spec named and T6 did not deliver. |
+| `Tests/WorktreeGroupManagerStatusTests.swift`, `Tests/WorktreeGroupManagerNameTests.swift` | Call sites follow the two signature changes. |
+
+**Finding 1 (critical) — the seed clobbered the stored order.** Watched failing on `64401de`:
+
+```
+testTheStoredOrderSurvivesContentViewsReloadSequence : XCTAssertEqual failed:
+  ("[".worktrees/alpha", ".worktrees/bravo"]") is not equal to
+  ("[".worktrees/bravo", ".worktrees/alpha"]") - rendered order after a relaunch
+testTheStoredOrderSurvivesContentViewsReloadSequence : XCTAssertEqual failed:
+  ("Optional("1")") is not equal to ("Optional("0")")
+  - the seed must not renumber a worktree git already holds a position for
+```
+
+**Finding 2 (important) — a drag numbered the slots in ID order.** The reviewer's proof asserted an
+order `Worktree.sorted` cannot produce: `"(detached)"` sorts *before* `"alpha"`, so the hidden row
+was second, not last, and the permutation came out identical under both the old and the new rule.
+Fixing finding 1 then made the case unreachable through `reconcile` — the seed now numbers every row
+before any drag can see it — so the reframed test drops the group and the reload and drives the one
+state that still reaches it: the window between the worktree list arriving and `reconcile` publishing
+what git holds. Watched failing with only `section` reverted, finding 1 fixed:
+
+```
+testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid : XCTAssertEqual failed:
+  ("["/tmp/alpha", "/tmp/zulu", "/tmp/zzz"]") is not equal to
+  ("["/tmp/alpha", "/tmp/zzz", "/tmp/zulu"]") - the hidden row keeps the slot it had
+```
+
+**Finding 3 (important) — the rename failure branch had no coverage.** The new case removes the
+member's worktree directory, so `git -C <path> config --worktree` can only fail, then queues
+`setGrouping` behind the rename to know the chain has drained. Watched failing with `writeRegistry`
+reverted to write the registry first:
+
+```
+testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched : XCTAssertEqual failed:
+  ("["New"]") is not equal to ("["Old"]") - a rename no member accepted must not reach the registry
+testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched : XCTAssertEqual failed:
+  ("["New"]") is not equal to ("["Old"]") - the next launch shows the old name
+```
+
+**Finding 4 (nit) — the new `optional_data_string_conversion` warning.** Consolidated rather than
+suppressed: `String(decoding:as:)` was already written at two pre-existing sites, so all three now go
+through one `decoded(_:)`. Behaviour is unchanged — an invalid sequence is still replaced rather than
+failing the read, which `String(bytes:encoding:)` would not preserve. The file carries one such
+warning instead of the base's two.
+
+Each regression above was applied to a copy of `WorktreeGroupManager.swift` held in the session
+scratchpad and restored from it; nothing was reverted through git.
+
+**Gate:** `./scripts/ci.sh` — green. `Executed 545 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.`

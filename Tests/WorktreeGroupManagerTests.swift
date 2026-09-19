@@ -256,7 +256,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
         let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
 
-        manager.setUngroupedOrder([already.id])
+        manager.setUngroupedOrder([already.id], in: [already], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(grouped, toGroupNamed: "SomeGroup")
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -275,7 +275,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     func testSeedPositionsIsIdempotent() async throws {
         let zulu = makeWorktree(branch: "zulu", path: "/tmp/zulu")
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
-        manager.setUngroupedOrder([zulu.id, alpha.id])
+        manager.setUngroupedOrder([zulu.id, alpha.id], in: [zulu, alpha], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(renderedOrder([zulu, alpha]), [zulu.id, alpha.id])
 
@@ -323,7 +323,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        manager.setGroupOrder(named: "Group", ids: [last.id, first.id])
+        manager.setGroupOrder(named: "Group", ids: [last.id, first.id], in: [first, hidden, last], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
@@ -339,10 +339,10 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let hidden = makeWorktree(branch: nil, path: "/tmp/hidden", headStatus: .detached)
         let last = makeWorktree(branch: "last", path: "/tmp/last")
 
-        manager.setUngroupedOrder([first.id, hidden.id, last.id])
+        manager.setUngroupedOrder([first.id, hidden.id, last.id], in: [first, hidden, last], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        manager.setUngroupedOrder([last.id, first.id])
+        manager.setUngroupedOrder([last.id, first.id], in: [first, hidden, last], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
@@ -351,16 +351,61 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         )
     }
 
+    /// A section's slots are the ones its rows occupy on screen, so the manager numbers them in
+    /// render order. Sourcing them from `positions` in ID order instead zipped the reclaimed slots
+    /// onto an order the user never saw, and the row the detached filter hid moved on a drag that
+    /// never touched it.
+    ///
+    /// Nothing carries a position here: the state the sidebar is in between the worktree list
+    /// arriving and `reconcile` publishing what git holds, which is when a drag can reach rows the
+    /// seed has not numbered yet. `/tmp/zzz` sorts last by ID and second by `Worktree.sorted` —
+    /// that gap is what the two orders disagree about.
+    func testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid() async throws {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let zulu = makeWorktree(branch: "zulu", path: "/tmp/zulu")
+        let hidden = makeWorktree(branch: nil, path: "/tmp/zzz", headStatus: .detached)
+        let all = [alpha, zulu, hidden]
+        let openIds = [zulu.id]
+
+        XCTAssertEqual(
+            rendered(all, showingDetached: true, openIds: openIds),
+            [zulu.id, hidden.id, alpha.id],
+            "the order the slots are numbered from"
+        )
+        XCTAssertEqual(
+            rendered(all, showingDetached: false, openIds: openIds),
+            [zulu.id, alpha.id],
+            "the rows the drag was made on"
+        )
+
+        manager.setUngroupedOrder([alpha.id, zulu.id], in: all, openIds: openIds)
+
+        XCTAssertEqual(
+            rendered(all, showingDetached: true, openIds: openIds),
+            [alpha.id, hidden.id, zulu.id],
+            "the hidden row keeps the slot it had"
+        )
+    }
+
+    private func rendered(_ worktrees: [Worktree], showingDetached: Bool, openIds: [String]) -> [String] {
+        manager.sidebarOrderedWorktrees(
+            worktrees,
+            showingDetached: showingDetached,
+            openIds: openIds,
+            matches: { _ in true }
+        ).map(\.id)
+    }
+
     /// An id the manager has never seen — a worktree appended at render time and then dragged —
     /// is recorded rather than discarded.
     func testSetUngroupedOrderRecordsAnIdItHasNotStored() async throws {
         let stored = makeWorktree(branch: "stored", path: "/tmp/stored")
         let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
 
-        manager.setUngroupedOrder([stored.id])
+        manager.setUngroupedOrder([stored.id], in: [stored], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        manager.setUngroupedOrder([fresh.id, stored.id])
+        manager.setUngroupedOrder([fresh.id, stored.id], in: [stored, fresh], openIds: [])
         try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(renderedOrder([stored, fresh]), [fresh.id, stored.id])

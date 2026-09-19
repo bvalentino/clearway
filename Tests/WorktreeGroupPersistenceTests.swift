@@ -26,18 +26,45 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         manager.createGroup(named: "Group")
         manager.addWorktree(alpha, toGroupNamed: "Group")
         manager.addWorktree(bravo, toGroupNamed: "Group")
-        manager.setGroupOrder(named: "Group", ids: [bravo.id, alpha.id])
+        manager.setGroupOrder(named: "Group", ids: [bravo.id, alpha.id], in: [alpha, bravo], openIds: [])
         try await waitForStoredValue("0", ofKey: WorktreeConfigStore.positionKey, at: bravoPath)
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
 
         await restartManager()
-        manager.reconcile([alpha, bravo])
+        manager.reconcile([alpha, bravo], openIds: [])
 
         try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
             self.renderedOrder([alpha, bravo])
         }
         XCTAssertEqual(manager.groupName(for: alpha.id), "Group")
         XCTAssertEqual(manager.groupName(for: bravo.id), "Group")
+    }
+
+    /// The seed must not run ahead of the reload. When it did, a relaunch re-numbered every
+    /// worktree in `Worktree.sorted` order before the reload had published what git held, and the
+    /// reload then read the clobbered values back — the custom sidebar order reset on every launch.
+    func testTheStoredOrderSurvivesContentViewsReloadSequence() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let bravoPath = try repo.addWorktree(branch: "bravo")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let bravo = makeWorktree(branch: "bravo", path: bravoPath)
+        manager.seedPositions(for: [alpha, bravo], openIds: [])
+        manager.setUngroupedOrder([bravo.id, alpha.id], in: [alpha, bravo], openIds: [])
+        try await waitForStoredValue("0", ofKey: WorktreeConfigStore.positionKey, at: bravoPath)
+        try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
+
+        await restartManager()
+        // The one call `ContentView` makes when the worktree list changes.
+        manager.reconcile([alpha, bravo], openIds: [])
+
+        try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
+            self.renderedOrder([alpha, bravo])
+        }
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: bravoPath),
+            "0",
+            "the seed must not renumber a worktree git already holds a position for"
+        )
     }
 
     func testTheGroupingModeRoundTrips() async throws {
@@ -72,6 +99,32 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForRegistry(["New", "Later"])
     }
 
+    /// The registry is written last and only if every member write landed, so a rename whose
+    /// members all fail changes nothing on disk and the next reload restores what the sidebar
+    /// showed before. Here the member's directory is gone, so `git -C <path> config --worktree`
+    /// can only fail.
+    func testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.createGroup(named: "Old")
+        manager.addWorktree(member, toGroupNamed: "Old")
+        try await waitForStoredValue("Old", ofKey: WorktreeConfigStore.groupKey, at: path)
+        try repo.removeWorktree(at: path)
+
+        manager.renameGroup(named: "Old", to: "New")
+        // Queued behind the rename on the write chain, so its arrival proves the rename is done.
+        manager.setGrouping(.status)
+        try await waitForLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
+
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Old"],
+            "a rename no member accepted must not reach the registry"
+        )
+        await restartManager()
+        XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the next launch shows the old name")
+    }
+
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
         let path = try repo.addWorktree(branch: "member")
         let member = makeWorktree(branch: "member", path: path)
@@ -97,7 +150,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try repo.setValue("Ghost", ofKey: WorktreeConfigStore.groupKey, atWorktree: path)
         try repo.setValue("Ghosted", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
 
-        manager.reconcile([ghosted])
+        manager.reconcile([ghosted], openIds: [])
 
         try await waitFor("Ghosted" as String?, describing: "published name for \(ghosted.id)") {
             self.manager.name(for: ghosted)
@@ -122,7 +175,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: stayingPath)
 
         try repo.removeWorktree(at: goingPath)
-        manager.reconcile([main, staying])
+        manager.reconcile([main, staying], openIds: [])
 
         try await waitFor([staying.id: "Group"], describing: "published memberships") {
             self.manager.groupNames
@@ -141,7 +194,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         let member = makeWorktree(branch: "member", path: path)
         manager.createGroup(named: "Group")
         manager.addWorktree(member, toGroupNamed: "Group")
-        manager.setGroupOrder(named: "Group", ids: [member.id])
+        manager.setGroupOrder(named: "Group", ids: [member.id], in: [member], openIds: [])
         manager.setStatus(.inReview, for: member)
         manager.setGrouping(.status)
         try await waitForStoredValue("Group", ofKey: WorktreeConfigStore.groupKey, at: path)

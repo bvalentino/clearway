@@ -130,19 +130,34 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Repositions the given non-main worktree IDs within the ungrouped section's order.
     /// Callers pass the rows the sidebar rendered, which is a subset whenever the detached
-    /// filter hides one, so IDs the caller omits keep their slot.
-    func setUngroupedOrder(_ ids: [String]) {
-        applyPositions(Self.reassignedPositions(section: section(named: nil), newOrder: ids))
+    /// filter or the search field hides one, so IDs the caller omits keep their slot.
+    ///
+    /// `worktrees` is the whole live list, not the rendered subset: the slots being reassigned are
+    /// the ones the section occupies on screen, and a row the caller omitted has to be in it to
+    /// keep the slot it had.
+    func setUngroupedOrder(_ ids: [String], in worktrees: [Worktree], openIds: [String]) {
+        applyPositions(
+            Self.reassignedPositions(
+                section: section(named: nil, in: worktrees, openIds: openIds),
+                newOrder: ids
+            )
+        )
     }
 
     /// Repositions the given worktree IDs within a group, on the same terms as `setUngroupedOrder`.
-    func setGroupOrder(named name: String, ids: [String]) {
+    func setGroupOrder(named name: String, ids: [String], in worktrees: [Worktree], openIds: [String]) {
         guard groups.contains(where: { $0.name == name }) else { return }
-        applyPositions(Self.reassignedPositions(section: section(named: name), newOrder: ids))
+        applyPositions(
+            Self.reassignedPositions(
+                section: section(named: name, in: worktrees, openIds: openIds),
+                newOrder: ids
+            )
+        )
     }
 
     /// Gives every non-main worktree that has no position one, so click-to-open never re-sorts the
-    /// sidebar. Idempotent: a worktree that already carries one is left alone. New IDs are
+    /// sidebar. The second half of `reconcile`, which is the only caller that is not a test.
+    /// Idempotent: a worktree that already carries one is left alone. New IDs are
     /// appended to their own section in `Worktree.sorted` order — the same rule
     /// `sidebarOrderedWorktrees` renders them by while they are unpositioned.
     func seedPositions(for worktrees: [Worktree], openIds: [String]) {
@@ -220,10 +235,19 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
-    /// Re-reads what git holds for the live worktrees. Nothing is pruned: a worktree that has gone
-    /// simply stops being read, and `git worktree remove` deletes its `config.worktree` with it.
-    func reconcile(_ worktrees: [Worktree]) {
-        Task { await self.reloadConfig(for: worktrees) }
+    /// Re-reads what git holds for the live worktrees and then gives any worktree still without a
+    /// position one. Nothing is pruned: a worktree that has gone simply stops being read, and
+    /// `git worktree remove` deletes its `config.worktree` with it.
+    ///
+    /// The seed runs **after** the reload, which is why the two are one entry point rather than two
+    /// calls a view makes in a row: on a relaunch `positions` is empty until the reload publishes
+    /// it, so a seed racing ahead of it renumbers every worktree in `Worktree.sorted` order and the
+    /// reload reads the values it just wrote back over the user's order.
+    func reconcile(_ worktrees: [Worktree], openIds: [String]) {
+        Task {
+            await self.reloadConfig(for: worktrees)
+            self.seedPositions(for: worktrees, openIds: openIds)
+        }
     }
 
     /// True when the worktree should survive the sidebar's search field.
@@ -478,22 +502,24 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// `nil` names the ungrouped section.
     private func maxPosition(inSectionNamed name: String?) -> Int? {
-        section(named: name).compactMap(\.position).max()
+        positions.compactMap { groupNames[$0.key] == name ? $0.value : nil }.max()
     }
 
-    /// The section's members in display order, for `reassignedPositions`. A member the manager has
-    /// never read or written is not here — it has no position to preserve, and `repositioned`
-    /// appends it when the caller's new order names it.
-    private func section(named name: String?) -> [(id: String, position: Int?)] {
-        let ids = name.map(members(ofGroupNamed:))
-            ?? positions.keys.filter { groupNames[$0] == nil }
-        return ids
-            .map { (id: $0, position: positions[$0]) }
-            .sorted { lhs, rhs in
-                let left = lhs.position ?? .max
-                let right = rhs.position ?? .max
-                return left == right ? lhs.id < rhs.id : left < right
-            }
+    /// The section's members in the order the sidebar renders them, for `reassignedPositions`.
+    /// `nil` names the ungrouped section; main is never a member, since it is pinned first and
+    /// carries no position.
+    ///
+    /// Ordered by `ordered` rather than by ID: the slots a drag reassigns are the ones the rows
+    /// occupy on screen, and an unpositioned row sits where `Worktree.sorted` puts it. Sourced from
+    /// the live worktrees rather than from `positions`, so an unpositioned ungrouped row is in its
+    /// section on the same terms as an unpositioned member of a group.
+    private func section(
+        named name: String?,
+        in worktrees: [Worktree],
+        openIds: [String]
+    ) -> [(id: String, position: Int?)] {
+        let members = worktrees.filter { !$0.isMain && $0.path != nil && groupNames[$0.id] == name }
+        return ordered(members, openIds: openIds).map { (id: $0.id, position: positions[$0.id]) }
     }
 
     private func applyPositions(_ changed: [String: Int]) {

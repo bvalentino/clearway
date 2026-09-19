@@ -251,6 +251,22 @@ struct SidebarView: View {
         }
     }
 
+    /// Hands the manager the rendered rows in their new order, plus the whole worktree list the
+    /// slots are numbered from — `rows` is only what survived the detached filter and the search
+    /// field. `nil` names the ungrouped section.
+    private func reorder(_ rows: [Worktree], from: IndexSet, to: Int, inGroupNamed name: String?) {
+        var reordered = rows
+        reordered.move(fromOffsets: from, toOffset: to)
+        let ids = reordered.filter { !$0.isMain }.map(\.id)
+        let worktrees = worktreeManager.worktrees
+        let openIds = terminalManager.openWorktreeIds
+        if let name {
+            groupManager.setGroupOrder(named: name, ids: ids, in: worktrees, openIds: openIds)
+        } else {
+            groupManager.setUngroupedOrder(ids, in: worktrees, openIds: openIds)
+        }
+    }
+
     private func worktreesSection(
         rows: [Worktree],
         titles: [String: String],
@@ -270,11 +286,7 @@ struct SidebarView: View {
                     moveDisabled: !reorderable || wt.isMain || isSearching
                 )
             }
-            .onMove { from, to in
-                var reordered = rows
-                reordered.move(fromOffsets: from, toOffset: to)
-                groupManager.setUngroupedOrder(reordered.filter { !$0.isMain }.map(\.id))
-            }
+            .onMove { from, to in reorder(rows, from: from, to: to, inGroupNamed: nil) }
 
             if worktreeManager.isLoading {
                 HStack {
@@ -360,11 +372,7 @@ struct SidebarView: View {
                 ForEach(rows) { wt in
                     worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: isSearching)
                 }
-                .onMove { from, to in
-                    var reordered = rows
-                    reordered.move(fromOffsets: from, toOffset: to)
-                    groupManager.setGroupOrder(named: group.name, ids: reordered.map(\.id))
-                }
+                .onMove { from, to in reorder(rows, from: from, to: to, inGroupNamed: group.name) }
             } header: {
                 GroupSectionHeader(
                     group: group,
