@@ -1,7 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// One project's ordered list of saved commands, owned by that project's window.
+/// One project's ordered list of saved commands and the two default slots that index it, owned by
+/// that project's window.
 ///
 /// Every mutation rewrites the whole array through `SavedCommandStore`. The file is not watched, so
 /// an edit made outside the app — in a text editor, or by `git pull` — shows once the window is
@@ -9,6 +10,11 @@ import SwiftUI
 @MainActor
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
+
+    /// The two ids from `command-defaults.json`, held raw. Reading either goes through
+    /// `afterCreateCommand` / `planCommand`, so an id that no longer names a live agent command
+    /// reads as None without the stored id being rewritten away.
+    @Published private(set) var defaults = CommandDefaults()
 
     private let store: SavedCommandStore
 
@@ -28,6 +34,15 @@ final class SavedCommandManager: ObservableObject {
         guard !hasLoaded else { return }
         hasLoaded = true
         commands = await store.load()
+        defaults = await store.loadDefaults()
+    }
+
+    var afterCreateCommand: SavedCommand? {
+        CommandDefaults.resolve(defaults.afterCreate, in: commands)
+    }
+
+    var planCommand: SavedCommand? {
+        CommandDefaults.resolve(defaults.plan, in: commands)
     }
 
     // MARK: - Mutations
@@ -58,20 +73,42 @@ final class SavedCommandManager: ObservableObject {
         save()
     }
 
+    func setAfterCreateDefault(_ id: UUID?) {
+        defaults.afterCreate = id
+        saveDefaults()
+    }
+
+    func setPlanDefault(_ id: UUID?) {
+        defaults.plan = id
+        saveDefaults()
+    }
+
     // MARK: - Persistence
 
-    /// Chains each write onto the one before it. Independent `Task`s reach the store's write queue
-    /// in whatever order the scheduler hands them over, so two quick mutations could otherwise land
-    /// with the earlier snapshot last and drop the newer one from disk.
     private func save() {
         let snapshot = commands
+        let store = self.store
+        enqueue("commands") { try await store.save(snapshot) }
+    }
+
+    private func saveDefaults() {
+        let snapshot = defaults
+        let store = self.store
+        enqueue("defaults") { try await store.saveDefaults(snapshot) }
+    }
+
+    /// Chains each write onto the one before it — commands and defaults share the chain, so two
+    /// writes cannot reach the store's queue out of order. Independent `Task`s are handed over in
+    /// whatever order the scheduler picks, so two quick mutations could otherwise land with the
+    /// earlier snapshot last and drop the newer one from disk.
+    private func enqueue(_ label: String, _ write: @escaping @Sendable () async throws -> Void) {
         let previous = pendingSave
         pendingSave = Task { @MainActor in
             await previous?.value
             do {
-                try await store.save(snapshot)
+                try await write()
             } catch {
-                Ghostty.logger.error("SavedCommandManager: failed to save commands: \(error)")
+                Ghostty.logger.error("SavedCommandManager: failed to save \(label): \(error)")
             }
         }
     }

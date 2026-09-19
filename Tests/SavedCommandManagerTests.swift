@@ -42,6 +42,16 @@ final class SavedCommandManagerTests: TempRootTestCase {
         return loaded
     }
 
+    private func persistedDefaults(matching expected: CommandDefaults) async -> CommandDefaults {
+        let deadline = Date().addingTimeInterval(2)
+        var loaded = await store.loadDefaults()
+        while loaded != expected, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            loaded = await store.loadDefaults()
+        }
+        return loaded
+    }
+
     // MARK: - load
 
     func testLoadPopulatesTheListInFileOrder() async throws {
@@ -158,5 +168,88 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
         let persisted = await persistedCommands(matching: [agent, firstTerminal, secondTerminal])
         XCTAssertEqual(persisted, [agent, firstTerminal, secondTerminal])
+    }
+
+    // MARK: - Defaults
+
+    func testLoadPublishesTheDefaultsOnDisk() async throws {
+        let stored = CommandDefaults(afterCreate: UUID(), plan: UUID())
+        try await store.saveDefaults(stored)
+
+        await manager.load()
+
+        XCTAssertEqual(manager.defaults, stored)
+    }
+
+    func testLoadOfAMissingDefaultsFileLeavesBothSlotsUnset() async {
+        await manager.load()
+        XCTAssertEqual(manager.defaults, CommandDefaults())
+    }
+
+    func testSetPlanDefaultPersistsForTheNextManager() async {
+        let agent = makeCommand(name: "Plan", kind: .agent, text: "Plan {{ task_path }}.")
+        manager.add(agent)
+
+        manager.setPlanDefault(agent.id)
+
+        XCTAssertEqual(manager.defaults.plan, agent.id)
+        let persisted = await persistedDefaults(matching: CommandDefaults(afterCreate: nil, plan: agent.id))
+        XCTAssertEqual(persisted.plan, agent.id)
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+        XCTAssertEqual(reopened.defaults.plan, agent.id)
+        XCTAssertEqual(reopened.planCommand, agent)
+    }
+
+    func testSetAfterCreateDefaultToNilPersistsTheClearedSlot() async {
+        let agent = makeCommand(name: "Kickoff", kind: .agent, text: "Start on {{ task_path }}.")
+        manager.add(agent)
+        manager.setAfterCreateDefault(agent.id)
+        _ = await persistedDefaults(matching: CommandDefaults(afterCreate: agent.id, plan: nil))
+
+        manager.setAfterCreateDefault(nil)
+
+        XCTAssertNil(manager.defaults.afterCreate)
+        let persisted = await persistedDefaults(matching: CommandDefaults())
+        XCTAssertEqual(persisted, CommandDefaults())
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+        XCTAssertNil(reopened.defaults.afterCreate)
+    }
+
+    func testAfterCreateCommandIsNilForAnUnsetSlot() {
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+
+        XCTAssertNil(manager.afterCreateCommand)
+        XCTAssertNil(manager.planCommand)
+    }
+
+    func testAfterCreateCommandIsNilForAnIdNamingNoCommand() {
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+
+        manager.setAfterCreateDefault(UUID())
+
+        XCTAssertNil(manager.afterCreateCommand)
+    }
+
+    func testAfterCreateCommandIsNilForATerminalKindCommand() {
+        let terminal = makeCommand(name: "Dev")
+        manager.add(terminal)
+
+        manager.setAfterCreateDefault(terminal.id)
+
+        XCTAssertNil(manager.afterCreateCommand)
+    }
+
+    func testAfterCreateCommandResolvesALiveAgentCommand() {
+        let agent = makeCommand(name: "Kickoff", kind: .agent, text: "Start on {{ task_path }}.")
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(agent)
+
+        manager.setAfterCreateDefault(agent.id)
+
+        XCTAssertEqual(manager.afterCreateCommand, agent)
     }
 }

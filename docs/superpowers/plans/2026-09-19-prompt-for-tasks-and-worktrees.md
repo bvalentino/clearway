@@ -504,3 +504,39 @@ take the same branch there, because neither is quarantined.
 **Gate**
 
 `./scripts/ci.sh` — passed: 555 tests, 0 failures, SwiftLint zero errors.
+
+### T4: Hold and mutate the defaults on the manager
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandManager.swift` | Gains `@Published private(set) var defaults`, read inside the existing `load()` behind the one `hasLoaded` guard; `setAfterCreateDefault(_:)` / `setPlanDefault(_:)`; and the resolved accessors `afterCreateCommand` / `planCommand`, each `CommandDefaults.resolve(_:in: commands)`. |
+| `Tests/SavedCommandManagerTests.swift` | Gains a `Defaults` section: eight cases plus a `persistedDefaults(matching:)` poll helper mirroring the existing `persistedCommands(matching:)`. |
+
+**Evidence**
+
+The eight cases were written first and watched fail against the absent members — `./scripts/ci.sh`
+stopped at the test target's compile:
+
+```
+❌ Tests/SavedCommandManagerTests.swift:202:33: value of type 'SavedCommandManager' has no member 'planCommand'
+❌ Tests/SavedCommandManagerTests.swift:208:17: value of type 'SavedCommandManager' has no member 'setAfterCreateDefault'
+❌ Tests/SavedCommandManagerTests.swift:213:30: value of type 'SavedCommandManager' has no member 'defaults'
+❌ Tests/SavedCommandManagerTests.swift:225:30: value of type 'SavedCommandManager' has no member 'afterCreateCommand'
+❌ Tests/SavedCommandManagerTests.swift:226:30: value of type 'SavedCommandManager' has no member 'planCommand'
+❌ Tests/SavedCommandManagerTests.swift:232:17: value of type 'SavedCommandManager' has no member 'setAfterCreateDefault'
+❌ Tests/SavedCommandManagerTests.swift:241:17: value of type 'SavedCommandManager' has no member 'setAfterCreateDefault'
+❌ Tests/SavedCommandManagerTests.swift:251:17: value of type 'SavedCommandManager' has no member 'setAfterCreateDefault'
+```
+
+**Deviations from the plan**
+
+The plan said both writes go onto the same `pendingSave` chain. Rather than a second copy of the
+chaining block, the body moved into one private `enqueue(_:_:)` that both `save()` and
+`saveDefaults()` hand a snapshot-capturing closure to — so the two files cannot drift apart on
+ordering, which is the whole point of sharing the chain.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 563 tests, 0 failures, SwiftLint zero errors.
