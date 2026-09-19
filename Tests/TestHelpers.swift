@@ -123,6 +123,19 @@ struct GitRepoFixture {
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Every value of the repo-level multivar `key`, in file order, and `[]` when it is absent —
+    /// `--get-all` exits 1 for a missing key. NUL-separated and never split on a newline, so a
+    /// group name containing one comes back whole.
+    func localValues(ofKey key: String) throws -> [String] {
+        let result = try Self.capture(["config", "--local", "--get-all", "--null", key], in: root)
+        guard result.status == 0 else { return [] }
+        var values = result.stdout
+            .split(separator: "\0", omittingEmptySubsequences: false)
+            .map(String.init)
+        if values.last?.isEmpty == true { values.removeLast() }
+        return values
+    }
+
     func mainWorktreeConfigContents() throws -> String {
         try String(
             contentsOfFile: (root as NSString).appendingPathComponent(".git/config.worktree"),

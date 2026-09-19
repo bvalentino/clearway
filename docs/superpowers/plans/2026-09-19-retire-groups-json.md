@@ -905,3 +905,77 @@ The manager was then restored from a scratchpad copy — no `git checkout`, no `
 `==> CI passed.` Suites confirmed present in the run's `.xcresult`: `WorktreeGroupManagerTests` 26,
 `WorktreeGroupManagerStatusTests` 13, `WorktreeGroupManagerNameTests` 11, `WorktreeGroupTests` 8.
 `git status --porcelain` shows only this change's files; no `default.profraw`.
+
+### T6: Persistence tests
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/TestHelpers.swift` | `GitRepoFixture.localValues(ofKey:)`, running `config --local --get-all --null` and dropping the record after the final NUL. Exit 1 — the key is absent — answers `[]`. Nothing splits on a newline, so a group name holding one comes back whole. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | New, 9 cases on the merged git-backed base: the registry, membership+position and grouping mode across a relaunch; rename rewriting every member and keeping the registry slot; delete unsetting every member and dropping the entry; a membership naming an unlisted group rendering ungrouped; `git worktree remove` leaving nothing on the worktrees that remain; no `.clearway/` directory; and a plain directory git will not let the extension be enabled in. |
+
+Every assertion about stored state reads git through `GitRepoFixture`, never through the manager.
+No `Sources/` file changed.
+
+**Deviations from the plan**
+
+- **Case 6 keeps a second worktree alive.** The plan asks only that the removed worktree is gone
+  from the sidebar order. Reconciling against a list holding main alone proves nothing — `readConfig`
+  skips main, so every map is empty whatever git holds. The case removes one of two grouped,
+  positioned worktrees and asserts the survivor keeps its own membership and position while main
+  carries neither key.
+- **Case 5 does not call `repo.enableWorktreeConfig()` and needs no `restartManager()`.** It creates
+  a real group through the manager first, which enables the extension through the manager's own
+  store and updates that store's cache, so the fixture can then write `clearway.group = "Ghost"`
+  directly and the same manager reads it. A `clearway.name` is written beside it and awaited, which
+  is what makes the two absence assertions land after the read rather than before it.
+- **Cases 4 and 8 await an intermediate state before the final one.** `waitForRegistry([])` polls
+  immediately, and the registry is also `[]` before the first write lands, so on its own it passes
+  vacuously. Both cases first await the stored `clearway.group` the creates produce.
+
+**Evidence**
+
+There is no unfixed code here — T5 shipped the behaviour — so each case was watched failing against
+a deliberately broken manager instead, in two passes, with the file restored from a scratchpad copy
+after each. No `git checkout`, no `git stash`.
+
+Probe A — `readConfig` drops the `clearway.position` parse, `reloadConfig` drops the unlisted-group
+filter, `deleteGroup` stops unsetting its members:
+
+```
+WorktreeGroupPersistenceTests.swift:105: testAMembershipNamingAnUnlistedGroupRendersUngrouped :
+  XCTAssertNil failed: "Ghost" - the membership names no listed group
+WorktreeGroupPersistenceTests.swift:84: testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry :
+  XCTAssertEqual failed: ("Optional("Doomed")") is not equal to ("nil")
+WorktreeGroupPersistenceTests.swift:36: testMembershipAndPositionSurviveARelaunch :
+  XCTAssertEqual failed: ("[…/alpha", "…/bravo"]") is not equal to ("[…/bravo", "…/alpha"]")
+WorktreeGroupPersistenceTests.swift:130: testRemovingAWorktreeLeavesNothingBehind :
+  XCTAssertEqual failed: ("[:]") is not equal to ("["…/staying": 1]")
+	 Executed 9 tests, with 5 failures (0 unexpected) in 18.445 seconds
+** TEST FAILED **
+```
+
+Probe B — `loadTask` stops publishing the grouping mode and the registry, `renameGroup` stops
+rewriting its members:
+
+```
+WorktreeGroupPersistenceTests.swift:71: testRenameRewritesEveryMemberAndKeepsTheRegistrySlot :
+  XCTAssertEqual failed: ("Optional("Old")") is not equal to ("Optional("New")")
+WorktreeGroupPersistenceTests.swift:48: testTheGroupingModeRoundTrips :
+  XCTAssertEqual failed: ("group") is not equal to ("status")
+WorktreeGroupPersistenceTests.swift:54: testTheGroupingModeRoundTrips :
+  XCTAssertEqual failed: ("group") is not equal to ("none")
+WorktreeGroupPersistenceTests.swift:18: testTheRegistrySurvivesARelaunch :
+  XCTAssertEqual failed: ("[]") is not equal to ("["Backlog", "Shipped"]")
+** TEST FAILED **
+```
+
+Cases 8 and 9 are the two that no mutation probes: nothing in the manager can create a `.clearway/`
+directory any more, and case 9 asserts a directory git refuses stays empty of state.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the restore. `Executed 541 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `WorktreeGroupPersistenceTests` 9 passed. `git status --porcelain` shows only this
+change's files; no `default.profraw`.

@@ -62,6 +62,7 @@
 		620139128784E65D9ECEEA90 /* TerminalManager+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF720870D88FBC9161364AEC /* TerminalManager+Commands.swift */; };
 		63345BE618731999D832C586 /* PromptManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E372333888BC8E073569810 /* PromptManagerTests.swift */; };
 		641841E20D13715149CA3EEF /* Ghostty.Shell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733E42F6C068BE314FAD921E /* Ghostty.Shell.swift */; };
+		6664A54E73F47333DFB5532C /* WorktreeGroupPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439C0CDDFAA9021B98CB4377 /* WorktreeGroupPersistenceTests.swift */; };
 		67914C9378FEA375374D2350 /* PortScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAFD2DD699CB260EDDA8BE4 /* PortScanner.swift */; };
 		69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */; };
 		6BCAAC12F36D33EC251CB587 /* ClaudeSessionFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5EA9088599AFDEA76C47EB6 /* ClaudeSessionFiles.swift */; };
@@ -198,6 +199,7 @@
 		4224CF2CA76BDF5405FD737D /* Ghostty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.swift; sourceTree = "<group>"; };
 		4270AB86F0A7397441CA6916 /* GroupByMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupByMenu.swift; sourceTree = "<group>"; };
 		42D5DF54D44C54CC6AD38D22 /* WorktreeGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroup.swift; sourceTree = "<group>"; };
+		439C0CDDFAA9021B98CB4377 /* WorktreeGroupPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupPersistenceTests.swift; sourceTree = "<group>"; };
 		43C4ECCB3CFD45DB93164068 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
 		4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskEditorBuffersTests.swift; sourceTree = "<group>"; };
 		46B249C5162F943C6A161511 /* WorkTaskRelocationSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskRelocationSafetyTests.swift; sourceTree = "<group>"; };
@@ -376,6 +378,7 @@
 				903CF62F5E4F5BCF243D54EC /* WorktreeGroupManagerNameTests.swift */,
 				C8AB4D6B26165A0245104FE6 /* WorktreeGroupManagerStatusTests.swift */,
 				267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */,
+				439C0CDDFAA9021B98CB4377 /* WorktreeGroupPersistenceTests.swift */,
 				0BBE75EDA8AD2C88EEA34AEC /* WorktreeGroupTests.swift */,
 				83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */,
 				6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */,
@@ -911,6 +914,7 @@
 				6E4170E279BCFFA57A41B5D4 /* WorktreeGroupManagerNameTests.swift in Sources */,
 				E32457B385B8B054183CCF38 /* WorktreeGroupManagerStatusTests.swift in Sources */,
 				0D4C88A1FDBBC5AD8D642D55 /* WorktreeGroupManagerTests.swift in Sources */,
+				6664A54E73F47333DFB5532C /* WorktreeGroupPersistenceTests.swift in Sources */,
 				AEBB43C763D77B27328748E8 /* WorktreeGroupTests.swift in Sources */,
 				A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */,
 				8885034D7B3751E8136F271B /* WorktreeManagerTests.swift in Sources */,
