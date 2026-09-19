@@ -435,3 +435,36 @@ token constant from the parameter of the same name.
 **Gate**
 
 `./scripts/ci.sh` — passed: 542 tests, 0 failures, SwiftLint zero errors.
+
+### T2: The `CommandDefaults` value and its resolution rule
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommand.swift` | Gains a `Defaults` section: `CommandDefaults` (`afterCreate`/`plan`, `Codable`, `Equatable`) and `resolve(_:in:)`, which matches on id **and** `kind == .agent`. |
+| `Tests/SavedCommandTests.swift` | Gains a `Command defaults` section: six cases covering the acceptance criteria. |
+
+**Evidence**
+
+The six cases were written first and watched fail against the absent type — `./scripts/ci.sh`
+stopped at the test target's compile:
+
+```
+❌ Tests/SavedCommandTests.swift:203:22: cannot find 'CommandDefaults' in scope
+❌ Tests/SavedCommandTests.swift:209:24: cannot find 'CommandDefaults' in scope
+❌ Tests/SavedCommandTests.swift:214:22: cannot find 'CommandDefaults' in scope
+❌ Tests/SavedCommandTests.swift:221:22: cannot find 'CommandDefaults' in scope
+❌ Tests/SavedCommandTests.swift:225:45: cannot find 'CommandDefaults' in scope
+❌ Tests/SavedCommandTests.swift:232:24: cannot find 'CommandDefaults' in scope
+```
+
+**Deviations from the plan**
+
+None. The signature is the one fixed under Shared signatures. Both slots are optional `var`s, so the
+synthesized memberwise initializer supplies `CommandDefaults()` and the synthesized `Codable`
+decodes a missing key as nil — neither needs writing out.
+
+**Gate**
+
+`./scripts/ci.sh` — passed: 548 tests, 0 failures, SwiftLint zero errors.

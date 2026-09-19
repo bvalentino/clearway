@@ -196,4 +196,41 @@ final class SavedCommandTests: XCTestCase {
         let data = try JSONEncoder().encode(command)
         XCTAssertEqual(try JSONDecoder().decode(SavedCommand.self, from: data), command)
     }
+
+    // MARK: - Command defaults
+
+    func testResolveIsNilForAnUnsetSlot() {
+        XCTAssertNil(CommandDefaults.resolve(nil, in: [makeCommand(kind: .agent)]))
+    }
+
+    func testResolveFindsTheLiveAgentCommand() {
+        let agent = makeCommand(name: "Plan", kind: .agent)
+        let commands = [makeCommand(kind: .terminal), agent]
+        XCTAssertEqual(CommandDefaults.resolve(agent.id, in: commands), agent)
+    }
+
+    /// A command deleted since the default was picked.
+    func testResolveIsNilForAnIdNamingNoCommand() {
+        XCTAssertNil(CommandDefaults.resolve(UUID(), in: [makeCommand(kind: .agent)]))
+    }
+
+    /// The kind clause: a default edited into a terminal command reads as None rather than running
+    /// a shell line where an agent prompt is expected.
+    func testResolveIsNilForATerminalKindCommand() {
+        let terminal = makeCommand(kind: .terminal)
+        XCTAssertNil(CommandDefaults.resolve(terminal.id, in: [terminal]))
+    }
+
+    func testEmptyDefaultsRoundTripThroughJSONAsBothNil() throws {
+        let data = try JSONEncoder().encode(CommandDefaults())
+        let decoded = try JSONDecoder().decode(CommandDefaults.self, from: data)
+        XCTAssertNil(decoded.afterCreate)
+        XCTAssertNil(decoded.plan)
+    }
+
+    func testPopulatedDefaultsRoundTripThroughJSONEqual() throws {
+        let defaults = CommandDefaults(afterCreate: UUID(), plan: UUID())
+        let data = try JSONEncoder().encode(defaults)
+        XCTAssertEqual(try JSONDecoder().decode(CommandDefaults.self, from: data), defaults)
+    }
 }
