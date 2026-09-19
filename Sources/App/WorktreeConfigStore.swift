@@ -6,8 +6,7 @@ import os
 /// repo-level keys in the shared `.git/config`, which `--local` reaches identically from every
 /// worktree. Nothing here needs pruning, reconciling or a watcher.
 ///
-/// Nonisolated and `Sendable`, the shape `WorktreeGroupStore` has: the manager holds the published
-/// state, the store holds the commands.
+/// Nonisolated and `Sendable`: the manager holds the published state, the store holds the commands.
 final class WorktreeConfigStore: Sendable {
 
     static let nameKey = "clearway.name"
@@ -193,8 +192,8 @@ final class WorktreeConfigStore: Sendable {
     ///
     /// Throws nothing either way — a config write is not worth failing a worktree creation over —
     /// but it does answer, because the one caller that cannot simply be corrected by the next
-    /// reload is the migration out of `groups.json`, which must not delete the old copy of a
-    /// status it failed to rewrite.
+    /// reload is a group rename or delete, which rewrites every member before the registry and
+    /// must abandon the registry write when a member did not land.
     @discardableResult
     func set(_ value: String?, forKey key: String, worktreeAt path: String) async -> Bool {
         guard let value, !value.isEmpty else {

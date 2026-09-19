@@ -979,3 +979,41 @@ directory any more, and case 9 asserts a directory git refuses stays empty of st
 `./scripts/ci.sh` — green, run after the restore. `Executed 541 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `WorktreeGroupPersistenceTests` 9 passed. `git status --porcelain` shows only this
 change's files; no `default.profraw`.
+
+### T7: Documentation and the last `groups.json` references
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | Concurrency: the `WorktreeGroupStore` sentence closing the `DispatchSource` bullet removed — `ClaudeSessionFiles.makeWatcher` is already the subject the paragraph names. Architecture: the `SavedCommandStore` entry no longer compares itself to `WorktreeGroupStore`; the `WorktreeGroupStore.openFileWatcher` leak bullet is replaced by a `WorktreeGroupManager.swift` entry carrying the four keys, the registry-last rule, the unlisted-group rule, that nothing prunes or watches, and the lowercase-key constraint. |
+| `Sources/App/SavedCommandStore.swift` | Doc comment no longer says `commands.json` sits "beside that project's `groups.json`". |
+| `Sources/App/WorktreeConfigStore.swift` | Type doc drops the `WorktreeGroupStore` shape citation; `set`'s doc re-points its return-value rationale from the `groups.json` migration to the rename/delete chain, which is now the one caller a later reload cannot correct. |
+| `Tests/WorkTaskManagerWatcherTests.swift` | The 3s timeout stays; the citation of the deleted `WorktreeGroupStoreTests.testWatcherFiresOnExternalWrite` is gone. |
+| `Tests/WorktreeConfigStoreTests.swift` | The exit-5 comment attributes the distinction to a group delete reaching its registry write, not to the migration keeping `groups.json`. |
+
+**Evidence**
+
+No regression test: this task changes comments and documentation only, so there is no behaviour to
+watch fail. The acceptance criteria are greps.
+
+```
+$ grep -rn "groups.json" Sources Tests CLAUDE.md
+$ grep -rn "WorktreeGroupStore" Sources Tests CLAUDE.md
+$ echo $?
+1
+```
+
+Both return nothing. `.work/brief.md` still names both, deliberately — it is the historical task
+brief, outside the criteria's scope and not a claim about the current code.
+
+**Deviations from the plan**
+
+One beyond the plan's file list: `Tests/WorktreeConfigStoreTests.swift:226` named `groups.json` and
+would have failed acceptance criterion 1. Rewritten in place, same assertion.
+
+**Gate**
+
+`./scripts/ci.sh` — green. `Executed 541 tests, with 0 failures (0 unexpected)`, `==> CI passed.`,
+exit status 0 on a re-run after the last edit. `git status --porcelain` shows only this change's
+five files; no `default.profraw`.

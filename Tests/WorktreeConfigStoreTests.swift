@@ -223,7 +223,7 @@ final class WorktreeConfigStoreTests: TempRootTestCase {
         let clearedEmpty = await store.set("", forKey: WorktreeConfigStore.nameKey, worktreeAt: worktree)
 
         // git exits 5 on an unset with nothing to remove, which is the state asked for and so is
-        // reported as stored — the distinction the migration relies on to keep `groups.json`.
+        // reported as stored — the distinction a group delete relies on to reach its registry write.
         XCTAssertTrue(clearedNil)
         XCTAssertTrue(clearedEmpty)
         let read = await store.values(forWorktreeAt: worktree)
