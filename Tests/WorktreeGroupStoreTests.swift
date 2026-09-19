@@ -60,31 +60,48 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         XCTAssertEqual(payload.defaultOrder, ["/a", "/b"], file: file, line: line)
     }
 
-    func testDecodesFileWrittenBeforeStatusesExisted() throws {
+    func testDecodesFileWithNoStatusesKey() throws {
         let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: Self.payloadJSON())
 
         assertGroupsIntact(payload)
-        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.legacyStatuses, [:])
         XCTAssertEqual(payload.grouping, .group)
     }
 
-    func testLoadKeepsGroupsOfFileWrittenBeforeStatusesExisted() async throws {
+    func testLoadKeepsGroupsOfFileWithNoStatusesKey() async throws {
         try writeGroupsFile(Self.payloadJSON())
 
         let payload = await store.load()
 
         assertGroupsIntact(payload)
-        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.legacyStatuses, [:])
         XCTAssertEqual(payload.grouping, .group)
     }
 
-    func testDecodeDropsUnrecognisedStatusSlug() throws {
+    /// The pre-change wire format, byte for byte: its statuses reach `legacyStatuses` so the
+    /// manager can migrate them into each worktree's own config, and an unrecognised slug is
+    /// still dropped rather than throwing the file away.
+    func testDecodesThePreChangeWireFormatIntoLegacyStatuses() throws {
         let data = Self.payloadJSON(extraKeys: ",\"statuses\":{\"/a\":\"todo\",\"/b\":\"bogus\"}")
 
         let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
 
         assertGroupsIntact(payload)
-        XCTAssertEqual(payload.statuses, ["/a": .todo])
+        XCTAssertEqual(payload.legacyStatuses, ["/a": .todo])
+    }
+
+    /// Asserted over the encoded bytes, not a round trip: a round trip cannot tell a key that is
+    /// no longer written from one that is written and then ignored on the way back in.
+    func testEncodeOmitsTheStatusesKey() throws {
+        let data = Self.payloadJSON(extraKeys: ",\"statuses\":{\"/a\":\"todo\"}")
+        var payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
+        payload.grouping = .status
+
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(payload), encoding: .utf8))
+
+        XCTAssertFalse(encoded.contains("statuses"), encoded)
+        XCTAssertTrue(encoded.contains("\"grouping\":\"status\""), encoded)
+        XCTAssertTrue(encoded.contains("\"defaultOrder\""), encoded)
     }
 
     /// A wrong-shaped value, not just a wrong slug: `groups.json` is hand-editable and the
@@ -97,7 +114,7 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
 
         assertGroupsIntact(payload)
-        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.legacyStatuses, [:])
     }
 
     func testDecodeKeepsGroupsWhenAStatusValueIsNotAString() throws {
@@ -106,7 +123,7 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         let payload = try JSONDecoder().decode(WorktreeGroupsPayload.self, from: data)
 
         assertGroupsIntact(payload)
-        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.legacyStatuses, [:])
     }
 
     func testDecodeKeepsGroupsWhenGroupingHasTheWrongShape() throws {
@@ -135,13 +152,8 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         XCTAssertEqual(payload.grouping, .status)
     }
 
-    func testPayloadRoundTripsStatusesAndGrouping() throws {
-        let original = WorktreeGroupsPayload(
-            groups: [],
-            defaultOrder: ["/a"],
-            statuses: ["/a": .inReview, "/b": .onHold],
-            grouping: .none
-        )
+    func testPayloadRoundTripsGrouping() throws {
+        let original = WorktreeGroupsPayload(groups: [], defaultOrder: ["/a"], grouping: .none)
 
         let decoded = try JSONDecoder().decode(
             WorktreeGroupsPayload.self,
@@ -159,15 +171,12 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         XCTAssertEqual(payload.groups.count, 1)
         XCTAssertEqual(payload.groups.first?.name, "Feature")
         XCTAssertEqual(payload.defaultOrder, [])
-        XCTAssertEqual(payload.statuses, [:])
+        XCTAssertEqual(payload.legacyStatuses, [:])
         XCTAssertEqual(payload.grouping, .group)
     }
 
     private func writeGroupsFile(_ data: Data) throws {
-        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
-        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
-        let groupsFile = (clearwayDir as NSString).appendingPathComponent("groups.json")
-        FileManager.default.createFile(atPath: groupsFile, contents: data)
+        try GroupsFile.write(data, inProjectRoot: tempRoot)
     }
 
     // MARK: - load() on missing file returns []
@@ -216,7 +225,6 @@ final class WorktreeGroupStoreTests: TempRootTestCase {
         let payload = WorktreeGroupsPayload(
             groups: [group],
             defaultOrder: ["main"],
-            statuses: [:],
             grouping: .group
         )
         try await store.save(payload)

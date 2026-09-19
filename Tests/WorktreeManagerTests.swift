@@ -206,13 +206,13 @@ final class WorktreeErrorTests: XCTestCase {
 
     func testStderrShownDirectly() {
         let stderr = "fatal: not a git repository (or any of the parent directories): .git"
-        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: stderr)
+        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: stderr, status: 128)
 
         XCTAssertEqual(error.errorDescription, stderr)
     }
 
     func testEmptyStderrFallsBackToGeneric() {
-        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: "")
+        let error = WorktreeManager.WorktreeError.commandFailed("git worktree list", stderr: "", status: 128)
         let message = error.errorDescription ?? ""
 
         XCTAssertEqual(message, "Command failed: git worktree list")

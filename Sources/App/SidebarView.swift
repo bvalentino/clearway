@@ -25,6 +25,7 @@ struct SidebarView: View {
     @State private var searchText = ""
     @State private var worktreeToRemove: Worktree?
     @State private var worktreeToClose: Worktree?
+    @State private var worktreeToRename: Worktree?
     @State private var createWorktreeTargetGroupId: UUID?
     @State private var groupToRename: WorktreeGroup?
     @State private var groupToDelete: WorktreeGroup?
@@ -137,14 +138,25 @@ struct SidebarView: View {
         } message: {
             Text("There are processes still running in this worktree's terminals.")
         }
+        .sheet(item: $worktreeToRename) { wt in
+            NameEntrySheet(
+                title: "Rename Worktree",
+                confirmTitle: "Save",
+                initialName: groupManager.name(for: wt) ?? "",
+                allowsEmptyName: true
+            ) { newName in
+                groupManager.setName(newName, for: wt)
+                worktreeToRename = nil
+            }
+        }
         .sheet(item: $groupToRename) { group in
-            RenameGroupSheet(group: group) { newName in
+            NameEntrySheet(title: "Rename Group", confirmTitle: "Save", initialName: group.name) { newName in
                 groupManager.renameGroup(id: group.id, to: newName)
                 groupToRename = nil
             }
         }
         .sheet(isPresented: $showingNewGroupSheet) {
-            NewGroupSheet { name in
+            NameEntrySheet(title: "New Group", confirmTitle: "Create") { name in
                 groupManager.createGroup(named: name)
                 showingNewGroupSheet = false
             }
@@ -416,6 +428,10 @@ struct SidebarView: View {
         Divider()
 
         if !wt.isMain {
+            Button("Rename…") {
+                worktreeToRename = wt
+            }
+
             Menu("Status") {
                 Picker("Status", selection: Binding(
                     get: { groupManager.status(for: wt) },
@@ -423,13 +439,8 @@ struct SidebarView: View {
                 )) {
                     Text("None").tag(WorktreeStatus?.none)
                     ForEach(WorktreeStatus.allCases) { status in
-                        Label {
-                            Text(status.displayName)
-                        } icon: {
-                            Image(systemName: status.symbol)
-                                .foregroundStyle(status.color)
-                        }
-                        .tag(Optional(status))
+                        WorktreeStatusLabel(status: status)
+                            .tag(Optional(status))
                     }
                 }
                 .pickerStyle(.inline)
@@ -481,18 +492,6 @@ struct SidebarView: View {
         )
     }
 
-    /// Computes the (primaryText, subtitle) pair for a worktree row.
-    /// For the main worktree the stable branch name is the primary label.
-    /// For non-main worktrees a linked task title (if any) is primary, with the branch as subtitle.
-    private func rowTexts(
-        for wt: Worktree,
-        titles: [String: String]
-    ) -> (primaryText: String?, subtitle: String?) {
-        let primaryText = wt.branch.flatMap { titles[$0] }
-        let subtitle: String? = primaryText == nil ? nil : wt.displayName
-        return (primaryText, subtitle)
-    }
-
     @ViewBuilder
     private func worktreeRowView(
         for wt: Worktree,
@@ -505,9 +504,10 @@ struct SidebarView: View {
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
         let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
         let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
-        let (primaryText, subtitle) = rowTexts(
+        let (primaryText, subtitle) = WorktreeRow.rowTexts(
             for: wt,
-            titles: titles
+            name: groupManager.name(for: wt),
+            taskTitle: wt.branch.flatMap { titles[$0] }
         )
         WorktreeRow(
             worktree: wt,

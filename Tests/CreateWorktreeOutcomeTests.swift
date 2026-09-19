@@ -1,0 +1,41 @@
+import XCTest
+@testable import Clearway
+
+/// Pins what the New Worktree sheet does once `createWorktree` returns. Nothing in a SwiftUI body
+/// is reachable from XCTest, which is why the rule is a pure static on `CreateWorktreeSheet`.
+@MainActor
+final class CreateWorktreeOutcomeTests: XCTestCase {
+
+    /// The regression: a fetch that failed non-fatally leaves `error` set over a creation that
+    /// succeeded, and the sheet used to drop the typed name and status because of it.
+    func testAReturnedWorktreeIsAppliedEvenWhenTheManagerCarriesAnError() {
+        let created = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+
+        let outcome = CreateWorktreeSheet.outcome(
+            created: created,
+            error: "Fetch failed: no route to host. Proceeding with local state."
+        )
+
+        XCTAssertEqual(outcome, .apply(created))
+    }
+
+    func testAReturnedWorktreeIsAppliedWhenThereIsNoError() {
+        let created = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
+
+        XCTAssertEqual(CreateWorktreeSheet.outcome(created: created, error: nil), .apply(created))
+    }
+
+    func testNoWorktreeWithAnErrorLeavesTheSheetOpen() {
+        XCTAssertEqual(
+            CreateWorktreeSheet.outcome(created: nil, error: "Invalid branch name"),
+            .reportedFailure
+        )
+    }
+
+    /// `createWorktree` also returns nil when the worktree was added but the follow-up lookup did
+    /// not find it. Nothing is published to explain that, so the sheet logs rather than dismissing
+    /// onto a worktree that carries no name, status or group.
+    func testNoWorktreeAndNoErrorIsASilentFailure() {
+        XCTAssertEqual(CreateWorktreeSheet.outcome(created: nil, error: nil), .silentFailure)
+    }
+}
