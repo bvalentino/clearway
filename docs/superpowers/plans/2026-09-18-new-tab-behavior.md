@@ -780,3 +780,42 @@ Two.
 
 `./scripts/ci.sh` — exit status 0, `Executed 484 tests, with 0 failures`. No new compiler warnings in
 the four touched files.
+
+### T4: ⌥⌘T replaces ⌘⇧T
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/ClearwayApp.swift` | `NewShellTabActionKey` → `NewAgentTabActionKey`, `FocusedValues.newShellTabAction` → `newAgentTabAction`, `NewShellTabMenuItem` → `NewAgentTabMenuItem` titled **New Agent Tab** on `.keyboardShortcut("t", modifiers: [.command, .option])`. Position in the `CommandGroup(replacing: .newItem)` list and the `.disabled(action == nil)` gate are unchanged. |
+| `Sources/App/ContentView.swift` | `newShellTabAction` → `newAgentTabAction`: the nil gate now also requires `settings.configuredMainTerminalCommand`, and the closure calls `startAgentTab`. `ghosttyApp.app` stays inside the closure, the known exception `CLAUDE.md` names. `.focusedSceneValue(\.newAgentTabAction, …)`. |
+| `Sources/App/AppKeyboardShortcuts.swift` | `[.command, .shift]` loses `letter == "t"` and its comment loses "new shell tab"; `[.command, .option]` is `letter == "b" \|\| letter == "t"`, commented "toggle aside, new agent tab". The `claims` doc comment's uppercasing example is retargeted from Cmd+Shift+T to Cmd+Shift+N. |
+| `Tests/AppKeyboardShortcutsTests.swift` | `testShiftedMenuLettersAreClaimedDespiteArrivingUppercased` drops its `"T"` assertion and its doc names New Group. New `testCommandOptionTIsClaimed` (⌥⌘T claimed, ⌥⇧⌘T and ⌃⌘T not). New `testRetiredCommandShiftTIsNotClaimed` in the Retired shortcuts section beside ⌘⌃2 / ⌘⌃3. `testCommandTIsClaimed` untouched. |
+
+`grep -rn 'newShellTabAction\|NewShellTab' Sources Tests` returns nothing. ⌘⇧T now reaches the
+shell; File ▸ New Shell Tab is gone.
+
+**Evidence**
+
+Both new pins were watched red by restoring the two claim clauses to their pre-task form
+(`[.command, .shift]` keeping `letter == "t"`, `[.command, .option]` returning `letter == "b"` alone)
+and running `./scripts/ci.sh`, giving `Executed 486 tests, with 2 failures`:
+
+```
+testCommandOptionTIsClaimed()
+    AppKeyboardShortcutsTests.swift:83: XCTAssertTrue failed - New Agent Tab
+testRetiredCommandShiftTIsNotClaimed()
+    AppKeyboardShortcutsTests.swift:137: XCTAssertFalse failed
+```
+
+The clauses were then restored and the gate re-run. The menu item itself and `newAgentTabAction`'s
+nil gate are not test-reachable — both need a live `ghostty_app_t` — so they are the operator's
+by-hand pass, which is what the plan's T4 verification asks for.
+
+**Deviations**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — exit status 0, `Executed 486 tests, with 0 failures`.

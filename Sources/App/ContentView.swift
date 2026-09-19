@@ -133,12 +133,14 @@ struct ContentView: View {
         }
     }
 
-    /// Cmd+Shift+T: append a tab running a login shell. Retired in favour of ⌥⌘T.
-    private var newShellTabAction: (() -> Void)? {
-        guard let worktree = selectedWorktree else { return nil }
+    /// Cmd+Option+T: append a tab running the Settings > Main Terminal command. Nil — so the menu
+    /// item is greyed — when no worktree is selected or Main Terminal is "None".
+    private var newAgentTabAction: (() -> Void)? {
+        guard let worktree = selectedWorktree,
+              let command = settings.configuredMainTerminalCommand else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.appendTab(for: worktree, app: app)
+            terminalManager.startAgentTab(for: worktree, app: app, command: command)
         }
     }
 
@@ -257,7 +259,7 @@ struct ContentView: View {
     var body: some View {
         navigator
         .focusedSceneValue(\.newTabAction, newTabAction)
-        .focusedSceneValue(\.newShellTabAction, newShellTabAction)
+        .focusedSceneValue(\.newAgentTabAction, newAgentTabAction)
         .focusedSceneValue(\.newTaskAction, newTaskAction)
         .focusedSceneValue(\.sidebarToggle, sidebarPanel)
         .focusedSceneValue(\.bottomPanelToggle, bottomPanel)

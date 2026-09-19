@@ -188,7 +188,7 @@ struct ClearwayApp: App {
                 .keyboardShortcut("n", modifiers: .command)
                 NewGroupCommand()
                 NewTabMenuItem()
-                NewShellTabMenuItem()
+                NewAgentTabMenuItem()
                 NewTaskMenuItem()
                 NewPromptMenuItem()
                 NewCommandMenuItem()
@@ -273,26 +273,26 @@ private struct NewTabMenuItem: View {
     }
 }
 
-/// Focused-value key for the active window's "new shell tab" action (Cmd+Shift+T).
-private struct NewShellTabActionKey: FocusedValueKey {
+/// Focused-value key for the active window's "new agent tab" action (Cmd+Option+T).
+private struct NewAgentTabActionKey: FocusedValueKey {
     typealias Value = () -> Void
 }
 
 extension FocusedValues {
-    var newShellTabAction: (() -> Void)? {
-        get { self[NewShellTabActionKey.self] }
-        set { self[NewShellTabActionKey.self] = newValue }
+    var newAgentTabAction: (() -> Void)? {
+        get { self[NewAgentTabActionKey.self] }
+        set { self[NewAgentTabActionKey.self] = newValue }
     }
 }
 
-/// File menu item that creates a new tab running a login shell directly,
-/// bypassing the prompt launcher. Disabled when no worktree is active.
-private struct NewShellTabMenuItem: View {
-    @FocusedValue(\.newShellTabAction) private var action
+/// File menu item that creates a new tab running the Settings > Main Terminal command.
+/// Disabled when no worktree is active or Main Terminal is "None".
+private struct NewAgentTabMenuItem: View {
+    @FocusedValue(\.newAgentTabAction) private var action
 
     var body: some View {
-        Button("New Shell Tab") { action?() }
-            .keyboardShortcut("t", modifiers: [.command, .shift])
+        Button("New Agent Tab") { action?() }
+            .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(action == nil)
     }
 }
