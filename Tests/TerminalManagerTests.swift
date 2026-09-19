@@ -139,6 +139,20 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertEqual(manager.takeFirstTabCommand(for: created.id), "claude")
     }
 
+    /// Tearing a worktree's terminals down drops every other per-worktree entry, so the creation
+    /// mark has to go with them: a worktree whose terminals were closed and then reopened is one
+    /// that already exists, and must come back on a login shell rather than on a second agent.
+    func test_removeSurface_clearsTheCreationMark() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt)
+        manager.removeSurface(for: wt.id)
+        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
+                     "the creation mark must not survive the worktree's terminals")
+    }
+
     // MARK: - buildAgentPromptCommand
 
     func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {

@@ -432,6 +432,7 @@ class TerminalManager: ObservableObject {
     private func cleanupState(for worktreeId: String) {
         openWorktreeIds.removeAll(where: { $0 == worktreeId })
         notifiedWorktrees.remove(worktreeId)
+        createdWorktreeIds.remove(worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)

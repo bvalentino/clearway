@@ -23,7 +23,15 @@ extension TerminalManager {
             }
 
         case .agent(let agent, let prompt, let submit):
-            startAgentTab(for: worktree, app: app, command: agent, prompt: prompt, submit: submit)
+            // Never refused: this tab is the command the user picked, not a repeat of ⌥⌘T.
+            startAgentTab(
+                for: worktree,
+                app: app,
+                command: agent,
+                prompt: prompt,
+                submit: submit,
+                refuseWhenInFlight: false
+            )
         }
     }
 

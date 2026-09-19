@@ -27,7 +27,7 @@ terminal it is running in.
 | 8 | How are agent names displayed? | `agentAllowlist` holds command names (`claude`), the menu renders `.capitalized` (`Claude`). The allowlist stays the command spelling because it is what gets executed. | Spec |
 | 9 | What if Main Terminal holds a command not in the allowlist? | No `+` row carries ⌥⌘T, and ⌥⌘T still runs the configured command. `mainTerminalCommand` is a free `String` (`SettingsManager.swift:59`) and the picker is bound to it, so a stored value outside the list is reachable. The shortcut belongs to the setting, not to the list. | Spec |
 | 10 | How does an agent tab get the resolved PATH? | The same way the launcher did: `await ShellEnvironment.awaitPath()`, then `buildBareCommand`. A login-shell tab needs no await (the shell resolves its own PATH) and stays fully synchronous, so ⌘T never defers a frame. | Spec |
-| 11 | What covers the frame between an agent tab being asked for and its surface existing? | An in-flight marker per worktree on `TerminalManager`, the same shape as `beginTaskLaunch` / `endTaskLaunch` (`TerminalManager+TaskTerminals.swift:65-71`). While it is set, `detailView` renders neither the "⌘T for a new tab" placeholder nor a tab strip, so a worktree whose first tab is an agent does not flash the empty state. It also makes a second ⌥⌘T during the wait a no-op rather than a second agent. | Spec |
+| 11 | What covers the frame between an agent tab being asked for and its surface existing? | An in-flight marker per worktree on `TerminalManager`, the same shape as `beginTaskLaunch` / `endTaskLaunch` (`TerminalManager+TaskTerminals.swift:65-71`). While it is set, `detailView` renders neither the "⌘T for a new tab" placeholder nor a tab strip, so a worktree whose first tab is an agent does not flash the empty state. ~~It also makes a second ⌥⌘T during the wait a no-op rather than a second agent.~~ **Second sentence superseded by Decision 20.** | Spec |
 | 12 | What happens to a saved command of kind `.agent` with `autoRun` on? | Unchanged mechanism: `buildAgentPromptCommand` hands the prompt to the agent as one argv element in the tab's own command. Only the launcher hop is removed. Pasting into a booting agent TUI instead would race its startup with no readiness signal to gate on — `awaitShellPrompt` keys on OSC 7 `pwd`, which an `exec`'d agent never emits. | Spec |
 | 13 | What happens to a saved command of kind `.agent` with `autoRun` off ("stage, don't run")? | The agent tab opens bare and the prompt is pasted into it, unsubmitted, after `awaitShellPrompt`'s fallback window — the closest surviving equivalent of seeding the launcher draft. Argv delivery cannot stage. | Spec |
 | 14 | What happens to the Prompts aside's play button? | Nothing at the call site. `sendToActiveMainTab(_:asCommand:)` loses its `.launcher` branch and keeps its `.surface` branch, so a prompt pastes into whatever the active tab is running. It still opens no tab of its own. | Operator (decision 1, read as: the draft branch is replaced by the paste branch) |
@@ -36,6 +36,7 @@ terminal it is running in.
 | 17 | Does the "⌘T for a new tab" empty-state copy change? | No. ⌘T still opens a tab, and the strip still hides itself at zero tabs (`MainTerminalTabStrip.swift:96-99`). | Spec |
 | 18 | What happens to Settings → Main Terminal's footer ("Choose \"None\" to open new tabs directly in a login shell")? | Removed entirely, not reworded. It is false now that ⌘T always opens a login shell, and the standing rule is no helper text beneath a setting by default. The "None" picker row stays. | Operator (added at T7) |
 | 19 | What is a worktree's first tab? (supersedes 5) | It depends on who created the worktree. A worktree Clearway itself created this session opens on the Main Terminal command, if one is set; a worktree that already existed opens a plain login shell, whether it is selected for the first time this session, on app launch, or reopened after its terminals were closed. The signal is a mark the creation path sets — `TerminalManager.markWorktreeCreated`, called from the one point every creation door funnels through (`WorktreeManager.lastCreatedBranch`) — never a timestamp. `takeFirstTabCommand` consumes it. | Operator (hands-on check, after T7) |
+| 20 | Which launches may an in-flight marker refuse? (supersedes 11's second sentence) | Only ⌥⌘T. The marker stays the rendering gate for every agent launch, but refusing on it is `startAgentTab`'s `refuseWhenInFlight`, true for the ⌥⌘T door alone — a second press during the PATH wait is a repeat of the first, not a second agent. A saved `.agent` command passes `false` and always opens its own tab: the marker is per worktree and held across `await ShellEnvironment.awaitPath()`, so a second saved agent command started shortly after the first on a cold launch was silently dropped. Only the launch that owns the marker ends it, so a launch that passed it by cannot clear the gate out from under its owner. | Operator (review finding) |
 
 ## Assumptions
 
@@ -72,10 +73,14 @@ were written, into the repo or the scratchpad; nothing here needed an empirical 
 7. **⌥⌘T does not collide with anything.** `[.command, .option]` is claimed for `"b"` alone, and the
    only other Option-modified declaration in the app is the aside toggle
    (`ClearwayApp.swift:203-204`). Grep over `Sources` finds no other `.option` keyboard shortcut.
-8. **`agentAllowlist` has exactly one reader today.** `SettingsView.swift:11` renders the Main
-   Terminal picker rows from it; nothing else imports it (`CLAUDE.md § AgentLaunch.swift` states the
-   same). Reordering it therefore changes only that picker's order, and the `+` menu becomes its
-   second reader.
+8. **`agentAllowlist` has two readers at base; this change makes a third.** ~~Exactly one reader
+   today: `SettingsView.swift:11` renders the Main Terminal picker rows from it and nothing else
+   imports it.~~ **Corrected at the review step.** `CommandEditorSheet.swift` was already a second
+   reader at base `6b1977a` — its agent picker (`:58`), and `agentAllowlist.first` as a new saved
+   command's default agent (`:21`) — and `agentMenuRows` makes a third. Reordering the list
+   therefore reorders both pickers **and** changes which agent a newly created saved command
+   defaults to, which is why that head entry is pinned by
+   `AgentMenuRowTests.testFirstEntryIsTheNewSavedCommandDefault`.
 9. **`buildAgentPromptCommand` has one call site.** `promoteLauncherToAgent`
    (`TerminalManager+Launcher.swift:38`). Decision 12 keeps the helper and moves that call to the
    saved-command path; its seven tests (`TerminalManagerTests.swift:91-186`) stay, with the

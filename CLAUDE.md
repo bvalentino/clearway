@@ -179,12 +179,16 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     the status afterwards. `status` is frontmatter Clearway writes and round-trips but **never
     renders** — there is no badge and no label table, so an unrecognized slug needs no handling
     beyond being carried through untouched.
-  - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `codex`, `grok`) is display order and has two
-    readers: Settings → Main Terminal's picker rows in `SettingsView`, and `agentMenuRows`, the tab
+  - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `codex`, `grok`) is display order and has three
+    readers: Settings → Main Terminal's picker rows in `SettingsView`; `agentMenuRows`, the tab
     strip `+` menu's row rule, which lives in this file beside the list so the two orders cannot
-    disagree. `agentMenuRows` is pure — it marks the row matching the configured Main Terminal
-    command as the one carrying ⌥⌘T, and marks none when that command is nil or unlisted. No launch
-    is gated against the allowlist, so adding a name there only offers it in those two menus.
+    disagree; and `CommandEditorSheet`, which renders a saved agent command's picker from it **and**
+    takes `agentAllowlist.first` as a new saved command's default agent. That default makes the head
+    of the list behaviour rather than presentation — a reorder changes what every new agent command
+    is created with — so `AgentMenuRowTests` pins it. `agentMenuRows` is pure — it marks the row
+    matching the configured Main Terminal command as the one carrying ⌥⌘T, and marks none when that
+    command is nil or unlisted. No launch is gated against the allowlist, so adding a name there only
+    offers it in those three pickers.
     `buildAgentPromptCommand` backs a saved agent command's prompt. It writes the prompt to a
     mode-`0o600` temp file and builds `/bin/sh -c` around `$1 "$(cat "$2")"`, where `$1` — the agent
     command — is **unquoted on purpose** so a multi-word command word-splits. Unquoted parameter
@@ -202,9 +206,13 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     An agent tab goes through `startAgentTab`, which is **synchronous** even though its body is a
     `Task`: it has to take the per-worktree `agentLaunchesInFlight` claim in the caller's runloop
     turn, because the `await ShellEnvironment.awaitPath()` that follows leaves the pane with no tabs
-    and `detailView` would render the "⌘T for a new tab" empty state for that frame. The claim is
-    also what makes a second ⌥⌘T during the wait a no-op instead of a second agent. A login-shell tab
+    and `detailView` would render the "⌘T for a new tab" empty state for that frame. A login-shell tab
     awaits nothing — the shell resolves its own PATH — so ⌘T never defers a frame and takes no claim.
+    The marker is a **rendering gate first**. Refusing a second launch is `refuseWhenInFlight`, on
+    top of it and true only for ⌥⌘T, where a second press during the wait is a repeat of the first.
+    A saved `.agent` command passes `false`: it is a tab the user named, and two of them started
+    within the same cold-launch PATH wait must both open. Only the launch that owns the marker ends
+    it, so a passing launch cannot clear the gate out from under its owner.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
     `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
     wait and the shell-vs-agent branch live on the coordinator with the rest of the tab logic.
@@ -278,7 +286,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()` — because
     both open a menu rather than acting on a click, which an icon-only button reads as. The remaining
     toolbar items do act on a click and stay icon-only. The menu and the settings section are
-    separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
+    separate files because `ContentView.swift` sits at SwiftLint's 1000-line `file_length` limit and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.
     The menu claims **no** keyboard shortcut, so `AppKeyboardShortcuts` has no entry for it.

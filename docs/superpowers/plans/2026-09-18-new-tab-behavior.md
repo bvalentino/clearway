@@ -671,6 +671,33 @@ no later stage reverts it as unintentional.
    never a timestamp. The task terminal is untouched: `taskTerminalLaunchCommand` still reads the
    setting directly and a task launch gets no second agent tab.
 
+3. **`agentAllowlist` has three readers, and its first entry is load-bearing** — carried by the
+   review-findings task. `CLAUDE.md` and spec Assumption 8 both claimed fewer readers than exist:
+   `CommandEditorSheet` renders a saved agent command's picker from the list *and* seeds a new
+   saved command with `agentAllowlist.first`. Both are corrected, and that default is pinned by
+   `AgentMenuRowTests.testFirstEntryIsTheNewSavedCommandDefault` so a reorder cannot change it
+   silently.
+
+4. **A saved `.agent` command is never refused for an in-flight launch** — carried by the
+   review-findings task. `startAgentTab`'s claim was per worktree and held across
+   `await ShellEnvironment.awaitPath()`, so on a cold launch a second saved agent command started
+   during that wait opened nothing. The marker stays the rendering gate; refusing on it is now
+   `refuseWhenInFlight`, defaulted `true` for ⌥⌘T and passed `false` by the saved-command path, and
+   only the launch that owns the marker ends it. Supersedes spec Decision 11's second sentence;
+   recorded as spec Decision 20.
+
+5. **`cleanupState` clears the creation mark** — carried by the review-findings task. It cleared
+   every other per-worktree map but left `createdWorktreeIds`, so a created worktree whose
+   terminals were closed could come back on the Main Terminal command instead of a login shell.
+   Pinned by `TerminalManagerTests.test_removeSurface_clearsTheCreationMark`.
+
+6. **`startAgentTab` drops its redundant `@MainActor`** — carried by the review-findings task.
+   `TerminalManager` is already `@MainActor`.
+
+7. **`ContentView.swift` sits at the SwiftLint limit rather than past it** — carried by the
+   review-findings task. The file is 999 lines; `CLAUDE.md` said "is past" the 1000-line
+   `file_length` error. Reworded to "sits at"; the split-before-growing rule is unchanged.
+
 ## Build log
 
 <!-- Each build task appends its entry here. -->
@@ -1058,3 +1085,41 @@ needs no `ghostty_app_t`), passing Main Terminal into `MainTerminalTabStrip` as 
 glyphs (CLAUDE.md records that declaration as deliberate).
 
 **Gate**: `./scripts/ci.sh` — exit status 0, `Executed 537 tests, with 0 failures`.
+
+### Review findings (Changelog 3-7)
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager+Agent.swift` | `startAgentTab` gains `refuseWhenInFlight` (default `true`), loses the redundant `@MainActor`, and ends the marker only when it owns it. `beginAgentLaunch`'s doc now describes a marker, not an abandonment order. |
+| `Sources/App/TerminalManager+Commands.swift` | The saved `.agent` branch passes `refuseWhenInFlight: false`. |
+| `Sources/App/TerminalManager.swift` | `cleanupState` clears `createdWorktreeIds`. |
+| `Tests/TerminalManagerTests.swift` | `test_removeSurface_clearsTheCreationMark`. |
+| `Tests/AgentMenuRowTests.swift` | `testFirstEntryIsTheNewSavedCommandDefault`. |
+| `CLAUDE.md` | Three allowlist readers with the head entry called out; the in-flight marker described as a rendering gate with ⌥⌘T-only refusal; `ContentView.swift` "sits at" the 1000-line limit. |
+| `docs/superpowers/specs/2026-09-18-new-tab-behavior.md` | Assumption 8 corrected; Decision 11's second sentence struck and superseded by new Decision 20. |
+
+**The evidence**
+
+`test_removeSurface_clearsTheCreationMark` watched red with the `cleanupState` line reverted:
+
+```
+Test Suite 'TerminalManagerTests' started at 2026-09-19 14:07:48.511.
+    ✖ test_removeSurface_clearsTheCreationMark, XCTAssertNil failed: "claude" - the creation mark must not survive the worktree's terminals
+Executed 539 tests, with 1 failure (0 unexpected) in 86.143 (86.361) seconds
+```
+
+`testFirstEntryIsTheNewSavedCommandDefault` is a pin, not a regression test — it guards a future
+reorder and passes either way today, so there is no failure to quote.
+
+**Deviations**
+
+The saved-agent-command regression (Changelog 4) has no unit test: `startAgentTab` reaches
+`appendTab`, which needs a live `ghostty_app_t`, and the rule it now carries is one boolean
+parameter rather than a decision worth lifting into a pure helper. It goes on the Try line instead.
+`refuseWhenInFlight` was chosen over a second entry point (`startMainTerminalTab`) because ⌥⌘T is
+declared at two doors — `ContentView.newAgentTabAction` and the `+` menu's marked row — and a
+second entry point would have to be threaded through both while the claim stayed in one place.
+
+**Gate**: `./scripts/ci.sh` — exit status 0, `Executed 539 tests, with 0 failures`.

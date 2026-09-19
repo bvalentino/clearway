@@ -7,8 +7,8 @@ import GhosttyKit
 /// shell resolves its own PATH and needs no await.
 extension TerminalManager {
 
-    /// Claims the worktree's agent launch, reporting whether the claim is this caller's. `false`
-    /// means a launch is already in flight and this one must abandon itself.
+    /// Marks the worktree's agent launch in flight, reporting whether the marker is this caller's.
+    /// `false` means another launch already owns it, and this one must leave it alone.
     func beginAgentLaunch(for worktreeId: String) -> Bool {
         agentLaunchesInFlight.insert(worktreeId).inserted
     }
@@ -23,18 +23,25 @@ extension TerminalManager {
     /// the "⌘T for a new tab" empty state renders for the frame before the `Task` starts. The await
     /// that follows is what the claim covers.
     ///
+    /// `refuseWhenInFlight` is the ⌥⌘T rule and nothing more: a second press while the first launch
+    /// is still awaiting PATH is a repeat of that press, not a second agent. A saved agent command
+    /// passes `false` — the user named that tab and it must open whether or not another launch
+    /// happens to be in flight in the same worktree. Only the launch that owns the marker ends it,
+    /// so a launch that passed the marker by cannot clear the gate out from under its owner.
+    ///
     /// `prompt` empty → the agent runs bare. With `submit` the prompt is handed to the agent as one
     /// argv element (`buildAgentPromptCommand`); without it the tab opens bare and the prompt is
     /// pasted unsubmitted once the surface settles — argv delivery cannot stage.
-    @MainActor
     func startAgentTab(
         for worktree: Worktree,
         app: ghostty_app_t,
         command: String,
         prompt: String = "",
-        submit: Bool = true
+        submit: Bool = true,
+        refuseWhenInFlight: Bool = true
     ) {
-        guard beginAgentLaunch(for: worktree.id) else { return }
+        let ownsLaunch = beginAgentLaunch(for: worktree.id)
+        guard ownsLaunch || !refuseWhenInFlight else { return }
         let worktreeId = worktree.id
         Task { @MainActor in
             let path = await ShellEnvironment.awaitPath()
@@ -47,7 +54,7 @@ extension TerminalManager {
                     filePrefix: "clearway-agent-tab"
                 ).command
             let surface = appendTab(for: worktree, app: app, command: launchCommand)
-            endAgentLaunch(for: worktreeId)
+            if ownsLaunch { endAgentLaunch(for: worktreeId) }
 
             guard !prompt.isEmpty, !submit else { return }
             await Self.awaitShellPrompt(on: surface)

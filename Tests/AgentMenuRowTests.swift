@@ -28,4 +28,11 @@ final class AgentMenuRowTests: XCTestCase {
         XCTAssertEqual(rows.map(\.command), ["claude", "codex", "grok"])
         XCTAssertEqual(rows.map(\.title), ["Claude", "Codex", "Grok"])
     }
+
+    /// `CommandEditorSheet` seeds a new saved agent command with `agentAllowlist.first`, so the
+    /// head of the list is behaviour, not just display order: reordering it silently changes what
+    /// every new agent command is created with.
+    func testFirstEntryIsTheNewSavedCommandDefault() {
+        XCTAssertEqual(agentAllowlist.first, "claude")
+    }
 }
