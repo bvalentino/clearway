@@ -196,7 +196,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - `TerminalManager.appendTab` is the one door every main tab goes through: it builds the
     `Ghostty.SurfaceView` with its command up front, appends, activates and focuses. No tab is ever
     an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
-    shell; ⌥⌘T, the `+` menu's agent rows and a worktree's first tab pass an agent command built by
+    shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
+    created pass an agent command built by
     `buildBareCommand` (`TerminalManager+Agent.swift`).
     An agent tab goes through `startAgentTab`, which is **synchronous** even though its body is a
     `Task`: it has to take the per-worktree `agentLaunchesInFlight` claim in the caller's runloop

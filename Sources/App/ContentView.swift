@@ -308,6 +308,7 @@ struct ContentView: View {
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
+            terminalManager.markWorktreeCreated(wt)
             detailSelection = .worktree(wt)
 
             // The hook runs in the secondary terminal, reusing the persistent login shell so its
@@ -380,7 +381,7 @@ struct ContentView: View {
         }
         .onAppear {
             // Read Settings → Main Terminal through the live SettingsManager so clearing the
-            // command at runtime immediately makes the next first tab a login shell.
+            // command at runtime immediately makes the next agent tab a login shell.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
 

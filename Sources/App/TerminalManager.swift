@@ -146,10 +146,9 @@ class TerminalManager: ObservableObject {
 
         setInitialPanelVisibility(for: key, worktree: worktree)
 
-        // A worktree's first tab follows the ⌥⌘T rule: the Settings → Main Terminal command when
-        // one is set, a login shell otherwise. The agent branch returns a pane with no tabs yet —
-        // `detailView`'s in-flight gate is what keeps the empty state off the screen meanwhile.
-        if let command = mainCommandProvider() {
+        // The agent branch returns a pane with no tabs yet — `detailView`'s in-flight gate is what
+        // keeps the empty state off the screen meanwhile.
+        if let command = takeFirstTabCommand(for: key) {
             startAgentTab(for: worktree, app: app, command: command)
         } else {
             appendTab(for: worktree, app: app)
@@ -158,10 +157,32 @@ class TerminalManager: ObservableObject {
         return panes[key] ?? tp
     }
 
-    /// The Settings → Main Terminal command (nil when unset). Read for a worktree's first tab, by
-    /// ⌥⌘T, and by `WorkTaskCoordinator.taskTerminalLaunchCommand`. Wired from `ContentView` to
-    /// `SettingsManager` so clearing the command at runtime takes effect immediately.
+    /// The Settings → Main Terminal command (nil when unset). Read for a created worktree's first
+    /// tab, by ⌥⌘T, and by `WorkTaskCoordinator.taskTerminalLaunchCommand`. Wired from `ContentView`
+    /// to `SettingsManager` so clearing the command at runtime takes effect immediately.
     var mainCommandProvider: () -> String? = { nil }
+
+    /// Worktrees Clearway itself created this session, awaiting their first tab.
+    private var createdWorktreeIds: Set<String> = []
+
+    /// Record that Clearway created this worktree, so its first tab runs the Main Terminal command.
+    /// Called from the single point every creation door funnels through — `WorktreeManager`'s
+    /// `lastCreatedBranch`, which both the sidebar sheet and a task launch reach.
+    func markWorktreeCreated(_ worktree: Worktree) {
+        createdWorktreeIds.insert(worktree.id)
+    }
+
+    /// The command a worktree's first tab runs, consuming the creation mark.
+    ///
+    /// A worktree Clearway just created opens on the Settings → Main Terminal command; a worktree
+    /// that already existed opens a login shell (`nil`), whether it is being selected for the first
+    /// time this session or reopened after its terminals were closed.
+    ///
+    /// Internal (not private) so tests can pin the rule without a `ghostty_app_t`.
+    func takeFirstTabCommand(for worktreeId: String) -> String? {
+        guard createdWorktreeIds.remove(worktreeId) != nil else { return nil }
+        return mainCommandProvider()
+    }
 
     /// "Open secondary terminal on start" preference. Consulted only at pane
     /// creation so manual Cmd+J toggles afterwards are preserved.

@@ -659,6 +659,18 @@ no later stage reverts it as unintentional.
    is no helper text beneath a setting by default. Recorded as spec Decision 18; the plan's Risks
    row that deferred it is marked resolved.
 
+2. **A worktree's first tab depends on who created it** — carried by T8 (this entry's own task),
+   after the branch was rebased onto `origin/main` at 87c917d with all seven plan tasks built.
+   The operator's hands-on check asked for it: a worktree Clearway itself just created opens on the
+   Settings → Main Terminal command; a worktree that already existed opens a login shell, on app
+   launch, on first selection this session, and on reopening after its terminals were closed.
+   Supersedes the plan's "a worktree's first tab follows the ⌥⌘T rule" and spec Decision 5;
+   recorded as spec Decision 19. The signal is a one-shot mark set by the creation path
+   (`TerminalManager.markWorktreeCreated`, called where every creation door funnels through —
+   `WorktreeManager.lastCreatedBranch`) and consumed by `TerminalManager.takeFirstTabCommand`,
+   never a timestamp. The task terminal is untouched: `taskTerminalLaunchCommand` still reads the
+   setting directly and a task launch gets no second agent tab.
+
 ## Build log
 
 <!-- Each build task appends its entry here. -->
@@ -976,3 +988,54 @@ enumerate.
 
 `./scripts/ci.sh` — exit status 0 (`==> CI passed.`), `Executed 474 tests, with 0 failures`. Same
 count as T6: this task adds and removes no test.
+
+### T8: A worktree's first tab depends on who created it (Changelog 2)
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `createdWorktreeIds` (private) plus `markWorktreeCreated(_:)` and `takeFirstTabCommand(for:)`. `pane(for:)` asks `takeFirstTabCommand` instead of `mainCommandProvider()` directly; both branches are otherwise unchanged. |
+| `Sources/App/ContentView.swift` | The `lastCreatedBranch` observer calls `terminalManager.markWorktreeCreated(wt)` before it sets `detailSelection`, so the mark is in place whichever reaches `pane(for:)` first — the selection change or `runHookInSecondary`. One line; the file is still net-negative for this branch. |
+| `Tests/TerminalManagerTests.swift` | Five cases under a `First tab command` mark: created + command, existing + command, created + "None", the mark is one-shot, and the mark applies to one worktree only. |
+| `Sources/App/SettingsManager.swift`, `Sources/App/WorkTaskCoordinator+TaskTerminal.swift`, `CLAUDE.md` | Comments that read "a worktree's first tab" now say "a newly created worktree's first tab". No behaviour change. |
+| `docs/superpowers/specs/2026-09-18-new-tab-behavior.md` | Decision 5 struck through and marked superseded, Decision 19 added, success criterion 5 and the summary paragraph rewritten. |
+
+The decision stays on the manager: the view reports the fact (Clearway created this worktree) and
+`pane(for:)` decides what the tab runs, the way `completePendingLaunch` already takes a fact from
+the same observer. No creation path other than `WorktreeManager.createWorktree` exists, and both of
+its callers — the New Worktree sheet and `handleStartResult`'s `.createWorktree` — reach the
+observer through `lastCreatedBranch`, so one mark point covers them.
+
+A task launch is unaffected beyond that: it creates a worktree and so gets an agent first tab, and
+its task terminal still opens only on an explicit Cmd+J / toolbar toggle through
+`taskTerminalLaunchCommand`. Nothing launches twice.
+
+**Evidence**
+
+The three "already existed" cases were watched red against the unfixed rule: `takeFirstTabCommand`
+was temporarily changed to `_ = createdWorktreeIds.remove(worktreeId); return mainCommandProvider()`
+— HEAD's behaviour, where the setting alone decides — and `./scripts/ci.sh` run:
+
+```
+Test Suite 'TerminalManagerTests' started at 2026-09-19 13:41:02.112
+    ✖ test_takeFirstTabCommand_existingWorktree_opensLoginShell, XCTAssertNil failed: "claude" - a worktree Clearway did not create opens a login shell, whatever Main Terminal holds
+    ✖ test_takeFirstTabCommand_markIsOneShot, XCTAssertNil failed: "claude" - closing a created worktree's terminals and reopening it is opening one that already exists
+    ✖ test_takeFirstTabCommand_marksOneWorktreeOnly, XCTAssertNil failed: "claude"
+Executed 537 tests, with 3 failures (0 unexpected) in 85.276 seconds
+```
+
+The guard was then restored from a scratchpad copy (no `git checkout`) and the gate re-run. The two
+"just created" cases cannot be watched red — they pin a method that did not exist before.
+
+**Deviations**
+
+None from the operator's request. The one judgement call: the mark is consumed on first use rather
+than kept for the session, so a created worktree whose terminals are closed and reopened gets a
+login shell. Reopening is opening a worktree that already exists.
+
+**Gate**
+
+`./scripts/ci.sh` — green, 537 tests, 0 failures. `git status --porcelain` clean apart from the
+committed change.
+

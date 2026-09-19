@@ -7,8 +7,9 @@ Every main-panel tab currently starts as a *launcher*: a prompt text area with a
 button, which the user must submit or escape before anything runs. That screen is friction on the
 way to a terminal. This change deletes it. ⌘T opens a login shell. ⌥⌘T opens the Settings → Main
 Terminal command (claude, codex or grok). The tab strip's `+` opens a menu — New Terminal, Claude,
-Codex, Grok — whose main-terminal row carries ⌥⌘T. A worktree's first tab follows the same rule as
-⌥⌘T. ⌘⇧T ("New Shell Tab"), now a duplicate of ⌘T, is retired. Nothing in the app holds a prompt
+Codex, Grok — whose main-terminal row carries ⌥⌘T. The first tab of a worktree Clearway itself
+just created follows the same rule as ⌥⌘T; a worktree that already existed opens a login shell
+(Decision 19). ⌘⇧T ("New Shell Tab"), now a duplicate of ⌘T, is retired. Nothing in the app holds a prompt
 draft any more: saved commands and Prompts that carry prompt text reach their agent through the
 terminal it is running in.
 
@@ -20,7 +21,7 @@ terminal it is running in.
 | 2 | What does ⌘T open? | A plain login shell, always — independent of Settings → Main Terminal. | Operator (brief) |
 | 3 | What does ⌥⌘T open? | The Settings → Main Terminal command, run bare via `buildBareCommand`. Disabled (menu item greyed, no-op) when Main Terminal is "None". | Operator (brief) |
 | 4 | What does the tab strip's `+` show? | A menu: New Terminal, Claude, Codex, Grok — in that order. New Terminal shows ⌘T. The row matching the configured Main Terminal command shows ⌥⌘T; every other row shows none. With Main Terminal at "None" no agent row shows a shortcut. | Operator (brief) |
-| 5 | What is a worktree's first tab? | The Main Terminal command if one is set, else a plain login shell. Same rule as ⌥⌘T, so opening a worktree and pressing ⌥⌘T give the same thing. | Operator |
+| 5 | What is a worktree's first tab? | ~~The Main Terminal command if one is set, else a plain login shell. Same rule as ⌥⌘T, so opening a worktree and pressing ⌥⌘T give the same thing.~~ **Superseded by Decision 19.** | Operator |
 | 6 | What happens to ⌘⇧T? | Retired. `NewShellTabMenuItem` and its focused value are deleted, the `[.command, .shift]` `"t"` claim is dropped, and `AppKeyboardShortcutsTests` gains a not-claimed pin beside ⌘⌃2 / ⌘⌃3 — the project convention for a shortcut Clearway itself retires. | Operator |
 | 7 | Where does the menu's agent order come from? | `agentAllowlist` is reordered to `["claude", "codex", "grok"]` and read by the `+` menu. One list, not a second hardcoded order beside it. Its other reader — Settings → Main Terminal's picker rows — reorders with it, which is the same order the menu shows. | Spec |
 | 8 | How are agent names displayed? | `agentAllowlist` holds command names (`claude`), the menu renders `.capitalized` (`Claude`). The allowlist stays the command spelling because it is what gets executed. | Spec |
@@ -34,6 +35,7 @@ terminal it is running in.
 | 16 | Does `TerminalManager+Launcher.swift` survive? | The file is renamed to `TerminalManager+Agent.swift` and keeps `buildBareCommand` (read by `WorkTaskCoordinator.taskTerminalLaunchCommand`, `WorkTaskCoordinator+TaskTerminal.swift:49`) plus the new async agent-tab append. `promoteLauncherToAgent` goes. | Spec |
 | 17 | Does the "⌘T for a new tab" empty-state copy change? | No. ⌘T still opens a tab, and the strip still hides itself at zero tabs (`MainTerminalTabStrip.swift:96-99`). | Spec |
 | 18 | What happens to Settings → Main Terminal's footer ("Choose \"None\" to open new tabs directly in a login shell")? | Removed entirely, not reworded. It is false now that ⌘T always opens a login shell, and the standing rule is no helper text beneath a setting by default. The "None" picker row stays. | Operator (added at T7) |
+| 19 | What is a worktree's first tab? (supersedes 5) | It depends on who created the worktree. A worktree Clearway itself created this session opens on the Main Terminal command, if one is set; a worktree that already existed opens a plain login shell, whether it is selected for the first time this session, on app launch, or reopened after its terminals were closed. The signal is a mark the creation path sets — `TerminalManager.markWorktreeCreated`, called from the one point every creation door funnels through (`WorktreeManager.lastCreatedBranch`) — never a timestamp. `takeFirstTabCommand` consumes it. | Operator (hands-on check, after T7) |
 
 ## Assumptions
 
@@ -107,8 +109,9 @@ Opening a terminal in Clearway costs no keystrokes beyond the shortcut.
 3. With Main Terminal at "None", the ⌥⌘T menu item is disabled and no `+` menu agent row shows a
    keyboard shortcut. Each agent row still launches its own agent.
 4. The `+` menu lists exactly: New Terminal (⌘T), Claude, Codex, Grok — in that order.
-5. Selecting a worktree for the first time lands in a tab running the Main Terminal command, or a
-   login shell when it is "None". The "⌘T for a new tab" empty state is not shown on the way.
+5. Creating a worktree lands in a tab running the Main Terminal command, or a login shell when it
+   is "None"; the "⌘T for a new tab" empty state is not shown on the way. Selecting a worktree
+   that already existed lands in a login shell whatever Main Terminal holds. (Decision 19.)
 6. ⌘⇧T does nothing, File ▸ New Shell Tab is gone, and `AppKeyboardShortcuts.claims` returns
    `false` for `[.command, .shift]` + `"T"`.
 7. Running a saved agent command with "Append Enter to run immediately" on opens a tab running that

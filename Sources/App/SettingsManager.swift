@@ -38,8 +38,8 @@ enum ColorSchemePreference: String, CaseIterable, Identifiable {
 class SettingsManager: ObservableObject {
     private let defaults: UserDefaults
 
-    /// `mainTerminalCommand` trimmed, or nil when the user has left it blank. Nil is what makes a
-    /// worktree's first tab a login shell and greys out ⌥⌘T; non-nil is the command both run.
+    /// `mainTerminalCommand` trimmed, or nil when the user has left it blank. Nil is what greys out
+    /// ⌥⌘T and makes a newly created worktree's first tab a login shell; non-nil is what both run.
     var configuredMainTerminalCommand: String? {
         let trimmed = mainTerminalCommand.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
