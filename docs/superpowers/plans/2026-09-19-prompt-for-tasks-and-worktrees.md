@@ -679,3 +679,56 @@ without a default — is the behaviour D11 rules out.
 
 `./scripts/ci.sh` — passed: 578 tests, 0 failures. `swiftlint lint --quiet` — zero errors (three
 pre-existing warnings, none in the changed files).
+
+### T9: Record the new rules in CLAUDE.md
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | Three bullets in Architecture → `Sources/App` rewritten or extended. No source change. |
+
+The task start-up bullet now names the shipped methods (`resolveStart`, `confirmCreate`,
+`completePendingCreate`, `planTask`), states that Start Now writes nothing and only opens the
+prefilled Start Task sheet — `CreateWorktreeSheet` with a prefill, not a second sheet — that the
+frontmatter write is Create's, that `pendingCreate` carries an optional task id and an optional
+command, that the command runs **last** in the `lastCreatedBranch` handler after the afterCreate
+hook is *started* rather than after it exits, and that Plan runs in the primary worktree and writes
+nothing at all. It keeps the existing statements that Clearway launches no agent of its own and that
+nothing advances a task's status, with the clause that every agent either path starts is a command
+the user saved and picked. It also records the `primaryAction:`-cannot-be-conditional gotcha behind
+the Plan menu's two `Menu` declarations.
+
+The `SavedCommandStore` bullet gains `command-defaults.json`: its two slots, the shared `write` /
+`enqueue` chain that keeps the two files ordered, that an id is only read through
+`CommandDefaults.resolve` so a dead or terminal-kind id shows None and is not rewritten away, that a
+missing or undecodable file reads as both-unset and is left in place, that the after-create slot is
+written back only on the `.apply` branch, and that it has no watcher for the same reason
+`commands.json` has none.
+
+The `AgentLaunch` bullet gains why `{{ task_path }}` is substituted raw — the substituted text
+becomes the prompt, which reaches the agent as one argv element out of the `0o600` temp file and is
+never parsed by a shell, the opposite of `WorktreeHooks.interpolated`, whose placeholders do land in
+a shell line and are escaped — and that a `nil` path leaves the token verbatim.
+
+**Evidence**
+
+No test. This task changes documentation only; there is no behaviour to watch fail. Each bullet was
+written against the shipped code rather than the plan's first draft: `WorkTaskCoordinator.swift`
+(`resolveStart` / `confirmCreate` / `completePendingCreate` / `planCommand` / `planTask`),
+`ContentView.swift`'s `onChange(of: lastCreatedBranch)` ordering, `SidebarSheets.swift`'s picker and
+its `.apply`-only `setAfterCreateDefault`, `SavedCommandStore.swift`'s `loadDefaults` /
+`saveDefaults` / `write`, `SavedCommandManager.swift`'s `enqueue`, `WorkTaskListView.planMenu` and
+`WorktreeHooks.interpolated`'s `shellEscape`.
+
+**Deviations from the plan**
+
+Two additions the plan did not list, both rules a reader would otherwise have to rediscover from the
+build log: the `primaryAction:`-cannot-be-conditional constraint that shapes `planMenu`, and that
+the after-create default is written back only on a successful create.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 578 tests, 0 failures; SwiftLint zero errors (three pre-existing
+warnings, none in a file this task touched). `git status --porcelain` before the commit showed only
+`M CLAUDE.md` — no untracked or ignored files.
