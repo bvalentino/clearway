@@ -174,10 +174,14 @@ final class WorktreeConfigStore: Sendable {
         switch await run(args) {
         case .output(let data):
             return Self.parseNullSeparated(Self.decoded(data))
-        // git-config(1): "Returns error code 1 if key is not present."
-        case .refused:
+        // git-config(1): "Returns error code 1 if key is not present." Only that status means the
+        // key is absent, so every other refusal answers `nil` and the caller keeps what it
+        // publishes: a repo-level read has no counterpart to `--list`'s exit 128 on a worktree with
+        // no `config.worktree`, and reporting "no groups" from an unreadable `.git/config` would
+        // let the next group the user creates rewrite the registry without the ones git still holds.
+        case .refused(1, _):
             return []
-        case .unavailable(let message):
+        case .refused(_, let message), .unavailable(let message):
             log(what, message)
             return nil
         }

@@ -46,6 +46,27 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertTrue(manager.groups.isEmpty)
     }
 
+    /// Every section numbers its positions from zero, so a deleted group's members must be
+    /// renumbered as they join the ungrouped one. Carrying their in-group values across put them
+    /// on slots the ungrouped rows already held, and `ordered`'s tie-break then interleaved them
+    /// among rows the user never moved — on every launch, since nothing renumbers a worktree that
+    /// already has a position.
+    func testDeleteGroupAppendsItsMembersToTheUngroupedSection() async throws {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
+        let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
+        let all = [alpha, bravo, grouped]
+        manager.createGroup(named: "Doomed")
+        manager.seedPositions(for: all, openIds: [])
+        manager.addWorktree(grouped, toGroupNamed: "Doomed")
+        XCTAssertEqual(manager.positions[grouped.id], 0, "a group numbers from zero of its own")
+
+        manager.deleteGroup(named: "Doomed")
+
+        XCTAssertEqual(manager.positions[grouped.id], 2, "appended after the ungrouped rows")
+        XCTAssertEqual(renderedOrder(all), [alpha.id, bravo.id, grouped.id])
+    }
+
     // MARK: - addWorktree / removeWorktreeFromGroup
 
     func testAddWorktreeToGroupPlacesItInGroup() async throws {
@@ -432,6 +453,19 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
                 newOrder: ["/tmp/b", "/tmp/a"]
             ),
             ["/tmp/b": 0, "/tmp/a": 2]
+        )
+    }
+
+    /// A section holding two rows on one slot — the state a hand-edited `config.worktree` can
+    /// leave — is healed by the first drag. Handing the duplicate back instead left the drop
+    /// rendering in a third order, decided by `ordered`'s tie-break rather than by the gesture.
+    func testReassignedPositionsDoesNotReissueADuplicateSlot() {
+        XCTAssertEqual(
+            WorktreeGroupManager.reassignedPositions(
+                section: [("/tmp/a", 0), ("/tmp/b", 0), ("/tmp/c", 1)],
+                newOrder: ["/tmp/c", "/tmp/b", "/tmp/a"]
+            ),
+            ["/tmp/c": 0, "/tmp/b": 1, "/tmp/a": 2]
         )
     }
 

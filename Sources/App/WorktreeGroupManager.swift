@@ -48,10 +48,16 @@ final class WorktreeGroupManager: ObservableObject {
             let configStore = self.configStore
             async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
             async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
-            if let mode = await modeRead, let grouping = WorktreeGrouping(rawValue: mode) {
+            let mode = await modeRead
+            let registry = await registryRead
+            // A gesture made while the two reads were in flight has already published and queued
+            // its write, and publishing what git held before it would drop it for the session —
+            // the guard `reloadConfig` makes against the same race.
+            guard self.writeChain == nil else { return }
+            if let mode, let grouping = WorktreeGrouping(rawValue: mode) {
                 self.grouping = grouping
             }
-            if let registry = await registryRead { self.groups = Self.registered(registry) }
+            if let registry { self.groups = Self.registered(registry) }
         }
     }
 
@@ -81,11 +87,23 @@ final class WorktreeGroupManager: ObservableObject {
     }
 
     /// Deletes the group with the given name. No-ops if no group carries it.
+    ///
+    /// Its members are appended to the ungrouped section, keeping their order, the way
+    /// `removeWorktreeFromGroup` appends one: every section numbers its positions from zero, so
+    /// members carrying their in-group values into the ungrouped one would share slots with the
+    /// rows already there and be interleaved among them on every launch.
     func deleteGroup(named name: String) {
         guard groups.contains(where: { $0.name == name }) else { return }
         let members = members(ofGroupNamed: name)
+        var next = (maxPosition(inSectionNamed: nil) ?? -1) + 1
+        var appended: [String: Int] = [:]
+        for id in members {
+            appended[id] = next
+            next += 1
+        }
         groups.removeAll { $0.name == name }
         for id in members { groupNames.removeValue(forKey: id) }
+        applyPositions(appended)
         writeRegistry(settingGroup: nil, on: members)
     }
 
@@ -465,13 +483,15 @@ final class WorktreeGroupManager: ObservableObject {
     /// A drag reassigns exactly the values the section already occupied: the permuted IDs take
     /// them in ascending order, so a row the caller omitted — hidden by the detached filter or the
     /// search field — keeps the slot it had. A member without a value, and any ID the section did
-    /// not hold, takes the next integer above the section's maximum.
+    /// not hold, takes the next integer above the section's maximum. A value two members share
+    /// counts once, so a section that came to hold a duplicate is healed by the first drag rather
+    /// than handed the same collision back.
     static func reassignedPositions(
         section: [(id: String, position: Int?)],
         newOrder: [String]
     ) -> [String: Int] {
         let permuted = repositioned(section.map(\.id), with: newOrder)
-        var pool = section.compactMap(\.position).sorted()
+        var pool = Set(section.compactMap(\.position)).sorted()
         var next = (pool.last ?? -1) + 1
         while pool.count < permuted.count {
             pool.append(next)
@@ -487,17 +507,20 @@ final class WorktreeGroupManager: ObservableObject {
 
     // MARK: - Private Helpers
 
-    /// The registry as groups, in file order and without a repeat — a hand-edited `.git/config`
-    /// can list a name twice, and two sections with the same `id` trap the sidebar's `ForEach`.
+    /// The registry as groups, in file order, without a repeat or a blank — a hand-edited
+    /// `.git/config` can hold either. Two sections with the same `id` trap the sidebar's `ForEach`,
+    /// and a blank one renders a nameless section whose drops `set` discards as a clear.
     private static func registered(_ names: [String]) -> [WorktreeGroup] {
         var seen = Set<String>()
-        return names.filter { seen.insert($0).inserted }.map(WorktreeGroup.init(name:))
+        return names.filter { !$0.isEmpty && seen.insert($0).inserted }.map(WorktreeGroup.init(name:))
     }
 
     /// A member's ID is its path: `Worktree.id` is the path for every worktree that has one, and
-    /// both writers of `groupNames` skip a worktree that has none.
+    /// both writers of `groupNames` skip a worktree that has none. Ordered by position so a delete
+    /// renumbers them into the ungrouped section in the order the group showed them.
     private func members(ofGroupNamed name: String) -> [String] {
-        groupNames.compactMap { $0.value == name ? $0.key : nil }.sorted()
+        groupNames.compactMap { $0.value == name ? $0.key : nil }
+            .sorted { (positions[$0] ?? Int.max, $0) < (positions[$1] ?? Int.max, $1) }
     }
 
     /// `nil` names the ungrouped section.

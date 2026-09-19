@@ -1109,3 +1109,51 @@ scratchpad and restored from it; nothing was reverted through git.
 
 **Gate:** `./scripts/ci.sh` — green. `Executed 545 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.`
+
+### PR review fixes
+
+`/pr-review-toolkit:review-pr code tests errors types` over `git diff ec12656...HEAD`. Four agents;
+the `code` and `types` passes independently found the same critical bug. Nothing was built, linted
+or tested — `sign-off` owns the single gate run.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | `deleteGroup` appends its members to the ungrouped section at `maxPosition(inSectionNamed: nil) + 1`, in the order the group showed them; `members(ofGroupNamed:)` orders by position rather than by ID to supply that order. `reassignedPositions` takes its pool as a `Set`, so a section holding a duplicate is healed by the first drag. `registered` drops a blank registry value. The `init` load takes `reloadConfig`'s `writeChain` guard before publishing. |
+| `Sources/App/WorktreeConfigStore.swift` | `readLocal` matches `.refused(1, _)` for "key absent" and answers `nil` for every other refusal, the discipline `set` and `unsetAllLocal` already apply to exit 5. |
+| `Tests/WorktreeGroupManagerTests.swift` | `testDeleteGroupAppendsItsMembersToTheUngroupedSection`, `testReassignedPositionsDoesNotReissueADuplicateSlot`. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | `testAHandEditedRegistryDropsBlanksAndRepeats`. |
+| `CLAUDE.md` | The per-section position rule added to the `WorktreeGroupManager` entry. |
+
+**Finding 1 (critical) — deleting a group scrambled the ungrouped section.** `deleteGroup` cleared
+`groupNames` and never touched `positions`, but every section numbers from zero. With ungrouped
+rows at 0, 1 and a group member at 0, the delete left two rows sharing slot 0; `ordered`'s
+`Worktree.sorted` tie-break then interleaved the member among rows the user never moved, and
+`seedPositions` does not renumber a worktree that already has a position, so it survived every
+relaunch. The next drag made it worse: `reassignedPositions` zipped the duplicated pool back on and
+the drop rendered in a third order. Behaviour at `ec12656` was defined — a deleted group's members
+fell out of `defaultOrder` and `seedDefaultOrder` appended them — so this was a regression, and the
+spec's decision 12 is silent on positions rather than sanctioning it.
+
+**Finding 2 (important) — `reassignedPositions` reissued a duplicate slot.** Fixed with finding 1
+rather than left to it: the pool is now a set, which makes the static total over any stored state,
+including a hand-edited `config.worktree`. It is the same healing rule `repositioned` already
+applies to an ID recorded twice.
+
+**Finding 3 (important) — the `init` load could publish over a gesture made during it.**
+`reloadConfig` snapshots `writeChain` and re-checks it before publishing; the load did not, so a
+group created or a grouping mode chosen while its two subprocesses were in flight was overwritten
+by what git held beforehand and stayed lost until the worktree list next changed. The load now
+takes the same guard.
+
+**Finding 4 (important) — a repo-level read reported "no groups" from any git failure.** The bare
+`case .refused` in `readLocal` collapsed exit 128 (`bad config line`, `not in a git directory`) and
+exit 2 (`--get` on a multivar) into "the key is absent". `reloadConfig` then published `groups = []`
+and dropped every membership, and the next group the user created rewrote the registry without the
+ones git still held. Only exit 1 means absent, and every other refusal now answers `nil`, which
+`registry.map(Self.registered) ?? groups` already handles by keeping what is published.
+
+**Finding 5 (nit, fixed) — a blank registry value rendered a nameless section** with a live drop
+target whose drop `set` discards as a clear, so the row snapped back on the next reload.
+`registered` drops it alongside the repeat it already dropped.

@@ -310,7 +310,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     or position, and nothing watches git config — values are re-read when the worktree list changes.
     **The registry is written last**: a rename rewrites every member's `clearway.group` and a delete
     unsets it, and either abandons the registry write if a member did not land, so a half-applied
-    rename never empties the group. The two worktree keys must stay **single lowercase words** —
+    rename never empties the group. **Positions are numbered per section from zero**, so every
+    gesture that moves a worktree between sections renumbers it at the target's maximum plus one —
+    `addWorktree`, `removeWorktreeFromGroup` and `deleteGroup` alike. A delete that skipped this
+    dropped its members onto slots the ungrouped rows already held, and they stayed interleaved
+    across relaunches because nothing renumbers a worktree that already has a position.
+    The two worktree keys must stay **single lowercase words** —
     `git config --list` lowercases key names and `WorktreeConfigStore.parseList` keys its dictionary
     on what git printed; the repo-level keys are read with `--get`/`--get-all`, which return values
     only, so `clearway.groupOrder` keeps its camel case.

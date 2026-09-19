@@ -160,6 +160,24 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(renderedOrder([ghosted]), [ghosted.id])
     }
 
+    /// `.git/config` is hand-editable and shared with every other git tool, so the registry can
+    /// come back holding a name twice or a blank one. Two groups with the same name share an `id`
+    /// and trap the sidebar's `ForEach`; a blank one renders a nameless section whose drops
+    /// `WorktreeConfigStore.set` discards as a clear.
+    func testAHandEditedRegistryDropsBlanksAndRepeats() async throws {
+        try repo.enableWorktreeConfig()
+        for value in ["Dup", "", "Dup", "Other"] {
+            try GitRepoFixture.git(
+                ["config", "--local", "--add", WorktreeConfigStore.groupOrderKey, value],
+                in: repo.root
+            )
+        }
+
+        await restartManager()
+
+        XCTAssertEqual(manager.groups.map(\.name), ["Dup", "Other"])
+    }
+
     /// `git worktree remove` deletes the worktree's `config.worktree` with it, so nothing prunes
     /// and nothing is left behind on the worktrees that remain.
     func testRemovingAWorktreeLeavesNothingBehind() async throws {
