@@ -173,9 +173,10 @@ class WorkTaskCoordinator: ObservableObject {
     ///
     /// Only an `.agent` command means anything to a plan run: `TerminalManager.run` drops a
     /// terminal-kind one on its own `guard case .agent`, by which point `planTask` has claimed the
-    /// task's launch slot and posted `taskTerminalOpened`, so the panel flips and nothing runs. The
-    /// kind check precedes `freshTask` because the refusal is a property of the command alone, and
-    /// a caller that passed the wrong kind should be told so even when the task cannot resolve.
+    /// task's launch slot and posted `taskTerminalOpened` — which flips the editor to preview over
+    /// whatever surface the task terminal already held, while nothing runs. The kind check precedes
+    /// `freshTask` because the refusal is a property of the command alone, and a caller that passed
+    /// the wrong kind should be told so even when the task cannot resolve.
     func planCommand(for task: WorkTask, using command: SavedCommand) -> SavedCommand? {
         guard command.kind == .agent else {
             Ghostty.logger.error(
