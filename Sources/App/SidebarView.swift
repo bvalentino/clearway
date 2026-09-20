@@ -473,9 +473,7 @@ struct SidebarView: View {
         }
 
         if !settings.openInApps.isEmpty, let path = wt.path {
-            OpenInMenu(path: path) {
-                Text("Open in")
-            }
+            OpenInMenu(path: path)
         }
 
         Button("Reveal in Finder") {

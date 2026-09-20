@@ -9,6 +9,7 @@ enum SettingsKey {
     static let openSecondaryOnStart = "clearway.openSecondaryOnStart"
     static let showDetachedWorktrees = "clearway.showDetachedWorktrees"
     static let openInApps = "clearway.openInApps"
+    static let lastUsedOpenInApp = "clearway.lastUsedOpenInApp"
 }
 
 enum ColorSchemePreference: String, CaseIterable, Identifiable {
@@ -101,6 +102,45 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    /// `recordOpenInUse` is the only writer, the way `SavedCommandManager.lastRunId` has only
+    /// `recordLastRun`, so the no-op guard there cannot be stepped around.
+    @Published private(set) var lastUsedOpenInAppId: UUID? {
+        didSet {
+            defaults.set(lastUsedOpenInAppId?.uuidString, forKey: SettingsKey.lastUsedOpenInApp)
+        }
+    }
+
+    /// The app the toolbar's Open in button repeats on a click. Resolved against the live list on
+    /// every read, so an id naming a deleted app is nothing remembered and needs no cleanup.
+    var lastUsedOpenInApp: OpenInApp? { openInApps.first { $0.id == lastUsedOpenInAppId } }
+
+    /// What the toolbar's Open in label half opens. The remembered app when one resolves, the first
+    /// app in the list otherwise, so the button is a split button from the first launch and only an
+    /// empty list leaves it without an action — and an empty list hides it.
+    var primaryOpenInApp: OpenInApp? { lastUsedOpenInApp ?? openInApps.first }
+
+    /// The toolbar's Open in label, which names the app a click will open. An empty list hides the
+    /// item, so the bare fallback is never rendered.
+    var openInButtonTitle: String {
+        primaryOpenInApp.map { "Open in \($0.label)" } ?? "Open in"
+    }
+
+    /// The toolbar dropdown's items: everything the label half does not already open. The sidebar's
+    /// context submenu has no primary and lists `openInApps` whole.
+    var menuOpenInApps: [OpenInApp] {
+        let primaryId = primaryOpenInApp?.id
+        return openInApps.filter { $0.id != primaryId }
+    }
+
+    /// Records the app as the last one opened from the toolbar, the way `recordLastRun` does for
+    /// Run, so the view never writes the id itself. Re-opening the app already recorded writes
+    /// nothing — that is the label half's every click, and `objectWillChange` on an app-wide
+    /// `EnvironmentObject` would re-evaluate every view observing settings for no change.
+    func recordOpenInUse(_ app: OpenInApp) {
+        guard lastUsedOpenInAppId != app.id else { return }
+        lastUsedOpenInAppId = app.id
+    }
+
     @Published var colorScheme: ColorSchemePreference {
         didSet {
             defaults.set(colorScheme.rawValue, forKey: SettingsKey.colorScheme)
@@ -115,6 +155,8 @@ class SettingsManager: ObservableObject {
         self.openSecondaryOnStart = defaults.object(forKey: SettingsKey.openSecondaryOnStart) as? Bool ?? false
         self.showDetachedWorktrees = defaults.object(forKey: SettingsKey.showDetachedWorktrees) as? Bool ?? false
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
+        self.lastUsedOpenInAppId = defaults.string(forKey: SettingsKey.lastUsedOpenInApp)
+            .flatMap(UUID.init(uuidString:))
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
         let storedData = defaults.data(forKey: SettingsKey.openInApps)

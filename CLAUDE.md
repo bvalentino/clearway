@@ -349,13 +349,38 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     last line is the rule most worth pinning.
   - `SavedCommandStore.swift` owns `<projectPath>/.clearway/commands.json`, one saved-command list
     per project, shared by every worktree of that repo. The store takes the project path and owns the
-    `.clearway` component itself — `commands.json` is the only file under it — and the list is always
+    `.clearway` component itself, and the list is always
     read from the project root rather than the selected worktree — a `commands.json` checked out differently on
     a branch must not change what the Run dropdown shows. Array order **is** display order — nothing
     sorts it, and a reorder rewrites the file. There is deliberately no watcher: `SavedCommandManager`
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
     an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
     reopens.
+    The file is a `SavedCommandsPayload` document — `{"commands":[…],"lastRunId":"…"}` — not a bare
+    array. `load()` tries the payload first, a bare `[SavedCommand]` array second, and only then
+    moves the file aside to `commands.json.corrupt`. That legacy branch is **required**, not a
+    courtesy: `load()` treats anything it cannot decode as corruption, so without it every file
+    written before the payload would have its list renamed away and logged as corrupt. The same
+    asymmetry runs the other way and is not fixable from here: an **older build** decodes only a
+    bare array, so rolling Clearway back renames every project's list to `.corrupt`. It is
+    recoverable by hand, which is the whole reason `load()` moves a file aside instead of
+    overwriting it.
+    The payload's `init(from:)` decodes `commands` strictly and `lastRunId` leniently: absence and
+    an unparseable id both read as nothing remembered, because throwing on the one field the user
+    never asked for would send a list of working commands down that corrupt path over a preference
+    whose loss costs nothing. The memberwise init deliberately carries no defaults — a field added
+    later is then a compile error at `save()` rather than a silent erase. When a document decodes as
+    neither shape, the warning carries **both** errors: a bare array fails the payload decode at the
+    top level with nothing but "found an array instead", so on a legacy-shaped file it is the second
+    one that names the offending key and index, which is what makes the file hand-repairable.
+    `SavedCommandManager.lastRunCommand` resolves the id against the live list on every read, so an
+    id naming a deleted command reads as nothing remembered. No delete path cleans it up, and none
+    should. `primaryCommand` is that value or `commands.first` — what the Run button's label half
+    runs, resolved on the manager so it is unit-tested rather than decided in the view.
+    `runButtonTitle` (`primaryCommand?.name ?? "Run"`) and `menuCommands` (`commands` minus the
+    primary) live beside it for the same reason: the label names what a click will do and the
+    dropdown omits it, and both rules are pinned by `SavedCommandManagerTests` rather than read out
+    of a SwiftUI body.
     Beside it the same store owns `command-defaults.json`, one optional command id: the Start Task
     sheet's "Run after create" slot. A `plan` key shipped there briefly and was retired with the
     Plan menu; a file still carrying it decodes fine, since an unknown key is ignored. Both files
@@ -422,14 +447,82 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     Both entry points — a `.primaryAction` item in `detailView`'s toolbar, in its own
     `ToolbarGroupBreak` capsule beside Run, and `SidebarView`'s worktree context submenu — are gated
     on a non-empty list **and** a non-nil worktree path, so emptying the list in Settings hides them.
-    Unlike `RunCommandMenu`, which stays visible and disabled, the toolbar item disappears: an empty
-    list is a configuration the user chose, not a momentarily unavailable action. The sidebar passes
-    the right-clicked worktree's path, not the selection's. The toolbar item is the **text** label
-    `Text("Open in")` with the system chevron and no `.help()` tooltip — the sidebar submenu carries
-    that same label, lowercase preposition included, the way Reveal in Finder does. `RunCommandMenu`
-    beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()` — because
-    both open a menu rather than acting on a click, which an icon-only button reads as. The remaining
-    toolbar items do act on a click and stay icon-only. The menu and the settings section are
+    Unlike `RunCommandMenu`, which stays visible whatever its list holds, the toolbar item
+    disappears: an empty list is a configuration the user chose, not a momentarily unavailable
+    action. The sidebar passes
+    the right-clicked worktree's path, not the selection's. Both toolbar items are **text** labels
+    with the system chevron and no `.help()` tooltip, and each names its own primary action rather
+    than its category: Open in reads `"Open in \(app.label)"` — "Open in Cursor" — from
+    `SettingsManager.openInButtonTitle`, and Run reads the primary command's name from
+    `SavedCommandManager.runButtonTitle`. They are split buttons, so the label half acts on a click
+    and has to say what that click will do; the remaining toolbar items act on a click too and stay
+    icon-only, named by their symbol. The generic word survives only where nothing resolves: Run
+    reads "Run" on an empty list. **Neither label is passed in.** `OpenInMenu` takes no label at all
+    — the split-button variant renders `openInButtonTitle` and the submenu variant the constant
+    lowercase `Text("Open in")`, the way Reveal in Finder reads, since a submenu has no primary to
+    name. A label handed in from the call site could name an app that is not the one the label half
+    opens, which is what `ContentView` was doing.
+    The chevron's list **omits the primary** on both toolbar buttons (`menuCommands`,
+    `menuOpenInApps`), since the label half already runs it; the sidebar submenu lists `openInApps`
+    whole. Both toolbar lists therefore end with an unconditional door, separated by a `Divider()`
+    only when there are items above it — without it a one-item list would draw an empty menu, which
+    AppKit renders as a click that does nothing. Run's door is "Add Command…", presenting the same
+    `CommandEditorSheet(command: nil)` the Commands view's `+` opens; the sheet hangs off
+    `RunCommandMenu`'s own body, **outside** the `.disabled(…)` so the editor's controls never
+    inherit a disabled environment, rather than off `ContentView`, whose `file_length` budget is
+    spent. Open in's door is "Edit Apps…", opening the Settings window where this list is edited:
+    `SettingsLink` under `#available(macOS 14, *)` — both it and `@Environment(\.openSettings)` are
+    macOS 14.0+ against a 13.0 target — falling back to
+    `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`. Nothing selects a
+    section on arrival: `SettingsView` is one `Form`, not a `TabView`. The sidebar's submenu carries
+    neither door.
+    A split button is `Menu(content:label:primaryAction:)`, declared **unconditionally against the
+    state**: both draw as split buttons whenever their list is non-empty, including before anything
+    has been picked, because the primary action falls back to the first item in display order. That
+    resolution is `SavedCommandManager.primaryCommand` and `SettingsManager.primaryOpenInApp` — the
+    remembered item or the list's first — so it is unit-tested off the view, and the `primaryAction:`
+    closure only unwraps it. It unwraps it **inside the closure**, on the click, never as a value the
+    branch's `if let` bound for it: the realized control keeps whatever its actions captured (see the
+    `.id` rule below), and Run's key omits the primary, so editing the primary command's text rebuilt
+    nothing and the label half went on running the old text (operator change C5). `RunCommandMenu`
+    therefore reads `savedCommandManager.primaryCommand` in the action and branches on that same
+    value only to choose the declaration; `OpenInMenu` reads `settings.primaryOpenInApp` in the
+    action but branches on `remembersLastUsed` (below), never on the resolved app.
+    Do not go back to declaring the `Menu` twice on whether something was
+    **picked**: that drew a plain dropdown in the fresh state, which is what this replaced. Both
+    record the pick rather than a successful launch — `RunCommandMenu.run(_:)` records before its
+    `ghosttyApp.app` guard — or an app or command that fails to launch could never become the
+    primary action again.
+    **A split button in a toolbar keeps the dropdown it was built with**, so each one carries
+    `.id(<its own dropdown's contents>)` — `.id(settings.menuOpenInApps)` on `OpenInMenu`,
+    `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`. SwiftUI realizes a toolbar `Menu`
+    that carries a `primaryAction:` as an `NSSegmentedControl` whose `NSMenu` is filled once, when
+    the control is built, and never refilled: later renders update the label segment and leave the
+    menu items — and the values their actions captured — as they were. A plain `Menu` has no such
+    problem, because it is an `NSPopUpButton` whose menu starts empty and is filled by its
+    coordinator each time it opens, which is why the sidebar's submenu and Run's empty-list menu
+    need no key. Keying the view on what the dropdown draws is what rebuilds the control. Do not
+    narrow the key to the items' labels: an edit that changes only a command would then leave the
+    old one behind the same title. Without this, adding an app in Settings → Open In left the
+    toolbar's dropdown showing the list from launch (operator change C4).
+    Each view does still declare its `Menu` twice, on a condition that cannot change while the menu
+    is open, and neither is the one above. `OpenInMenu` switches on `remembersLastUsed`: the
+    sidebar's context submenu is not a split button, and a `primaryAction:` on a submenu row would
+    give it a click the sidebar has nothing to do with. `RunCommandMenu` switches on whether the
+    project has any saved command at all — with none there is nothing for a label half to run, so it
+    is a plain menu reading "Run" over the "Add Command…" door alone, and it is `.disabled` only on
+    `ghosttyApp.app == nil`. Disabling it on an empty list instead, as it once did, put the only door
+    to a first command out of reach of exactly the user who has none.
+    Open in's memory is `SettingsManager.lastUsedOpenInAppId`, a `UserDefaults` string under
+    `clearway.lastUsedOpenInApp` beside the list itself, because the list it names is a global
+    preference rather than per-project the way Run's `lastRunId` is. `lastUsedOpenInApp` resolves it
+    against `openInApps` on every read, so a deleted app falls back to the first in the list with
+    nothing cleaned up. Both ids are `private(set)` with one writer each — `recordOpenInUse` and
+    `recordLastRun` — so the no-op guard those two carry cannot be stepped around by assigning the
+    property, which on an app-wide `EnvironmentObject` would re-evaluate every view observing
+    settings for no change. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`,
+    defaulting to off, and `ContentView`'s call is the one that passes true — picking from the
+    sidebar's submenu neither reads nor writes it. The menu and the settings section are
     separate files because `ContentView.swift` sits at SwiftLint's 1000-line `file_length` limit and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.

@@ -1,13 +1,42 @@
 import Foundation
 import os
 
-/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`, and the
-/// id that indexes it in the sibling `command-defaults.json`.
+// MARK: - Payload
+
+/// On-disk representation: the project's command list plus the id of the command last run from it.
+/// Decodes older files that stored a bare `[SavedCommand]` array by leaving `lastRunId` nil.
+struct SavedCommandsPayload: Codable, Equatable {
+    var commands: [SavedCommand]
+    var lastRunId: UUID?
+
+    static let empty = SavedCommandsPayload(commands: [], lastRunId: nil)
+
+    /// No defaults: `save()` builds the whole document, so a field added later must be a
+    /// compile error there rather than an omission that erases it from disk on the next write.
+    init(commands: [SavedCommand], lastRunId: UUID?) {
+        self.commands = commands
+        self.lastRunId = lastRunId
+    }
+
+    /// `commands` decodes strictly, `lastRunId` leniently: a present-but-unparseable id would
+    /// otherwise throw and send the whole document down `load()`'s corrupt path, renaming a list of
+    /// working commands to `commands.json.corrupt` over a preference whose loss costs nothing. The
+    /// file is advertised as hand-repairable, so a typo in that one field has to stay survivable.
+    /// Absence decodes to nil either way.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.commands = try container.decode([SavedCommand].self, forKey: .commands)
+        self.lastRunId = try? container.decodeIfPresent(UUID.self, forKey: .lastRunId)
+    }
+}
+
+/// Reads and writes one project's command document at `<projectPath>/.clearway/commands.json`, and
+/// the id that indexes it in the sibling `command-defaults.json`.
 ///
-/// The array is stored and returned in order — that order is the display order, so nothing here
-/// sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as empty
-/// too, but is moved aside to `commands.json.corrupt` first, so the next save cannot destroy the
-/// only copy of a list the user can still repair by hand.
+/// The command array is stored and returned in order — that order is the display order, so nothing
+/// here sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as
+/// empty too, but is moved aside to `commands.json.corrupt` first, so the next save cannot destroy
+/// the only copy of a list the user can still repair by hand.
 final class SavedCommandStore: Sendable {
 
     private let projectPath: String
@@ -47,25 +76,35 @@ final class SavedCommandStore: Sendable {
 
     // MARK: - Load
 
-    func load() async -> [SavedCommand] {
+    func load() async -> SavedCommandsPayload {
         let path = commandsFile
         let corruptPath = commandsCorruptFile
         return await Task.detached(priority: .utility) {
             let fm = FileManager.default
-            guard fm.fileExists(atPath: path) else { return [] }
+            guard fm.fileExists(atPath: path) else { return .empty }
             guard let data = fm.contents(atPath: path) else {
                 Ghostty.logger.warning("commands.json is unreadable — loading as empty.")
                 Self.moveAside(path, to: corruptPath)
-                return []
+                return .empty
             }
             do {
-                return try JSONDecoder().decode([SavedCommand].self, from: data)
-            } catch {
-                // The error names the offending key and index, which is what makes the file
-                // hand-repairable — a bare "corrupt" tells its reader nothing.
-                Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(error)")
-                Self.moveAside(path, to: corruptPath)
-                return []
+                return try JSONDecoder().decode(SavedCommandsPayload.self, from: data)
+            } catch let payloadError {
+                // A file written before this store grew a payload holds a bare array. It is not
+                // corrupt, and moving it aside would rename the user's list to `.corrupt`.
+                do {
+                    let legacy = try JSONDecoder().decode([SavedCommand].self, from: data)
+                    return SavedCommandsPayload(commands: legacy, lastRunId: nil)
+                } catch let legacyError {
+                    // Both errors: a bare array fails the payload decode at the top level with
+                    // nothing but "found an array instead", so on a legacy-shaped file it is the
+                    // second one that names the offending key and index — which is what makes the
+                    // file hand-repairable.
+                    let detail = "as a document: \(payloadError); as a bare array: \(legacyError)"
+                    Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(detail)")
+                    Self.moveAside(path, to: corruptPath)
+                    return .empty
+                }
             }
         }.value
     }
@@ -104,8 +143,8 @@ final class SavedCommandStore: Sendable {
 
     // MARK: - Save
 
-    func save(_ commands: [SavedCommand]) async throws {
-        try await write(JSONEncoder().encode(commands), to: commandsFile, via: commandsTempFile)
+    func save(_ payload: SavedCommandsPayload) async throws {
+        try await write(JSONEncoder().encode(payload), to: commandsFile, via: commandsTempFile)
     }
 
     func saveDefaults(_ defaults: CommandDefaults) async throws {

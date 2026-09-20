@@ -31,7 +31,11 @@ enum OpenInBuiltIn: String, Codable, CaseIterable, Identifiable {
 
 /// One entry in the user's "Open in" list: a label and the command to run with the worktree
 /// path appended. A built-in's label lives in its `kind`, so there is no field to edit.
-struct OpenInApp: Identifiable, Codable, Equatable {
+///
+/// `Hashable` must stay **whole-value**, not narrowed to `id`: the Open in split button is rebuilt
+/// by `.id(SettingsManager.menuOpenInApps)`, so an `==` over ids alone would leave the toolbar
+/// showing an app's pre-edit command with every test still green.
+struct OpenInApp: Identifiable, Codable, Hashable {
 
     /// `Kind` is stored in its synthesized form, so the **case names and their associated-value
     /// labels are persisted form too** — `{"kind":{"builtIn":{"_0":"zed"}}}` and
@@ -39,7 +43,7 @@ struct OpenInApp: Identifiable, Codable, Equatable {
     /// so adding a label renames the key and orphans every stored entry, and the compiler says
     /// nothing. `OpenInAppTests.test_storedWireFormat_decodesFromItsPersistedBytes` is what
     /// notices; a round-trip test cannot, since it encodes and decodes with the same build.
-    enum Kind: Codable, Equatable {
+    enum Kind: Codable, Hashable {
         case builtIn(OpenInBuiltIn)
         case custom(label: String)
     }

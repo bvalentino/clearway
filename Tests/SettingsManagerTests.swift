@@ -122,4 +122,178 @@ final class SettingsManagerTests: XCTestCase {
         let second = SettingsManager(defaults: defaults)
         XCTAssertFalse(second.showDetachedWorktrees)
     }
+
+    // MARK: - Last used Open In app
+
+    func test_lastUsedOpenInApp_isNilOnAFreshSuite() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertNil(manager.lastUsedOpenInAppId)
+        XCTAssertNil(manager.lastUsedOpenInApp)
+    }
+
+    func test_lastUsedOpenInApp_resolvesTheRememberedId() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.recordOpenInUse(zed)
+
+        XCTAssertEqual(manager.lastUsedOpenInApp, zed)
+    }
+
+    func test_lastUsedOpenInApp_isNilWhenTheIdNamesNoCurrentApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        manager.openInApps = [finder, zed]
+        manager.recordOpenInUse(zed)
+
+        manager.openInApps = [finder]
+
+        XCTAssertNil(manager.lastUsedOpenInApp)
+        XCTAssertEqual(manager.lastUsedOpenInAppId, zed.id, "Nothing is cleaned up on delete")
+    }
+
+    func test_lastUsedOpenInAppId_persistsAcrossInstances() {
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let first = SettingsManager(defaults: defaults)
+        first.openInApps = [zed]
+        first.recordOpenInUse(zed)
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertEqual(second.lastUsedOpenInAppId, zed.id)
+        XCTAssertEqual(second.lastUsedOpenInApp, zed)
+    }
+
+    func test_recordOpenInUse_remembersTheApp() {
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.recordOpenInUse(zed)
+
+        XCTAssertEqual(manager.lastUsedOpenInAppId, zed.id)
+        XCTAssertEqual(manager.lastUsedOpenInApp, zed)
+    }
+
+    // MARK: - Primary Open In app
+
+    func test_primaryOpenInApp_isNilWhenTheListIsEmpty() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = []
+
+        XCTAssertNil(manager.primaryOpenInApp)
+    }
+
+    func test_primaryOpenInApp_isTheFirstAppBeforeAnythingIsRemembered() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        manager.openInApps = [finder, OpenInApp(kind: .builtIn(.zed), command: "zed")]
+
+        XCTAssertEqual(manager.primaryOpenInApp, finder)
+    }
+
+    func test_primaryOpenInApp_isTheRememberedApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.recordOpenInUse(zed)
+
+        XCTAssertEqual(manager.primaryOpenInApp, zed)
+    }
+
+    func test_primaryOpenInApp_fallsBackToTheFirstOnceTheRememberedAppIsDeleted() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [finder, zed]
+        manager.recordOpenInUse(zed)
+
+        manager.openInApps = [finder]
+
+        XCTAssertEqual(manager.primaryOpenInApp, finder)
+    }
+
+    // MARK: - Open In button title
+
+    func test_openInButtonTitle_namesTheFirstAppBeforeAnythingIsRemembered() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = [
+            OpenInApp(kind: .builtIn(.finder), command: "open"),
+            OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        ]
+
+        XCTAssertEqual(manager.openInButtonTitle, "Open in Finder")
+    }
+
+    func test_openInButtonTitle_namesTheRememberedApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), cursor]
+
+        manager.recordOpenInUse(cursor)
+
+        XCTAssertEqual(manager.openInButtonTitle, "Open in Cursor")
+    }
+
+    /// `upsert` keeps the edited entry's id, so the memory survives a rename and the label has to
+    /// follow it. Resolving against the live list on every read is what makes that true.
+    func test_openInButtonTitle_followsARenameOfTheRememberedApp() {
+        let manager = SettingsManager(defaults: defaults)
+        var cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), cursor]
+        manager.recordOpenInUse(cursor)
+
+        cursor.kind = .custom(label: "Cursor Nightly")
+        manager.openInApps = OpenInApp.upsert(cursor, into: manager.openInApps)
+
+        XCTAssertEqual(manager.primaryOpenInApp, cursor)
+        XCTAssertEqual(manager.openInButtonTitle, "Open in Cursor Nightly")
+    }
+
+    func test_openInButtonTitle_isTheBareLabelWhenTheListIsEmpty() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = []
+
+        XCTAssertEqual(manager.openInButtonTitle, "Open in")
+    }
+
+    // MARK: - Menu Open In apps
+
+    func test_menuOpenInApps_isEmptyWhenTheListIsEmpty() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = []
+
+        XCTAssertTrue(manager.menuOpenInApps.isEmpty)
+    }
+
+    func test_menuOpenInApps_isEmptyForASingleApp() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open")]
+
+        XCTAssertTrue(manager.menuOpenInApps.isEmpty)
+    }
+
+    func test_menuOpenInApps_omitsThePrimaryApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        manager.openInApps = [finder, zed, cursor]
+
+        XCTAssertEqual(manager.menuOpenInApps, [zed, cursor])
+    }
+
+    func test_menuOpenInApps_omitsTheRememberedAppAndKeepsListOrder() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        manager.openInApps = [finder, zed, cursor]
+
+        manager.recordOpenInUse(zed)
+
+        XCTAssertEqual(manager.menuOpenInApps, [finder, cursor])
+    }
 }

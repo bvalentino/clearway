@@ -11,10 +11,32 @@ import SwiftUI
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
 
+    @Published private(set) var lastRunId: UUID?
+
     /// The id from `command-defaults.json`, held raw. Reading it goes through `afterCreateCommand`,
     /// so an id that no longer names a live agent command reads as None without the stored id being
     /// rewritten away.
     @Published private(set) var defaults = CommandDefaults()
+
+    /// Resolved against the live list on every read, so an id naming a command that has since been
+    /// deleted reads as nothing remembered. No delete path cleans it up.
+    var lastRunCommand: SavedCommand? { commands.first { $0.id == lastRunId } }
+
+    /// What the Run button's label half runs. The remembered command when one resolves, the first
+    /// command in display order otherwise, so the button is a split button from the first launch
+    /// and only an empty list leaves it without an action.
+    var primaryCommand: SavedCommand? { lastRunCommand ?? commands.first }
+
+    /// The Run button's label, which names what a click will do rather than reading "Run". An empty
+    /// list has no primary command, so it keeps the generic word over the editor door alone.
+    var runButtonTitle: String { primaryCommand?.name ?? "Run" }
+
+    /// The dropdown half's items: everything the label half does not already run. A one-command
+    /// list therefore lists no commands at all.
+    var menuCommands: [SavedCommand] {
+        let primaryId = primaryCommand?.id
+        return commands.filter { $0.id != primaryId }
+    }
 
     private let store: SavedCommandStore
 
@@ -33,9 +55,12 @@ final class SavedCommandManager: ObservableObject {
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        async let loadedCommands = store.load()
+        async let loadedPayload = store.load()
         async let loadedDefaults = store.loadDefaults()
-        (commands, defaults) = await (loadedCommands, loadedDefaults)
+        let (payload, slots) = await (loadedPayload, loadedDefaults)
+        commands = payload.commands
+        lastRunId = payload.lastRunId
+        defaults = slots
     }
 
     var afterCreateCommand: SavedCommand? {
@@ -76,6 +101,16 @@ final class SavedCommandManager: ObservableObject {
         save()
     }
 
+    /// Records the command as the last one used, on pick rather than on a successful launch: a
+    /// command that failed to start is still the last one the user reached for. Re-running the
+    /// command already recorded writes nothing — that is the label half's every click, and the
+    /// bytes would be identical.
+    func recordLastRun(_ command: SavedCommand) {
+        guard lastRunId != command.id else { return }
+        lastRunId = command.id
+        save()
+    }
+
     /// Clearing is refused while the stored id resolves to nothing. The picker is seeded from
     /// `afterCreateCommand`, so a stale id already reads as None there and an untouched picker is
     /// indistinguishable from the operator choosing None — writing it back would drop an id the
@@ -91,7 +126,7 @@ final class SavedCommandManager: ObservableObject {
     // MARK: - Persistence
 
     private func save() {
-        let snapshot = commands
+        let snapshot = SavedCommandsPayload(commands: commands, lastRunId: lastRunId)
         let store = self.store
         enqueue("commands") { try await store.save(snapshot) }
     }

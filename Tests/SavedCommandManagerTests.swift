@@ -32,14 +32,25 @@ final class SavedCommandManagerTests: TempRootTestCase {
 
     /// Mutations persist through a fire-and-forget `Task`, so read the file back until it settles
     /// rather than assuming a fixed delay is enough.
-    private func persistedCommands(matching expected: [SavedCommand]) async -> [SavedCommand] {
+    private func persisted<Value: Equatable>(
+        _ field: KeyPath<SavedCommandsPayload, Value>,
+        matching expected: Value
+    ) async -> Value {
         let deadline = Date().addingTimeInterval(2)
-        var loaded = await store.load()
+        var loaded = await store.load()[keyPath: field]
         while loaded != expected, Date() < deadline {
             try? await Task.sleep(nanoseconds: 20_000_000)
-            loaded = await store.load()
+            loaded = await store.load()[keyPath: field]
         }
         return loaded
+    }
+
+    private func persistedCommands(matching expected: [SavedCommand]) async -> [SavedCommand] {
+        await persisted(\.commands, matching: expected)
+    }
+
+    private func persistedLastRunId(matching expected: UUID?) async -> UUID? {
+        await persisted(\.lastRunId, matching: expected)
     }
 
     private func persistedDefaults(matching expected: CommandDefaults) async -> CommandDefaults {
@@ -57,7 +68,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
     func testLoadPopulatesTheListInFileOrder() async throws {
         let first = makeCommand(name: "Dev")
         let second = makeCommand(name: "Review", kind: .agent, text: "Review the diff.")
-        try await store.save([first, second])
+        try await store.save(SavedCommandsPayload(commands: [first, second], lastRunId: nil))
 
         await manager.load()
 
@@ -73,10 +84,10 @@ final class SavedCommandManagerTests: TempRootTestCase {
     /// revert the live list.
     func testASecondLoadDoesNotRereadTheFile() async throws {
         let existing = makeCommand(name: "Dev")
-        try await store.save([existing])
+        try await store.save(SavedCommandsPayload(commands: [existing], lastRunId: nil))
         await manager.load()
 
-        try await store.save([])
+        try await store.save(.empty)
         await manager.load()
 
         XCTAssertEqual(manager.commands, [existing])
@@ -168,6 +179,208 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
         let persisted = await persistedCommands(matching: [agent, firstTerminal, secondTerminal])
         XCTAssertEqual(persisted, [agent, firstTerminal, secondTerminal])
+    }
+
+    // MARK: - Last run
+
+    func testLastRunCommandIsNilBeforeAnythingIsRecorded() {
+        manager.add(makeCommand(name: "Dev"))
+
+        XCTAssertNil(manager.lastRunCommand)
+    }
+
+    func testRecordLastRunResolvesToTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.lastRunCommand, second)
+    }
+
+    /// No delete path clears the id — the resolution against the live list is what makes a deleted
+    /// command read as nothing remembered.
+    func testDeletingTheRecordedCommandLeavesNothingRemembered() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        manager.delete(first)
+        XCTAssertEqual(manager.lastRunCommand, second, "Deleting a different command changes nothing")
+
+        manager.delete(second)
+        XCTAssertNil(manager.lastRunCommand)
+    }
+
+    func testRecordLastRunSurvivesAReload() async {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        let persisted = await persistedLastRunId(matching: second.id)
+        XCTAssertEqual(persisted, second.id)
+
+        let reloaded = SavedCommandManager(projectPath: tempRoot)
+        await reloaded.load()
+
+        XCTAssertEqual(reloaded.lastRunCommand, second)
+    }
+
+    /// Upgrade day for every project that already had commands: the bare array loads, the first
+    /// run rewrites the file as a payload, and a later window reads back both halves. The store
+    /// covers the legacy decode and the record/reload covers an empty file, but neither walks the
+    /// transition, where losing the commands would leave both of them green.
+    func testALegacyFileKeepsItsCommandsOnceSomethingIsRun() async throws {
+        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
+        let legacy = makeCommand(name: "Dev")
+        let encoded = try JSONEncoder().encode([legacy])
+        FileManager.default.createFile(
+            atPath: (clearwayDir as NSString).appendingPathComponent("commands.json"),
+            contents: encoded
+        )
+
+        await manager.load()
+        XCTAssertEqual(manager.commands, [legacy])
+
+        manager.recordLastRun(legacy)
+        let persisted = await persistedLastRunId(matching: legacy.id)
+        XCTAssertEqual(persisted, legacy.id, "The first run rewrites the bare array as a payload")
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+
+        XCTAssertEqual(reopened.commands, [legacy])
+        XCTAssertEqual(reopened.lastRunCommand, legacy)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
+            ),
+            "The upgrade must not quarantine the list it just read"
+        )
+    }
+
+    // MARK: - Primary command
+
+    func testPrimaryCommandIsNilWhenThereAreNoCommands() {
+        XCTAssertNil(manager.primaryCommand)
+    }
+
+    func testPrimaryCommandIsTheFirstCommandBeforeAnythingIsRecorded() {
+        let first = makeCommand(name: "Dev")
+        manager.add(first)
+        manager.add(makeCommand(name: "Test", text: "bin/test"))
+
+        XCTAssertEqual(manager.primaryCommand, first)
+    }
+
+    func testPrimaryCommandIsTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.primaryCommand, second)
+    }
+
+    /// `update` keeps the command's id, so the memory survives an edit and everything derived from
+    /// it has to carry the new value — the label half runs `text`, and running the pre-edit one is
+    /// the regression this resolves-on-read rule exists to prevent.
+    func testPrimaryCommandCarriesAnEditToTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        var edited = second
+        edited.name = "Test (watch)"
+        edited.text = "bin/test --watch"
+        manager.update(edited)
+
+        XCTAssertEqual(manager.lastRunCommand, edited)
+        XCTAssertEqual(manager.primaryCommand, edited)
+        XCTAssertEqual(manager.runButtonTitle, "Test (watch)")
+    }
+
+    func testPrimaryCommandFallsBackToTheFirstOnceTheRecordedCommandIsDeleted() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        manager.delete(second)
+
+        XCTAssertEqual(manager.primaryCommand, first)
+    }
+
+    // MARK: - Run button title
+
+    func testRunButtonTitleIsRunWhenThereAreNoCommands() {
+        XCTAssertEqual(manager.runButtonTitle, "Run")
+    }
+
+    func testRunButtonTitleNamesTheFirstCommandBeforeAnythingIsRecorded() {
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(makeCommand(name: "Test", text: "bin/test"))
+
+        XCTAssertEqual(manager.runButtonTitle, "Dev")
+    }
+
+    func testRunButtonTitleNamesTheRecordedCommand() {
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.runButtonTitle, "Test")
+    }
+
+    // MARK: - Menu commands
+
+    func testMenuCommandsIsEmptyWhenThereAreNoCommands() {
+        XCTAssertTrue(manager.menuCommands.isEmpty)
+    }
+
+    func testMenuCommandsIsEmptyForASingleCommand() {
+        manager.add(makeCommand(name: "Dev"))
+
+        XCTAssertTrue(manager.menuCommands.isEmpty)
+    }
+
+    func testMenuCommandsOmitsThePrimaryCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        let third = makeCommand(name: "Lint", text: "bin/lint")
+        manager.add(first)
+        manager.add(second)
+        manager.add(third)
+
+        XCTAssertEqual(manager.menuCommands, [second, third])
+    }
+
+    func testMenuCommandsOmitsTheRecordedCommandAndKeepsDisplayOrder() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        let third = makeCommand(name: "Lint", text: "bin/lint")
+        manager.add(first)
+        manager.add(second)
+        manager.add(third)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.menuCommands, [first, third])
     }
 
     // MARK: - Defaults
