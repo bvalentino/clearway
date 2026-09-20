@@ -181,6 +181,26 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         }
     }
 
+    /// A name or status git refused is log-only: `WorktreeGroupManager` names the lost gesture in
+    /// the log and tells the user nothing, because the value is one the next gesture overwrites and
+    /// the next reload corrects — unlike the half-applied registry rewrite that owns the alert.
+    /// Here the worktree's directory is gone, so its `git config --worktree` writes can only fail.
+    func testAFailedNameOrStatusWriteStaysPublishedAndRaisesNoAlert() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.setName("Named", for: member)
+        try await waitForStoredValue("Named", ofKey: WorktreeConfigStore.nameKey, at: path)
+        try repo.removeWorktree(at: path)
+
+        manager.setName("Renamed", for: member)
+        manager.setStatus(.inReview, for: member)
+        await settle()
+
+        XCTAssertEqual(manager.name(for: member), "Renamed", "the publish stands when the write fails")
+        XCTAssertEqual(manager.status(for: member), .inReview, "the publish stands when the write fails")
+        XCTAssertTrue(recordedWriteAlerts.isEmpty, "a lost name or status is log-only")
+    }
+
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
         let path = try repo.addWorktree(branch: "member")
         let member = makeWorktree(branch: "member", path: path)
