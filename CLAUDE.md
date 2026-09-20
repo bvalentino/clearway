@@ -273,40 +273,53 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     Both entry points — a `.primaryAction` item in `detailView`'s toolbar, in its own
     `ToolbarGroupBreak` capsule beside Run, and `SidebarView`'s worktree context submenu — are gated
     on a non-empty list **and** a non-nil worktree path, so emptying the list in Settings hides them.
-    Unlike `RunCommandMenu`, which stays visible and disabled, the toolbar item disappears: an empty
-    list is a configuration the user chose, not a momentarily unavailable action. The sidebar passes
+    Unlike `RunCommandMenu`, which stays visible whatever its list holds, the toolbar item
+    disappears: an empty list is a configuration the user chose, not a momentarily unavailable
+    action. The sidebar passes
     the right-clicked worktree's path, not the selection's. Both toolbar items are **text** labels
     with the system chevron and no `.help()` tooltip, and each names its own primary action rather
     than its category: Open in reads `"Open in \(app.label)"` — "Open in Cursor" — from
     `SettingsManager.openInButtonTitle`, and Run reads the primary command's name from
     `SavedCommandManager.runButtonTitle`. They are split buttons, so the label half acts on a click
     and has to say what that click will do; the remaining toolbar items act on a click too and stay
-    icon-only, named by their symbol. The generic words survive only where nothing resolves: Run
-    reads "Run" on an empty list, where it is disabled anyway. The sidebar submenu keeps the plain
-    lowercase `Text("Open in")` its call site passes, the way Reveal in Finder does — it has no
-    primary to name.
+    icon-only, named by their symbol. The generic word survives only where nothing resolves: Run
+    reads "Run" on an empty list. **Neither label is passed in.** `OpenInMenu` takes no label at all
+    — the split-button variant renders `openInButtonTitle` and the submenu variant the constant
+    lowercase `Text("Open in")`, the way Reveal in Finder reads, since a submenu has no primary to
+    name. A label handed in from the call site could name an app that is not the one the label half
+    opens, which is what `ContentView` was doing.
     The chevron's list **omits the primary** on both toolbar buttons (`menuCommands`,
     `menuOpenInApps`), since the label half already runs it; the sidebar submenu lists `openInApps`
-    whole. A one-item list therefore leaves Open in's dropdown empty, which AppKit draws as a click
-    that does nothing — accepted, because the one thing there is to open is one click away on the
-    label. Run does not have that shape: its menu ends with an unconditional "Add Command…" item,
-    separated by a `Divider()` only when there are other commands above it, and it presents the same
-    `CommandEditorSheet(command: nil)` the Commands view's `+` opens. The sheet hangs off
+    whole. Both toolbar lists therefore end with an unconditional door, separated by a `Divider()`
+    only when there are items above it — without it a one-item list would draw an empty menu, which
+    AppKit renders as a click that does nothing. Run's door is "Add Command…", presenting the same
+    `CommandEditorSheet(command: nil)` the Commands view's `+` opens; the sheet hangs off
     `RunCommandMenu`'s own body, **outside** the `.disabled(…)` so the editor's controls never
     inherit a disabled environment, rather than off `ContentView`, whose `file_length` budget is
-    spent.
-    A split button is `Menu(content:label:primaryAction:)`, declared **unconditionally**: both draw
-    as split buttons whenever their list is non-empty, including before anything has been picked,
-    because the primary action falls back to the first item in display order. That resolution is
-    `SavedCommandManager.primaryCommand` and `SettingsManager.primaryOpenInApp` — the remembered
-    item or the list's first — so it is unit-tested off the view, and the `primaryAction:` closure
-    only unwraps it. Do not go back to declaring the `Menu` twice on whether something was picked:
-    that drew a plain dropdown in the fresh state, which is what this replaced. Both record the pick
-    rather than a successful launch — `RunCommandMenu.run(_:)` records before its `ghosttyApp.app`
-    guard — or an app or command that fails to launch could never become the primary action again.
-    `OpenInMenu` does declare its `Menu` twice, switched on `remembersLastUsed` rather than on
-    state: the sidebar's context submenu is not a split button, and a `primaryAction:` on a submenu
-    row would give it a click the sidebar has nothing to do with.
+    spent. Open in's door is "Edit Apps…", opening the Settings window where this list is edited:
+    `SettingsLink` under `#available(macOS 14, *)` — both it and `@Environment(\.openSettings)` are
+    macOS 14.0+ against a 13.0 target — falling back to
+    `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`. Nothing selects a
+    section on arrival: `SettingsView` is one `Form`, not a `TabView`. The sidebar's submenu carries
+    neither door.
+    A split button is `Menu(content:label:primaryAction:)`, declared **unconditionally against the
+    state**: both draw as split buttons whenever their list is non-empty, including before anything
+    has been picked, because the primary action falls back to the first item in display order. That
+    resolution is `SavedCommandManager.primaryCommand` and `SettingsManager.primaryOpenInApp` — the
+    remembered item or the list's first — so it is unit-tested off the view, and the `primaryAction:`
+    closure only unwraps it. Do not go back to declaring the `Menu` twice on whether something was
+    **picked**: that drew a plain dropdown in the fresh state, which is what this replaced. Both
+    record the pick rather than a successful launch — `RunCommandMenu.run(_:)` records before its
+    `ghosttyApp.app` guard — or an app or command that fails to launch could never become the
+    primary action again.
+    Each view does still declare its `Menu` twice, on a condition that cannot change while the menu
+    is open, and neither is the one above. `OpenInMenu` switches on `remembersLastUsed`: the
+    sidebar's context submenu is not a split button, and a `primaryAction:` on a submenu row would
+    give it a click the sidebar has nothing to do with. `RunCommandMenu` switches on whether the
+    project has any saved command at all — with none there is nothing for a label half to run, so it
+    is a plain menu reading "Run" over the "Add Command…" door alone, and it is `.disabled` only on
+    `ghosttyApp.app == nil`. Disabling it on an empty list instead, as it once did, put the only door
+    to a first command out of reach of exactly the user who has none.
     Open in's memory is `SettingsManager.lastUsedOpenInAppId`, a `UserDefaults` string under
     `clearway.lastUsedOpenInApp` beside the list itself, because the list it names is a global
     preference rather than per-project the way Run's `lastRunId` is. `lastUsedOpenInApp` resolves it

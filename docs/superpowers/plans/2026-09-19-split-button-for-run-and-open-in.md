@@ -351,6 +351,32 @@ The label and list rules live on the non-view owners — `runButtonTitle`/`menuC
 body, the same split C1 made for `primaryCommand`/`primaryOpenInApp`. Spec Decision 10 is superseded
 in place, Decisions 16-18 and success criterion 9 record the shipped rules.
 
+### C3: Both menus reach their editor, and Open in owns its label (operator, 2026-09-20)
+
+Requested after the review step. Three rules:
+
+1. **Open in gets an "Edit Apps…" door.** Its menu ends with a separator and an item that opens the
+   Settings window, where `OpenInAppsSettingsSection` edits the list — the same shape as Run's
+   separator plus "Add Command…". The menu is therefore never empty, including on a fresh install,
+   whose seed `[Finder]` is one app and so leaves nothing under the chevron. The sidebar's
+   right-click submenu gets no door.
+2. **Run with no saved commands is a plain menu holding only "Add Command…".** The old gate,
+   `.disabled(primaryCommand == nil || ghosttyApp.app == nil)`, put the editor door out of reach for
+   exactly the user with no commands. It is now `.disabled(ghosttyApp.app == nil)`, and
+   `RunCommandMenu` declares its `Menu` twice — with `primaryAction:` when `primaryCommand`
+   resolves, plain when it does not. That second declaration is deliberate and is not the one C1
+   removed: C1's switched on whether anything had been *picked*, which drew a plain dropdown in the
+   fresh state; this one switches on whether the project has any command at all, which cannot change
+   while the menu is open.
+3. **The toolbar's Open in owns its label.** `ContentView` was passing `Text(settings.openInButtonTitle)`
+   while `OpenInMenu` resolved `primaryOpenInApp` itself, so a second `remembersLastUsed: true` call
+   site could have titled the button with an app its label half does not open. `OpenInMenu`'s generic
+   `Label` parameter is gone: the split-button variant renders the title itself and the submenu
+   variant the constant `Text("Open in")` — all either call site ever passed.
+
+Spec Decisions 1, 2, 10 and 18 are superseded or amended in place, Decisions 19-21 and Assumption 11
+record the shipped rules, and success criteria 9 and 11 restate the empty-list shapes.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -599,3 +625,36 @@ Settings, so the equivalent would be a Settings deep link rather than the same s
 that a one-app Open in list draws an empty dropdown (spec Decision 18).
 
 **Gate.** `./scripts/ci.sh` — 570 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### C3: Both menus reach their editor, and Open in owns its label
+
+| File | State |
+| --- | --- |
+| `Sources/App/OpenInMenu.swift` | Generic `Label` parameter dropped: the view is `struct OpenInMenu: View` and each variant titles itself — `Text(settings.openInButtonTitle)` on the split button, the constant `Text("Open in")` on the sidebar's submenu. The toolbar branch's content is a `toolbarItems` property mirroring `RunCommandMenu.items`: `menuOpenInApps`, a `Divider()` only when that list is non-empty, then the unconditional `editAppsButton`. That button is `SettingsLink { Text("Edit Apps…") }` under `#available(macOS 14, *)`, falling back to `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`. `open(_:)`, `items(_:)` and `presentFailure(_:detail:)` unchanged. |
+| `Sources/App/ContentView.swift` | `OpenInMenu(path: path, remembersLastUsed: true)` — the label closure is gone. Net −2 lines in a file already past `file_length`. |
+| `Sources/App/SidebarView.swift` | `OpenInMenu(path: path)` — same, the `Text("Open in")` closure moved into the view. The submenu's rendering is unchanged. |
+| `Sources/App/RunCommandMenu.swift` | `body` is `menu.disabled(ghosttyApp.app == nil).sheet(…)`. The new `@ViewBuilder menu` declares the `Menu` twice, switched on `savedCommandManager.primaryCommand`: with it, `primaryAction: { run(command) }`; without it, the plain declaration. Both render `items` and `Text(runButtonTitle)`, which is the generic "Run" exactly when the primary is nil. `items`, `run(_:)` and the sheet unchanged. |
+| `docs/.../specs/2026-09-19-split-button-for-run-and-open-in.md` | Decisions 1, 2 and 10 amended in place; Decision 18 repurposed from "no Open in add item" to Run's empty-list shape; Decisions 19 (the Open in door), 20 (how Settings is opened) and 21 (who titles the button) added; Assumption 11 records the `SettingsLink`/`openSettings` availability read from Apple's documentation JSON; success criteria 9 and 11 restated; Out of scope now says SidebarView changes at its one call site. |
+| `CLAUDE.md` | The Open In bullet records the Settings door and how it is opened, that the toolbar variant titles itself and why, and that Run's empty-list menu is a plain `Menu` over the editor door disabled only on a missing `ghostty_app_t`. The C1 do-not-revert line is kept and narrowed, so the two second declarations are not confused. |
+
+**Evidence.** No new test. C3 adds no rule to a non-view owner: every empty-list rule the new
+branches read is already pinned — `SavedCommandManagerTests.testPrimaryCommandIsNilWhenThereAreNoCommands`,
+`testRunButtonTitleIsRunWhenThereAreNoCommands`, `testMenuCommandsIsEmptyWhenThereAreNoCommands`, and
+`SettingsManagerTests.test_menuOpenInApps_isEmptyForASingleApp`, which is the case the Settings door
+exists for. What C3 changes beyond those is which `Menu` initializer a body picks and one extra menu
+item, and XCTest reaches no SwiftUI body here — the split this project already makes for
+`Ghostty.SurfaceView`. So the shapes are the operator's hand-check below.
+
+**Deviations.** Two.
+
+1. The operator's note said to keep the sidebar's label passing "if that is the least change". It is
+   not: with the toolbar variant titling itself, the generic `Label` parameter existed for one
+   constant `Text("Open in")`, so dropping it removes more code than keeping it and closes the hole
+   the note is about — no call site can title the button at all (spec Decision 21).
+2. The door is `SettingsLink` rather than `@Environment(\.openSettings)`. Both are macOS 14.0+ and
+   the target is 13.0, so either needs `#available`; `SettingsLink` needs no second type to hold the
+   environment property under that check, and Apple documents it as ordering the Settings window to
+   the front if it is already open (spec Assumption 11). No tab is selected on arrival because
+   `SettingsView` is one `Form`, not a `TabView`.
+
+**Gate.** `./scripts/ci.sh` — 571 tests, 0 failures, `swiftlint` clean, `==> CI passed.`

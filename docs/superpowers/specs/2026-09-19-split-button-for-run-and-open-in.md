@@ -16,8 +16,8 @@ remembered and the button falls back to opening the list.
 
 | # | Question | Decision | Source |
 | --- | --- | --- | --- |
-| 1 | How is a split button built in SwiftUI? | `Menu(content:label:primaryAction:)`, declared unconditionally on both toolbar buttons. Supersedes the original decision to declare the menu twice and switch on whether a last-used item resolved: with a fallback (Decision 2) there is always a primary action, so one declaration suffices. `OpenInMenu` still declares it twice, but on `remembersLastUsed` — the sidebar's context submenu is not a split button. | Operator (2026-09-20, after hands-on check) |
-| 2 | What happens before the user has picked anything? | The button is still a split button and its label half performs the **first item in the list** — Run's first saved command in display order, Open in's first app in `openInApps`. Supersedes the original decision to fall back to a plain dropdown, which drew as a plain dropdown in the fresh state. The only non-split case is an empty list: Run stays visible and disabled, Open in stays hidden. | Operator (2026-09-20, after hands-on check) |
+| 1 | How is a split button built in SwiftUI? | `Menu(content:label:primaryAction:)`. It is declared unconditionally wherever a list can produce a primary action; with a fallback (Decision 2) a non-empty list always does, so nothing switches on whether an item was ever picked. Each view still declares the `Menu` twice on a condition that cannot change mid-session: `OpenInMenu` on `remembersLastUsed` (the sidebar's context submenu is not a split button) and `RunCommandMenu` on whether the project has any saved command at all (Decision 18). | Operator (2026-09-20, after hands-on check; amended by change C3) |
+| 2 | What happens before the user has picked anything? | The button is still a split button and its label half performs the **first item in the list** — Run's first saved command in display order, Open in's first app in `openInApps`. Supersedes the original decision to fall back to a plain dropdown, which drew as a plain dropdown in the fresh state. The only non-split cases are empty lists: Run becomes a plain menu holding the editor door alone (Decision 18) and Open in stays hidden. | Operator (2026-09-20, after hands-on check; amended by change C3) |
 | 3 | Where is Run's last-used id stored? | `<projectPath>/.clearway/commands.json`, the same file as the project's saved commands. | Operator (brief) |
 | 4 | Where is Open in's last-used id stored? | `UserDefaults`, key `clearway.lastUsedOpenInApp`, beside `clearway.openInApps`. The app list is a global preference, so the memory of it is one too. | Operator (brief) |
 | 5 | What happens to a remembered id whose item was deleted? | Nothing on delete. The id is resolved against the live list on every read, and an id that names nothing resolves to nil — which is case 2. One rule, applied in one place, instead of a cleanup pass on every delete path. | Operator (brief, "resolved on read") |
@@ -25,7 +25,7 @@ remembered and the button falls back to opening the list.
 | 7 | Could the legacy fallback be skipped, since per-project `commands.json` has not shipped in a release? | No. `SavedCommandStore.load()` does not merely reset on an undecodable file, it **moves it aside** to `commands.json.corrupt` (`SavedCommandStore.swift:50,59`), so a clean break would rename every dogfood project's list away and log it as corruption. The precedent that declined a migration (spec `2026-09-18-project-specific-commands.md`, Decision 3) was about an abandoned *path*, left untouched on disk; this is the same file being rewritten. | Spec |
 | 8 | Does picking from the sidebar's right-click Open in submenu update the last-used app? | No. The brief says that submenu is unchanged, and the parameter that turns the memory on defaults to off, so `SidebarView` is not touched at all. The memory belongs to the button that consumes it. | Operator (brief) + Spec |
 | 9 | Is the resolution rule a shared generic helper? | No. It is `list.first { $0.id == rememberedId }` on each side, exposed as `SavedCommandManager.lastRunCommand` and `SettingsManager.lastUsedOpenInApp`. Both are pure, non-view, already have test files, and are directly testable — a generic helper plus a new file would add indirection to one line of standard library. | Spec |
-| 10 | Does the label change to name the primary item? | Yes. Run's label is the primary command's name; Open in's is `"Open in <App name>"` ("Open in Cursor"). Both keep the system chevron and no tooltip. Supersedes the original decision to keep the words "Run" and "Open in": a split button's label half acts on a click, so it has to say what that click does. The generic word survives only where nothing resolves — Run on an empty list, where it is disabled. | Operator (2026-09-20, change C2) |
+| 10 | Does the label change to name the primary item? | Yes. Run's label is the primary command's name; Open in's is `"Open in <App name>"` ("Open in Cursor"). Both keep the system chevron and no tooltip. Supersedes the original decision to keep the words "Run" and "Open in": a split button's label half acts on a click, so it has to say what that click does. The generic word survives only where nothing resolves — Run on an empty list, where the button is a plain menu over the editor door (Decision 18). | Operator (2026-09-20, change C2; amended by C3) |
 | 11 | Is the last-used id recorded on pick or only on a successful launch? | On pick. It is the last item *used*, not the last that worked; recording only on success would leave a failing command permanently unable to become the primary action. Both entry points into each view's action funnel through one method, so the record is written once per view. | Spec |
 | 12 | Where is Run's record written — the view or `TerminalManager`? | `RunCommandMenu.run(_:)`, which already owns the `SavedCommandManager` and already funnels both the menu item and the new primary action. The CLAUDE.md rule that puts *running* on `TerminalManager` is about resolving a worktree and awaiting a shell prompt; recording an id is neither, and `TerminalManager` does not hold the manager. | Spec |
 | 13 | Does a `Menu` with `primaryAction:` need an availability check? | No. The initializer is macOS 12.0+ and the deployment target is macOS 13.0 (`project.yml:4-5`). | Spec (verified, below) |
@@ -33,7 +33,10 @@ remembered and the button falls back to opening the list.
 | 15 | Does the sibling worktree's `applyPrimaryActionStyle()` come along? | No. It is `.glassProminent`/`.borderedProminent` with an accent tint — what makes Start Now the *prominent* button on its screen, not what makes it split. `primaryAction:` alone is what draws the capsule with a divider. | Build (2026-09-20) |
 | 16 | Does the chevron's list still show the primary item? | No, on both toolbar buttons — the label half already runs it, so listing it again offers the same click twice. `SavedCommandManager.menuCommands` and `SettingsManager.menuOpenInApps` are the lists minus the primary. The sidebar's right-click Open in submenu is unchanged: it has no primary and lists `openInApps` whole. | Operator (2026-09-20, change C2) |
 | 17 | What does Run's "Add Command…" item do? | Presents `CommandEditorSheet(command: nil)` — the same sheet the Commands view's `+` toolbar item opens, not a second implementation. The sheet is attached to `RunCommandMenu`'s own body, outside its `.disabled(…)` so the editor's controls do not inherit a disabled environment. `CommandsView`'s `+` is not reachable as a seam: it drives a `@State` on that view and publishes `.focusedSceneValue(\.newCommandAction)`, which is only in scope while the Commands destination is on screen — the Run button lives in the worktree detail toolbar, where it never is. `ContentView` was not given the sheet because its `file_length` budget is already spent. | Operator (brief) + Build (2026-09-20) |
-| 18 | Does Open in get an equivalent "Add app" item? | No. The operator asked for Run only, and the sibling's pattern is not trivially the same: its editor door is the app's own `CommandEditorSheet`, where Open in's list is edited in Settings. The consequence is that a one-app list leaves Open in's dropdown empty, which AppKit draws as a click that does nothing — accepted, because the one app there is is one click away on the label. | Operator (brief) |
+| 18 | What does Run do with no saved commands at all? | It is a plain `Menu` labelled "Run" whose only item is "Add Command…", and it is disabled only when `ghosttyApp.app` is nil. Supersedes the original gate, which disabled the whole button on an empty list and so put the editor door out of reach for precisely the user who has no commands. Nothing else changes: with one command or more it is the split button of Decisions 1 and 2. | Operator (2026-09-20, change C3) |
+| 19 | Does Open in get an equivalent door? | Yes. Its menu ends with a separator and an "Edit Apps…" item that opens the Settings window, where `OpenInAppsSettingsSection` edits the list. Supersedes the original "no equivalent", whose cost was that a one-app list drew an empty dropdown; the door also means the fresh-install seed `[Finder]` is a usable menu rather than an empty one. The item is unconditional, so the menu is never empty. Only the toolbar variant carries it — the sidebar's context submenu is unchanged. | Operator (2026-09-20, change C3) |
+| 20 | How is the Settings window opened? | `SettingsLink` on macOS 14+, falling back to `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)` on 13 — `SettingsLink` and `@Environment(\.openSettings)` are both macOS 14.0+ and the deployment target is 13.0. No tab is selected on arrival: `SettingsView` is a single `Form` with `OpenInAppsSettingsSection` as its last section, not a `TabView`, so there is no tab to address. | Spec (verified, below) + Build (2026-09-20) |
+| 21 | Who titles the toolbar's Open in button? | `OpenInMenu` itself. The generic `Label` parameter is gone: the split-button variant renders `Text(settings.openInButtonTitle)` and the submenu variant the constant `Text("Open in")`, which is all either call site ever passed. A label passed in from outside could name an app that is not the one the label half opens, which is what `ContentView` was doing. | Operator (2026-09-20, change C3) |
 
 ## Assumptions
 
@@ -93,6 +96,17 @@ Each verified by reading the codebase at base `484482d` or by fetching Apple's d
     stray `.clearway/command-defaults.json` exists in the operator's main checkout from an earlier
     experiment; no code reads it, `.clearway` is ignored through `~/.gitignore:35`, and this change
     neither reads nor removes it.
+11. **The Settings door has one documented API above the deployment target and one below it.**
+    `SettingsLink` ("A view that opens the Settings scene defined by an app… On macOS, clicking on
+    the link opens the window for the scene or orders it to the front if it is already open") and
+    `EnvironmentValues.openSettings` are both introduced in macOS 14.0 — read from
+    `developer.apple.com/tutorials/data/documentation/swiftui/settingslink.json` and
+    `…/environmentvalues/opensettings.json` on 2026-09-20, each reporting a single platform entry
+    `"name": "macOS", "introducedAt": "14.0"`. The target is macOS 13.0 (`project.yml:4-5`), so the
+    door is `SettingsLink` under `#available(macOS 14, *)` and AppKit's `showSettingsWindow:` action
+    below it. Apple's own `openSettings` example selects a tab through `@AppStorage` bound to a
+    `TabView` in the Settings scene; `SettingsView` is a single `Form`, so there is nothing to bind
+    and nothing to select.
 
 ## Objective
 
@@ -120,13 +134,16 @@ full list away.
    primary action.
 9. Each button's label names its primary action — the primary command's name on Run, "Open in
    <App name>" on Open in — with the system chevron and no tooltip. Run reads "Run" only on an
-   empty list. Each chevron's list omits the primary, and Run's ends with "Add Command…" after a
-   separator, opening the same editor sheet the Commands view's `+` opens.
+   empty list. Each chevron's list omits the primary and ends with a door after a separator: Run's
+   "Add Command…" opens the same editor sheet the Commands view's `+` opens, and Open in's
+   "Edit Apps…" opens the Settings window on its Open In section.
 10. An existing `commands.json` holding a bare `[SavedCommand]` array loads with its commands intact
     and nothing remembered, and is rewritten as a payload on the next save. It is not moved aside to
     `commands.json.corrupt`.
-11. An empty Open in list still hides the toolbar item, and an empty command list still disables the
-    Run button.
+11. An empty Open in list still hides the toolbar item. An empty command list leaves Run visible as
+    a plain menu labelled "Run" whose only item is "Add Command…"; the button is disabled only when
+    the terminal app failed to initialize. Saving a first command through that door turns it back
+    into the split button of criterion 1.
 
 ### Test coverage this requires
 
@@ -206,7 +223,9 @@ and 9.
 
 ## Out of scope
 
-- The sidebar's right-click "Open in" submenu (Decision 8), and `SidebarView.swift` generally.
+- The sidebar's right-click "Open in" submenu (Decision 8): it lists every app, has no primary, no
+  Settings door and no memory. `SidebarView.swift` changes in one place only — dropping the label
+  closure its `OpenInMenu` call passed, now that the view titles itself (Decision 21).
 - Naming the remembered item in the label or in a tooltip (Decision 10).
 - A keyboard shortcut for either primary action; `AppKeyboardShortcuts` is untouched, which keeps
   the existing "the menu claims no keyboard shortcut" line in CLAUDE.md true.
