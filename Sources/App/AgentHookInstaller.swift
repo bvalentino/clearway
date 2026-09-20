@@ -1,0 +1,132 @@
+import Foundation
+import os
+
+/// The disk half of the hook install: the `~/.clearway` layout and the forwarder script, plus the
+/// managed block inside each agent's own settings file. `AgentHookSettings` decides what that block
+/// is and `AgentHookScript` holds the text; everything here is I/O.
+///
+/// Nothing is actor-isolated — the monitor calls this off the main actor and it does no UI work.
+enum AgentHookInstaller {
+
+    /// Each agent's config directory and the file inside it that carries hooks. Clearway never
+    /// creates the directory: its absence is how "this agent is not installed here" is spelled, and
+    /// seeding a config folder for a tool the user does not have is a change nobody asked for.
+    private static let agentFiles = [(directory: ".claude", name: "settings.json"), (directory: ".codex", name: "hooks.json")]
+
+    static func install() {
+        installScript()
+        mergeAgentSettings(installing: true)
+    }
+
+    /// The forwarder stays on disk. It exits 0 on its first guard once nothing is listening, so
+    /// leaving it costs nothing and re-enabling the toggle is one settings write.
+    static func uninstall() {
+        mergeAgentSettings(installing: false)
+    }
+
+    /// `home` is a parameter so the round trip can be driven against a temp directory; every call
+    /// site passes nothing.
+    static func mergeAgentSettings(installing: Bool, home: String = NSHomeDirectory()) {
+        for agent in agentFiles {
+            merge(
+                installing: installing,
+                directory: (home as NSString).appendingPathComponent(agent.directory),
+                name: agent.name
+            )
+        }
+    }
+
+    // MARK: - The forwarder
+
+    private static func installScript() {
+        let fileManager = FileManager.default
+        let path = AgentHookScript.scriptPath
+        do {
+            for directory in [AgentHookScript.clearwayDir, AgentHookScript.hooksDir]
+            where !fileManager.fileExists(atPath: directory) {
+                try fileManager.createDirectory(
+                    atPath: directory,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: AgentHookScript.dirMode]
+                )
+            }
+
+            let body = Data(AgentHookScript.body.utf8)
+            if fileManager.contents(atPath: path) != body {
+                try body.write(to: URL(fileURLWithPath: path), options: .atomic)
+                Ghostty.logger.info("Wrote the agent hook forwarder to \(path, privacy: .public)")
+            }
+            // Unconditional: an atomic write lands a fresh inode with the process umask's mode, and
+            // a forwarder that is not executable fails every hook with nothing to show for it.
+            try fileManager.setAttributes([.posixPermissions: AgentHookScript.scriptMode], ofItemAtPath: path)
+        } catch {
+            Ghostty.logger.error("The agent hook forwarder could not be installed at \(path, privacy: .public): \(error)")
+        }
+    }
+
+    // MARK: - The managed block
+
+    private static func merge(installing: Bool, directory: String, name: String) {
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: directory, isDirectory: &isDirectory), isDirectory.boolValue else { return }
+
+        let path = (directory as NSString).appendingPathComponent(name)
+        let onDisk = fileManager.contents(atPath: path)
+        var settings: [String: Any] = [:]
+        if let onDisk {
+            // A file Clearway cannot read is a file it must not rewrite. No quarantine either: the
+            // user can still repair it by hand, and renaming it away would take that chance.
+            guard let object = (try? JSONSerialization.jsonObject(with: onDisk)) as? [String: Any] else {
+                Ghostty.logger.warning("\(path, privacy: .public) is not a JSON object — leaving the agent hooks alone.")
+                return
+            }
+            settings = object
+        }
+
+        let merged = installing
+            ? AgentHookSettings.install(into: settings)
+            : AgentHookSettings.uninstall(from: settings)
+
+        guard let after = serialised(merged), let before = serialised(settings) else {
+            Ghostty.logger.error("\(path, privacy: .public) holds a value that cannot be re-serialised — leaving it alone.")
+            return
+        }
+        // Documents, not bytes: an uninstall on a file that never carried the block is a no-op, and
+        // must not rewrite the user's own key order and whitespace to say so.
+        guard after != before else { return }
+        guard onDisk == nil || backUp(path) else { return }
+
+        do {
+            try after.write(to: URL(fileURLWithPath: path), options: .atomic)
+            Ghostty.logger.info("\(installing ? "Installed" : "Removed", privacy: .public) the Clearway hooks in \(path, privacy: .public)")
+        } catch {
+            Ghostty.logger.error("\(path, privacy: .public) could not be written: \(error)")
+        }
+    }
+
+    /// `.sortedKeys` as well as `.prettyPrinted`: the merge preserves values but not key order, so
+    /// only a deterministic serialisation makes the second install a no-op.
+    private static func serialised(_ settings: [String: Any]) -> Data? {
+        try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
+    }
+
+    /// One copy, taken before the first modification and never refreshed, because after that the
+    /// live file is already Clearway's spelling of it.
+    ///
+    /// Returns whether the write may go ahead: a backup that could not be taken is the whole reason
+    /// the value-for-value merge is acceptable, so losing it silently is worse than not installing.
+    private static func backUp(_ path: String) -> Bool {
+        let backup = path + ".clearway-backup"
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: backup) else { return true }
+        do {
+            try fileManager.copyItem(atPath: path, toPath: backup)
+            Ghostty.logger.info("Backed \(path, privacy: .public) up to \(backup, privacy: .public)")
+            return true
+        } catch {
+            Ghostty.logger.error("\(path, privacy: .public) could not be backed up, so it was left alone: \(error)")
+            return false
+        }
+    }
+}

@@ -159,6 +159,8 @@
 		EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */; };
 		F0C141C306E95B91B5750C24 /* TodosPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62E65C09069869291224DF1D /* TodosPanelView.swift */; };
 		F37D1613C1DF3740CA1802C4 /* PromptDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FED179216122D158BE6A56 /* PromptDetailView.swift */; };
+		F385B62C6516989981EC9E61 /* AgentHookInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */; };
+		F3FB302FFA7CA39C8F5D8E02 /* AgentHookInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAA75E33BCCAF327D3A57391 /* AgentHookInstaller.swift */; };
 		F50B48B75A6494ED0EC0BC03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADD413DCDFE98EF635534720 /* Assets.xcassets */; };
 		F87D9A1E9F7D5E9399F1A1EF /* ShellPathResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */; };
 		F935EB7FDFB8FA252925EABF /* CommandPlaceholdersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0B20FA6AE5CB3278F67E10 /* CommandPlaceholdersTests.swift */; };
@@ -188,6 +190,7 @@
 		0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		111635747B13F014EEF1AB32 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		1138041E022C758DED6DA7B5 /* YAMLHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YAMLHelpers.swift; sourceTree = "<group>"; };
+		1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookInstallerTests.swift; sourceTree = "<group>"; };
 		172FE703B96BA5ABB88D82E1 /* TerminalManager+TaskTerminals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+TaskTerminals.swift"; sourceTree = "<group>"; };
 		1753DB7CA84C6EBA0B8922EE /* MarkdownPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreviewView.swift; sourceTree = "<group>"; };
 		179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
@@ -313,6 +316,7 @@
 		D2AB573195FEC4085A71777E /* SettingsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerTests.swift; sourceTree = "<group>"; };
 		D6931932ACB5CB97D6B0F7C5 /* SavedCommandStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedCommandStore.swift; sourceTree = "<group>"; };
 		D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Clearway-Bridging-Header.h"; sourceTree = "<group>"; };
+		DAA75E33BCCAF327D3A57391 /* AgentHookInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookInstaller.swift; sourceTree = "<group>"; };
 		DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcuts.swift; sourceTree = "<group>"; };
 		DF720870D88FBC9161364AEC /* TerminalManager+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Commands.swift"; sourceTree = "<group>"; };
 		E00AD18F6EABC22D6B4212D0 /* PromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptWindow.swift; sourceTree = "<group>"; };
@@ -368,6 +372,7 @@
 			children = (
 				C1ECAB4B3402CFEAC103DA45 /* AgentActivityStoreTests.swift */,
 				8CC46D569A48674B8AC75040 /* AgentHookEnvelopeTests.swift */,
+				1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */,
 				B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */,
 				97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */,
 				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
@@ -426,6 +431,7 @@
 				85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */,
 				1C32F696C94B49C864B77F78 /* AgentActivityStore.swift */,
 				B138ED76CF9F4BF34515ACD0 /* AgentHookEvent.swift */,
+				DAA75E33BCCAF327D3A57391 /* AgentHookInstaller.swift */,
 				00EDB5E9A55F1CBB6FE16A30 /* AgentHookScript.swift */,
 				3077B1AC998D5DF794BE4FE2 /* AgentHookSettings.swift */,
 				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
@@ -815,6 +821,7 @@
 				75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */,
 				A3359BD40D5D19AD72018EC6 /* AgentActivityStore.swift in Sources */,
 				4D279F5A55FF0BA16009ABBB /* AgentHookEvent.swift in Sources */,
+				F3FB302FFA7CA39C8F5D8E02 /* AgentHookInstaller.swift in Sources */,
 				9EC8E812081EEFEE04F14C55 /* AgentHookScript.swift in Sources */,
 				3E191C47FB2E6AA58EBD33F0 /* AgentHookSettings.swift in Sources */,
 				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
@@ -925,6 +932,7 @@
 			files = (
 				E47602170CF2FCEAF1448709 /* AgentActivityStoreTests.swift in Sources */,
 				AB0644D78E51323823D84DA9 /* AgentHookEnvelopeTests.swift in Sources */,
+				F385B62C6516989981EC9E61 /* AgentHookInstallerTests.swift in Sources */,
 				A6C532F303C5F08BB3450927 /* AgentHookSettingsTests.swift in Sources */,
 				35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */,
 				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,

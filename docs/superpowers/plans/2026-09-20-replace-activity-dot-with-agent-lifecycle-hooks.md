@@ -926,3 +926,70 @@ Two details the plan left open, recorded for T4 and T5:
 **Gate.** `./scripts/ci.sh` — green. `Executed 717 tests, with 0 failures (0 unexpected) in 111.299
 seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
 three new files and the `xcodegen`-regenerated `project.pbxproj`.
+
+---
+
+### T4: The installer — the file side
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookInstaller.swift` | New. `install()` / `uninstall()`, the private `installScript()` (dirs at `0o700`, forwarder at `0o755`, rewritten only when the bytes differ), and `mergeAgentSettings(installing:home:)` over both agents' files with the private `merge`, `serialised` and `backUp` under it. |
+| `Tests/AgentHookInstallerTests.swift` | New. 9 cases driving the settings half against a temp home: the block and the no-op second call, an absent file created with no backup, the round trip, the two refusals to write, the unreadable file, the one-time backup, and both Codex paths. |
+
+**Evidence.** The three rules that decide *not* to write were implemented the careless way first —
+the write gated on `after != onDisk` (bytes) rather than on the two documents, a backup taken on
+every modification instead of once, and `createDirectory(withIntermediateDirectories:)` in place of
+the gate on the agent's config directory already existing — and `./scripts/ci.sh` was run against
+that. Four of the nine cases went red:
+
+```
+    ✖ testCodexIsSkippedWhenItsDirectoryIsAbsent, XCTAssertFalse failed - an absent ~/.codex means Codex is not installed, and Clearway never creates it
+    ✖ testTheBackupIsTakenOnceAndNeverRefreshed, XCTAssertEqual failed: ("{
+    ✖ testUninstallCreatesNoSettingsFileOfItsOwn, XCTAssertFalse failed
+    ✖ testUninstallDoesNotRewriteAFileThatNeverCarriedTheBlock, XCTAssertEqual failed: ("243 bytes") is not equal to ("138 bytes")
+    ✖ testUninstallDoesNotRewriteAFileThatNeverCarriedTheBlock, XCTAssertFalse failed - nothing was modified, so nothing was backed up
+Executed 9 tests, with 5 failures (0 unexpected) in 0.125 (0.127) seconds
+```
+
+The `243 bytes` against `138 bytes` **is** the defect the document comparison exists to prevent: an
+uninstall on a file that never carried the block re-serialises it sorted and pretty-printed, so every
+user who merely toggles the feature off — including one who never turned it on — has their
+`settings.json` rewritten to say nothing changed. The backup failure is the second: its
+`XCTAssertEqual` printed Clearway's own nine-event block where the user's two-key file should be,
+because the second modification had copied the already-installed file over the backup. D13's backup
+is the user's only copy of the file as they wrote it, and the careless version destroys it on the
+first uninstall.
+
+**Deviations from the plan.**
+
+- **Both agents are gated on their config directory existing, not just Codex.** The plan gates
+  `~/.codex` (D15) and says only "if absent, treat as `[:]`" for `~/.claude/settings.json`, which
+  leaves the `~/.claude`-absent case to a write that throws and logs on every launch. One rule for
+  both — the agent's directory is where Clearway is a guest, and it never creates one — removes the
+  special case and applies D15's reasoning where it holds equally: a user with no `~/.claude` has
+  never run Claude Code.
+- **The no-op test is "the document is already what Clearway wants", not "the bytes match".** The
+  plan's criterion is the second call finding identical bytes. Comparing the re-serialised *before*
+  and *after* documents is strictly stronger and is what makes the uninstall refusal above possible;
+  byte equality alone cannot express it, since the user's own formatting never matches the
+  canonical form.
+- **A backup that cannot be taken cancels the write.** `backUp` returns `Bool` and `merge` refuses
+  on false. The plan says the backup is taken before the first modification; on a failure the
+  choice is between rewriting the file with no copy of the original and not installing. The merge is
+  acceptable *because* of the backup, so the install is what gives way, and the failure is logged.
+- **`uninstall()` leaves the forwarder script on disk.** D17 says the toggle uninstalls the block
+  and closes the listener; the script's own first guard makes it a no-op with nothing listening, so
+  removing it would only make re-enabling the toggle more work.
+- **Coverage was added through the plan's named hatch, narrowed.** `mergeAgentSettings` takes one
+  `home: String = NSHomeDirectory()`, so the test drives both agents' files inside a temp root and
+  no test can reach the developer's real `~/.claude` or `~/.codex`. `install()` and `uninstall()`
+  stay zero-argument, so no call site carries the parameter. The forwarder half is left untested
+  rather than made injectable: its paths are `AgentHookScript`'s fixed statics, and pointing a test
+  at them would write under the real `~/.clearway`.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 726 tests, with 0 failures (0 unexpected) in 112.128
+seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
+two new files and the `xcodegen`-regenerated `project.pbxproj`; no `default.profraw`, since nothing
+here launched the app.

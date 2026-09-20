@@ -1,0 +1,151 @@
+import XCTest
+@testable import Clearway
+
+/// Drives the installer's settings half against a temp home, so nothing here can reach the
+/// developer's real `~/.claude` or `~/.codex`. The forwarder half writes under `~/.clearway` at
+/// fixed paths and is deliberately left to the operator's by-hand check.
+///
+/// The rules worth pinning are the ones that decide *not* to write: a second install, an uninstall
+/// on a file that never carried the block, an unreadable file, an absent `~/.codex`, and a backup
+/// that already exists.
+final class AgentHookInstallerTests: TempRootTestCase {
+
+    override static var tempRootPrefix: String { "clearway-hook-installer-tests" }
+
+    private var claudeDir: String { (tempRoot as NSString).appendingPathComponent(".claude") }
+    private var settingsPath: String { (claudeDir as NSString).appendingPathComponent("settings.json") }
+    private var backupPath: String { settingsPath + ".clearway-backup" }
+    private var codexDir: String { (tempRoot as NSString).appendingPathComponent(".codex") }
+    private var codexHooksPath: String { (codexDir as NSString).appendingPathComponent("hooks.json") }
+
+    override func setUp() async throws {
+        try await super.setUp()
+        try FileManager.default.createDirectory(atPath: claudeDir, withIntermediateDirectories: true)
+    }
+
+    // MARK: - Install
+
+    func testInstallWritesTheBlockAndTheSecondCallWritesNothing() throws {
+        try write(userSettings, to: settingsPath)
+
+        install()
+
+        let settings = try decoded(settingsPath)
+        XCTAssertEqual((settings["hooks"] as? [String: Any])?.count, 9)
+        XCTAssertEqual(settings["model"] as? String, "opus")
+
+        // Proof that the second call is a no-op, with nothing to sleep on: a write replaces the
+        // file, so a modification date that survives it is a write that did not happen.
+        let stamp = Date(timeIntervalSince1970: 0)
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: settingsPath)
+        install()
+        XCTAssertEqual(try modificationDate(settingsPath), stamp, "the second install must find the document it wants and write nothing")
+    }
+
+    func testAnAbsentSettingsFileIsCreatedWithNoBackup() throws {
+        install()
+
+        XCTAssertEqual((try decoded(settingsPath)["hooks"] as? [String: Any])?.count, 9)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupPath), "there was no file to back up")
+    }
+
+    func testUninstallRestoresTheUsersOwnDocument() throws {
+        try write(userSettings, to: settingsPath)
+
+        install()
+        uninstall()
+
+        let original = (try JSONSerialization.jsonObject(with: Data(userSettings.utf8))) as? [String: Any] ?? [:]
+        XCTAssertEqual(try decoded(settingsPath) as NSDictionary, original as NSDictionary)
+    }
+
+    /// The discriminating case for comparing documents rather than bytes: re-serialising sorts keys
+    /// and reflows whitespace, so an uninstall that wrote whenever the bytes differed would rewrite
+    /// the settings file of every user who never turned the feature on.
+    func testUninstallDoesNotRewriteAFileThatNeverCarriedTheBlock() throws {
+        try write(userSettings, to: settingsPath)
+        let before = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+
+        uninstall()
+
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: settingsPath)), before)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupPath), "nothing was modified, so nothing was backed up")
+    }
+
+    func testUninstallCreatesNoSettingsFileOfItsOwn() {
+        uninstall()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: settingsPath))
+    }
+
+    // MARK: - Files Clearway cannot read
+
+    func testUnparseableSettingsAreLeftByteIdentical() throws {
+        for contents in ["[1, 2, 3]", "not json at all", ""] {
+            try write(contents, to: settingsPath)
+
+            install()
+
+            XCTAssertEqual(try String(contentsOfFile: settingsPath, encoding: .utf8), contents)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: backupPath), "a file Clearway cannot read is a file it does not touch")
+        }
+    }
+
+    // MARK: - The backup
+
+    func testTheBackupIsTakenOnceAndNeverRefreshed() throws {
+        try write(userSettings, to: settingsPath)
+
+        install()
+        XCTAssertEqual(try String(contentsOfFile: backupPath, encoding: .utf8), userSettings)
+
+        uninstall()
+        XCTAssertEqual(try String(contentsOfFile: backupPath, encoding: .utf8), userSettings, "the backup is the file as the user wrote it, not as Clearway last left it")
+    }
+
+    // MARK: - Codex
+
+    func testCodexIsSkippedWhenItsDirectoryIsAbsent() {
+        install()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: codexDir), "an absent ~/.codex means Codex is not installed, and Clearway never creates it")
+    }
+
+    func testCodexHooksAreWrittenIntoAnExistingCodexDirectory() throws {
+        try FileManager.default.createDirectory(atPath: codexDir, withIntermediateDirectories: true)
+
+        install()
+
+        XCTAssertEqual((try decoded(codexHooksPath)["hooks"] as? [String: Any])?.count, 9)
+    }
+
+    // MARK: - Helpers
+
+    private func install() {
+        AgentHookInstaller.mergeAgentSettings(installing: true, home: tempRoot)
+    }
+
+    private func uninstall() {
+        AgentHookInstaller.mergeAgentSettings(installing: false, home: tempRoot)
+    }
+
+    private func write(_ contents: String, to path: String) throws {
+        try Data(contents.utf8).write(to: URL(fileURLWithPath: path))
+    }
+
+    private func decoded(_ path: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        return (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    private func modificationDate(_ path: String) throws -> Date? {
+        try FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
+    }
+
+    private let userSettings = """
+    {
+        "model": "opus",
+        "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "~/bin/my-hook.sh"}]}]}
+    }
+    """
+}
