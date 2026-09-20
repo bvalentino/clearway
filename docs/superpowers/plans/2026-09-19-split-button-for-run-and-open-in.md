@@ -835,3 +835,28 @@ the pre-existing `WorktreeConfigStore.swift:99` and `:266` and `WorktreeDraft.sw
 **Deviations.** None.
 
 **Gate.** `./scripts/ci.sh` — 574 tests, 0 failures, `==> CI passed.`, exit 0.
+
+### Merge main
+
+`main` had moved 8 commits past the branch's base (`484482d` → `eb18f0f`) and the PR reported
+`CONFLICTING`. Merged with `git merge origin/main` — no rebase, since the branch is pushed and must
+stay fast-forwardable.
+
+| File | Conflict | Resolution |
+| --- | --- | --- |
+| `Sources/App/SavedCommandStore.swift` | #234 factored the atomic write into `write(_:to:via:)` and added `saveDefaults` for the new `command-defaults.json`; this branch had changed `save` to take a `SavedCommandsPayload`. | Kept main's shared `write`/`saveDefaults` and routed the payload through it: `save(_ payload:)` now calls `write(JSONEncoder().encode(payload), to: commandsFile, via: commandsTempFile)`. `SavedCommandsPayload` is unchanged. The type's doc comment names both files. |
+| `Sources/App/SavedCommandManager.swift` | Both sides added published state, a `load()` body, a mutator and a save path. | Kept both. `load()` reads the payload and the defaults concurrently with `async let`, then publishes `commands`, `lastRunId` and `defaults`. `recordLastRun` and `setAfterCreateDefault` both survive, and `save()` builds the payload and goes through main's single `enqueue` chain, so a commands write and a defaults write still cannot reach the store's queue out of order. |
+| `Tests/SavedCommandManagerTests.swift` | Both sides added helpers and a section of tests. | Kept both: `persistedCommands` / `persistedLastRunId` over the generic payload helper, main's `persistedDefaults`, and both the Last run / Primary command / Run button title / Menu commands sections and the Defaults section. |
+| `CLAUDE.md` | Both sides appended to the `SavedCommandStore` bullet, and this branch rewrote the Open In / Run toolbar paragraph that main had only reworded. | Kept both store paragraphs (payload and `lastRunId` first, then main's `command-defaults.json`), and took this branch's split-button paragraph with main's corrected closing clause (`ContentView.swift` "sits at SwiftLint's 1000-line `file_length` limit"). |
+
+Two follow-on fixes the merge itself needed: `Tests/SavedCommandStoreTests.swift` auto-merged with
+two of #234's new calls still on the old `store.save([SavedCommand])` signature, both rewritten as
+`SavedCommandsPayload(commands:lastRunId:)`; and main's stale clause "`commands.json` is the only
+file under it" was dropped from CLAUDE.md, since the very next paragraph main added says the store
+owns `command-defaults.json` beside it.
+
+`SavedCommand` gained no field in #234, so the whole-value `Hashable` conformance and the wire-format
+tests need no change.
+
+**Gate.** `./scripts/ci.sh` — 676 tests, 0 failures, `==> CI passed.`, exit 0. `git status --porcelain`
+empty; the only ignored entries are `.clearway/`, `.work/` and `Sources/App/BuildInfo.generated.swift`.
