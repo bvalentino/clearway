@@ -170,7 +170,19 @@ class WorkTaskCoordinator: ObservableObject {
     /// The command Plan would run for this task: `{{ task_path }}` resolved to wherever the task
     /// currently lives, which `filePath(for:)` already decides. Split out of `planTask` because
     /// that one needs a `ghostty_app_t` XCTest cannot produce.
+    ///
+    /// Only an `.agent` command means anything to a plan run: `TerminalManager.run` drops a
+    /// terminal-kind one on its own `guard case .agent`, by which point `planTask` has claimed the
+    /// task's launch slot and posted `taskTerminalOpened` — which flips the editor to preview over
+    /// whatever surface the task terminal already held, while nothing runs. The kind check precedes
+    /// `freshTask` because the refusal is a property of the command alone, and a caller that passed
+    /// the wrong kind should be told so even when the task cannot resolve.
     func planCommand(for task: WorkTask, using command: SavedCommand) -> SavedCommand? {
+        guard command.kind == .agent else {
+            Ghostty.logger.error(
+                "planCommand: command \(command.id, privacy: .public) is \(command.kind.rawValue, privacy: .public)-kind; only an agent command can plan a task")
+            return nil
+        }
         guard let current = workTaskManager.freshTask(id: task.id) else { return nil }
         return CommandPlaceholders.substituted(command, taskPath: workTaskManager.filePath(for: current))
     }

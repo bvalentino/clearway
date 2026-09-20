@@ -11,6 +11,7 @@ struct TaskDetailView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
     let taskId: UUID
     @Binding var editorMode: TaskEditorMode
@@ -34,6 +35,10 @@ struct TaskDetailView: View {
 
     private var terminalVisible: Bool {
         terminalManager.isTaskTerminalVisible(for: taskId)
+    }
+
+    private var terminalToggleLabel: String {
+        terminalVisible ? "Hide terminal" : "Show terminal"
     }
 
     /// The Markdown rendered in preview — mirrors the editor's live buffer so it
@@ -193,6 +198,15 @@ struct TaskDetailView: View {
                     }
                 }
             Spacer()
+            Button(action: toggleTerminal) {
+                Image(systemName: "rectangle.bottomhalf.inset.filled")
+                    .font(.system(size: 11))
+                    .foregroundStyle(terminalVisible ? .primary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(terminalToggleLabel)
+            .accessibilityLabel(terminalToggleLabel)
+            .pointerCursorOnHover()
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
@@ -201,6 +215,16 @@ struct TaskDetailView: View {
         .overlay(alignment: .top) {
             Divider()
         }
+    }
+
+    /// Carries no `.disabled`, unlike the Tasks toolbar button it replaces: `pathBar` renders only
+    /// inside `body`'s `if let task`, and `TaskDetailView` is built only in `readinessDetailView`'s
+    /// `.ready` branch, which `Ghostty.App` never leaves once `init` has set it. Both halves of the
+    /// old gate are structural here. `app` is non-nil for that same reason — the guard is the
+    /// residual pointer check the launch itself needs, the same split `runPlan` makes.
+    private func toggleTerminal() {
+        guard let app = ghosttyApp.app else { return }
+        workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app)
     }
 
     // MARK: - Save

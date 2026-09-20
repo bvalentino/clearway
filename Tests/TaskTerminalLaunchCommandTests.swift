@@ -3,7 +3,7 @@ import XCTest
 
 /// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
 /// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
-/// `taskTerminalToggle`, hide vs. reveal vs. launch for the toolbar toggle and Cmd+J; and
+/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J; and
 /// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
 /// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
 /// are their whole testable surface.

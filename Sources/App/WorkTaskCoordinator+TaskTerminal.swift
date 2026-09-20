@@ -6,7 +6,7 @@ extension WorkTaskCoordinator {
     /// Toggles the task terminal, carrying out whichever outcome `taskTerminalToggle` decides on.
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
-    /// toolbar button `false`, so a click never steals focus. On a launch focus lands after the
+    /// path bar button `false`, so a click never steals focus. On a launch focus lands after the
     /// `await` rather than on the keypress, because the resolved shell PATH is unbounded on a
     /// session's first call; a reveal awaits nothing and focuses on the keypress itself.
     func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
