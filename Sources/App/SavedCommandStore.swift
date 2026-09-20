@@ -13,7 +13,7 @@ struct SavedCommandsPayload: Codable, Equatable {
 
     /// No defaults: `save()` builds the whole document, so a field added later must be a
     /// compile error there rather than an omission that erases it from disk on the next write.
-    init(commands: [SavedCommand], lastRunId: UUID?) { // swiftlint:disable:this unneeded_synthesized_initializer
+    init(commands: [SavedCommand], lastRunId: UUID?) {
         self.commands = commands
         self.lastRunId = lastRunId
     }

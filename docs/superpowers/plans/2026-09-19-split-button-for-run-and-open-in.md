@@ -410,6 +410,13 @@ Two findings from the second review pass, both already proven.
    added later is a compile error at `save()` — spec Decision 6), so it is kept and the rule is
    suppressed on its line.
 
+### C6: Drop the now-superfluous disable on the payload init (operator, 2026-09-20)
+
+Found at sign-off. The review-pr step gave `SavedCommandsPayload` an `init(from:)`, which suppresses
+the synthesized memberwise init, so C5's `// swiftlint:disable:this unneeded_synthesized_initializer`
+no longer suppresses anything and SwiftLint reports `Superfluous Disable Command` on that line. The
+trailing directive is deleted; the init stays.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -777,7 +784,9 @@ before the change and reports nothing for that file after it.
 placement lands between the init's doc comment and the init, which SwiftLint then reports as
 `SavedCommandStore.swift:14:5: warning: Orphaned Doc Comment Violation` — one warning traded for
 another. The directive is therefore `// swiftlint:disable:this` trailing the `init` line, which
-leaves the doc comment attached and the file clean.
+leaves the doc comment attached. The directive itself did not survive the branch: the review-pr
+step's hand-written `init(from:)` suppresses the synthesized memberwise init, so the rule stopped
+firing and the disable became superfluous. C6 deletes it.
 
 **Gate.** `./scripts/ci.sh` — 571 tests, 0 failures, `==> CI passed.`
 `swiftlint lint --quiet` reports 3 warnings, all pre-existing and none in a file this change
@@ -810,3 +819,19 @@ the branch it covered, which `private(set)` makes unreachable.
 
 **Gate.** Not run by this step — it stopped after committing. `sign-off` owns the full
 `./scripts/ci.sh` run and covers this same code.
+
+### C6: Drop the now-superfluous disable on the payload init
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | The trailing `// swiftlint:disable:this unneeded_synthesized_initializer` is gone from `SavedCommandsPayload`'s memberwise init. The init, its doc comment and everything else in the file are unchanged. |
+
+**Evidence.** A lint fact, like C5's F2. The review-pr step's hand-written `init(from:)` suppresses
+the synthesized memberwise init, so `unneeded_synthesized_initializer` no longer fires on line 16
+and SwiftLint reported `Superfluous Disable Command Violation` there instead. After the deletion
+`swiftlint lint --quiet` reports nothing for `SavedCommandStore.swift`; the 3 remaining warnings are
+the pre-existing `WorktreeConfigStore.swift:99` and `:266` and `WorktreeDraft.swift:17`.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` — 574 tests, 0 failures, `==> CI passed.`, exit 0.
