@@ -26,6 +26,12 @@ struct SettingsView: View {
                 Toggle("Show focus border on active pane", isOn: $settings.showFocusBorder)
                 Toggle("Open secondary terminal on start", isOn: $settings.openSecondaryOnStart)
                 Toggle("Show detached worktrees", isOn: $settings.showDetachedWorktrees)
+                // The one subtitle in the app: Codex skips a hook it has not been told to trust,
+                // so without this line its users see a toggle that is on and does nothing.
+                Toggle(isOn: $settings.agentHooksEnabled) {
+                    Text("Show agent activity")
+                    Text("Codex requires running /hooks once to trust the hooks Clearway installs.")
+                }
             }
 
             Section {

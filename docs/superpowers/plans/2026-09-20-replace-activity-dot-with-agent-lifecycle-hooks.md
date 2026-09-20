@@ -1181,3 +1181,54 @@ toggle, so the wiring is one call on launch and one in `.onChange`, with nothing
 seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
 files — two new, five modified — and the `xcodegen`-regenerated `project.pbxproj`. No
 `default.profraw`: nothing here launched the app.
+
+### T7: The Settings toggle
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SettingsManager.swift` | `SettingsKey.agentHooksEnabled = "clearway.agentHooksEnabled"`; `@Published var agentHooksEnabled: Bool` with the `didSet { defaults.set(…) }` shape its three sibling toggles use, read in `init` as `defaults.object(forKey:) as? Bool ?? true`. |
+| `Sources/App/SettingsView.swift` | One row at the end of `Section("Appearance")`: `Toggle(isOn: $settings.agentHooksEnabled)` whose label is two `Text`s — "Show agent activity" and the single line of Codex copy. |
+| `Tests/SettingsManagerTests.swift` | `test_agentHooksEnabled_defaultsToTrue` and `test_agentHooksEnabled_persistsBeingTurnedOff`, in the file's existing per-test suite pattern. |
+
+**Evidence.** The two rules are the default and the write, and no single careless implementation
+gets both wrong, so each was written the careless way in turn and `./scripts/ci.sh` run against it.
+First the default copied from its siblings (`?? false`), which is the shape a reader of the three
+lines above it would write:
+
+```
+Test Suite 'SettingsManagerTests' started at 2026-09-20 19:55:40.060.
+    ✖ test_agentHooksEnabled_defaultsToTrue, XCTAssertTrue failed
+Executed 739 tests, with 1 failure (0 unexpected) in 111.104 (111.246) seconds
+```
+
+Then the default restored and the `didSet` dropped — a plain `@Published var`, which compiles and
+works for a whole session:
+
+```
+Test Suite 'SettingsManagerTests' started at 2026-09-20 19:57:50.770.
+    ✖ test_agentHooksEnabled_persistsBeingTurnedOff, XCTAssertFalse failed
+Executed 739 tests, with 1 failure (0 unexpected) in 109.383 (109.524) seconds
+```
+
+Both defects are silent: a `false` default ships the feature off to everyone who never opens
+Settings, and a missing `didSet` turns the toggle back on at every relaunch.
+
+**Deviations from the plan.**
+
+- **The copy is the toggle's own subtitle, not a separate row.** The plan said "one line of
+  secondary copy"; Apple documents the shape — `Toggle`'s docs, fetched 2026-09-20: "For cases where
+  adding a subtitle to the label is desired, use a view builder that creates multiple `Text` views
+  where the first text represents the title and the second text represents the subtitle", with the
+  worked example being exactly two `Text`s in the label closure. That binds the line to the control
+  it qualifies instead of leaving a loose caption in the section, and it needs no availability gate:
+  `init(isOn:label:)` is macOS 10.15+ and the deployment target is 13.0.
+- **`/hooks` is written bare, not in backticks.** The plan's example sentence carries Markdown
+  backticks; `Text` renders them literally in a `Form` label, so they would have shipped as visible
+  characters.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 739 tests, with 0 failures
+(0 unexpected) in 106.727 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
+showed three modified files and nothing else — no new Swift file, so `xcodegen` left
+`project.pbxproj` untouched, and no `default.profraw`: nothing here launched the app.

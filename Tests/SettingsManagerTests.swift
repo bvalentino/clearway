@@ -123,6 +123,21 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(second.showDetachedWorktrees)
     }
 
+    // MARK: - Agent hooks
+
+    func test_agentHooksEnabled_defaultsToTrue() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertTrue(manager.agentHooksEnabled)
+    }
+
+    func test_agentHooksEnabled_persistsBeingTurnedOff() {
+        let first = SettingsManager(defaults: defaults)
+        first.agentHooksEnabled = false
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertFalse(second.agentHooksEnabled)
+    }
+
     // MARK: - Last used Open In app
 
     func test_lastUsedOpenInApp_isNilOnAFreshSuite() {
