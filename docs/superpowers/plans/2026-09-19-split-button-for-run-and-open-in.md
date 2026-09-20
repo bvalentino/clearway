@@ -338,3 +338,31 @@ Adding the `[SavedCommand].self` branch to `load()`'s `catch` turned it green.
 `store.load()` as planned, because the move-aside is what it has to pin. No other deviation.
 
 **Gate.** `./scripts/ci.sh` — 543 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### T2: Remember Open in's last-used app in UserDefaults
+
+| File | State |
+| --- | --- |
+| `Sources/App/SettingsManager.swift` | `SettingsKey.lastUsedOpenInApp` added beside `openInApps`. `@Published var lastUsedOpenInAppId: UUID?` writes its `uuidString` in `didSet` and calls `removeObject(forKey:)` when nil. `var lastUsedOpenInApp: OpenInApp?` resolves it against `openInApps` on every read. `init` reads the key with `string(forKey:).flatMap(UUID.init(uuidString:))`. No delete path touched. |
+| `Tests/SettingsManagerTests.swift` | Added `test_lastUsedOpenInApp_isNilOnAFreshSuite`, `test_lastUsedOpenInApp_resolvesTheRememberedId`, `test_lastUsedOpenInApp_isNilWhenTheIdNamesNoCurrentApp`, `test_lastUsedOpenInAppId_persistsAcrossInstances`, `test_lastUsedOpenInAppId_setBackToNilRemovesTheKey`, over the per-test `UserDefaults(suiteName:)` the file already provides. |
+
+**Watched failure.** The `init` read was left out of the first implementation — `lastUsedOpenInAppId`
+initialised to nil — and `./scripts/ci.sh` run against it, with the other three cases already
+passing:
+
+```
+Test Suite 'SettingsManagerTests' started at 2026-09-19 23:41:06.831.
+    ✖ test_lastUsedOpenInAppId_persistsAcrossInstances, XCTAssertEqual failed: ("nil") is not equal to ("Optional(9E9093A5-CBC3-483E-8437-5FE990803A08)")
+    ✖ test_lastUsedOpenInAppId_persistsAcrossInstances, XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.OpenInApp(id: 9E9093A5-CBC3-483E-8437-5FE990803A08, kind: Clearway.OpenInApp.Kind.builtIn(Clearway.OpenInBuiltIn.zed), command: "zed"))")
+Executed 548 tests, with 2 failures (0 unexpected) in 84.776 (84.979) seconds
+```
+
+Reading the key in `init` turned it green.
+
+**Deviations.** The plan lists four cases; a fifth,
+`test_lastUsedOpenInAppId_setBackToNilRemovesTheKey`, splits the fourth acceptance criterion's two
+claims — persistence across instances and the remove-on-nil branch — into their own cases rather
+than asserting both in one. The delete case also asserts `lastUsedOpenInAppId` still holds the
+removed app's id, pinning the spec's "nothing is cleaned up on delete". No other deviation.
+
+**Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`

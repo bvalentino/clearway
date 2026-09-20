@@ -128,4 +128,57 @@ final class SettingsManagerTests: XCTestCase {
         let second = SettingsManager(defaults: defaults)
         XCTAssertFalse(second.showDetachedWorktrees)
     }
+
+    // MARK: - Last used Open In app
+
+    func test_lastUsedOpenInApp_isNilOnAFreshSuite() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertNil(manager.lastUsedOpenInAppId)
+        XCTAssertNil(manager.lastUsedOpenInApp)
+    }
+
+    func test_lastUsedOpenInApp_resolvesTheRememberedId() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.lastUsedOpenInAppId = zed.id
+
+        XCTAssertEqual(manager.lastUsedOpenInApp, zed)
+    }
+
+    func test_lastUsedOpenInApp_isNilWhenTheIdNamesNoCurrentApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        manager.openInApps = [finder, zed]
+        manager.lastUsedOpenInAppId = zed.id
+
+        manager.openInApps = [finder]
+
+        XCTAssertNil(manager.lastUsedOpenInApp)
+        XCTAssertEqual(manager.lastUsedOpenInAppId, zed.id, "Nothing is cleaned up on delete")
+    }
+
+    func test_lastUsedOpenInAppId_persistsAcrossInstances() {
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let first = SettingsManager(defaults: defaults)
+        first.openInApps = [zed]
+        first.lastUsedOpenInAppId = zed.id
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertEqual(second.lastUsedOpenInAppId, zed.id)
+        XCTAssertEqual(second.lastUsedOpenInApp, zed)
+    }
+
+    func test_lastUsedOpenInAppId_setBackToNilRemovesTheKey() {
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let first = SettingsManager(defaults: defaults)
+        first.openInApps = [zed]
+        first.lastUsedOpenInAppId = zed.id
+        first.lastUsedOpenInAppId = nil
+
+        XCTAssertNil(defaults.object(forKey: SettingsKey.lastUsedOpenInApp))
+        XCTAssertNil(SettingsManager(defaults: defaults).lastUsedOpenInAppId)
+    }
 }

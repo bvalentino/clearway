@@ -9,6 +9,7 @@ enum SettingsKey {
     static let openSecondaryOnStart = "clearway.openSecondaryOnStart"
     static let showDetachedWorktrees = "clearway.showDetachedWorktrees"
     static let openInApps = "clearway.openInApps"
+    static let lastUsedOpenInApp = "clearway.lastUsedOpenInApp"
 }
 
 enum ColorSchemePreference: String, CaseIterable, Identifiable {
@@ -112,6 +113,20 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    /// The app the toolbar's Open in button repeats on a click. Resolved against the live list on
+    /// every read, so an id naming a deleted app is nothing remembered and needs no cleanup.
+    var lastUsedOpenInApp: OpenInApp? { openInApps.first { $0.id == lastUsedOpenInAppId } }
+
+    @Published var lastUsedOpenInAppId: UUID? {
+        didSet {
+            if let lastUsedOpenInAppId {
+                defaults.set(lastUsedOpenInAppId.uuidString, forKey: SettingsKey.lastUsedOpenInApp)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.lastUsedOpenInApp)
+            }
+        }
+    }
+
     @Published var colorScheme: ColorSchemePreference {
         didSet {
             defaults.set(colorScheme.rawValue, forKey: SettingsKey.colorScheme)
@@ -126,6 +141,8 @@ class SettingsManager: ObservableObject {
         self.openSecondaryOnStart = defaults.object(forKey: SettingsKey.openSecondaryOnStart) as? Bool ?? false
         self.showDetachedWorktrees = defaults.object(forKey: SettingsKey.showDetachedWorktrees) as? Bool ?? false
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
+        self.lastUsedOpenInAppId = defaults.string(forKey: SettingsKey.lastUsedOpenInApp)
+            .flatMap(UUID.init(uuidString:))
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
         let storedData = defaults.data(forKey: SettingsKey.openInApps)
