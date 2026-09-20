@@ -118,17 +118,20 @@ final class ShellPathStoreTests: XCTestCase {
     // MARK: - Degraded values
 
     func testADegradedValueIsReturnedWithoutWaiting() async {
-        let resolver = FakeResolver(outcomes: [.degraded("/usr/local/bin"), .full("/opt/homebrew/bin")], delay: 0.3)
+        let resolver = FakeResolver(
+            outcomes: [.degraded("/usr/local/bin"), .full("/opt/homebrew/bin")],
+            holdingCall: 2
+        )
         let store = ShellPathStore(resolve: { resolver.next() })
 
         let first = await store.awaitPath()
         XCTAssertEqual(first, "/usr/local/bin:\(baseline)")
 
-        let started = Date()
         let second = await store.awaitPath()
 
         XCTAssertEqual(second, "/usr/local/bin:\(baseline)")
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2, "A degraded value must never be awaited")
+        XCTAssertEqual(resolver.finishedCount, 1, "A degraded value must never be awaited")
+        resolver.release()
     }
 
     func testALaterInteractiveSuccessReplacesADegradedValue() async throws {
@@ -196,27 +199,54 @@ final class ShellPathStoreTests: XCTestCase {
 
 /// Stands in for the real shell resolution: hands out a scripted outcome per call and
 /// counts the calls, so the tests can assert the single-flight guard and the retry rules.
+///
+/// Two knobs, for two different jobs. `delay` sleeps every call, widening the window for a second
+/// caller to arrive while a resolution is in flight. `holdingCall` blocks the call at that 1-based
+/// index until `release()`, so a case can prove the caller did not await that resolution: a held
+/// call cannot finish, whatever the machine is doing. Its wait is bounded, so a store that wrongly
+/// awaits the resolution fails an assertion instead of hanging the suite. A held call skips
+/// `delay`; no case passes both.
 private final class FakeResolver: @unchecked Sendable {
     private let lock = NSLock()
     private var outcomes: [ShellPathResolver.Outcome]
     private let delay: TimeInterval
+    private let holdingCall: Int?
+    private let gate = DispatchSemaphore(value: 0)
     private var calls = 0
+    private var finished = 0
 
-    init(outcomes: [ShellPathResolver.Outcome], delay: TimeInterval = 0) {
+    init(outcomes: [ShellPathResolver.Outcome], delay: TimeInterval = 0, holdingCall: Int? = nil) {
         self.outcomes = outcomes
         self.delay = delay
+        self.holdingCall = holdingCall
     }
 
+    /// Calls that have started.
     var callCount: Int {
         lock.withLock { calls }
     }
 
+    /// Calls that have returned an outcome. A held call counts only once `release()` lets it go.
+    var finishedCount: Int {
+        lock.withLock { finished }
+    }
+
+    /// Lets the held call return.
+    func release() {
+        gate.signal()
+    }
+
     func next() -> ShellPathResolver.Outcome {
-        let outcome: ShellPathResolver.Outcome = lock.withLock {
+        let (outcome, index): (ShellPathResolver.Outcome, Int) = lock.withLock {
             calls += 1
-            return outcomes.isEmpty ? .failed : outcomes.removeFirst()
+            return (outcomes.isEmpty ? .failed : outcomes.removeFirst(), calls)
         }
-        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+        if index == holdingCall {
+            _ = gate.wait(timeout: .now() + 5)
+        } else if delay > 0 {
+            Thread.sleep(forTimeInterval: delay)
+        }
+        lock.withLock { finished += 1 }
         return outcome
     }
 }
