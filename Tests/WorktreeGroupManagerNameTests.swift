@@ -77,7 +77,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let wt = makeWorktree(branch: "feature", path: path)
 
         manager.setName("", for: wt)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await settle()
 
         XCTAssertNil(try repo.value(ofLocalKey: "extensions.worktreeConfig"))
         XCTAssertEqual(try repo.value(ofLocalKey: "core.bare"), "false")
@@ -87,7 +87,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let main = makeWorktree(branch: "main", path: repo.root, isMain: true)
 
         manager.setName("Main", for: main)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await settle()
 
         XCTAssertTrue(manager.names.isEmpty)
         XCTAssertNil(manager.name(for: main))
@@ -104,12 +104,13 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try repo.enableWorktreeConfig()
         try repo.setValue("Stored name", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
         let wt = makeWorktree(branch: "feature", path: path)
+        await restartManager()
 
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
         try await waitForPublishedName("Stored name", for: wt)
 
         try repo.unsetValue(ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
         try await waitForPublishedName(nil, for: wt)
     }
 
@@ -126,7 +127,7 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredName("Seed", at: path)
 
         try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt])
+        manager.reconcile([wt], openIds: [])
 
         try await waitForPublishedName(nil, for: wt)
         XCTAssertTrue(manager.names.isEmpty)
@@ -140,16 +141,16 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let wt = makeWorktree(branch: "feature", path: path)
 
         manager.setName("Fresh name", for: wt)
-        manager.reconcile([wt])
+        let reload = manager.reconcile([wt], openIds: [])
 
         try await waitForStoredName("Fresh name", at: path)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await reload.value
         XCTAssertEqual(manager.name(for: wt), "Fresh name")
     }
 
     // MARK: - matches
 
-    func testMatchesStoredName() async throws {
+    func testMatchesStoredName() throws {
         let path = try repo.addWorktree(branch: "feature-x")
         let wt = makeWorktree(branch: "feature-x", path: path)
 

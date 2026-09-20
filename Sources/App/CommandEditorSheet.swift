@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Creates or edits one `SavedCommand`. `command` is `nil` for the create case; the two share a
-/// sheet because they edit the same six fields.
+/// sheet because they edit the same six fields. `newCommandKind` preselects the kind picker for
+/// the create case, so a caller that can only use one kind opens the sheet on it.
 struct CommandEditorSheet: View {
     let command: SavedCommand?
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
@@ -13,10 +14,10 @@ struct CommandEditorSheet: View {
     @State private var autoRun: Bool
     @FocusState private var textIsFocused: Bool
 
-    init(command: SavedCommand?) {
+    init(command: SavedCommand?, newCommandKind: SavedCommand.Kind = .terminal) {
         self.command = command
         _name = State(initialValue: command?.name ?? "")
-        _kind = State(initialValue: command?.kind ?? .terminal)
+        _kind = State(initialValue: command?.kind ?? newCommandKind)
         _text = State(initialValue: command?.text ?? "")
         _agent = State(initialValue: command?.agent ?? agentAllowlist.first ?? "")
         _autoRun = State(initialValue: command?.autoRun ?? true)

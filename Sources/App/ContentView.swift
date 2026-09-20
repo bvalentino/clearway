@@ -78,6 +78,7 @@ struct ContentView: View {
     @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
+    @State private var startPrefill: WorkTaskCoordinator.StartPrefill?
     @State private var selectedTaskId: UUID?
     /// One-shot: id of a task just created via an explicit "New Task" action. The matching
     /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
@@ -129,16 +130,18 @@ struct ContentView: View {
         guard let worktree = selectedWorktree else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.appendLauncherTab(for: worktree, app: app)
+            terminalManager.appendTab(for: worktree, app: app)
         }
     }
 
-    /// Cmd+Shift+T: append a tab that skips the launcher and drops directly into a shell.
-    private var newShellTabAction: (() -> Void)? {
-        guard let worktree = selectedWorktree else { return nil }
+    /// Cmd+Option+T: append a tab running the Settings > Main Terminal command. Nil — so the menu
+    /// item is greyed — when no worktree is selected or Main Terminal is "None".
+    private var newAgentTabAction: (() -> Void)? {
+        guard let worktree = selectedWorktree,
+              let command = settings.configuredMainTerminalCommand else { return nil }
         return { [terminalManager, ghosttyApp] in
             guard let app = ghosttyApp.app else { return }
-            terminalManager.appendShellTab(for: worktree, app: app)
+            terminalManager.startAgentTab(for: worktree, app: app, command: command, refuseWhenInFlight: true)
         }
     }
 
@@ -226,6 +229,9 @@ struct ContentView: View {
         .sheet(item: $hookSheet) { hook in
             HookTerminalSheet(hook: hook)
         }
+        .sheet(item: $startPrefill) { prefill in
+            CreateWorktreeSheet(targetGroupName: nil, startPrefill: prefill)
+        }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
             isPresented: $showRemoveConfirmation,
@@ -255,7 +261,7 @@ struct ContentView: View {
     var body: some View {
         navigator
         .focusedSceneValue(\.newTabAction, newTabAction)
-        .focusedSceneValue(\.newShellTabAction, newShellTabAction)
+        .focusedSceneValue(\.newAgentTabAction, newAgentTabAction)
         .focusedSceneValue(\.newTaskAction, newTaskAction)
         .focusedSceneValue(\.sidebarToggle, sidebarPanel)
         .focusedSceneValue(\.bottomPanelToggle, bottomPanel)
@@ -295,15 +301,30 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
-            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+            // Cleared before the worktree guard, not after it: on a silent failure the branch is
+            // never listed, and a signal left standing means a retry that assigns the same branch
+            // is not a change, so this handler would never run for the create that did succeed.
             worktreeManager.lastCreatedBranch = nil
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
 
-            workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt)
+            // Cleared here because this handler is the single point every successful create lands
+            // on, whichever door opened the sheet.
+            if WorkTaskCoordinator.startedTaskIsSelected(
+                workTaskCoordinator.pendingCreate, branch: branch, selectedTaskId: selectedTaskId
+            ) {
+                selectedTaskId = nil
+            }
+
+            let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
+            // The pick rides on the creation mark rather than being run from here: `pane(for:)` is
+            // the one place a first tab is built, so the command replaces the Main Terminal tab a
+            // created worktree opens instead of arriving as a second agent beside it.
+            terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand)
             detailSelection = .worktree(wt)
 
             // The hook runs in the secondary terminal, reusing the persistent login shell so its
@@ -323,10 +344,9 @@ struct ContentView: View {
             let currentIds = Set(newWorktrees.map(\.id))
             // Skip pruning on a failed or empty refresh — a transient `git worktree list`
             // error zeroes the array, and pruning against an empty known-set would wipe
-            // persisted group membership / default order / PR statuses / open terminals.
+            // PR statuses and open terminals.
             if !newWorktrees.isEmpty && worktreeManager.error == nil {
-                groupManager.reconcile(newWorktrees)
-                groupManager.seedDefaultOrder(with: newWorktrees, openIds: terminalManager.openWorktreeIds)
+                groupManager.reconcile(newWorktrees, openIds: terminalManager.openWorktreeIds)
                 terminalManager.pruneStale(keeping: currentIds)
                 worktreeManager.prunePRStatuses(keeping: currentIds)
             }
@@ -375,8 +395,8 @@ struct ContentView: View {
                 .hidden()
         }
         .onAppear {
-            // Route the launcher decision through the live SettingsManager so clearing
-            // the command at runtime immediately skips the prompt screen on new tabs.
+            // Read Settings → Main Terminal through the live SettingsManager so clearing the
+            // command at runtime immediately makes the next agent tab a login shell.
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
 
@@ -697,15 +717,15 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        handleStartResult(workTaskCoordinator.startTask(task))
+        handleStartResult(workTaskCoordinator.resolveStart(task))
     }
 
     private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {
         switch result {
         case .reuse(let wt):
             selectedTaskId = nil; detailSelection = .worktree(wt)
-        case .createWorktree(let branch):
-            selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
+        case .prefill(let prefill):
+            startPrefill = prefill
         case .ignored: break
         }
     }
@@ -811,49 +831,23 @@ struct ContentView: View {
                             MainTerminalTabStrip(worktreeId: worktreeId, onCloseTab: beginCloseTab)
                             Group {
                                 if pane.main.tabs.isEmpty {
-                                    VStack(spacing: 12) {
-                                        Image(systemName: "terminal")
-                                            .font(.system(size: 28))
-                                            .foregroundStyle(.tertiary)
-                                        Text("⌘T for a new tab")
-                                            .foregroundStyle(.secondary)
+                                    Group {
+                                        if terminalManager.agentLaunchesInFlight.contains(worktreeId) {
+                                            // An agent tab is on its way; hold the space rather than
+                                            // flashing the empty state. `Color.clear` and not
+                                            // `EmptyView` so the panels below do not jump for a frame.
+                                            Color.clear
+                                        } else {
+                                            VStack(spacing: 12) {
+                                                Image(systemName: "terminal")
+                                                    .font(.system(size: 28))
+                                                    .foregroundStyle(.tertiary)
+                                                Text("⌘T for a new tab")
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                } else if let activeTab = pane.main.activeTab, activeTab.isLauncher {
-                                    // Resolved once: rendering one agent's name while submitting to
-                                    // another is the failure this single binding rules out.
-                                    let launcherAgent = terminalManager.launcherAgents[activeTab.id]
-                                        ?? settings.resolvedMainTerminalCommand
-                                    PromptLauncherView(
-                                        command: launcherAgent,
-                                        autoFocus: terminalManager.pendingFocusTabId == activeTab.id,
-                                        draft: Binding(
-                                            get: { terminalManager.launcherDrafts[activeTab.id] ?? "" },
-                                            set: { terminalManager.launcherDrafts[activeTab.id] = $0 }
-                                        ),
-                                        onSubmit: { prompt in
-                                            guard let app = ghosttyApp.app else { return }
-                                            Task {
-                                                await terminalManager.promoteLauncherToAgent(
-                                                    tabId: activeTab.id,
-                                                    in: worktreeId,
-                                                    app: app,
-                                                    command: launcherAgent,
-                                                    prompt: prompt
-                                                )
-                                            }
-                                        },
-                                        onOpenTerminal: {
-                                            guard let app = ghosttyApp.app else { return }
-                                            terminalManager.promoteLauncher(
-                                                tabId: activeTab.id,
-                                                in: worktreeId,
-                                                app: app
-                                            )
-                                        },
-                                        onConsumeFocus: { terminalManager.pendingFocusTabId = nil }
-                                    )
-                                    .id(activeTab.id)
                                 } else if let activeSurface = pane.main.activeSurface {
                                     FocusableTerminal(
                                         surfaceView: activeSurface,
@@ -947,8 +941,8 @@ struct ContentView: View {
 
     private func beginCloseTab(id: UUID, in worktreeId: String) {
         guard let tab = terminalManager.mainTabs(for: worktreeId).first(where: { $0.id == id }) else { return }
-        if let surface = tab.surface, surface.needsConfirmQuit {
-            let title = surface.title.isEmpty ? "Terminal" : surface.title
+        if tab.surface.needsConfirmQuit {
+            let title = tab.surface.title.isEmpty ? "Terminal" : tab.surface.title
             tabCloseQueue.append(TabCloseRequest(worktreeId: worktreeId, tabId: id, title: title))
         } else {
             terminalManager.closeMainTab(id: id, in: worktreeId)

@@ -350,18 +350,3 @@ struct WorkTaskWindow: View {
         }
     }
 }
-
-// MARK: - Glass Styling
-
-extension View {
-    @ViewBuilder
-    func applyPrimaryActionStyle(tint: Color = .accentColor) -> some View {
-        if #available(macOS 26.0, *) {
-            self.buttonStyle(.glassProminent)
-                .tint(tint)
-        } else {
-            self.buttonStyle(.borderedProminent)
-                .tint(tint)
-        }
-    }
-}

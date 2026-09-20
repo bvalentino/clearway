@@ -38,4 +38,24 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
     func testNoWorktreeAndNoErrorIsASilentFailure() {
         XCTAssertEqual(CreateWorktreeSheet.outcome(created: nil, error: nil), .silentFailure)
     }
+
+    // MARK: - Start Task prefill
+
+    func testPrefillCarriesTheGivenNameAndBranch() {
+        let draft = CreateWorktreeSheet.prefill(name: "Ship It Now", branch: "ship-it-now-a1b2c3d4")
+
+        XCTAssertEqual(draft.name, "Ship It Now")
+        XCTAssertEqual(draft.branch, "ship-it-now-a1b2c3d4")
+    }
+
+    /// The prefilled branch may have been resolved away from a collision, so a later Name keystroke
+    /// must not regenerate over it — which is why the branch goes through `setBranch`.
+    func testPrefilledBranchSurvivesALaterNameEdit() {
+        var draft = CreateWorktreeSheet.prefill(name: "Ship It Now", branch: "ship-it-now-a1b2c3d4")
+
+        draft.setName("Renamed")
+
+        XCTAssertEqual(draft.branch, "ship-it-now-a1b2c3d4")
+        XCTAssertEqual(draft.name, "Renamed")
+    }
 }

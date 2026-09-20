@@ -6,6 +6,10 @@ final class TerminalManagerTests: XCTestCase {
 
     private let testPath = "/opt/homebrew/bin:/usr/bin:/bin"
 
+    private func makeAgentCommand(name: String) -> SavedCommand {
+        SavedCommand(id: UUID(), name: name, kind: .agent, text: "", agent: "claude", autoRun: true)
+    }
+
     // MARK: - setInitialPanelVisibility
 
     func test_setInitialPanelVisibility_secondaryFollowsProvider() {
@@ -84,10 +88,113 @@ final class TerminalManagerTests: XCTestCase {
                       "the hook reveal must win over the open-on-start-off default")
     }
 
+    // MARK: - First tab source
+
+    func test_firstTabSource_afterCreatePickReplacesTheMainTerminalTab() {
+        let pick = makeAgentCommand(name: "Review")
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: pick, mainCommand: "claude"),
+            .savedCommand(pick),
+            "the picked command is the first tab; the Main Terminal agent must not open beside it")
+    }
+
+    func test_firstTabSource_noPick_opensTheMainTerminalAgent() {
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: nil, mainCommand: "claude"),
+            .mainTerminalAgent("claude"))
+    }
+
+    func test_firstTabSource_noPickAndNoMainTerminalCommand_opensALoginShell() {
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: nil, mainCommand: nil),
+            .loginShell)
+    }
+
+    func test_firstTabSource_pickWinsWithNoMainTerminalCommand() {
+        let pick = makeAgentCommand(name: "Review")
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: pick, mainCommand: nil),
+            .savedCommand(pick))
+    }
+
+    func test_takeFirstTabSource_justCreatedWorktree_runsMainTerminalCommand() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .mainTerminalAgent("claude"))
+    }
+
+    func test_takeFirstTabSource_justCreatedWorktree_carriesTheAfterCreatePick() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let pick = makeAgentCommand(name: "Review")
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: pick)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .savedCommand(pick))
+    }
+
+    func test_takeFirstTabSource_existingWorktree_opensLoginShell() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "a worktree Clearway did not create opens a login shell, whatever Main Terminal holds")
+    }
+
+    func test_takeFirstTabSource_justCreatedWorktree_mainTerminalNone_opensLoginShell() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { nil }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell)
+    }
+
+    func test_takeFirstTabSource_markIsOneShot() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        let pick = makeAgentCommand(name: "Review")
+        manager.markWorktreeCreated(wt, afterCreateCommand: pick)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .savedCommand(pick))
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "closing a created worktree's terminals and reopening it is opening one that already exists")
+    }
+
+    func test_takeFirstTabSource_marksOneWorktreeOnly() {
+        let manager = TerminalManager()
+        let created = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let other = makeWorktree(branch: "other", path: "/tmp/other", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(created, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: other.id), .loginShell)
+        XCTAssertEqual(manager.takeFirstTabSource(for: created.id), .mainTerminalAgent("claude"))
+    }
+
+    /// Tearing a worktree's terminals down drops every other per-worktree entry, so the creation
+    /// mark has to go with them: a worktree whose terminals were closed and then reopened is one
+    /// that already exists, and must come back on a login shell rather than on a second agent.
+    func test_removeSurface_clearsTheCreationMark() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
+        manager.removeSurface(for: wt.id)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "the creation mark must not survive the worktree's terminals")
+    }
+
     // MARK: - buildAgentPromptCommand
 
-    func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello", path: testPath)
+    func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "grok", prompt: "hello", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("\"$(cat \"$2\")\""),
                       "prompt must be a positional arg via cat-into-quotes; got: \(launch.command)")
@@ -97,8 +204,8 @@ final class TerminalManagerTests: XCTestCase {
 
     /// `$1` must stay bare in the recipe. Quoting it would make a multi-word command
     /// (`claude --model sonnet`) be looked up as one filename, so the launch would fail.
-    func test_buildAgentPromptCommand_leavesTheAgentCommandExpansionUnquoted() {
-        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_leavesTheAgentCommandExpansionUnquoted() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("; $1 \""),
                       "the agent command must expand unquoted; got: \(launch.command)")
@@ -108,8 +215,8 @@ final class TerminalManagerTests: XCTestCase {
 
     /// The builder must export the PATH it was given, not one it reads for itself: the
     /// caller is the only place that knows whether a resolution has completed.
-    func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() {
-        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("export PATH=") && launch.command.contains("'\(testPath)'"),
                       "must export the given PATH; got: \(launch.command)")
@@ -118,13 +225,13 @@ final class TerminalManagerTests: XCTestCase {
                       "must clean up the prompt file after the agent exits; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() {
-        let launch = buildAgentPromptCommand(
+    func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(
             agentCommand: "claude; rm -rf /",
             prompt: "do the work",
             path: testPath,
             filePrefix: "clearway-test-prompt"
-        )
+        ))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: launch.promptFile),
                       "must write the prompt temp file")
@@ -142,9 +249,9 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positionals; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() {
+    func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() throws {
         let prompt = "say \"hi\"\n$HOME `id` 'x'"
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: prompt, path: testPath)
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "grok", prompt: prompt, path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
            let body = String(data: data, encoding: .utf8) {
@@ -160,25 +267,99 @@ final class TerminalManagerTests: XCTestCase {
                       "must still use positional cat expansion; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() {
-        let launch = buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("'weird'\\''name'"),
                       "single quotes in agent command must be shell-escaped; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_usesFilePrefix() {
-        let launch = buildAgentPromptCommand(
+    func test_buildAgentPromptCommand_usesFilePrefix() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(
             agentCommand: "grok",
             prompt: "p",
             path: testPath,
-            filePrefix: "clearway-launcher"
-        )
+            filePrefix: "clearway-agent-tab"
+        ))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(
-            (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-launcher-"),
+            (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-agent-tab-"),
             "prompt file name should use the prefix; got: \(launch.promptFile)"
         )
+    }
+
+    /// A prefix naming a directory that does not exist makes `FileManager.createFile` fail. The
+    /// builder must answer `nil` there rather than hand back a command whose `$(cat)` would seed the
+    /// agent with an empty prompt.
+    func test_buildAgentPromptCommand_returnsNil_whenThePromptFileCannotBeWritten() {
+        let missingDir = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("clearway-missing-dir-\(UUID().uuidString)")
+        let launch = buildAgentPromptCommand(
+            agentCommand: "claude",
+            prompt: "do the work",
+            path: testPath,
+            filePrefix: "\((missingDir as NSString).lastPathComponent)/prompt"
+        )
+        XCTAssertNil(launch, "an unwritable prompt file must refuse the launch, not build a command")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingDir),
+                       "the builder must not create the directory it failed to write into")
+    }
+
+    // MARK: - buildAgentPromptLine
+
+    /// The staged form of the same launch: the prompt stays in the temp file, so what lands on the
+    /// prompt line is one short readable command whatever the prompt contains.
+    func test_buildAgentPromptLine_keepsThePromptInTheFile_notInTheLine() throws {
+        let prompt = "say \"hi\"\n$HOME `id` 'x'"
+        let staged = try XCTUnwrap(
+            buildAgentPromptLine(agentCommand: "claude", prompt: prompt, filePrefix: "clearway-test-line"))
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        XCTAssertEqual(
+            try? String(contentsOfFile: staged.promptFile, encoding: .utf8),
+            prompt,
+            "prompt file must preserve the body byte-for-byte"
+        )
+        XCTAssertFalse(staged.line.contains("$HOME"),
+                       "prompt metacharacters must not reach the staged line; got: \(staged.line)")
+        XCTAssertEqual(staged.line, "claude \"$(cat '\(staged.promptFile)')\"")
+    }
+
+    /// Same contract as the `/bin/sh -c` recipe: the agent command word-splits, the file does not.
+    func test_buildAgentPromptLine_leavesTheAgentCommandUnquoted_andQuotesTheFile() throws {
+        let staged = try XCTUnwrap(buildAgentPromptLine(agentCommand: "claude --model opus", prompt: "x"))
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        XCTAssertTrue(staged.line.hasPrefix("claude --model opus \""),
+                      "a multi-word agent command must stay unquoted; got: \(staged.line)")
+        XCTAssertTrue(staged.line.contains("'\(staged.promptFile)'"),
+                      "the prompt file must be single-quoted; got: \(staged.line)")
+    }
+
+    func test_buildAgentPromptLine_writesTheFileWithRestrictivePermissions() throws {
+        let staged = try XCTUnwrap(
+            buildAgentPromptLine(agentCommand: "grok", prompt: "p", filePrefix: "clearway-test-line"))
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        let mode = try FileManager.default.attributesOfItem(atPath: staged.promptFile)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(mode?.int16Value, 0o600)
+        XCTAssertTrue((staged.promptFile as NSString).lastPathComponent.hasPrefix("clearway-test-line-"))
+    }
+
+    /// The staged form carries the run form's refusal: a line whose `$(cat)` names a file that was
+    /// never written would seed the agent with an empty prompt the moment the operator presses
+    /// Enter.
+    func test_buildAgentPromptLine_returnsNil_whenThePromptFileCannotBeWritten() {
+        let missingDir = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("clearway-missing-dir-\(UUID().uuidString)")
+        let staged = buildAgentPromptLine(
+            agentCommand: "claude",
+            prompt: "do the work",
+            filePrefix: "\((missingDir as NSString).lastPathComponent)/prompt"
+        )
+        XCTAssertNil(staged, "an unwritable prompt file must refuse the staged line too")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingDir),
+                       "the builder must not create the directory it failed to write into")
     }
 
     // MARK: - buildBareCommand
@@ -219,8 +400,8 @@ final class TerminalManagerTests: XCTestCase {
         let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertFalse(out.contains("cat "),
                        "buildBareCommand must not read a prompt file; got: \(out)")
-        XCTAssertFalse(out.contains("clearway-launcher-"),
-                       "buildBareCommand must not allocate a launcher temp file; got: \(out)")
+        XCTAssertFalse(out.contains("clearway-agent-tab-"),
+                       "buildBareCommand must not allocate a prompt temp file; got: \(out)")
     }
 
     /// Security: shell metacharacters in the user-configured main command
@@ -264,41 +445,6 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
     }
 
-    // MARK: - launcherAgents
-
-    /// A per-tab agent override outlives nothing: tab ids are recycled, so every site that
-    /// drops a launcher draft must drop the override too, or a new tab inherits the agent of
-    /// a dead one. `closeAllSurfaces` is the one such site reachable without a live
-    /// `ghostty_app_t`; the other four are pinned by the grep parity check in the build log.
-    func test_closeAllSurfaces_clearsLauncherAgents() {
-        let manager = TerminalManager()
-        let tabId = UUID()
-        manager.launcherAgents[tabId] = "grok"
-        manager.launcherDrafts[tabId] = "draft"
-
-        manager.closeAllSurfaces()
-
-        XCTAssertNil(manager.launcherAgents[tabId],
-                     "a stale agent override would address the next tab with this id to the wrong agent")
-        XCTAssertNil(manager.launcherDrafts[tabId])
-    }
-
-    // MARK: - startsAsLoginShell
-
-    /// The conjunction that lets an agent command work with Settings → Main Terminal at "None".
-    /// Drop the `agentOverride` half and the tab is promoted to a bare login shell, so the
-    /// prompt is handed to nobody and the agent never launches.
-    func test_startsAsLoginShell_onlyWhenNeitherSourceNamesAnAgent() {
-        XCTAssertTrue(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: nil))
-
-        XCTAssertFalse(
-            TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: nil),
-            "An agent command must keep its tab a launcher even when Main Terminal is None"
-        )
-        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: "claude"))
-        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: "claude"))
-    }
-
     // MARK: - beginTaskLaunch
 
     /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else
@@ -323,5 +469,93 @@ final class TerminalManagerTests: XCTestCase {
 
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
+    }
+
+    // MARK: - beginAgentLaunch
+
+    /// An agent tab awaits the resolved PATH before it has a surface, so the worktree's pane has no
+    /// tab for that window. A second Opt+Cmd+T must lose the claim rather than open a second agent.
+    func test_beginAgentLaunch_secondClaimIsRefusedUntilTheFirstEnds() {
+        let manager = TerminalManager()
+        let worktreeId = "feature"
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId))
+        XCTAssertFalse(manager.beginAgentLaunch(for: worktreeId),
+                       "a launch already in flight must refuse the second press")
+
+        manager.endAgentLaunch(for: worktreeId)
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId),
+                      "the claim must be released once the launch has its tab")
+    }
+
+    /// The claim is per worktree: a launch in one must not block a launch in another.
+    func test_beginAgentLaunch_claimsAreIndependentPerWorktree() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.beginAgentLaunch(for: "main"))
+    }
+
+    /// The empty-state gate in `detailView` reads this set, so a claim has to be visible there —
+    /// it is what keeps a worktree whose first tab is an agent from flashing the placeholder.
+    func test_agentLaunchesInFlight_tracksTheClaimedWorktrees() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.agentLaunchesInFlight.contains("feature"))
+
+        manager.endAgentLaunch(for: "feature")
+        XCTAssertFalse(manager.agentLaunchesInFlight.contains("feature"))
+    }
+
+    // MARK: - proceedsWithLaunch
+
+    /// The four doors, as Decision 20 draws them. Row three is the one that already regressed: a
+    /// saved agent command started during another launch's PATH wait opened nothing.
+    func test_proceedsWithLaunch_onlyARefusingDoorLosesToAnotherLaunch() {
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: true),
+                      "Opt+Cmd+T with no launch in flight")
+        XCTAssertFalse(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: true),
+                       "a second Opt+Cmd+T during the wait is a repeat of the first")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: false),
+                      "a door that does not refuse opens its tab even when another launch holds the marker")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: false))
+    }
+
+    // MARK: - promptDelivery
+
+    /// Which builder an agent tab uses, and whether it stages afterwards. `submit` is the user's
+    /// "Append Enter to run immediately" toggle, so reading it backwards runs a prompt they staged.
+    func test_promptDelivery_submitOnlyMattersWithAPrompt() {
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: true), .bare,
+                       "Opt+Cmd+T passes no prompt and must not build an empty argv element")
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: false), .bare)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: true), .argv)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: false), .staged)
+    }
+
+    // MARK: - stagedText
+
+    /// Outside bracketed paste libghostty rewrites every `\n` to `\r`, which is an Enter, so a
+    /// trailing newline on "staged" text submits it. The trim is what keeps staging staged.
+    func test_stagedText_stripsTheNewlinesThatWouldSubmitIt() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff\n"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("\nreview the diff"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("  review the diff \n\n"), "review the diff")
+    }
+
+    /// Only the ends are trimmed. An interior newline still reaches a target without bracketed
+    /// paste as an Enter — unchanged from `sendPaste`, and not something a trim can fix.
+    func test_stagedText_keepsInteriorNewlines() {
+        XCTAssertEqual(TerminalManager.stagedText("\nfirst\n\nsecond\n"), "first\n\nsecond")
+    }
+
+    func test_stagedText_whitespaceOnlyReducesToEmpty() {
+        XCTAssertEqual(TerminalManager.stagedText(" \n\t "), "")
+        XCTAssertEqual(TerminalManager.stagedText(""), "")
+    }
+
+    func test_stagedText_leavesOrdinaryTextAlone() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff"), "review the diff")
     }
 }

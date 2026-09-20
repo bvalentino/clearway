@@ -24,7 +24,7 @@ extension WorkTaskCoordinator {
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
-                terminalManager.openTaskTerminalWithCommand(
+                terminalManager.openTaskTerminal(
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
             }
@@ -42,12 +42,44 @@ extension WorkTaskCoordinator {
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.
     func taskTerminalLaunchCommand() -> ((String) -> String)? {
-        // The same seam the launcher asks "is a main terminal command configured, or do we drop
-        // straight to a login shell?" — trimmed, and nil when the setting is blank.
+        // The same setting a newly created worktree's first tab reads: is a main terminal command
+        // configured, or do we drop straight to a login shell? Nil when the setting is blank.
         guard let command = terminalManager.mainCommandProvider() else { return nil }
         return { [terminalManager] path in
             terminalManager.buildBareCommand(agentCommand: command, path: path)
         }
+    }
+
+    /// Whether planning would take something live away from the operator. `planTask` opens a fresh
+    /// surface over whatever the task terminal already holds, so a running foreground process is
+    /// the one case the view must confirm before planning.
+    static func planNeedsConfirmation(hasActiveProcess: Bool) -> Bool {
+        hasActiveProcess
+    }
+
+    /// Plan a backlog task: run the chosen agent command against the task's own bottom terminal,
+    /// from the primary worktree. Nothing is written to the task — planning shapes the brief, it
+    /// does not start the work.
+    ///
+    /// The task terminal rather than a main-terminal tab because the Tasks destination renders no
+    /// terminal pane at all: a tab appended to the primary worktree's pane runs where nobody
+    /// watching the task can see it, which is how the first cut of this looked like a dead button.
+    func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
+        guard let resolved = planCommand(for: task, using: command) else { return }
+
+        let taskId = task.id
+        let directory = Self.planWorkingDirectory(
+            worktrees: worktreeManager.worktrees,
+            projectPath: worktreeManager.projectPath
+        )
+        guard terminalManager.beginTaskLaunch(for: taskId) else { return }
+        Task { @MainActor in
+            defer { terminalManager.endTaskLaunch(for: taskId) }
+            await terminalManager.run(
+                resolved, inTaskTerminalFor: taskId, app: app, directory: directory)
+        }
+
+        NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)
     }
 
     private func focusTaskTerminal(_ taskId: UUID) {

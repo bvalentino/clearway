@@ -75,12 +75,6 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(manager.configuredMainTerminalCommand, "codex")
     }
 
-    func test_resolvedMainTerminalCommand_fallsBackToDefault_whenBlank() {
-        let manager = SettingsManager(defaults: defaults)
-        manager.mainTerminalCommand = ""
-        XCTAssertEqual(manager.resolvedMainTerminalCommand, SettingsManager.defaultMainTerminalCommand)
-    }
-
     // MARK: - Open secondary on start
 
     func test_openSecondaryOnStart_defaultsToFalse() {

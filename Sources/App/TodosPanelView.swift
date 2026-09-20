@@ -80,21 +80,8 @@ struct TodosPanelView: View {
                     .padding()
                 }
             }
-        }
-        // The break precedes the `+` here, not follows it: this aside panel's toolbar content is
-        // merged after `ContentView.detailView`'s four worktree items, so the break that separates
-        // the `+` from them is the one on its leading side.
-        .toolbar {
-            ToolbarGroupBreak()
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    startCreating()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("New todo")
-            }
+            AsideAddButton(title: "Add Todo", action: startCreating)
         }
         .confirmationDialog(
             "Delete \"\(todoPendingDeletion?.subject ?? "")\"?",

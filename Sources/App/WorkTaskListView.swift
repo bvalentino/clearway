@@ -7,6 +7,7 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
@@ -16,10 +17,26 @@ struct WorkTaskListView: View {
     @State private var showDeleteConfirmation = false
     @State private var isCopied = false
     @State private var taskToForceDelete: WorkTask?
+    @State private var showCommandEditor = false
+    @State private var planToConfirm: PlanRequest?
+
+    /// A plan waiting on the operator's confirmation because it would replace a running process.
+    private struct PlanRequest {
+        let task: WorkTask
+        let command: SavedCommand
+    }
 
     private var selectedTask: WorkTask? {
         guard let id = selection else { return nil }
         return workTaskManager.tasks.first { $0.id == id }
+    }
+
+    /// The selection when Start Now's primary action applies to it. A task that already has a
+    /// worktree is not startable, and the toolbar's split button stays enabled regardless so its
+    /// chevron keeps opening the menu, so the guard has to be a value the action reads.
+    private var startableTask: WorkTask? {
+        guard let task = selectedTask, task.worktree == nil else { return nil }
+        return task
     }
 
     /// Backlog = tasks not yet associated with a worktree. Location encodes association, so a
@@ -59,12 +76,17 @@ struct WorkTaskListView: View {
             ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
-                Button("Start Now") {
-                    if let task = selectedTask { startTask(task) }
+                Menu {
+                    startNowItems(for: selectedTask)
+                } label: {
+                    Text("Start Now")
+                } primaryAction: {
+                    if let task = startableTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
-                .disabled(selectedTask == nil || selectedTask?.worktree != nil)
             }
+
+            ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -130,6 +152,9 @@ struct WorkTaskListView: View {
                 .disabled(selectedTask == nil)
             }
         }
+        .sheet(isPresented: $showCommandEditor) {
+            CommandEditorSheet(command: nil, newCommandKind: .agent)
+        }
         .alert(
             "Delete \"\(selectedTask?.title ?? "Untitled")\"?",
             isPresented: $showDeleteConfirmation
@@ -162,6 +187,23 @@ struct WorkTaskListView: View {
         } message: {
             Text("There are processes still running in this task's terminal.")
         }
+        .confirmationDialog(
+            "Replace the terminal for \"\(planToConfirm?.task.title ?? "Untitled")\"?",
+            isPresented: Binding(
+                get: { planToConfirm != nil },
+                set: { if !$0 { planToConfirm = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                if let request = planToConfirm {
+                    runPlan(request.task, using: request.command)
+                }
+                planToConfirm = nil
+            }
+        } message: {
+            Text("There are processes still running in this task's terminal.")
+        }
     }
 
     private var emptyState: some View {
@@ -186,7 +228,10 @@ struct WorkTaskListView: View {
                 WorkTaskRow(task: task, hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id))
                     .tag(task.id)
                     .contextMenu {
-                        Button { startTask(task) } label: {
+                        Menu {
+                            Button("Start Task…") { startTask(task) }
+                            startNowItems(for: task)
+                        } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
                         Divider()
@@ -201,6 +246,52 @@ struct WorkTaskListView: View {
 
         }
         .listStyle(.inset)
+    }
+
+    // MARK: - Start Now
+
+    /// The dropdown half of Start Now: one item per agent command, each planning the task in its
+    /// own bottom terminal, then the editor door.
+    ///
+    /// The command items are **omitted** when there is nothing to plan, never rendered disabled:
+    /// a macOS toolbar menu updates an existing `NSMenuItem`'s enabled flag unreliably, so a menu
+    /// first built with nothing selected kept its commands greyed out after a task was selected.
+    /// Omitting them changes the content's structural identity, which rebuilds the menu.
+    /// The terminal half of the gate is `readiness`, the `@Published` value the sibling toolbar
+    /// buttons already use; `ghosttyApp.app` is a plain computed property with no change to
+    /// publish, so a menu built before it was non-nil had nothing to re-evaluate against.
+    ///
+    /// The editor door is unconditional because a project with no agent commands yet would
+    /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
+    @ViewBuilder
+    private func startNowItems(for task: WorkTask?) -> some View {
+        let commands = savedCommandManager.agentCommands
+        if let task, ghosttyApp.readiness == .ready, !commands.isEmpty {
+            ForEach(commands) { command in
+                Button(command.name) { plan(task, using: command) }
+            }
+            Divider()
+        }
+        Button("Add Agent Command…") { showCommandEditor = true }
+    }
+
+    private func plan(_ task: WorkTask, using command: SavedCommand) {
+        if WorkTaskCoordinator.planNeedsConfirmation(
+            hasActiveProcess: terminalManager.taskHasActiveProcess(task.id)
+        ) {
+            planToConfirm = PlanRequest(task: task, command: command)
+        } else {
+            runPlan(task, using: command)
+        }
+    }
+
+    /// Selecting the task is part of running it: the terminal the plan opens is the one
+    /// `TaskDetailView` renders for the selection, so planning a row the user only right-clicked
+    /// would otherwise run out of sight.
+    private func runPlan(_ task: WorkTask, using command: SavedCommand) {
+        guard let app = ghosttyApp.app else { return }
+        selection = task.id
+        workTaskCoordinator.planTask(task, using: command, app: app)
     }
 
     private func createAndEdit() {
