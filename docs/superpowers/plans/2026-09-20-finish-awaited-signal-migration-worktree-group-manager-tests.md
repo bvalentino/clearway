@@ -616,3 +616,36 @@ safety net, and the two sites assert on published state the reconcile produced.
 
 `./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 111.266
 seconds`, `Test Succeeded`, `==> CI passed.` `git status --porcelain` is empty apart from this file.
+
+## Review (PR) — result
+
+Four passes over `git diff main...HEAD` — conventions, test coverage, error handling, type design.
+No critical findings; the production diff is non-behavioural and no assertion was weakened.
+
+One fix applied: `restartManager()` (`Tests/TestHelpers.swift:240`) now opens with `await settle()`.
+It replaced `manager` without settling the outgoing one, so that manager's `writeChain` and
+`reconcileTask` were dropped where `tearDown`'s `settle()` — which only ever reaches the current
+`manager` — could no longer await them, leaving `git config` running against a scratch root being
+removed. Three of the four passes raised it; it is the last door past the guarantee this change
+exists to establish. A no-op at all eleven current call sites, each of which already settles through
+a wait helper or has nothing queued, so it changes no case's timing today.
+
+Declined, each against the decision that settles it:
+
+- Chain `reconcileTask` the way `enqueueWrite` chains writes (two passes, raised as important) —
+  decision 7. Chaining serialises overlapping reconciles, which is behavioural, and this change's
+  production diff is the stored property alone.
+- Fold `settle()`'s await order onto `WorktreeGroupManager` as an internal `settled()` and make the
+  three slots `private` — same decision, plus the spec's out-of-scope list.
+- Drop the now-vestigial poll loop beneath the three settling helpers — decision 12. Worth
+  recording that the pass looking for it found no call site matching decision 12's stated
+  justification (a helper called before its gesture); the loop's remaining value is as a backstop,
+  and `testSettleCoversAReconcileNoBodyAwaited` is the sole pin that a `settle()` gap is not hidden
+  by it.
+- Drop the dead `await reload.value` at `WorktreeGroupManagerNameTests.swift:151` — the same call
+  the simplify pass declined. Keeping it holds the case's guarantee on the `Task` it bound rather
+  than on `reconcileTask` being the most recent slot, which that property's doc comment disclaims.
+- Restore the "transition rather than an absence" clause at `WorktreeGroupManagerNameTests.swift:129`
+  under a new justification (a reload whose git read failed preserves what is published, so
+  `XCTAssertNil` on an empty map would be vacuous). The passes split on it; the surviving clause
+  already pins the seed and its order, so the comment bar wins.

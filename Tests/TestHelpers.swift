@@ -237,7 +237,12 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     /// Also the only way a test that enables `extensions.worktreeConfig` behind the manager's back
     /// is seen: `WorktreeConfigStore` memoises a probe that found the extension off, and the load
     /// runs one before any test body does.
+    ///
+    /// Settles the outgoing manager first: `settle()` only ever reaches the one in `manager`, so a
+    /// relaunch is the one door that could drop a `reconcile` or a write chain where `tearDown`
+    /// can no longer await it, leaving `git config` running against a scratch root being removed.
     func restartManager() async {
+        await settle()
         manager = makeRecordingManager()
         await manager.loadTask?.value
     }
