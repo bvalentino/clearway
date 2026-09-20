@@ -779,3 +779,58 @@ Two details the plan left to the implementation, recorded so T2 and T6 can rely 
 
 **Gate.** `./scripts/ci.sh` — green. `Executed 690 tests, with 0 failures (0 unexpected) in 108.986
 seconds`, then `==> CI passed.`
+
+### T2: The activity state machine
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityStore.swift` | New. `AgentPhase` (`Comparable` over `idle < working < waiting`), `AgentSubagent`, `AgentSurfaceState`, and `AgentActivityStore` with `apply`, both `retire` overloads, `phase(forWorktree:)`, `subagents(forWorktree:)` and `leadToolName(forSurface:)`. Pure: `import Foundation` only. |
+| `Tests/AgentActivityStoreTests.swift` | New. 17 cases, one per acceptance bullet, every event driven in through `AgentHookEnvelope.parse`. |
+
+**Evidence.** The three rules most easily got wrong were first implemented the careless way and
+`./scripts/ci.sh` run against them: `effectivePhase` returning the stored phase alone, `Stop`
+clearing only the lead tool, and `PostToolUse` clearing `leadToolName` unconditionally. All four
+discriminating assertions went red:
+
+```
+    ✖ testIdleSurfaceHoldingALiveSubagentReadsAsWorking, XCTAssertEqual failed: ("idle") is not equal to ("working")
+    ✖ testStopClearsEveryOpenSubagent, XCTAssertTrue failed
+    ✖ testSubagentToolTrafficLeavesTheLeadToolAlone, XCTAssertEqual failed: ("nil") is not equal to ("Optional("Edit")")
+    ✖ testSubagentToolTrafficLeavesTheLeadToolAlone, XCTAssertEqual failed: ("[Optional("Grep")]") is not equal to ("[nil]")
+Executed 707 tests, with 4 failures (0 unexpected) in 106.987 (107.210) seconds
+```
+
+That proves the tests discriminate: a roster-blind derivation goes dark the moment the lead is
+between turns while subagents run, a `Stop` that does not sweep pins a row on any missed
+`SubagentStop`, and a `PostToolUse` carrying an `agent_id` blanks the lead's tab label while the
+lead is still working. The shipped rules are the three comments in the file.
+
+**Deviations from the plan.**
+
+- `AgentSurfaceState` carries a fourth field, `worktreeId`, rather than the plan's three. The plan
+  says the store "records the surface's worktree id on every event"; a parallel
+  `[surfaceId: worktreeId]` dictionary would have to be pruned in step with `surfaces` in three
+  places (`SessionEnd` and both `retire`s), and a drift between the two is exactly the bug that
+  strands a lit dot. On the state it is unrepresentable.
+- `retire(worktreeId:)` calls `retire(surfaceId:)` per surface, so a worktree teardown also
+  remembers its surface ids as retired. The plan only requires that it "drops every surface carrying
+  it", but an in-flight hook for a torn-down pane would otherwise re-light a worktree the user just
+  closed. It cannot interfere with D6: an agent surviving a relaunch arrives with a surface id this
+  process never minted, not a retired one.
+
+Two details the plan left open, recorded for T6 and T9:
+
+- `PermissionRequest` records its tool exactly as `PreToolUse` does — to the subagent when the event
+  carries an `agent_id`, to the lead otherwise — so the `PostToolUse` that follows clears the same
+  slot. D20 says only "recording `tool_name`".
+- `SubagentStart` does not touch `phase`. It does not need to: `effectivePhase` lifts any surface
+  holding a non-empty roster to working, which is the acceptance criterion "a surface that is idle
+  but holds a live subagent makes its worktree read working".
+- `surfaces` is `private`. The monitor and the views read through the three derivations only.
+- No clock: `grep -nE "Date|Timer|asyncAfter|sleep|expir|ScheduledWork|DispatchQueue"` over the file
+  matches one word, in the comment saying nothing expires.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 707 tests, with 0 failures (0 unexpected) in 109.536
+seconds`, then `==> CI passed.`

@@ -1,0 +1,150 @@
+import Foundation
+
+/// Ordered so a worktree's dot is `max` over its surfaces rather than nested conditionals. Waiting
+/// outranks working because it is the state that needs the user.
+enum AgentPhase: Int, Comparable {
+    case idle
+    case working
+    case waiting
+
+    static func < (lhs: AgentPhase, rhs: AgentPhase) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+struct AgentSubagent: Identifiable, Equatable {
+    let id: String
+    var type: String?
+    var toolName: String?
+}
+
+struct AgentSurfaceState {
+    var worktreeId: String
+    var phase: AgentPhase = .idle
+    var leadToolName: String?
+    var subagents: [String: AgentSubagent] = [:]
+
+    /// A live subagent is work even while the lead sits between turns, so the roster lifts an idle
+    /// surface to working before the worktree rule ever sees it.
+    fileprivate var effectivePhase: AgentPhase {
+        subagents.isEmpty ? phase : Swift.max(phase, .working)
+    }
+
+    /// Upserts, because a `PreToolUse` whose `SubagentStart` was missed still names a real subagent.
+    fileprivate mutating func startTool(_ toolName: String?, agentId: String?) {
+        guard let agentId else {
+            leadToolName = toolName
+            return
+        }
+        subagents[agentId, default: AgentSubagent(id: agentId)].toolName = toolName
+    }
+
+    /// Clears the tool the event belongs to and no other: a subagent finishing must not blank the
+    /// lead's label while the lead is still running. Unlike `startTool` this creates nothing — a
+    /// `PostToolUse` for a subagent already gone would otherwise leave an empty row behind.
+    fileprivate mutating func finishTool(agentId: String?) {
+        guard let agentId else {
+            leadToolName = nil
+            return
+        }
+        subagents[agentId]?.toolName = nil
+    }
+}
+
+/// The rule the socket listener is a shell around: hook events in, per-worktree phases and subagent
+/// rosters out. No I/O, no actor, no clock — a surface leaves a state only because an event said so,
+/// so nothing here expires.
+struct AgentActivityStore {
+    private var surfaces: [String: AgentSurfaceState] = [:]
+    /// A surface Clearway has torn down. Its id is remembered rather than merely dropped, because a
+    /// hook process already in flight when the tab closed would otherwise re-create the entry.
+    private var retiredSurfaceIds: Set<String> = []
+
+    mutating func apply(_ envelope: AgentHookEnvelope) {
+        guard !retiredSurfaceIds.contains(envelope.surfaceId) else { return }
+        let event = envelope.event
+
+        switch event.hookEventName {
+        case "SessionStart":
+            surfaces[envelope.surfaceId] = AgentSurfaceState(worktreeId: envelope.worktreeId)
+        case "SessionEnd":
+            surfaces.removeValue(forKey: envelope.surfaceId)
+        case "UserPromptSubmit":
+            update(envelope) { state in
+                state.phase = .working
+                state.leadToolName = nil
+            }
+        case "PreToolUse":
+            update(envelope) { state in
+                state.phase = .working
+                state.startTool(event.toolName, agentId: event.agentId)
+            }
+        case "PermissionRequest":
+            update(envelope) { state in
+                state.phase = .waiting
+                state.startTool(event.toolName, agentId: event.agentId)
+            }
+        case "PostToolUse":
+            update(envelope) { state in
+                state.phase = .working
+                state.finishTool(agentId: event.agentId)
+            }
+        case "SubagentStart":
+            guard let agentId = event.agentId else { return }
+            update(envelope) { state in
+                state.subagents[agentId, default: AgentSubagent(id: agentId)].type = event.agentType
+            }
+        case "SubagentStop":
+            guard let agentId = event.agentId else { return }
+            update(envelope) { state in
+                state.subagents.removeValue(forKey: agentId)
+            }
+        case "Stop":
+            // The roster goes too: a missed `SubagentStop` would otherwise pin a row until relaunch.
+            update(envelope) { state in
+                state.phase = .idle
+                state.leadToolName = nil
+                state.subagents.removeAll()
+            }
+        default:
+            break
+        }
+    }
+
+    mutating func retire(surfaceId: String) {
+        retiredSurfaceIds.insert(surfaceId)
+        surfaces.removeValue(forKey: surfaceId)
+    }
+
+    mutating func retire(worktreeId: String) {
+        for surfaceId in surfaces.filter({ $0.value.worktreeId == worktreeId }).keys {
+            retire(surfaceId: surfaceId)
+        }
+    }
+
+    func phase(forWorktree id: String) -> AgentPhase {
+        states(forWorktree: id).reduce(AgentPhase.idle) { Swift.max($0, $1.effectivePhase) }
+    }
+
+    func subagents(forWorktree id: String) -> [AgentSubagent] {
+        states(forWorktree: id)
+            .flatMap { $0.subagents.values }
+            .sorted { $0.id < $1.id }
+    }
+
+    func leadToolName(forSurface id: String) -> String? {
+        surfaces[id]?.leadToolName
+    }
+
+    private func states(forWorktree id: String) -> [AgentSurfaceState] {
+        surfaces.values.filter { $0.worktreeId == id }
+    }
+
+    private mutating func update(
+        _ envelope: AgentHookEnvelope,
+        _ change: (inout AgentSurfaceState) -> Void
+    ) {
+        var state = surfaces[envelope.surfaceId] ?? AgentSurfaceState(worktreeId: envelope.worktreeId)
+        state.worktreeId = envelope.worktreeId
+        change(&state)
+        surfaces[envelope.surfaceId] = state
+    }
+}
