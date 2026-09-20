@@ -54,8 +54,11 @@ struct FullWidthPicker<Value: Hashable>: NSViewRepresentable {
         _ proposal: ProposedViewSize, nsView: NSPopUpButton, context: Context
     ) -> CGSize? {
         let intrinsic = nsView.intrinsicContentSize
-        let proposed = proposal.width.flatMap { $0.isFinite ? $0 : nil }
-        return CGSize(width: proposed ?? intrinsic.width, height: intrinsic.height)
+        // SwiftUI also probes with `.infinity`, which is not a width to adopt.
+        let proposed = proposal.width ?? intrinsic.width
+        return CGSize(
+            width: proposed.isFinite ? proposed : intrinsic.width, height: intrinsic.height
+        )
     }
 
     private static func menu(for rows: [Row]) -> NSMenu {

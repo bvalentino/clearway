@@ -277,6 +277,17 @@ errors and no new warning), build, then `Executed 676 tests, with 0 failures (0 
 `==> CI passed.` `git status --porcelain` before committing showed `M Sources/App/SidebarSheets.swift`
 and nothing else — no `default.profraw`, since no Debug launch happened.
 
+### Simplify (run after C1)
+
+Four quality fixes, no behaviour change: `WorktreeStatusLabel`'s docstring no longer claims the
+create sheet shares it (T2 stopped); `sizeThatFits` drops the `flatMap`-to-`nil` for a plain
+finite check; `statusRows` became a `private static let`, since it derives from no state; and the
+unused `name:` parameter came off the test helper. Skipped: turning `AfterCreateSlot` into an
+enum (a lateral move — the one factory cannot build the invalid pair, and two of the three call
+sites read worse), and threading `LabeledField`'s own label into its content to kill the
+duplicated `label:` argument (changes the closure arity at every `LabeledField` call site in the
+app). `./scripts/ci.sh` — exit 0, `Executed 679 tests, with 0 failures`, `==> CI passed.`
+
 ## Changelog
 
 Operator changes from the hands-on check. Each is settled; no later step may revert one.

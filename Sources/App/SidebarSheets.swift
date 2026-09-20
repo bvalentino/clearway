@@ -62,7 +62,7 @@ struct CreateWorktreeSheet: View {
             }
 
             LabeledField("Status") {
-                FullWidthPicker(label: "Status", selection: $status, rows: statusRows)
+                FullWidthPicker(label: "Status", selection: $status, rows: Self.statusRows)
                     .disabled(isCreating)
             }
 
@@ -177,11 +177,10 @@ struct CreateWorktreeSheet: View {
         )
     }
 
-    private var statusRows: [FullWidthPicker<WorktreeStatus>.Row] {
+    private static let statusRows: [FullWidthPicker<WorktreeStatus>.Row] =
         WorktreeStatus.allCases.map {
             .init(value: $0, title: $0.displayName, symbol: $0.symbol, tint: $0.color)
         }
-    }
 
     private var afterCreateRows: [FullWidthPicker<UUID?>.Row] {
         [.init(value: UUID?.none, title: "None")] + savedCommandManager.agentCommands.map {

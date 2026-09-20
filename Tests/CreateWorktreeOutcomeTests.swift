@@ -41,8 +41,8 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
 
     // MARK: - Run agent command after create
 
-    private func makeAgentCommand(name: String = "Plan") -> SavedCommand {
-        SavedCommand(id: UUID(), name: name, kind: .agent, text: "brief", agent: "claude", autoRun: true)
+    private func makeAgentCommand() -> SavedCommand {
+        SavedCommand(id: UUID(), name: "Plan", kind: .agent, text: "brief", agent: "claude", autoRun: true)
     }
 
     /// The regression: the New Worktree sheet showed the picker and wrote its pick back, so a
