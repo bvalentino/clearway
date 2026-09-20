@@ -219,6 +219,24 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertNil(reopened.defaults.afterCreate)
     }
 
+    /// The sheet's picker is seeded from `afterCreateCommand`, so a stale id reads as None there
+    /// and an untouched picker looks exactly like the operator choosing None. Clearing is
+    /// therefore refused while the slot resolves to nothing: the id survives for the day the
+    /// operator reverts the `commands.json` edit that hid it.
+    func testSetAfterCreateDefaultToNilKeepsAStaleId() async {
+        let stale = UUID()
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+        manager.setAfterCreateDefault(stale)
+        _ = await persistedDefaults(matching: CommandDefaults(afterCreate: stale))
+        XCTAssertNil(manager.afterCreateCommand, "the id names no live agent command")
+
+        manager.setAfterCreateDefault(nil)
+
+        XCTAssertEqual(manager.defaults.afterCreate, stale)
+        let persisted = await persistedDefaults(matching: CommandDefaults(afterCreate: stale))
+        XCTAssertEqual(persisted.afterCreate, stale, "the stored id is not rewritten away")
+    }
+
     func testAfterCreateCommandIsNilForAnUnsetSlot() {
         manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
 

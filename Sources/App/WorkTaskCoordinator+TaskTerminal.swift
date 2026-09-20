@@ -50,13 +50,6 @@ extension WorkTaskCoordinator {
         }
     }
 
-    /// Plan a backlog task: run the chosen agent command against the task's own bottom terminal,
-    /// from the primary worktree. Nothing is written to the task — planning shapes the brief, it
-    /// does not start the work.
-    ///
-    /// The task terminal rather than a main-terminal tab because the Tasks destination renders no
-    /// terminal pane at all: a tab appended to the primary worktree's pane runs where nobody
-    /// watching the task can see it, which is how the first cut of this looked like a dead button.
     /// Whether planning would take something live away from the operator. `planTask` opens a fresh
     /// surface over whatever the task terminal already holds, so a running foreground process is
     /// the one case the view must confirm before planning.
@@ -64,6 +57,13 @@ extension WorkTaskCoordinator {
         hasActiveProcess
     }
 
+    /// Plan a backlog task: run the chosen agent command against the task's own bottom terminal,
+    /// from the primary worktree. Nothing is written to the task — planning shapes the brief, it
+    /// does not start the work.
+    ///
+    /// The task terminal rather than a main-terminal tab because the Tasks destination renders no
+    /// terminal pane at all: a tab appended to the primary worktree's pane runs where nobody
+    /// watching the task can see it, which is how the first cut of this looked like a dead button.
     func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
         guard let resolved = planCommand(for: task, using: command) else { return }
 

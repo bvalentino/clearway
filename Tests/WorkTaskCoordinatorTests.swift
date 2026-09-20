@@ -124,12 +124,14 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(
             coordinator.pendingCreate,
             WorkTaskCoordinator.PendingCreate(
-                taskId: seed.id,
+                task: WorkTaskCoordinator.PendingCreate.TaskLink(
+                    id: seed.id,
+                    priorStatus: WorkTask.ReservedStatus.new,
+                    priorWorktree: nil,
+                    priorAttempt: nil
+                ),
                 branch: "hand-typed",
-                command: command,
-                priorFields: WorkTaskCoordinator.PendingCreate.PriorFields(
-                    status: WorkTask.ReservedStatus.new, worktree: nil, attempt: nil
-                )
+                command: command
             )
         )
     }
@@ -160,9 +162,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
         XCTAssertEqual(
             coordinator.pendingCreate,
-            WorkTaskCoordinator.PendingCreate(
-                taskId: nil, branch: "manual", command: nil, priorFields: nil
-            )
+            WorkTaskCoordinator.PendingCreate(task: nil, branch: "manual", command: nil)
         )
         XCTAssertTrue(taskManager.tasks.isEmpty, "a hand-made worktree creates no task")
         let files = (try? FileManager.default.contentsOfDirectory(atPath: taskManager.tasksDirectory)) ?? []
@@ -286,13 +286,10 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let coordinator = makeCoordinator(taskManager)
         let branch = "resolve-me"
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
-        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
-        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
-            taskId: seed.id,
-            branch: branch,
-            command: agentCommand(text: "plan {{ task_path }} now"),
-            priorFields: nil
+        coordinator.confirmCreate(
+            taskId: seed.id, branch: branch, command: agentCommand(text: "plan {{ task_path }} now")
         )
+        taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
 
         let resolved = coordinator.completePendingCreate(
             branch: branch,
@@ -310,11 +307,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         let coordinator = makeCoordinator(taskManager)
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-manual")
-        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
-            taskId: nil,
-            branch: "manual",
-            command: agentCommand(text: "read {{ task_path }}"),
-            priorFields: nil
+        coordinator.confirmCreate(
+            taskId: nil, branch: "manual", command: agentCommand(text: "read {{ task_path }}")
         )
 
         let resolved = coordinator.completePendingCreate(
@@ -340,10 +334,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let coordinator = makeCoordinator(taskManager)
         let branch = "no-command"
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        coordinator.confirmCreate(taskId: seed.id, branch: branch, command: nil)
         taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
-        coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
-            taskId: seed.id, branch: branch, command: nil, priorFields: nil
-        )
 
         let resolved = coordinator.completePendingCreate(
             branch: branch,
@@ -357,6 +349,96 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
             ),
             "the relocation still runs"
         )
+    }
+
+    /// `.clearway` is committed, so a branch can carry a `TASK.md` of its own. The relocation
+    /// refuses that slot and leaves the task central, so the command must not name the worktree
+    /// file — handing the agent a path it did resolve would hand it a different task's brief.
+    func testCompletePendingCreateLeavesTheTokenVerbatimWhenTheSlotIsTaken() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Mine") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        let branch = "slot-taken"
+        let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
+        let occupant = (worktreePath as NSString).appendingPathComponent(".clearway/TASK.md")
+        try FileManager.default.createDirectory(
+            atPath: (occupant as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        let occupantContent = "---\nid: \(UUID().uuidString)\n---\nSomeone else's brief\n"
+        try occupantContent.write(toFile: occupant, atomically: true, encoding: .utf8)
+        let centralPath = taskManager.filePath(for: seed)
+
+        coordinator.confirmCreate(
+            taskId: seed.id, branch: branch, command: agentCommand(text: "work {{ task_path }}")
+        )
+        let resolved = coordinator.completePendingCreate(
+            branch: branch,
+            worktree: makeWorktree(branch: branch, path: worktreePath)
+        )
+
+        XCTAssertEqual(resolved?.text, "work {{ task_path }}",
+                       "a refused relocation names no path")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: centralPath),
+                      "the task stays central when the slot is taken")
+        XCTAssertEqual(try String(contentsOfFile: occupant, encoding: .utf8), occupantContent,
+                       "the worktree's own TASK.md is untouched")
+    }
+
+    /// The task's file can vanish between Start Now and Create. The worktree is still created, but
+    /// nothing was written, so the record carries no link to unwind and names no path to relocate.
+    func testConfirmCreateRecordsNoLinkWhenTheTaskIsGone() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        let coordinator = makeCoordinator(taskManager)
+        let command = agentCommand(text: "work {{ task_path }}")
+
+        coordinator.confirmCreate(taskId: UUID(), branch: "vanished", command: command)
+
+        XCTAssertEqual(
+            coordinator.pendingCreate,
+            WorkTaskCoordinator.PendingCreate(task: nil, branch: "vanished", command: command)
+        )
+
+        coordinator.abandonPendingCreate()
+        XCTAssertNil(coordinator.pendingCreate)
+        XCTAssertTrue(taskManager.tasks.isEmpty, "there was nothing to put back")
+    }
+
+    // MARK: - Clearing the selection after a create
+
+    func testStartedTaskIsSelectedOnlyForItsOwnBranchAndSelection() {
+        let taskId = UUID()
+        let pending = WorkTaskCoordinator.PendingCreate(
+            task: WorkTaskCoordinator.PendingCreate.TaskLink(
+                id: taskId, priorStatus: WorkTask.ReservedStatus.new, priorWorktree: nil, priorAttempt: nil
+            ),
+            branch: "ship-it",
+            command: nil
+        )
+
+        XCTAssertTrue(
+            WorkTaskCoordinator.startedTaskIsSelected(pending, branch: "ship-it", selectedTaskId: taskId))
+        XCTAssertFalse(
+            WorkTaskCoordinator.startedTaskIsSelected(pending, branch: "other", selectedTaskId: taskId),
+            "a create for another branch leaves the selection alone")
+        XCTAssertFalse(
+            WorkTaskCoordinator.startedTaskIsSelected(pending, branch: "ship-it", selectedTaskId: UUID()),
+            "a create for another task leaves the selection alone")
+    }
+
+    /// A hand-made worktree started no task, so it must not clear a selection — including when
+    /// nothing is selected, where two `nil`s would otherwise read as a match.
+    func testStartedTaskIsSelectedIsFalseWithoutATask() {
+        let pending = WorkTaskCoordinator.PendingCreate(task: nil, branch: "manual", command: nil)
+
+        XCTAssertFalse(
+            WorkTaskCoordinator.startedTaskIsSelected(pending, branch: "manual", selectedTaskId: nil))
+        XCTAssertFalse(
+            WorkTaskCoordinator.startedTaskIsSelected(pending, branch: "manual", selectedTaskId: UUID()))
+        XCTAssertFalse(
+            WorkTaskCoordinator.startedTaskIsSelected(nil, branch: "manual", selectedTaskId: nil))
     }
 
     // MARK: - Plan

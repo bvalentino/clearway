@@ -176,13 +176,25 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     with no sheet. The frontmatter write is the sheet's Create button: `confirmCreate` writes
     `status = in_progress` and `worktree = <branch as confirmed>`, so a cancelled sheet leaves the
     task on its backlog marker and the branch recorded is the one the operator confirmed. It
-    also records `pendingCreate`, whose task id is optional because a hand-made worktree goes
-    through the same call, and which carries the agent command to run once the worktree is live.
+    also records `pendingCreate`, which carries the agent command to run once the worktree is live
+    and a `TaskLink?` — **one** optional, not a task id beside an optional prior-fields snapshot,
+    so a link `abandonPendingCreate` cannot unwind is unrepresentable. It is `nil` for a hand-made
+    worktree, which goes through the same call, and also when `updateFields` refuses because the
+    task's file vanished between Start Now and Create: the worktree the operator confirmed is still
+    created, but nothing was written, so there is nothing to unwind and nothing to relocate. The
+    slot is `private(set)`; `confirmCreate` is the only thing that can build a well-formed record.
     `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
     `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
     to the relocated file), the shadow task, the selection, the afterCreate hook, and the command
     **last** — after the hook is *started*, not after it exits, since nothing has ever awaited a
-    hook. `WorkTaskListView` offers both doors as **one** control labelled "Start Now": its primary
+    hook. That handler clears `lastCreatedBranch` **before** its worktree lookup, not after: the
+    signal is an edge, and one left standing through a silent failure makes a retry that assigns
+    the same branch not a change, so the create that did succeed would never be handled at all.
+    The path `completePendingCreate` substitutes comes from `relocateTaskToWorktree` **returning
+    that it landed**, never from the destination being where the file was meant to go — the
+    relocation refuses a worktree that already carries a `TASK.md`, which a branch can, since
+    `.clearway` is committed, and naming the destination regardless handed the agent a different
+    task's brief. `WorkTaskListView` offers both doors as **one** control labelled "Start Now": its primary
     action opens the Start Task sheet, its items plan the task with one of the project's agent-kind
     saved commands. There is no remembered pick — the plan slot that once drove the primary action
     was retired with it, so `command-defaults.json` carries the after-create id alone.
@@ -274,12 +286,16 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     sheet's "Run after create" slot. A `plan` key shipped there briefly and was retired with the
     Plan menu; a file still carrying it decodes fine, since an unknown key is ignored. Both files
     go through one `write` on the store and one `enqueue` chain on the manager, so a defaults write
-    and a commands write cannot
-    reach the queue out of order. The id is only ever read through `CommandDefaults.resolve`, which
-    answers for a **live `.agent`-kind** command and nothing else: an id naming a deleted command,
-    or one retyped to terminal, shows None and is **not** rewritten away, and a missing or
-    undecodable file reads as unset and is left exactly where it is — losing an id the user
-    cannot repair by hand costs one re-pick, which beats quarantining a file. The after-create slot
+    and a commands write cannot reach the queue out of order. The id is only ever read through
+    `CommandDefaults.resolve`, which answers for a **live `.agent`-kind** command and nothing else:
+    an id naming a deleted command, or one retyped to terminal, shows None and is **not** rewritten
+    away, and a missing or undecodable file reads as unset and is left exactly where it is — losing
+    an id the user cannot repair by hand costs one re-pick, which beats quarantining a file. Keeping
+    it is `setAfterCreateDefault`'s job, not the sheet's: **clearing the slot is refused while it
+    resolves to nothing**, because the picker is seeded from `afterCreateCommand` and so an
+    untouched picker on a stale id is indistinguishable from the operator choosing None — without
+    that guard the next successful create wrote the id away, which is the opposite of the sentence
+    above. Clearing a slot that does resolve is a real pick and goes through. The after-create slot
     is written back only on the `.apply` branch of the sheet's outcome, so a cancelled or failed
     create changes no default. No watcher, for the same reason `commands.json` has none.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside

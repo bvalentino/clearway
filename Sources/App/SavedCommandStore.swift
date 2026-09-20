@@ -97,7 +97,7 @@ final class SavedCommandStore: Sendable {
             do {
                 return try JSONDecoder().decode(CommandDefaults.self, from: data)
             } catch {
-                Ghostty.logger.warning("command-defaults.json is unreadable — loading as unset: \(error)")
+                Ghostty.logger.warning("command-defaults.json is corrupt — loading as unset: \(error)")
                 return CommandDefaults()
             }
         }.value

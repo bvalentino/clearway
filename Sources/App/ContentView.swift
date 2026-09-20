@@ -301,15 +301,17 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
-            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+            // Cleared before the worktree guard, not after it: on a silent failure the branch is
+            // never listed, and a signal left standing means a retry that assigns the same branch
+            // is not a change, so this handler would never run for the create that did succeed.
             worktreeManager.lastCreatedBranch = nil
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
 
-            // The started task's file moves into the new worktree, so it leaves the backlog. A
-            // selection still naming it would leave the Tasks toolbar and Start Now's menu acting
-            // on a task that is no longer there. Cleared here because this handler is the single
-            // point every successful create lands on, whichever door opened the sheet.
-            if let pending = workTaskCoordinator.pendingCreate,
-               pending.branch == branch, pending.taskId == selectedTaskId {
+            // Cleared here because this handler is the single point every successful create lands
+            // on, whichever door opened the sheet.
+            if WorkTaskCoordinator.startedTaskIsSelected(
+                workTaskCoordinator.pendingCreate, branch: branch, selectedTaskId: selectedTaskId
+            ) {
                 selectedTaskId = nil
             }
 

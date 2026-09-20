@@ -76,7 +76,13 @@ final class SavedCommandManager: ObservableObject {
         save()
     }
 
+    /// Clearing is refused while the stored id resolves to nothing. The picker is seeded from
+    /// `afterCreateCommand`, so a stale id already reads as None there and an untouched picker is
+    /// indistinguishable from the operator choosing None — writing it back would drop an id the
+    /// store keeps on purpose, one that may name a command a reverted `commands.json` edit brings
+    /// back. Clearing a slot that does resolve is the operator's own pick and goes through.
     func setAfterCreateDefault(_ id: UUID?) {
+        guard id != nil || afterCreateCommand != nil else { return }
         guard defaults.afterCreate != id else { return }
         defaults.afterCreate = id
         saveDefaults()
