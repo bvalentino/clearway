@@ -546,3 +546,19 @@ and `applyPrimaryActionStyle(tint:)`'s two callers keep their own sizing.
 **Gate**
 
 `./scripts/ci.sh` → `==> CI passed.` 535 tests, 0 failures.
+
+### Simplify
+
+Nothing simplified: `/simplify`'s four passes (reuse, simplification, efficiency, altitude) returned
+no change worth making. `AsideAddButton` has no pre-existing twin, `applyGlassButtonStyle` mirrors
+`applyPrimaryActionStyle`'s availability split, `ToolbarGroupBreak` kept five other call sites, and
+the `PromptsView` doc comment is now accurate at its one remaining call site (`ContentView.swift`).
+
+The one finding — that CLAUDE.md's toolbar merge-order paragraph now describes a nested-view break
+placement no `Sources/` file exercises — was skipped. C2 (`c4dea2d`) already made that call: the
+sentence is the rule for a nested view's toolbar, not a claim that one exists, and deleting it would
+throw away the merge-order fact rather than simplify it.
+
+**Gate**
+
+`./scripts/ci.sh` → `==> CI passed.` 535 tests, 0 failures.
