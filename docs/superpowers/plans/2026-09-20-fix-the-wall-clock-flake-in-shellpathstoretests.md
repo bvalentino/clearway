@@ -310,3 +310,66 @@ None.
 (111.946) seconds`, `Test Succeeded`, `==> CI passed.` `swiftlint lint --quiet
 Tests/ShellPathStoreTests.swift` exits 0 with no output. `git status --porcelain` shows only
 `Tests/ShellPathStoreTests.swift` plus this change's spec and plan.
+
+#### T2: Hold the retry open in the failed-resolution case
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/ShellPathStoreTests.swift` | `testAFailedResolutionIsNotAwaitedASecondTime` dropped `delay: 0.3` and both `Date()` reads for `holdingCall: 2`, and asserts `resolver.finishedCount == 1` on the line after the second `awaitPath()` returns, releasing the gate below it. The doc comment above the case is unchanged. |
+| `FakeResolver` | Unchanged. T1's mechanism needed no extension. |
+| `Sources/` | Unchanged. `git diff --stat Sources/` empty. |
+
+**Evidence**
+
+The negative control is T3, by the plan's own dependency graph: criterion 4 of the spec is that
+*both* rewritten cases were watched failing against one revert of `ShellPathStore.swift:57`, which
+needs both to exist first. T2's own evidence is the two greps and the wall time below.
+
+`grep -n "Date()" Tests/ShellPathStoreTests.swift` — acceptance criterion 2, now only `waitUntil`'s
+deadline loop:
+
+```
+191:        let deadline = Date().addingTimeInterval(timeout)
+192:        while Date() < deadline {
+```
+
+`grep -n "delay:\|Thread.sleep" Tests/ShellPathStoreTests.swift` — acceptance criterion 3. The two
+surviving `delay:` call sites are the cases decision 7 keeps; 212, 218 and 247 are the fake's own
+declaration, initializer and sleep, which the held path does not reach:
+
+```
+107:        let resolver = FakeResolver(outcomes: [.full("/opt/homebrew/bin")], delay: 0.2)
+173:        let resolver = FakeResolver(outcomes: [.full("/opt/homebrew/bin")], delay: 0.2)
+212:    private let delay: TimeInterval
+218:    init(outcomes: [ShellPathResolver.Outcome], delay: TimeInterval = 0, holdingCall: Int? = nil) {
+247:            Thread.sleep(forTimeInterval: delay)
+```
+
+Per-case durations from the `.xcresult`
+(`Test-ClearwayTests-2026.09.20_18-58-52--0300.xcresult`), read with
+`xcrun xcresulttool get test-results tests`:
+
+```
+testAFailedResolutionIsNotAwaitedASecondTime()      0.001s    (was 0.3s at T1, 0.3s at base)
+testADegradedValueIsReturnedWithoutWaiting()        0.0025s   (T1's, still free of its delay)
+testAnEagerResolutionIsJoinedRatherThanDuplicated() 0.2s      (keeps delay: 0.2, per decision 7)
+testTwoConcurrentCallsStartOneResolution()          0.2s      (keeps delay: 0.2, per decision 7)
+ShellPathStoreTests, all 13 cases                   0.43s
+```
+
+Suite wall time across the three readings: ~1.04 s at base, 0.744 s after T1, 0.43 s now — the
+0.6 s of sleeping the two bounds needed is gone, which is spec success criterion 5. The 0.4 s that
+remains is the two `delay: 0.2` cases decision 7 keeps.
+
+**Deviations**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — green. `Executed 676 tests, with 0 failures (0 unexpected) in 109.955
+(110.178) seconds`, `Test Succeeded`, `==> CI passed.` `swiftlint lint --quiet
+Tests/ShellPathStoreTests.swift` exits 0 with no output. `git status --porcelain` showed only
+`Tests/ShellPathStoreTests.swift` before this log entry was appended.

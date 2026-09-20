@@ -91,16 +91,16 @@ final class ShellPathStoreTests: XCTestCase {
     /// this exists for, where both attempts hit the limit, that is the resolver's whole budget of
     /// dead time added to every launch, forever.
     func testAFailedResolutionIsNotAwaitedASecondTime() async {
-        let resolver = FakeResolver(outcomes: [.failed, .failed], delay: 0.3)
+        let resolver = FakeResolver(outcomes: [.failed, .failed], holdingCall: 2)
         let store = ShellPathStore(resolve: { resolver.next() })
 
         _ = await store.awaitPath()
 
-        let started = Date()
         let second = await store.awaitPath()
 
         XCTAssertEqual(second, baseline)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2, "a retry must run behind the caller")
+        XCTAssertEqual(resolver.finishedCount, 1, "a retry must run behind the caller")
+        resolver.release()
     }
 
     func testTwoConcurrentCallsStartOneResolution() async {
