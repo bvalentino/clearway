@@ -17,10 +17,19 @@ struct WorkTaskListView: View {
     @State private var showDeleteConfirmation = false
     @State private var isCopied = false
     @State private var taskToForceDelete: WorkTask?
+    @State private var showCommandEditor = false
 
     private var selectedTask: WorkTask? {
         guard let id = selection else { return nil }
         return workTaskManager.tasks.first { $0.id == id }
+    }
+
+    /// The selection when Start Now's primary action applies to it. A task that already has a
+    /// worktree is not startable, and the toolbar's split button stays enabled regardless so its
+    /// chevron keeps opening the menu, so the guard has to be a value the action reads.
+    private var startableTask: WorkTask? {
+        guard let task = selectedTask, task.worktree == nil else { return nil }
+        return task
     }
 
     /// Backlog = tasks not yet associated with a worktree. Location encodes association, so a
@@ -61,15 +70,16 @@ struct WorkTaskListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    planItems(for: selectedTask)
+                    startNowItems(for: selectedTask)
                 } label: {
                     Text("Start Now")
                 } primaryAction: {
-                    if let task = selectedTask { startTask(task) }
+                    if let task = startableTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
-                .disabled(selectedTask == nil || selectedTask?.worktree != nil)
             }
+
+            ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -135,6 +145,9 @@ struct WorkTaskListView: View {
                 .disabled(selectedTask == nil)
             }
         }
+        .sheet(isPresented: $showCommandEditor) {
+            CommandEditorSheet(command: nil, newCommandKind: .agent)
+        }
         .alert(
             "Delete \"\(selectedTask?.title ?? "Untitled")\"?",
             isPresented: $showDeleteConfirmation
@@ -193,10 +206,7 @@ struct WorkTaskListView: View {
                     .contextMenu {
                         Menu {
                             Button("Start Task…") { startTask(task) }
-                            if !agentCommands.isEmpty {
-                                Divider()
-                                planItems(for: task)
-                            }
+                            startNowItems(for: task)
                         } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
@@ -220,18 +230,26 @@ struct WorkTaskListView: View {
         SavedCommand.filter(savedCommandManager.commands, by: .agent)
     }
 
-    /// The dropdown half of Start Now: one item per agent command, each planning the task in its
-    /// own bottom terminal. The task is a parameter so the context menu plans the right-clicked
-    /// row rather than the selection; a nil task is the toolbar with nothing selected.
+    /// The dropdown half of Start Now: the editor door, then one item per agent command, each
+    /// planning the task in its own bottom terminal. The task is a parameter so the context menu
+    /// plans the right-clicked row rather than the selection; a nil task is the toolbar with
+    /// nothing selected.
+    ///
+    /// The editor door leads because a project with no agent commands yet would otherwise open an
+    /// empty menu, which AppKit renders as nothing happening at all.
     ///
     /// The toolbar renders this behind a split button whose primary action opens the Start Task
     /// sheet. A context-menu item carrying a submenu cannot also be clicked, so that surface
     /// leads with the same action as the submenu's first item instead.
     @ViewBuilder
-    private func planItems(for task: WorkTask?) -> some View {
-        ForEach(agentCommands) { command in
-            Button(command.name) { plan(task, using: command) }
-                .disabled(task == nil || ghosttyApp.app == nil)
+    private func startNowItems(for task: WorkTask?) -> some View {
+        Button("Add Agent Command…") { showCommandEditor = true }
+        if !agentCommands.isEmpty {
+            Divider()
+            ForEach(agentCommands) { command in
+                Button(command.name) { plan(task, using: command) }
+                    .disabled(task == nil || ghosttyApp.app == nil)
+            }
         }
     }
 

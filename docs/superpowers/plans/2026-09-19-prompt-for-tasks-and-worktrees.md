@@ -479,6 +479,58 @@ operator's Try list.
 
 `./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
 
+### C2: Start Now's menu always has a door, and its own toolbar capsule
+
+**Reported:** on the Tasks destination with no agent commands saved, "clicking the chevron opens
+nothing", and the Start Now split button shares one capsule with copy / task-terminal / `…`.
+
+**Diagnosis.** `planItems` was `ForEach(agentCommands)` and nothing else, so on a project that has
+saved no `.agent` command the `Menu`'s content is empty — AppKit opens no menu for an empty
+`NSMenu`, so the chevron reads as dead on exactly the project that most needs a way in. The grouping
+was the second half of the same screenshot: the toolbar declared a `ToolbarGroupBreak` between the
+`+` and Start Now and none after it, so every following `.primaryAction` item joined Start Now's
+group.
+
+**Changes.**
+
+1. `planItems` becomes `startNowItems`, led by an **"Add Agent Command…"** button and then, only
+   when the list is non-empty, a `Divider()` and the agent commands. Gating the divider keeps it
+   from trailing the last item on an empty list. The button presents `CommandEditorSheet` with
+   `command: nil`; a saved command is in the menu on the next render, because `SavedCommandManager`
+   is the same `@StateObject` both views read.
+2. `CommandEditorSheet.init` gains `newCommandKind: SavedCommand.Kind = .terminal`, used for the
+   create case's `kind` seed. The default keeps `CommandsView` byte-identical; `WorkTaskListView`
+   passes `.agent`. The sheet's kind picker stays editable — preselection, not a lock.
+3. The row context submenu drops its `if !agentCommands.isEmpty { Divider(); … }` and calls the
+   same `startNowItems` after its own "Start Task…", so the two surfaces cannot drift.
+4. The toolbar's Start Now loses its `.disabled(selectedTask == nil || selectedTask?.worktree !=
+   nil)`. **`.disabled` on a `Menu` disables the chevron with the body**, which would hide the
+   editor door behind having a startable selection. The gate moves inside `primaryAction:`, onto a
+   new `startableTask` computed property. The consequence is accepted and recorded in `CLAUDE.md`:
+   this is the one control in the app that can render enabled and do nothing on a click.
+5. A second `ToolbarGroupBreak()` after the Start Now item, giving it its own capsule. The `+` group
+   and the edit/preview picker are untouched.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `startableTask` and `showCommandEditor` added; `planItems` → `startNowItems` with the editor item; the `.disabled` off the split button; a `ToolbarGroupBreak` after it; the `CommandEditorSheet` sheet attached beside the delete alert. |
+| `Sources/App/CommandEditorSheet.swift` | `newCommandKind` init parameter, defaulted. |
+| `CLAUDE.md` | The Start Now paragraph names the editor item, the no-`.disabled` rule and the own-capsule grouping. |
+| `docs/superpowers/specs/2026-09-19-prompt-for-tasks-and-worktrees.md` | Decisions 21–23. |
+
+**Evidence.** No test. Both defects are SwiftUI/AppKit rendering rules — an empty `NSMenu` opening
+nothing, `.disabled` propagating to a `Menu`'s chevron, and which `.primaryAction` items share a
+capsule — none of which XCTest can observe; the app has no view-hierarchy test host, the same limit
+`CLAUDE.md` records for `Ghostty.SurfaceView`. The decision content that could be lifted out already
+is: `SavedCommand.filter(_:by: .agent)` is pinned by `SavedCommandTests`. Verification is the
+operator's hands-on check below.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`
