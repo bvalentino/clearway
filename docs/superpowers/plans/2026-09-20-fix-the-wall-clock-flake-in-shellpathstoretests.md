@@ -443,3 +443,10 @@ None. The restore was done by copying back a `cp` of the file taken before the e
 `git diff --stat Sources/` empty.
 `git status --porcelain` shows only this plan file, `Tests/ShellPathStoreTests.swift` being already
 committed by T2.
+
+#### Simplify
+
+Dropped the redundant `(ShellPathResolver.Outcome, Int)` annotation on `next()`'s `lock.withLock`
+tuple binding — `outcomes.removeFirst()` types the tuple and back-propagates to `.failed` in the
+ternary, verified with a standalone `swiftc -typecheck` against the real `NSLock.withLock`. Nothing
+else changed: the reuse, efficiency and altitude passes found nothing to apply.

@@ -237,7 +237,7 @@ private final class FakeResolver: @unchecked Sendable {
     }
 
     func next() -> ShellPathResolver.Outcome {
-        let (outcome, index): (ShellPathResolver.Outcome, Int) = lock.withLock {
+        let (outcome, index) = lock.withLock {
             calls += 1
             return (outcomes.isEmpty ? .failed : outcomes.removeFirst(), calls)
         }
