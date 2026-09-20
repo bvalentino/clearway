@@ -222,6 +222,15 @@ class TerminalManager: ObservableObject {
     /// Whether `sendToActiveMainTab` has somewhere to dispatch: there is an active surface.
     var canSendToActiveMainTab: Bool { activeMainSurface != nil }
 
+    /// What staged delivery hands the surface — the one definition, shared with `startAgentTab`.
+    ///
+    /// The trim is load-bearing, not cosmetic. Outside bracketed paste libghostty rewrites every
+    /// `\n` to `\r` (`ghostty/src/input/paste.zig`), which is an Enter — so an untrimmed trailing
+    /// newline submits the text this rule exists to leave unsubmitted.
+    static func stagedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Send text to the active main tab's running process. `asCommand: true` runs it, submitting
     /// with Enter; `false` stages it on whatever the tab is running, leaving it unsubmitted.
     func sendToActiveMainTab(_ text: String, asCommand: Bool) {

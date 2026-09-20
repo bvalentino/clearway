@@ -347,3 +347,12 @@ None.
 
 `./scripts/ci.sh` — passed, "==> CI passed.", exit 0. 561 tests, 0 failures. The two SwiftLint
 warnings are the pre-existing pair (`WorktreeConfigStore.swift:406`, `WorktreeDraft.swift:17`).
+
+### Simplify
+
+`stagedText` moved from `TerminalManager+Agent.swift` to `TerminalManager.swift` beside
+`sendToActiveMainTab` — half its use is the Prompts play button, which is not an agent path; the
+`.argv` failure branch's seven inline `NSAlert` lines became a private `presentPromptFileFailure`,
+matching `OpenInMenu.presentFailure`; and `buildAgentPromptCommand`'s `- Returns:` clause dropped
+the rationale its call site already states. No behaviour change. `./scripts/ci.sh` — passed, exit 0,
+561 tests, 0 failures; `swiftlint lint --quiet` clean but for the two pre-existing warnings.

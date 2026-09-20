@@ -29,16 +29,6 @@ extension TerminalManager {
         return submit ? .argv : .staged
     }
 
-    /// What staged delivery hands the surface. The one definition, used by both staged call sites:
-    /// `startAgentTab`'s `.staged` tail and `sendToActiveMainTab(asCommand: false)`.
-    ///
-    /// The trim is load-bearing, not cosmetic. Outside bracketed paste libghostty rewrites every
-    /// `\n` to `\r` (`ghostty/src/input/paste.zig`), which is an Enter — so an untrimmed trailing
-    /// newline submits the text this rule exists to leave unsubmitted.
-    static func stagedText(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// Whether a launch proceeds after trying to claim its worktree's marker. A door that does not
     /// refuse opens its tab whether or not another launch already holds the marker — the marker is
     /// a rendering gate first, and only ⌥⌘T treats a held one as "this press is a repeat".
@@ -109,13 +99,7 @@ extension TerminalManager {
                     filePrefix: "clearway-agent-tab"
                 ) else {
                     if ownsLaunch { endAgentLaunch(for: worktreeId) }
-                    let alert = NSAlert()
-                    alert.messageText = "Couldn't start \(command)"
-                    alert.informativeText =
-                        "Clearway couldn't write the prompt file in \(NSTemporaryDirectory())."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.runModal()
+                    presentPromptFileFailure(command: command)
                     return
                 }
                 launchCommand = launch.command
@@ -128,6 +112,17 @@ extension TerminalManager {
             await Self.awaitShellPrompt(on: surface)
             surface.sendText(Self.stagedText(prompt))
         }
+    }
+
+    /// `NSAlert().runModal()` is the app's pattern for a fire-and-forget message, the same one
+    /// `OpenInMenu.presentFailure` uses.
+    private func presentPromptFileFailure(command: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't start \(command)"
+        alert.informativeText = "Clearway couldn't write the prompt file in \(NSTemporaryDirectory())."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     /// Build a `/bin/sh -c` wrapper that runs the agent command with no initial prompt.

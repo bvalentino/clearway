@@ -226,7 +226,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     command so the argv path allocates no orphan prompt file. Nothing cancels the `Task`, which is
     why the owner ends its claim on that path too rather than leaving the gate set.
     The staged case (`submit` off) goes through `stagedText` + **`sendText`**, the one staging rule,
-    shared with `sendToActiveMainTab(asCommand: false)` — the Prompts aside's play button. Neither
+    shared with `sendToActiveMainTab(asCommand: false)` — the Prompts aside's play button, which
+    often targets a plain shell, so the rule lives beside it in `TerminalManager.swift` rather than
+    in this agent-only extension. Neither
     uses `sendPaste`, which appends Enter and would run the prompt staging exists to leave unrun.
     The trim `stagedText` does is load-bearing, not cosmetic: outside bracketed paste libghostty
     rewrites every `\n` to `\r` (`ghostty/src/input/paste.zig`), so an untrimmed trailing newline is

@@ -35,8 +35,7 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 ///
 /// - Returns: The shell command string and the prompt file path (callers that tear down
 ///   surfaces early can delete the file if the agent never ran), or `nil` when the prompt file
-///   could not be written. `$(cat)` over a missing file would seed the agent with an empty
-///   prompt, so the caller refuses the launch rather than starting the agent without its prompt.
+///   could not be written.
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,
