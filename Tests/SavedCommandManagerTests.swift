@@ -221,4 +221,41 @@ final class SavedCommandManagerTests: TempRootTestCase {
 
         XCTAssertEqual(reloaded.lastRunCommand, second)
     }
+
+    // MARK: - Primary command
+
+    func testPrimaryCommandIsNilWhenThereAreNoCommands() {
+        XCTAssertNil(manager.primaryCommand)
+    }
+
+    func testPrimaryCommandIsTheFirstCommandBeforeAnythingIsRecorded() {
+        let first = makeCommand(name: "Dev")
+        manager.add(first)
+        manager.add(makeCommand(name: "Test", text: "bin/test"))
+
+        XCTAssertEqual(manager.primaryCommand, first)
+    }
+
+    func testPrimaryCommandIsTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.primaryCommand, second)
+    }
+
+    func testPrimaryCommandFallsBackToTheFirstOnceTheRecordedCommandIsDeleted() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        manager.delete(second)
+
+        XCTAssertEqual(manager.primaryCommand, first)
+    }
 }

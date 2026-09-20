@@ -217,7 +217,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     is then a compile error at `save()` rather than a silent erase.
     `SavedCommandManager.lastRunCommand` resolves the id against the live list on every read, so an
     id naming a deleted command reads as nothing remembered. No delete path cleans it up, and none
-    should.
+    should. `primaryCommand` is that value or `commands.first` — what the Run button's label half
+    runs, resolved on the manager so it is unit-tested rather than decided in the view.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached
@@ -276,20 +277,25 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()`. Both
     are split buttons, so their label half acts on a click and has to name what that click will do;
     the remaining toolbar items act on a click too and stay icon-only, named by their symbol.
-    A split button is `Menu(content:label:primaryAction:)`, and `primaryAction:` cannot be attached
-    conditionally, so each of the two views declares the `Menu` twice and switches on whether a
-    last-used item resolved, sharing one `items` list and one label between the declarations. Before
-    anything has been picked the declaration without `primaryAction:` is used, so a click opens the
-    list rather than doing nothing. Both record the pick rather than a successful launch —
-    `RunCommandMenu.run(_:)` records before its `ghosttyApp.app` guard — or an app or command that
-    fails to launch could never become the primary action again.
+    A split button is `Menu(content:label:primaryAction:)`, declared **unconditionally**: both draw
+    as split buttons whenever their list is non-empty, including before anything has been picked,
+    because the primary action falls back to the first item in display order. That resolution is
+    `SavedCommandManager.primaryCommand` and `SettingsManager.primaryOpenInApp` — the remembered
+    item or the list's first — so it is unit-tested off the view, and the `primaryAction:` closure
+    only unwraps it. Do not go back to declaring the `Menu` twice on whether something was picked:
+    that drew a plain dropdown in the fresh state, which is what this replaced. Both record the pick
+    rather than a successful launch — `RunCommandMenu.run(_:)` records before its `ghosttyApp.app`
+    guard — or an app or command that fails to launch could never become the primary action again.
+    `OpenInMenu` does declare its `Menu` twice, switched on `remembersLastUsed` rather than on
+    state: the sidebar's context submenu is not a split button, and a `primaryAction:` on a submenu
+    row would give it a click the sidebar has nothing to do with.
     Open in's memory is `SettingsManager.lastUsedOpenInAppId`, a `UserDefaults` string under
     `clearway.lastUsedOpenInApp` beside the list itself, because the list it names is a global
     preference rather than per-project the way Run's `lastRunId` is. `lastUsedOpenInApp` resolves it
-    against `openInApps` on every read, so a deleted app falls back to the plain menu with nothing
-    cleaned up. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`, defaulting to
-    off, and `ContentView`'s call is the one that passes true — picking from the sidebar's submenu
-    neither reads nor writes it. The menu and the settings section are
+    against `openInApps` on every read, so a deleted app falls back to the first in the list with
+    nothing cleaned up. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`,
+    defaulting to off, and `ContentView`'s call is the one that passes true — picking from the
+    sidebar's submenu neither reads nor writes it. The menu and the settings section are
     separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.

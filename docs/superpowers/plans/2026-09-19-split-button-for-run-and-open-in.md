@@ -13,8 +13,10 @@ piece is verified.
   conditionally, so each view declares the menu **twice** — once with it, once without — and
   switches on whether a last-used item resolved. No availability check: the initializer is
   macOS 12.0+ and the deployment target is macOS 13.0 (`project.yml:4-5`).
+  **Superseded by C1 in the Changelog:** the declaration is unconditional and the primary action
+  falls back to the first item.
 - Before anything has been picked, the no-`primaryAction` declaration is used, so clicking the label
-  opens the list. The button never silently does nothing.
+  opens the list. The button never silently does nothing. **Superseded by C1.**
 - Run's memory lives in `<projectPath>/.clearway/commands.json`. Open in's lives in `UserDefaults`
   under `clearway.lastUsedOpenInApp`, beside `clearway.openInApps`, because the app list it draws
   from is a global preference.
@@ -308,6 +310,26 @@ criteria 1-3 and 9:
 | Switching between the two `Menu` declarations changes the view's type, so SwiftUI rebuilds the toolbar item on the first pick | Low | Accepted in the spec: once per list per session, and no state lives in the button |
 | A legacy `commands.json` whose *elements* are malformed still moves aside | Low | Intended — it fails both decode attempts and is genuinely corrupt. Pinned by the retargeted existing cases in T1 |
 
+## Changelog
+
+### C1: Both buttons are always split buttons (operator, 2026-09-20)
+
+Requested after the hands-on check of T1-T5: on the built app both buttons drew as plain dropdowns
+in the fresh state, because the no-`primaryAction` declaration is what a never-picked list selects.
+
+Run and Open in must **always** draw as split buttons. Before a pick, the label half performs the
+first item in the list — Run's first saved command in display order, Open in's first app in
+`openInApps`. Picking from the chevron performs that item and makes it the remembered default, as
+T1-T4 already built. The remembered id still resolves against the live list on every read; when it
+resolves to nothing it falls back to the first item. The only non-split case is an empty list: Run
+stays visible and disabled, Open in stays hidden.
+
+The "declare the `Menu` twice and switch on whether something resolved" decision is therefore gone —
+with a non-empty list there is always a primary action. The resolution lives on the non-view owners
+(`SavedCommandManager.primaryCommand`, `SettingsManager.primaryOpenInApp`) so it stays unit-testable.
+Spec Decisions 1 and 2 are superseded in place; Decisions 14 and 15 and success criteria 1, 2 and 5
+record the shipped rules.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -446,3 +468,47 @@ as shipped: the text says the two declarations share one `items` list and one la
 `OpenInMenu`, whose `body` is the switch itself.
 
 **Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### C1: Both buttons are always split buttons
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandManager.swift` | `var primaryCommand: SavedCommand? { lastRunCommand ?? commands.first }` beside `lastRunCommand`. Nothing else changed — the id, its persistence and its resolve-on-read rule are T1's. |
+| `Sources/App/SettingsManager.swift` | `var primaryOpenInApp: OpenInApp? { lastUsedOpenInApp ?? openInApps.first }` beside `lastUsedOpenInApp`. |
+| `Sources/App/RunCommandMenu.swift` | One `Menu(content:label:primaryAction:)`. The `menu`, `items` and `label` properties are gone: they existed only so the two declarations could not drift, and there is one declaration now. `primaryAction:` unwraps `savedCommandManager.primaryCommand`, which is non-nil whenever the button is enabled. The `.disabled(...)` gate and `run(_:)` are unchanged; the doc comment states the fallback. |
+| `Sources/App/OpenInMenu.swift` | `body` still declares the `Menu` twice, but switched on `remembersLastUsed` rather than on state. The toolbar gets `primaryAction:` unwrapping `settings.primaryOpenInApp`; the sidebar's context submenu gets the plain declaration. `open(_:)` unchanged. Doc comments state both. |
+| `Tests/SavedCommandManagerTests.swift` | Added a Primary command section: nil on an empty list, the first command before anything is recorded, the recorded command once one is, and back to the first once the recorded one is deleted. The four `lastRunCommand` cases stay — they pin the remembered id's own resolution. |
+| `Tests/SettingsManagerTests.swift` | The same four cases for `primaryOpenInApp`, over the per-test `UserDefaults(suiteName:)`. |
+| `CLAUDE.md` | The split-button paragraph now says the `Menu` is declared unconditionally, that the fallback to the first item is what makes that possible, where the two resolutions live, and why `OpenInMenu` alone still declares it twice. Carries a do-not-revert line: switching on whether something was picked is what drew a plain dropdown in the fresh state. The `SavedCommandStore` bullet gains `primaryCommand`; the Open in memory paragraph now falls back to the first app rather than to a plain menu. |
+| `docs/.../specs/2026-09-19-split-button-for-run-and-open-in.md` | Decisions 1 and 2 superseded in place, Decisions 14 (where the resolution lives) and 15 (`applyPrimaryActionStyle` not copied) added, success criteria 1, 2 and 5 restated. |
+
+**Watched failure.** `primaryCommand` and `primaryOpenInApp` were first written without the `??`
+fallback — each returning only the remembered item — and `./scripts/ci.sh` run against them with the
+new cases in place:
+
+```
+testPrimaryCommandIsTheFirstCommandBeforeAnythingIsRecorded() :: XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.SavedCommand(id: 209F96D2-…, name: "Dev", kind: …terminal, text: "bin/dev", agent: "claude", autoRun: true))")
+testPrimaryCommandFallsBackToTheFirstOnceTheRecordedCommandIsDeleted() :: XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.SavedCommand(id: 7792FB61-…, name: "Dev", kind: …terminal, text: "bin/dev", agent: "claude", autoRun: true))")
+test_primaryOpenInApp_isTheFirstAppBeforeAnythingIsRemembered() :: XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.OpenInApp(id: BF585E22-…, kind: …builtIn(…finder), command: "open"))")
+test_primaryOpenInApp_fallsBackToTheFirstOnceTheRememberedAppIsDeleted() :: XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.OpenInApp(id: 9560119F-…, kind: …builtIn(…finder), command: "open"))")
+Executed 556 tests, with 4 failures (0 unexpected) in 87.957 (88.168) seconds
+```
+
+Adding `?? commands.first` / `?? openInApps.first` turned all four green. The always-split rendering
+itself has no test — XCTest cannot reach a SwiftUI body — so it is on the operator's hand-check.
+
+**Deviations.** Two, both against the operator's note to remove the second declaration in both views.
+
+1. `OpenInMenu` keeps two declarations, switched on `remembersLastUsed`. A single
+   `primaryAction:` declaration would make the sidebar's worktree context submenu a split row too,
+   against spec criterion 8, and its primary would be nil there — a menu row that clicks and does
+   nothing. The switch is on a per-call-site constant, so no declaration replaces the other at
+   runtime and the rebuild-on-first-pick risk in the Risks table is gone from both views.
+2. The sibling worktree's Start Now button carries `.applyPrimaryActionStyle()`
+   (`WorkTaskWindow.swift:356-367` in `prompt-for-tasks-and-worktrees`), which is
+   `.glassProminent`/`.borderedProminent` plus an accent tint. That is what makes it the *prominent*
+   button on its screen, not what makes it split — `primaryAction:` alone draws the capsule with a
+   divider — and tinting two worktree-toolbar items accent-prominent is a visual change nobody asked
+   for. Not copied (spec Decision 15).
+
+**Gate.** `./scripts/ci.sh` — 556 tests, 0 failures, `swiftlint` clean, `==> CI passed.`

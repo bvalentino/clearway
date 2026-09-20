@@ -117,6 +117,11 @@ class SettingsManager: ObservableObject {
     /// every read, so an id naming a deleted app is nothing remembered and needs no cleanup.
     var lastUsedOpenInApp: OpenInApp? { openInApps.first { $0.id == lastUsedOpenInAppId } }
 
+    /// What the toolbar's Open in label half opens. The remembered app when one resolves, the first
+    /// app in the list otherwise, so the button is a split button from the first launch and only an
+    /// empty list leaves it without an action — and an empty list hides it.
+    var primaryOpenInApp: OpenInApp? { lastUsedOpenInApp ?? openInApps.first }
+
     @Published var lastUsedOpenInAppId: UUID? {
         didSet {
             if let lastUsedOpenInAppId {

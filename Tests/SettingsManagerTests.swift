@@ -181,4 +181,43 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: SettingsKey.lastUsedOpenInApp))
         XCTAssertNil(SettingsManager(defaults: defaults).lastUsedOpenInAppId)
     }
+
+    // MARK: - Primary Open In app
+
+    func test_primaryOpenInApp_isNilWhenTheListIsEmpty() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = []
+
+        XCTAssertNil(manager.primaryOpenInApp)
+    }
+
+    func test_primaryOpenInApp_isTheFirstAppBeforeAnythingIsRemembered() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        manager.openInApps = [finder, OpenInApp(kind: .builtIn(.zed), command: "zed")]
+
+        XCTAssertEqual(manager.primaryOpenInApp, finder)
+    }
+
+    func test_primaryOpenInApp_isTheRememberedApp() {
+        let manager = SettingsManager(defaults: defaults)
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.lastUsedOpenInAppId = zed.id
+
+        XCTAssertEqual(manager.primaryOpenInApp, zed)
+    }
+
+    func test_primaryOpenInApp_fallsBackToTheFirstOnceTheRememberedAppIsDeleted() {
+        let manager = SettingsManager(defaults: defaults)
+        let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        manager.openInApps = [finder, zed]
+        manager.lastUsedOpenInAppId = zed.id
+
+        manager.openInApps = [finder]
+
+        XCTAssertEqual(manager.primaryOpenInApp, finder)
+    }
 }

@@ -16,6 +16,11 @@ final class SavedCommandManager: ObservableObject {
     /// deleted reads as nothing remembered. No delete path cleans it up.
     var lastRunCommand: SavedCommand? { commands.first { $0.id == lastRunId } }
 
+    /// What the Run button's label half runs. The remembered command when one resolves, the first
+    /// command in display order otherwise, so the button is a split button from the first launch
+    /// and only an empty list leaves it without an action.
+    var primaryCommand: SavedCommand? { lastRunCommand ?? commands.first }
+
     private let store: SavedCommandStore
 
     /// The save in flight, if any. Each new save awaits it before writing.

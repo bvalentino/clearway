@@ -16,8 +16,8 @@ remembered and the button falls back to opening the list.
 
 | # | Question | Decision | Source |
 | --- | --- | --- | --- |
-| 1 | How is a split button built in SwiftUI? | `Menu(content:label:primaryAction:)`. `primaryAction:` cannot be attached conditionally, so each view declares the menu twice — once with it, once without — and switches on whether a last-used item resolved. | Operator (brief, Implementation) |
-| 2 | What happens before the user has picked anything? | The no-`primaryAction` menu is used, so clicking the label opens the list. The button never silently does nothing. | Operator (brief) |
+| 1 | How is a split button built in SwiftUI? | `Menu(content:label:primaryAction:)`, declared unconditionally on both toolbar buttons. Supersedes the original decision to declare the menu twice and switch on whether a last-used item resolved: with a fallback (Decision 2) there is always a primary action, so one declaration suffices. `OpenInMenu` still declares it twice, but on `remembersLastUsed` — the sidebar's context submenu is not a split button. | Operator (2026-09-20, after hands-on check) |
+| 2 | What happens before the user has picked anything? | The button is still a split button and its label half performs the **first item in the list** — Run's first saved command in display order, Open in's first app in `openInApps`. Supersedes the original decision to fall back to a plain dropdown, which drew as a plain dropdown in the fresh state. The only non-split case is an empty list: Run stays visible and disabled, Open in stays hidden. | Operator (2026-09-20, after hands-on check) |
 | 3 | Where is Run's last-used id stored? | `<projectPath>/.clearway/commands.json`, the same file as the project's saved commands. | Operator (brief) |
 | 4 | Where is Open in's last-used id stored? | `UserDefaults`, key `clearway.lastUsedOpenInApp`, beside `clearway.openInApps`. The app list is a global preference, so the memory of it is one too. | Operator (brief) |
 | 5 | What happens to a remembered id whose item was deleted? | Nothing on delete. The id is resolved against the live list on every read, and an id that names nothing resolves to nil — which is case 2. One rule, applied in one place, instead of a cleanup pass on every delete path. | Operator (brief, "resolved on read") |
@@ -29,6 +29,8 @@ remembered and the button falls back to opening the list.
 | 11 | Is the last-used id recorded on pick or only on a successful launch? | On pick. It is the last item *used*, not the last that worked; recording only on success would leave a failing command permanently unable to become the primary action. Both entry points into each view's action funnel through one method, so the record is written once per view. | Spec |
 | 12 | Where is Run's record written — the view or `TerminalManager`? | `RunCommandMenu.run(_:)`, which already owns the `SavedCommandManager` and already funnels both the menu item and the new primary action. The CLAUDE.md rule that puts *running* on `TerminalManager` is about resolving a worktree and awaiting a shell prompt; recording an id is neither, and `TerminalManager` does not hold the manager. | Spec |
 | 13 | Does a `Menu` with `primaryAction:` need an availability check? | No. The initializer is macOS 12.0+ and the deployment target is macOS 13.0 (`project.yml:4-5`). | Spec (verified, below) |
+| 14 | Where does "remembered item, else first item" resolve? | On the non-view owners: `SavedCommandManager.primaryCommand` (`lastRunCommand ?? commands.first`) and `SettingsManager.primaryOpenInApp` (`lastUsedOpenInApp ?? openInApps.first`). Both are unit-tested; the views only unwrap the optional. | Operator (2026-09-20) |
+| 15 | Does the sibling worktree's `applyPrimaryActionStyle()` come along? | No. It is `.glassProminent`/`.borderedProminent` with an accent tint — what makes Start Now the *prominent* button on its screen, not what makes it split. `primaryAction:` alone is what draws the capsule with a divider. | Build (2026-09-20) |
 
 ## Assumptions
 
@@ -97,16 +99,16 @@ full list away.
 ### Success criteria
 
 1. With at least one saved command and nothing yet run in this project, the toolbar's Run button is
-   a plain dropdown: clicking anywhere on it opens the list.
-2. Picking "Build & Run" from that list runs it. The Run button is then a split button: clicking
-   the `Run` label runs "Build & Run" again without opening anything, and clicking the chevron opens
-   the full list.
+   a split button: clicking the `Run` label runs the **first** saved command, clicking the chevron
+   opens the list.
+2. Picking "Build & Run" from that list runs it. Clicking the `Run` label then runs "Build & Run"
+   again without opening anything, and clicking the chevron still opens the full list.
 3. Picking a different command from the list runs it and makes it the new primary action.
 4. Quitting and relaunching keeps the primary action: it is read back from
    `<projectPath>/.clearway/commands.json`.
-5. Deleting the remembered command in the Commands view turns the button back into a plain dropdown
-   (criterion 1) with no further action by the user, and deleting a different command leaves the
-   primary action alone.
+5. Deleting the remembered command in the Commands view falls the primary action back to the first
+   command in the list (criterion 1) with no further action by the user, and deleting a different
+   command leaves the primary action alone.
 6. Project A's remembered command does not affect project B's Run button.
 7. The same five behaviours hold for the toolbar's Open in button against Settings → Open In's app
    list, remembered in `UserDefaults` and therefore shared by every project window.

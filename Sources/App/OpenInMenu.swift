@@ -6,8 +6,10 @@ import SwiftUI
 /// The path is a parameter rather than something the view resolves, so the sidebar can open a
 /// right-clicked worktree that is not the current selection.
 ///
-/// With `remembersLastUsed`, it becomes a split button: clicking the label opens the path in the
-/// last app picked here, clicking the chevron opens the full list. Only the toolbar asks for that.
+/// With `remembersLastUsed`, it is a split button: clicking the label opens the path in the last
+/// app picked here, or in the first app in the list before anything has been picked, and clicking
+/// the chevron opens the full list. Only the toolbar asks for that; the sidebar's context menu
+/// stays a plain submenu.
 struct OpenInMenu<Label: View>: View {
 
     @EnvironmentObject private var settings: SettingsManager
@@ -22,11 +24,14 @@ struct OpenInMenu<Label: View>: View {
         self.label = label()
     }
 
-    /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice and its
-    /// content and label are shared between the two.
+    /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice: the split
+    /// button for the toolbar, the plain submenu the sidebar's context menu needs. The switch is on
+    /// the entry point rather than on state, so neither declaration replaces the other at runtime.
     @ViewBuilder var body: some View {
-        if let lastApp = remembersLastUsed ? settings.lastUsedOpenInApp : nil {
-            Menu { items } label: { label } primaryAction: { open(lastApp) }
+        if remembersLastUsed {
+            Menu { items } label: { label } primaryAction: {
+                if let app = settings.primaryOpenInApp { open(app) }
+            }
         } else {
             Menu { items } label: { label }
         }
