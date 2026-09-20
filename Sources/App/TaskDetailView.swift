@@ -11,6 +11,7 @@ struct TaskDetailView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
 
     let taskId: UUID
     @Binding var editorMode: TaskEditorMode
@@ -34,6 +35,10 @@ struct TaskDetailView: View {
 
     private var terminalVisible: Bool {
         terminalManager.isTaskTerminalVisible(for: taskId)
+    }
+
+    private var terminalToggleLabel: String {
+        terminalVisible ? "Hide terminal" : "Show terminal"
     }
 
     /// The Markdown rendered in preview — mirrors the editor's live buffer so it
@@ -193,6 +198,16 @@ struct TaskDetailView: View {
                     }
                 }
             Spacer()
+            Button(action: toggleTerminal) {
+                Image(systemName: "rectangle.bottomhalf.inset.filled")
+                    .font(.system(size: 11))
+                    .foregroundStyle(terminalVisible ? .primary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(terminalToggleLabel)
+            .accessibilityLabel(terminalToggleLabel)
+            .pointerCursorOnHover()
+            .disabled(ghosttyApp.readiness != .ready)
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
@@ -201,6 +216,11 @@ struct TaskDetailView: View {
         .overlay(alignment: .top) {
             Divider()
         }
+    }
+
+    private func toggleTerminal() {
+        guard let app = ghosttyApp.app else { return }
+        workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app)
     }
 
     // MARK: - Save

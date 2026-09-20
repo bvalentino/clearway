@@ -117,15 +117,6 @@ struct WorkTaskListView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button(action: toggleTaskTerminal) {
-                    Image(systemName: "rectangle.bottomhalf.inset.filled")
-                        .opacity(taskTerminalOpen ? 1 : 0.5)
-                }
-                .help(taskTerminalOpen ? "Hide terminal" : "Show terminal")
-                .disabled(selectedTask == nil || ghosttyApp.readiness != .ready)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button(role: .destructive) {
                         if let task = selectedTask {
@@ -299,16 +290,6 @@ struct WorkTaskListView: View {
             selection = task.id
             newlyCreatedTaskId = task.id   // one-shot focus signal (creation only)
         }
-    }
-
-    private var taskTerminalOpen: Bool {
-        guard let id = selection else { return false }
-        return terminalManager.isTaskTerminalVisible(for: id)
-    }
-
-    private func toggleTaskTerminal() {
-        guard let id = selection, let app = ghosttyApp.app else { return }
-        workTaskCoordinator.toggleTaskTerminal(taskId: id, app: app)
     }
 
     private func confirmDeleteTask(_ task: WorkTask) {
