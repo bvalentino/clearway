@@ -117,3 +117,44 @@ regression". Two files, well inside the five-file limit.
   the file's existing `Ghostty.logger.error` calls (`:109`, `:130`), which wrap the interpolated
   string onto its own continuation line for the same reason.
 - `git diff --stat` shows two files changed and nothing else.
+
+## Build log
+
+### T1: Refuse a non-agent command in `planCommand`, and pin both directions
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `planCommand(for:using:)` gained the leading `guard command.kind == .agent` with the `Ghostty.logger.error` line, and a doc-comment paragraph saying why it comes first. Body otherwise untouched. |
+| `Tests/WorkTaskCoordinatorTests.swift` | `testPlanCommandRefusesATerminalKindCommand`, `testPlanCommandAcceptsAnAgentKindCommand`, and the `terminalCommand(text:)` helper beside `agentCommand(text:)`. |
+
+`WorkTaskCoordinator+TaskTerminal.swift`, `TerminalManager+Commands.swift` and every view are
+unedited, as the plan requires.
+
+**Evidence: the watched failure**
+
+`./scripts/ci.sh` with the tests in place and the guard absent — the refusal case is red, the
+acceptance case already green (it is the unchanged direction):
+
+```
+Test Suite 'WorkTaskCoordinatorTests' started at 2026-09-20 18:34:12.594.
+    ✖ testPlanCommandRefusesATerminalKindCommand, XCTAssertNil failed: "SavedCommand(id: 7FF2D653-537D-4434-B042-5255B8136905, name: "Plan", kind: Clearway.SavedCommand.Kind.terminal, text: "echo /var/folders/.../tasks/DA511133-39BE-4949-976A-0430C52878DF.md", agent: "claude", autoRun: true)"
+Executed 28 tests, with 1 failure (0 unexpected) in 3.203 (3.216) seconds
+...
+Executed 678 tests, with 1 failure (0 unexpected) in 106.033 (106.270) seconds
+```
+
+The failure is the substituted terminal-kind command coming back where `nil` was expected — the
+defect the spec describes, reproduced at the return value rather than at the terminal.
+
+**Deviations from the plan**
+
+None.
+
+**The gate**
+
+`./scripts/ci.sh` after the last edit: `Executed 678 tests, with 0 failures (0 unexpected)` /
+`CI passed.` (exit 0). `swiftlint lint --quiet` exits 0 with no output; the log line is one
+continuation line, matching `:109` and `:130`. `git status --porcelain` before the commit listed
+only the two changed source files — no `default.profraw`, since the app was not launched.
