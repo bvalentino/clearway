@@ -398,3 +398,102 @@ predicted: the `git config` subprocesses the sleeps used to overlap are now paid
 where `settle()` awaits the write chain. The remaining time is real git, not waiting. The other
 three suites moved too (Persistence 14.58→11.36, Status 10.20→10.07, Name 10.14→9.61) although T2
 did not touch them; that is run-to-run variance, and the T1–T3 checkpoint should re-read all four.
+
+### T3: Replace the sleeps in the Status, Name and Persistence suites
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | 11 sleeps deleted, 1 replaced by `await settle()` (`testSetStatusIgnoresTheMainWorktree`). Four cases lost `async throws` — `testNoneGroupingReturnsTheSameOrderAsGroup`, `testStatusGroupingStablyPartitionsTheBaseOrder`, `testStatusGroupingAppliesVisibilityFirst`, `testMatchesContainingGroupName` — plus `testMatchesStatusDisplayName`, which had no sleep but was already `async throws` with neither in its body. 13 cases and every assertion unchanged. |
+| `Tests/WorktreeGroupManagerNameTests.swift` | 2 sleeps replaced by `await settle()`, 1 by `await reload.value` on the `Task` `reconcile` now returns. `testMatchesStoredName` drops `async` (it still `try`s `repo.addWorktree`). 11 cases and every assertion unchanged. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | The one sleep in `testAProjectWhereTheExtensionCannotBeEnabledShowsNoGroups` replaced by `await settle(first)` — the manager there is a local. Nothing else in the file changed. |
+
+`grep -c "Task.sleep"` is 0 for all four suites, so the T1–T3 checkpoint's first criterion holds.
+`git diff Sources/` is empty: T3 is test-side only.
+
+The signature cleanup was applied absolutely per file, as T2 read it — "no test function left `async`
+or `throws` without an `await` or `try`" — rather than only to the bodies a sleep came out of. That
+is the one reason `testMatchesStatusDisplayName` and `testMatchesStoredName` appear in the diff.
+
+**Evidence.** Each "wrote nothing" case run alone with its rule reverted by `Edit` and restored the
+same way. `git diff --stat Sources/` is empty after all four.
+
+1. `testSetStatusIgnoresTheMainWorktree`, with `guard !wt.isMain, let path = wt.path` in `setStatus`
+   cut to `guard let path = wt.path`:
+
+   ```
+   WorktreeGroupManagerStatusTests.swift:40: error: … testSetStatusIgnoresTheMainWorktree : XCTAssertTrue failed
+   WorktreeGroupManagerStatusTests.swift:41: error: … testSetStatusIgnoresTheMainWorktree : XCTAssertNil failed: "true" - a main-worktree status must not even bootstrap the extension
+   Executed 1 test, with 2 failures (0 unexpected) in 0.349 seconds
+   ```
+
+2. `testSetNameIgnoresTheMainWorktree`, with the same guard cut from `setName`:
+
+   ```
+   WorktreeGroupManagerNameTests.swift:92: error: … testSetNameIgnoresTheMainWorktree : XCTAssertTrue failed
+   WorktreeGroupManagerNameTests.swift:94: error: … testSetNameIgnoresTheMainWorktree : XCTAssertNil failed: "true" - a main-worktree name must not even bootstrap the extension
+   Executed 1 test, with 2 failures (0 unexpected) in 0.352 seconds
+   ```
+
+3. `testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing`. The plan named one guard here — the
+   `stored == nil` early path. **Deleting it alone leaves the case green**:
+
+   ```
+   Test Case '…testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing' passed (0.262 seconds).
+   ```
+
+   The rule is two guards in series: `WorktreeGroupManager.setName`'s
+   `guard names[wt.id] != stored else { return }` stops the write being enqueued, and
+   `WorktreeConfigStore.set`'s nil branch returns `true` on `case .off` without bootstrapping, so
+   even an enqueued clear writes nothing. Reverting both — the manager guard deleted and the store's
+   nil branch replaced by `guard await enableExtension() else { return false }` — is red, on both
+   assertions, `core.bare` relocation included:
+
+   ```
+   WorktreeGroupManagerNameTests.swift:82: error: … : XCTAssertNil failed: "true"
+   WorktreeGroupManagerNameTests.swift:83: error: … : XCTAssertEqual failed: ("nil") is not equal to ("Optional("false")")
+   Executed 1 test, with 2 failures (0 unexpected) in 0.647 seconds
+   ```
+
+4. `testAProjectWhereTheExtensionCannotBeEnabledShowsNoGroups` **has no reverted-guard proof, and
+   cannot have one.** Its root is a bare `NSTemporaryDirectory()` folder that is not a repository and
+   is not inside one, so no `git config --local` write can ever land there whatever guard is removed.
+   The revert the plan named — `replaceLocalValues`' `guard await enableExtension()` and the
+   `unsetAllLocal` guard behind it, both reduced to discarded calls — is green:
+
+   ```
+   Test Case '…testAProjectWhereTheExtensionCannotBeEnabledShowsNoGroups' passed (0.254 seconds).
+   ```
+
+   `enableExtension` cannot get past `git rev-parse --git-common-dir` there
+   (`WorktreeConfigStore.swift:321`), and neither `--unset-all` nor `--add` can either, so the case's
+   `second.groups.isEmpty` is unfalsifiable by construction rather than under-guarded. What
+   `settle(first)` buys is spec decision 6: the `defer` that removes `plainRoot` no longer races the
+   queued subprocesses. That `settle` genuinely waits for an enqueued write is proved by proofs 1–3,
+   which are the same method: each read `extensions.worktreeConfig` back as `"true"` on the line
+   after `settle()`, which only a completed `git config` subprocess can produce.
+
+`testReconcileRightAfterSetNameDoesNotRaceTheWrite` needs no revert of its own — it already had a
+watched failure when it was written, and `await reload.value` is strictly stronger than the 300 ms it
+replaces: `waitForStoredName` returns the moment the write lands, which can be before `reloadConfig`
+has published, and the reload `Task` is awaited to completion rather than outlasted.
+
+**Deviations from the plan.** Two, both in the verification step rather than the change:
+proof 3 needs a second revert in `WorktreeConfigStore` because the rule is two guards in series, and
+proof 4 does not exist because the case is unfalsifiable. Neither changes what T3 edits.
+
+**Gate.** `./scripts/ci.sh` — passed. 556 tests, 0 failures, 92.6s. `git status --porcelain` shows
+only this change's three test files plus the plan; no `default.profraw`, as the app was never
+launched, and `git diff Sources/` is empty.
+
+**Checkpoint: after T1–T3.**
+
+| Suite | Baseline (T1) | After T3 |
+| --- | --- | --- |
+| `WorktreeGroupManagerTests` | 19.44s | 15.61s |
+| `WorktreeGroupPersistenceTests` | 14.58s | 11.49s |
+| `WorktreeGroupManagerStatusTests` | 10.20s | 8.87s |
+| `WorktreeGroupManagerNameTests` | 10.14s | 9.19s |
+| Combined | 54.36s | 45.16s |
+
+Below the recorded baseline, and by less than the 8.4 s sleep census, for the reason T2 recorded: the
+git-config subprocesses the sleeps used to overlap are now paid at the awaited teardown.

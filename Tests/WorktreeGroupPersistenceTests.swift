@@ -245,7 +245,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         await first.loadTask?.value
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await settle(first)
 
         let second = WorktreeGroupManager(projectPath: plainRoot)
         await second.loadTask?.value
