@@ -217,6 +217,11 @@ struct TaskDetailView: View {
         }
     }
 
+    /// Carries no `.disabled`, unlike the Tasks toolbar button it replaces: `pathBar` renders only
+    /// inside `body`'s `if let task`, and `TaskDetailView` is built only in `readinessDetailView`'s
+    /// `.ready` branch, which `Ghostty.App` never leaves once `init` has set it. Both halves of the
+    /// old gate are structural here. `app` is non-nil for that same reason — the guard is the
+    /// residual pointer check the launch itself needs, the same split `runPlan` makes.
     private func toggleTerminal() {
         guard let app = ghosttyApp.app else { return }
         workTaskCoordinator.toggleTaskTerminal(taskId: taskId, app: app)
