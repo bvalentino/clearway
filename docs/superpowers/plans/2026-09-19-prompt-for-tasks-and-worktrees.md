@@ -558,6 +558,52 @@ for `Ghostty.SurfaceView`. Verification is the operator's hands-on check.
 
 `./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
 
+### C4: Start Now's agent commands are omitted, not disabled
+
+**Reported:** on the Tasks destination with a backlog task selected and its detail showing, the
+Start Now chevron opens a menu whose two agent commands ("Work the task", "Plan the task") are
+greyed out, while "Add Agent Command…" below them is live.
+
+**Diagnosis.** The split difference between the greyed items and the live one is
+`.disabled(task == nil || ghosttyApp.app == nil)`, which `startNowItems` stacked onto each command
+`Button` inside the `Menu`'s content. Neither operand is true when the operator sees the menu:
+`selection` is `ContentView`'s `selectedTaskId`, non-nil because `TaskDetailView` renders for it,
+and `selectedTask` resolves it out of `workTaskManager.tasks`, which still holds the backlog task;
+`Ghostty.App.init` assigns `appHandle` and `readiness = .ready` in the same synchronous run, so
+`app` is non-nil on every destination — C1 already recorded that. What is stale is the rendered
+`NSMenuItem`: the toolbar's menu is first built with nothing selected, and macOS does not reliably
+push a later change of an existing item's enabled flag back into it. The unconditional editor door
+never carried a `.disabled`, so it was never wrong.
+
+`ghosttyApp.app` compounds it. It is a computed property over `appHandle`, not `@Published`, so a
+menu built before the handle existed has no published change to re-evaluate against; the sibling
+toolbar buttons gate on `readiness` for exactly that reason.
+
+**Changes.** `startNowItems` renders the commands only under
+`if let task, ghosttyApp.readiness == .ready, !agentCommands.isEmpty`, with no `.disabled` on the
+items. Changing the item set changes the content's structural identity, so SwiftUI rebuilds the
+menu instead of trying to re-enable items already in it. `plan` takes a non-optional `WorkTask` now
+that the call site has unwrapped it, and keeps its `guard let app = ghosttyApp.app` — the launch is
+the one place that genuinely needs the pointer. The editor door stays unconditional for the reason
+C2 gave.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `startNowItems` gates the command items structurally on `task` + `readiness`; the per-item `.disabled` gone; `plan(_:using:)` takes a non-optional task. |
+| `CLAUDE.md` | The Start Now paragraph records the omit-don't-disable rule and why the gate is `readiness`, not `app`. |
+
+**Evidence.** No test. The defect is a macOS toolbar-menu rendering rule — an `NSMenuItem`'s
+enabled flag not tracking a later view update — which XCTest cannot observe: the app has no
+view-hierarchy test host, the same limit `CLAUDE.md` records for `Ghostty.SurfaceView`, and the
+decision content that could be lifted out already is (`SavedCommand.filter(_:by: .agent)`, pinned
+by `SavedCommandTests`). Verification is the operator's hands-on check.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`

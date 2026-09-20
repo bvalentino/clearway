@@ -235,6 +235,14 @@ struct WorkTaskListView: View {
     /// plans the right-clicked row rather than the selection; a nil task is the toolbar with
     /// nothing selected.
     ///
+    /// The command items are **omitted** when there is nothing to plan, never rendered disabled:
+    /// a macOS toolbar menu updates an existing `NSMenuItem`'s enabled flag unreliably, so a menu
+    /// first built with nothing selected kept its commands greyed out after a task was selected.
+    /// Omitting them changes the content's structural identity, which rebuilds the menu.
+    /// The terminal half of the gate is `readiness`, the `@Published` value the sibling toolbar
+    /// buttons already use; `ghosttyApp.app` is a plain computed property with no change to
+    /// publish, so a menu built before it was non-nil had nothing to re-evaluate against.
+    ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
     ///
@@ -243,10 +251,9 @@ struct WorkTaskListView: View {
     /// leads with the same action instead.
     @ViewBuilder
     private func startNowItems(for task: WorkTask?) -> some View {
-        if !agentCommands.isEmpty {
+        if let task, ghosttyApp.readiness == .ready, !agentCommands.isEmpty {
             ForEach(agentCommands) { command in
                 Button(command.name) { plan(task, using: command) }
-                    .disabled(task == nil || ghosttyApp.app == nil)
             }
             Divider()
         }
@@ -256,8 +263,8 @@ struct WorkTaskListView: View {
     /// Selecting the task is part of running it: the terminal the plan opens is the one
     /// `TaskDetailView` renders for the selection, so planning a row the user only right-clicked
     /// would otherwise run out of sight.
-    private func plan(_ task: WorkTask?, using command: SavedCommand) {
-        guard let task, let app = ghosttyApp.app else { return }
+    private func plan(_ task: WorkTask, using command: SavedCommand) {
+        guard let app = ghosttyApp.app else { return }
         selection = task.id
         workTaskCoordinator.planTask(task, using: command, app: app)
     }
