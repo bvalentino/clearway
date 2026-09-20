@@ -497,3 +497,57 @@ launched, and `git diff Sources/` is empty.
 
 Below the recorded baseline, and by less than the 8.4 s sleep census, for the reason T2 recorded: the
 git-config subprocesses the sleeps used to overlap are now paid at the awaited teardown.
+
+### T4: Two new cases in WorktreeGroupManagerTests
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerTests.swift` | Two cases added, each beside the gesture it extends. `testAddWorktreeToTheGroupItAlreadyHoldsPublishesNothing` sits under "One publish per drop", after `testAddWorktreePublishesOnce`, and reuses the file's `countingEmissions` helper. `testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection` sits after `testRemoveWorktreeFromGroup`, built on the shape of `testDeleteGroupAppendsItsMembersToTheUngroupedSection`. 33 cases, up from 31. No sleep introduced; both bodies are plain `func test…()` per the T2/T3 convention, neither awaiting nor throwing. |
+
+Case 1 pins the position with the literal `0` on both sides of the gesture rather than capturing it
+into a local: a captured value would compare equal to itself if the seed ever stopped landing, and
+the literal makes the renumber the removed guard causes (0 → 1) the thing that fails.
+
+**Evidence.** Each case run alone with its rule reverted by `Edit` and restored the same way.
+`git diff --stat Sources/` is empty after both.
+
+1. `testAddWorktreeToTheGroupItAlreadyHoldsPublishesNothing`, with
+   `guard groupNames[wt.id] != name else { return }` deleted from `addWorktree`
+   (`WorktreeGroupManager.swift:137`):
+
+   ```
+   WorktreeGroupManagerTests.swift:154: error: … testAddWorktreeToTheGroupItAlreadyHoldsPublishesNothing : XCTAssertEqual failed: ("1") is not equal to ("0")
+   WorktreeGroupManagerTests.swift:156: error: … testAddWorktreeToTheGroupItAlreadyHoldsPublishesNothing : XCTAssertEqual failed: ("Optional(1)") is not equal to ("Optional(0)") - the re-add must not renumber it
+   Executed 1 test, with 2 failures (0 unexpected) in 0.482 seconds
+   ```
+
+   Both the emission count and the position fail, which is the case pinning the publish and its
+   consequence rather than the counter alone. Membership stays `"Group"` either way — a re-add
+   cannot move a worktree out of the group it is already in — so that third assertion is a
+   statement of the invariant, not a discriminator.
+
+2. `testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection`, with
+   `placement.positions[wt.id] = position` deleted from `removeWorktreeFromGroup`
+   (`WorktreeGroupManager.swift:159`):
+
+   ```
+   WorktreeGroupManagerTests.swift:122: error: … testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection : XCTAssertEqual failed: ("Optional(0)") is not equal to ("Optional(2)") - appended after the ungrouped rows
+   WorktreeGroupManagerTests.swift:123: error: … testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection : XCTAssertEqual failed: ("["/tmp/alpha", "/tmp/grouped", "/tmp/bravo"]") is not equal to ("["/tmp/alpha", "/tmp/bravo", "/tmp/grouped"]")
+   Executed 1 test, with 2 failures (0 unexpected) in 0.662 seconds
+   ```
+
+   The rendered order is the interleaving the rule exists to prevent: the row keeps its in-group
+   slot 0, ties with `alpha` on the ungrouped section's slot 0, and lands between rows the user
+   never moved.
+
+**Deviations from the plan.** None.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 558 tests, 0 failures, 93.5s.
+`git status --porcelain` shows only `Tests/WorktreeGroupManagerTests.swift` and this plan; no
+`default.profraw`, as the app was never launched, and `git diff Sources/` is empty.
+
+**Suite wall time** (summed case durations from the T4 `.xcresult`):
+
+| Suite | After T3 | After T4 |
+| --- | --- | --- |
+| `WorktreeGroupManagerTests` | 15.61s (31 cases) | 15.36s (33 cases) |

@@ -104,6 +104,25 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertNil(manager.groupName(for: wt.id))
     }
 
+    /// Clearing a membership renumbers the worktree the way `deleteGroup` renumbers a whole group:
+    /// the position it held inside its group is a slot the ungrouped rows already occupy, so
+    /// carrying it across would interleave the row among ones the user never moved.
+    func testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection() {
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
+        let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
+        let all = [alpha, bravo, grouped]
+        manager.createGroup(named: "Holding")
+        manager.seedPositions(for: all, openIds: [])
+        manager.addWorktree(grouped, toGroupNamed: "Holding")
+        XCTAssertEqual(manager.positions[grouped.id], 0, "a group numbers from zero of its own")
+
+        manager.removeWorktreeFromGroup(grouped)
+
+        XCTAssertEqual(manager.positions[grouped.id], 2, "appended after the ungrouped rows")
+        XCTAssertEqual(renderedOrder(all), [alpha.id, bravo.id, grouped.id])
+    }
+
     // MARK: - One publish per drop
 
     /// A drop changes a worktree's group and its slot together. Publishing them as two mutations
@@ -118,6 +137,23 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         }
 
         XCTAssertEqual(emissions, 1)
+    }
+
+    /// A drop onto the header of the group the worktree already sits in must publish nothing at
+    /// all: one emission is still the remove+insert round-trip that crashes the backing table.
+    func testAddWorktreeToTheGroupItAlreadyHoldsPublishesNothing() {
+        manager.createGroup(named: "Group")
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
+        manager.addWorktree(wt, toGroupNamed: "Group")
+        XCTAssertEqual(manager.positions[wt.id], 0)
+
+        let emissions = countingEmissions {
+            manager.addWorktree(wt, toGroupNamed: "Group")
+        }
+
+        XCTAssertEqual(emissions, 0)
+        XCTAssertEqual(manager.groupName(for: wt.id), "Group")
+        XCTAssertEqual(manager.positions[wt.id], 0, "the re-add must not renumber it")
     }
 
     /// Same rule for the reorder drop, which moves a slot per row: writing the slots one by one
