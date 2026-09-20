@@ -223,8 +223,8 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     enabled flag unreliably, and a menu first built with nothing selected kept its commands greyed
     out after a task was selected, while the unconditional editor door beside them stayed live.
     Changing the item set changes the content's structural identity, which rebuilds the menu.
-    The terminal half of that gate is `readiness` and not `ghosttyApp.app` for the same reason the
-    sibling toolbar buttons use it: `app` is a computed property over `appHandle` with no
+    The terminal half of that gate is `readiness` and not `ghosttyApp.app`: `readiness` is
+    `@Published`, while `app` is a computed property over `appHandle` with no
     `@Published` change to re-evaluate against. `app` stays the guard inside `plan`, where the
     launch actually needs the pointer.
     That is also why the toolbar control carries **no `.disabled`**: it would take the chevron with

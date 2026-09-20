@@ -267,3 +267,11 @@ run separately after the last edit: no output, exit status 0.
 
 `git status --porcelain` before the commit showed the four modified files plus the untracked spec and
 plan documents, which are committed with this task. No `default.profraw` — the app was not launched.
+
+### Simplify
+
+Dropped the now-false "the sibling toolbar buttons already use it" cross-reference from
+`startNowItems`' doc comment and the matching CLAUDE.md sentence — the moved toggle was the only such
+sibling — leaving the `readiness`-over-`app` reason stated on its own. Renamed the caller in
+`WorkTaskCoordinator+TaskTerminal.swift`'s doc comment from "status bar button" to "path bar button",
+matching `TaskDetailView.pathBar(for:)`. Comments only; no code changed.

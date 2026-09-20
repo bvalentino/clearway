@@ -248,9 +248,9 @@ struct WorkTaskListView: View {
     /// a macOS toolbar menu updates an existing `NSMenuItem`'s enabled flag unreliably, so a menu
     /// first built with nothing selected kept its commands greyed out after a task was selected.
     /// Omitting them changes the content's structural identity, which rebuilds the menu.
-    /// The terminal half of the gate is `readiness`, the `@Published` value the sibling toolbar
-    /// buttons already use; `ghosttyApp.app` is a plain computed property with no change to
-    /// publish, so a menu built before it was non-nil had nothing to re-evaluate against.
+    /// The terminal half of the gate is `readiness` and not `ghosttyApp.app`: `readiness` is
+    /// `@Published`, while `app` is a plain computed property with no change to publish, so a menu
+    /// built before it was non-nil had nothing to re-evaluate against.
     ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
