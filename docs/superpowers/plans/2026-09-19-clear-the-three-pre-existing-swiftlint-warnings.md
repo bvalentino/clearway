@@ -22,7 +22,7 @@ Breaks down `docs/superpowers/specs/2026-09-19-clear-the-three-pre-existing-swif
    treat an empty result as "nothing usable" (`:163`, `:191-195`, `:201-202`), so returning
    `String?` would add three nil branches for a condition the store cannot produce (spec decision 4).
 5. `WorktreeDraft.init() {}` is **kept** and the rule suppressed with one
-   `// swiftlint:disable:next unneeded_synthesized_initializer` line. Deleting it — what the rule
+   `// swiftlint:disable:this unneeded_synthesized_initializer` directive. Deleting it — what the rule
    and `--fix` would do — restores an internal memberwise `init(name:branch:branchIsHandEdited:)`
    that can build a hand-edited draft with an empty branch, a state no mutator can reach. The rule's
    only documented escape is a `private`/`fileprivate` init, which this one must not have (spec
@@ -32,7 +32,9 @@ Breaks down `docs/superpowers/specs/2026-09-19-clear-the-three-pre-existing-swif
    `branchIsHandEdited`, indirection with no product meaning, and the tidier single-property variant
    contradicts what `Tests/WorktreeDraftTests.swift:67-77` pins (spec decision 6).
 7. The doc comment above `init()` (`WorktreeDraft.swift:13-16`) stays unchanged. The directive goes
-   **between** that comment and the declaration (spec decision 7).
+   **on the declaration line** as `disable:this`, not on a separate `disable:next` line between the
+   comment and the declaration: a `//` line there detaches the `///` block from what it documents
+   and trips `orphaned_doc_comment` (spec decision 7, revised during T2).
 8. No new tests. The only behavioural delta is git stdout that is not valid UTF-8, which the store
    cannot produce — every value reaches git as a Swift `String` through `setArgs` — so pinning it
    would mean writing raw bytes into `config.worktree` behind the store's back (spec decision 8).
@@ -125,20 +127,22 @@ deliberate behaviour of `parseList`, `extensionState`, or any other pre-existing
 
 **What it does**
 
-Adds exactly one line to the file: `// swiftlint:disable:next unneeded_synthesized_initializer`,
-placed between the existing doc comment (`:13-16`) and `init() {}` (`:17`), so the file reads:
+Appends one directive to `init() {}` (`:17`), leaving the existing doc comment (`:13-16`) attached
+to it, so the file reads:
 
 ```swift
     /// Declared so the synthesized memberwise initializer is not: `private(set)` does not
     /// suppress it, and it would let a caller build a hand-edited draft with an empty branch —
     /// a state no mutator can reach, which neither regenerates from the name nor creates.
-    // swiftlint:disable:next unneeded_synthesized_initializer
-    init() {}
+    init() {} // swiftlint:disable:this unneeded_synthesized_initializer
 ```
 
-`disable:next`, not a file-wide `swiftlint:disable` and not a `disable`/`enable` pair — the
-suppression must cover this one declaration and nothing else. The doc comment is not reworded,
-reordered or extended; the directive does not restate it. `init()` keeps internal access: making it
+`disable:this`, not a file-wide `swiftlint:disable` and not a `disable`/`enable` pair — the
+suppression must cover this one declaration and nothing else. A separate `disable:next` line
+between the doc comment and the declaration covers the same one declaration but detaches the
+comment from it, trading the target warning for `orphaned_doc_comment`; see decision 7 and the
+build log. The doc comment is not reworded, reordered or extended; the directive does not restate
+it. `init()` keeps internal access: making it
 `private` or `fileprivate` would also silence the rule but would break `SidebarSheets.swift:10` and
 the `WorktreeDraft()` calls in `Tests/WorktreeDraftTests.swift`.
 
@@ -150,7 +154,7 @@ no property access levels, no mutators, no `slug`.
 - `WorktreeDraft.init() {}` still exists with internal access, and the three stored properties keep
   their `private(set) var` declarations, so the memberwise initializer stays unavailable outside the
   type.
-- The file's only diff is the single added directive line.
+- The file's only diff is the directive appended to the `init()` line.
 - `swiftlint lint --quiet` reports neither `unneeded_synthesized_initializer` nor
   `superfluous_disable_command` for this file — the second is the check that the directive is
   actually silencing something rather than sitting unused.
@@ -163,7 +167,7 @@ no property access levels, no mutators, no `slug`.
 ## Exit condition
 
 After both tasks: `swiftlint lint --quiet` prints nothing at all, `./scripts/ci.sh` is green, and
-the diff against base is three changed lines plus one added line across two files, with
+the diff against base is four changed lines across two files, with
 `.swiftlint.yml` and `scripts/ci.sh` untouched.
 
 ## Risks
@@ -252,8 +256,10 @@ output above is the whole of the evidence.
 
 **Deviations from the plan**
 
-One, forced by the linter. T2 specified `// swiftlint:disable:next unneeded_synthesized_initializer`
-on its own line *between* the doc comment and `init()` (spec decision 7). That placement clears the
+One, forced by the linter, and since accepted by the operator: spec decision 7, carried decision 7
+above and T2's body have been rewritten to the landed placement, so what follows is the record of
+why it changed. T2 originally specified `// swiftlint:disable:next unneeded_synthesized_initializer`
+on its own line *between* the doc comment and `init()`. That placement clears the
 target warning but introduces a new one, because a `//` line between a `///` block and its
 declaration detaches the two:
 
@@ -264,7 +270,7 @@ Sources/App/WorktreeDraft.swift:14:5: warning: Orphaned Doc Comment Violation: A
 Trading one warning for another fails the objective, so the directive moved onto the declaration
 line itself as `disable:this`. This keeps every constraint the plan and spec actually argue for:
 the suppression still covers exactly one declaration and no region, the doc comment is unchanged
-and stays attached — decision 7's point in preferring that placement — and the diff is still a
+and stays attached — which is what decision 7 set out to protect — and the diff is still a
 single line. `disable:next` above the doc comment was rejected as well: it would cover the comment
 line rather than the declaration, leaving the rule to fire and adding a superfluous command.
 
@@ -273,3 +279,29 @@ line rather than the declaration, leaving the rule to fire and adding a superflu
 `./scripts/ci.sh` — green, run after the final edit. `Executed 535 tests, with 0 failures
 (0 unexpected)`; the script runs under `set -euo pipefail` and reached its final `==> CI passed.`
 line, so exit status 0.
+
+### Simplify
+
+Nothing simplified: the four-line code diff came back clean on reuse and efficiency, and the two
+quality findings were both declined. Collapsing `values(forWorktreeAt:)`'s guard into
+`String(data:encoding:).map(Self.parseList)` loses the explicit failure branch decision 3 pins and
+reads as `Sequence.map` over the dictionary it returns; `WorkTaskManager.swift:410` already uses the
+same guard shape. Extracting `trimmed(_:)`'s decode-trim-fallback into a helper shared with
+`Worktree.swift:401` would edit a file outside this change for two call sites of a one-liner —
+recorded as a follow-up instead.
+
+Docs only: spec decision 7 (and decision 5, "Files touched" and "Out of scope", plus the plan's
+carried decisions 5 and 7, T2's body, its second acceptance criterion and the exit condition) now
+state the landed `disable:this` placement and why `disable:next` was rejected. No code changed.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the final edit. `Executed 535 tests, with 0 failures
+(0 unexpected)`, `==> CI passed.`, exit status 0. `swiftlint lint --quiet --no-cache` prints
+nothing, exit status 0.
+
+A first run of the gate, made while four review subagents were running, exited 65 on
+`ShellPathStoreTests.testADegradedValueIsReturnedWithoutWaiting()` — a wall-clock assertion
+(`XCTAssertLessThan(Date().timeIntervalSince(started), 0.2)` against a 0.3s fake delay,
+`Tests/ShellPathStoreTests.swift:120-132`) that this branch does not touch and that predates it
+(`d7768d4`, PR #202). It passed on the unloaded re-run. Recorded as a follow-up, not fixed here.
