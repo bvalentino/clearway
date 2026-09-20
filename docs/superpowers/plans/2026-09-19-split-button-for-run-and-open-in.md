@@ -366,3 +366,28 @@ than asserting both in one. The delete case also asserts `lastUsedOpenInAppId` s
 removed app's id, pinning the spec's "nothing is cleaned up on delete". No other deviation.
 
 **Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### T3: Make the toolbar's Run button a split button
+
+| File | State |
+| --- | --- |
+| `Sources/App/RunCommandMenu.swift` | `body` applies the `.disabled(...)` gate once around a `menu` property that declares the `Menu` twice, switched on `savedCommandManager.lastRunCommand` — with `primaryAction: { run(lastCommand) }` when one resolves, without it when none does. The item list is one `@ViewBuilder private var items`, the label one `private var label`, so the two declarations cannot drift. `run(_:)` records the pick with `savedCommandManager.recordLastRun(command)` before the `guard let app = ghosttyApp.app`. Struct doc comment restated for the split button. |
+
+**Watched failure.** None, by design. The plan and the spec both rule out a view test here: the
+only decision is `lastRunCommand`, which T1 already pins in `SavedCommandManagerTests`, and XCTest
+cannot reach a SwiftUI body. Acceptance criteria 1-3 are on the operator's hand-check list.
+
+Reviewer checks, run against the file as committed:
+
+```
+$ grep -c 'ForEach(savedCommandManager.commands)' Sources/App/RunCommandMenu.swift
+1
+$ grep -c 'Text("Run")' Sources/App/RunCommandMenu.swift
+1
+```
+
+**Deviations.** The plan's two declarations each spell `label: { Text("Run") }`, which would put two
+`Text("Run")` expressions in the file against its own reviewer check; the label is factored into one
+`private var label` alongside `items` instead. No other deviation.
+
+**Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
