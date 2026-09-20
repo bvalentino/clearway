@@ -551,3 +551,44 @@ the literal makes the renumber the removed guard causes (0 → 1) the thing that
 | Suite | After T3 | After T4 |
 | --- | --- | --- |
 | `WorktreeGroupManagerTests` | 15.61s (31 cases) | 15.36s (33 cases) |
+
+### T5: New case — a status stored against main's id is ignored on the read path
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | One case added, `testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath`, in the "setStatus / status(for:)" section directly after `testSetStatusIgnoresTheMainWorktree` — the write-path sibling of the same rule. 14 cases, up from 13. Synthetic `/tmp` paths, like the other ordering cases in the file; no sleep introduced; plain `func test…()` per the T2/T3 convention, neither awaiting nor throwing. |
+
+The seed goes in through two `Worktree` values over one path, as the plan specified: `setStatus(.done,
+for:)` against a **non-main** worktree at `/tmp/main` puts `.done` into `statuses["/tmp/main"]`, which
+`readConfig` can never do, and the `isMain: true` worktree at that same path is what the assertions
+read. The discriminating pair is `.done` on main's path against `.todo` on `/tmp/alpha`: `.todo`
+precedes `.done` in `WorktreeStatus.allCases`, so an unguarded `status(for:)` sorts main *behind*
+alpha rather than merely into a different bucket.
+
+**Evidence.** Run alone with `status(for:)` reverted by `Edit` to `statuses[wt.id]`
+(`WorktreeGroupManager.swift:225`) and restored the same way. `git diff --stat Sources/` is empty
+after the restore.
+
+```
+WorktreeGroupManagerStatusTests.swift:61: error: … testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath : XCTAssertNil failed: "done"
+WorktreeGroupManagerStatusTests.swift:62: error: … testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath : XCTAssertEqual failed: ("["/tmp/alpha", "/tmp/main"]") is not equal to ("["/tmp/main", "/tmp/alpha"]") - main stays first; honouring its stored `.done` would sort it behind alpha's `.todo`
+Test Case '…testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath' failed (0.232 seconds).
+** TEST FAILED **
+```
+
+Both the accessor assertion and the ordering assertion fail, which is the bar the plan set: the case
+pins the consequence, not the accessor alone. The third assertion — `statuses[main.id] == .done` —
+stays green under the revert, which is what it is for: it proves the seed landed, so the other two
+are failing on the read path rather than on an empty map.
+
+**Deviations from the plan.** None.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 559 tests, 0 failures, 93.6s.
+`git status --porcelain` shows only `Tests/WorktreeGroupManagerStatusTests.swift` and this plan; no
+`default.profraw`, as the app was never launched, and `git diff Sources/` is empty.
+
+**Suite wall time** (summed case durations from the T5 `.xcresult`):
+
+| Suite | After T3 | After T5 |
+| --- | --- | --- |
+| `WorktreeGroupManagerStatusTests` | 8.87s (13 cases) | 8.69s (14 cases) |

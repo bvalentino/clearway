@@ -44,6 +44,33 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         )
     }
 
+    /// `setStatus` refuses main, but `config.worktree` is hand-editable, so a status can still
+    /// reach `statuses` under main's id. The read path has to refuse it too, or main drops out of
+    /// the top of the by-status order and `⌘1` moves with it. Driven through two `Worktree` values
+    /// over one path, since `Worktree.id` is the path and nothing else can seed that entry.
+    func testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath() {
+        let mainPath = "/tmp/main"
+        manager.setStatus(.done, for: makeWorktree(branch: "main", path: mainPath))
+
+        let main = makeWorktree(branch: "main", path: mainPath, isMain: true)
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        manager.setStatus(.todo, for: alpha)
+        manager.setGrouping(.status)
+
+        XCTAssertEqual(manager.statuses[main.id], .done, "the seed landed under main's id")
+        XCTAssertNil(manager.status(for: main))
+        XCTAssertEqual(
+            manager.sidebarOrderedWorktrees(
+                [main, alpha],
+                showingDetached: false,
+                openIds: [],
+                matches: { _ in true }
+            ).map(\.id),
+            [main.id, alpha.id],
+            "main stays first; honouring its stored `.done` would sort it behind alpha's `.todo`"
+        )
+    }
+
     // MARK: - reconcile reads statuses instead of pruning them
 
     func testReconcilePopulatesStatusesFromWorktreeConfig() async throws {
