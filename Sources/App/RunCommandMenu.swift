@@ -38,14 +38,19 @@ struct RunCommandMenu: View {
     /// the control is built, and never refilled — see the split button note in CLAUDE.md. Saving
     /// the first command flips the branch below and so rebuilds the control anyway; every command
     /// saved after that reaches the dropdown only through this key.
+    ///
+    /// The primary action therefore resolves `primaryCommand` when it is clicked rather than
+    /// capturing the branch's binding: the control keeps the values its actions captured, and this
+    /// key omits the primary, so an edit to the primary command would otherwise leave the label
+    /// half running the text it was built with.
     @ViewBuilder private var menu: some View {
-        if let command = savedCommandManager.primaryCommand {
+        if savedCommandManager.primaryCommand != nil {
             Menu {
                 items
             } label: {
                 Text(savedCommandManager.runButtonTitle)
             } primaryAction: {
-                run(command)
+                if let command = savedCommandManager.primaryCommand { run(command) }
             }
             .id(savedCommandManager.menuCommands)
         } else {

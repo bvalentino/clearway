@@ -392,6 +392,24 @@ branch and so rebuilds the control.
 Each split button now carries `.id(<its own dropdown's contents>)`, which rebuilds the control
 whenever that list changes. The rule is recorded in CLAUDE.md.
 
+### C5: The Run label half captures its command, and the payload init warns (operator, 2026-09-20)
+
+Two findings from the second review pass, both already proven.
+
+1. **The Run split button's label half ran a stale command.** `RunCommandMenu` bound the primary
+   command in the branch condition — `if let command = savedCommandManager.primaryCommand { …
+   primaryAction: { run(command) } }` — so the `NSSegmentedControl`'s action kept the value it
+   captured when the control was built (the C4 mechanism). The control's `.id` key is
+   `menuCommands`, which omits the primary, so editing the primary command's text rebuilds nothing:
+   the label updated to the new name while a click still ran the old command text. The action now
+   resolves `savedCommandManager.primaryCommand` at click time, the way `OpenInMenu` already reads
+   `settings.primaryOpenInApp`. The branch stays — it still chooses between the split button and the
+   empty-list plain menu — but tests `!= nil` rather than binding a value.
+2. **C1's `SavedCommandsPayload` memberwise init warns.** SwiftLint's
+   `unneeded_synthesized_initializer` fires on it. The init is load-bearing (no defaults, so a field
+   added later is a compile error at `save()` — spec Decision 6), so it is kept and the rule is
+   suppressed on its line.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -730,3 +748,38 @@ The first run of it reported 2 failures, both in `WorktreeGroupManagerStatusTest
 `clearway.status` from a temp worktree's git config). Neither touches a menu, a toolbar or either
 model changed here, and both passed on the re-run above, which is the run that stands: flaky
 against real `git worktree` fixtures, not a regression from this change.
+
+### C5: The Run label half captures its command, and the payload init warns
+
+| File | State |
+| --- | --- |
+| `Sources/App/RunCommandMenu.swift` | The split-button branch tests `savedCommandManager.primaryCommand != nil` and its `primaryAction:` resolves `primaryCommand` on the click, matching `OpenInMenu`'s `if let app = settings.primaryOpenInApp { open(app) }`. The doc comment above `menu` records why. The empty-list branch, `items`, `run(_:)` and the `.id` are untouched. |
+| `Sources/App/SavedCommandStore.swift` | `SavedCommandsPayload`'s memberwise init carries a trailing `// swiftlint:disable:this unneeded_synthesized_initializer`. |
+| `CLAUDE.md` | The split-button paragraph now states the primary action unwraps **inside** the closure, never a value the branch bound, and why Run's `.id` key cannot save it. |
+
+**Evidence.** No unit test, for the same reason C4 carries none: the defect is in what a realized
+toolbar `NSSegmentedControl` holds onto, and nothing on that path is reachable from XCTest — the
+split this project already makes for `Ghostty.SurfaceView`. The mechanism is the one C4 proved and
+recorded, with its probe output quoted in that section: the control's `NSMenu` and the values its
+actions captured are frozen at build time while the label segment keeps updating. Read against this
+file, `.id(savedCommandManager.menuCommands)` excludes the primary by construction
+(`SavedCommandManager.menuCommands` is `commands` minus `primaryCommand`), so editing the primary
+command's `command` text changes neither the key nor `commands.count`, the control is not rebuilt,
+and the captured `SavedCommand` value — a struct, copied into the closure — still carries the old
+text. `runButtonTitle` is read in the `label:` builder rather than captured, which is why the button
+renamed itself and the click did not follow.
+
+F2 is a lint fact rather than a behaviour: `swiftlint lint --quiet` reported
+`Sources/App/SavedCommandStore.swift:16:5: warning: Unneeded Synthesized Initializer Violation`
+before the change and reports nothing for that file after it.
+
+**Deviations.** One. The brief asked for `// swiftlint:disable:next` on the line above the init. That
+placement lands between the init's doc comment and the init, which SwiftLint then reports as
+`SavedCommandStore.swift:14:5: warning: Orphaned Doc Comment Violation` — one warning traded for
+another. The directive is therefore `// swiftlint:disable:this` trailing the `init` line, which
+leaves the doc comment attached and the file clean.
+
+**Gate.** `./scripts/ci.sh` — 571 tests, 0 failures, `==> CI passed.`
+`swiftlint lint --quiet` reports 3 warnings, all pre-existing and none in a file this change
+touches: `WorktreeConfigStore.swift:99` and `:266` (`optional_data_string_conversion`) and
+`WorktreeDraft.swift:17` (`unneeded_synthesized_initializer`).

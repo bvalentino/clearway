@@ -307,7 +307,13 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     has been picked, because the primary action falls back to the first item in display order. That
     resolution is `SavedCommandManager.primaryCommand` and `SettingsManager.primaryOpenInApp` — the
     remembered item or the list's first — so it is unit-tested off the view, and the `primaryAction:`
-    closure only unwraps it. Do not go back to declaring the `Menu` twice on whether something was
+    closure only unwraps it. It unwraps it **inside the closure**, on the click, never as a value the
+    branch's `if let` bound for it: the realized control keeps whatever its actions captured (see the
+    `.id` rule below), and Run's key omits the primary, so editing the primary command's text rebuilt
+    nothing and the label half went on running the old text (operator change C5). Both menus
+    therefore read `savedCommandManager.primaryCommand` / `settings.primaryOpenInApp` in the action
+    and branch on the same value only to choose the declaration.
+    Do not go back to declaring the `Menu` twice on whether something was
     **picked**: that drew a plain dropdown in the fresh state, which is what this replaced. Both
     record the pick rather than a successful launch — `RunCommandMenu.run(_:)` records before its
     `ghosttyApp.app` guard — or an app or command that fails to launch could never become the
