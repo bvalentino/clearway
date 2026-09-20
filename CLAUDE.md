@@ -195,9 +195,14 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     slot is `private(set)`; `confirmCreate` is the only thing that can build a well-formed record.
     `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
     `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
-    to the relocated file), the shadow task, the selection, the afterCreate hook, and the command
-    **last** — after the hook is *started*, not after it exits, since nothing has ever awaited a
-    hook. That handler clears `lastCreatedBranch` **before** its worktree lookup, not after: the
+    to the relocated file), the shadow task, the creation mark — which **carries that command** —
+    the selection, and the afterCreate hook. The handler launches nothing itself: the command rides
+    the mark into `TerminalManager.pane(for:)` and becomes the worktree's **first** tab, in place of
+    the Settings → Main Terminal tab a created worktree otherwise opens. Running it from the handler
+    instead opened both, since `markWorktreeCreated` had already claimed the first tab for the Main
+    Terminal agent. Relocation still precedes the launch — the mark is read only when the pane is
+    built, which cannot happen before the handler reaches `markWorktreeCreated`. Nothing has ever
+    awaited the hook, and nothing does now. That handler clears `lastCreatedBranch` **before** its worktree lookup, not after: the
     signal is an edge, and one left standing through a silent failure makes a retry that assigns
     the same branch not a change, so the create that did succeed would never be handled at all.
     The path `completePendingCreate` substitutes comes from `relocateTaskToWorktree` **returning
@@ -284,6 +289,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
     created pass an agent command built by
     `buildBareCommand` (`TerminalManager+Agent.swift`).
+    A worktree's first tab is chosen once, by `TerminalManager.firstTabSource(afterCreateCommand:mainCommand:)`,
+    which `takeFirstTabSource` consumes the creation mark to reach when `pane(for:)` builds the
+    pane: the create sheet's "Run after create" pick wins and goes through `run`, else the Main
+    Terminal command opens an agent tab, else a login shell. A pick **replaces** the Main Terminal
+    tab rather than adding one — two agents on a fresh worktree is the bug the rule exists to
+    prevent — and the rule is `static`, so the truth table is testable without a `ghostty_app_t`.
     An agent tab goes through `startAgentTab`, which is **synchronous** even though its body is a
     `Task`: it has to take the per-worktree `agentLaunchesInFlight` claim in the caller's runloop
     turn, because the `await ShellEnvironment.awaitPath()` that follows leaves the pane with no tabs

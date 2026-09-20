@@ -694,6 +694,62 @@ pre-existing warnings in `WorktreeConfigStore.swift` and `WorktreeDraft.swift`, 
 touched). `git status --porcelain` before the commit listed only the modified files above — no
 untracked or ignored files.
 
+### C6: The Run after create command replaces the default first tab
+
+**Reported:** post-merge. Main (PR #229) made a freshly created worktree's first tab run the
+Settings → Main Terminal agent, via `TerminalManager.markWorktreeCreated(_:)` consumed by
+`pane(for:)`. This branch's `ContentView` `onChange(of: worktreeManager.lastCreatedBranch)` handler
+called `markWorktreeCreated(wt)` **and**, last, `terminalManager.run(afterCreateCommand, in:app:)`,
+so picking a "Run after create" command opened two agent tabs on the new worktree.
+
+**Change.** The creation mark carries the pick, and `pane(for:)` builds the first tab from it — one
+code path, as before. `createdWorktreeIds: Set<String>` becomes
+`createdWorktrees: [String: SavedCommand?]`, `markWorktreeCreated` takes the command, and
+`takeFirstTabCommand -> String?` becomes `takeFirstTabSource -> FirstTabSource`
+(`.loginShell` / `.mainTerminalAgent(String)` / `.savedCommand(SavedCommand)`). The decision itself
+is the pure `static firstTabSource(afterCreateCommand:mainCommand:)`: a pick wins, else the Main
+Terminal command, else a login shell. `pane(for:)` switches on it — `appendTab`, `startAgentTab`,
+or `run(_:in:app:)`, which already handles both a shell and an agent command and refuses nothing.
+`ContentView` no longer launches anything; with no pick the behaviour is main's, unchanged.
+
+Ordering holds: `completePendingCreate` relocates `TASK.md` and returns the resolved command before
+`markWorktreeCreated`, and the mark is read only when the pane is built, which cannot happen earlier
+in the handler. The afterCreate hook is untouched — it still pastes into the secondary panel, and
+nothing awaits it.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `FirstTabSource`, `createdWorktrees`, `markWorktreeCreated(_:afterCreateCommand:)`, `takeFirstTabSource`, `static firstTabSource`; `pane(for:)` switches; `cleanupState` drops the dictionary entry. |
+| `Sources/App/ContentView.swift` | Mark carries the pick; the trailing `terminalManager.run` block removed. |
+| `Tests/TerminalManagerTests.swift` | First-tab section rewritten onto `FirstTabSource`: four cases on the static rule, six on the mark. |
+| `CLAUDE.md` | The post-create sequence and the first-tab rule rewritten. |
+| `docs/superpowers/specs/2026-09-19-prompt-for-tasks-and-worktrees.md` | Decision 28. |
+
+**Evidence**
+
+`firstTabSource` was stubbed to let the Main Terminal command win over the pick — the pre-fix
+behaviour — and `./scripts/ci.sh` run: 625 tests, 3 failures, exit 65.
+
+```
+✖ test_firstTabSource_afterCreatePickReplacesTheMainTerminalTab, XCTAssertEqual failed: ("mainTerminalAgent("claude")") is not equal to ("savedCommand(Clearway.SavedCommand(id: 99CF721D-…, name: "Review", kind: Clearway.SavedCommand.Kind.agent, text: "", agent: "claude", autoRun: true))") - the picked command is the first tab; the Main Terminal agent must not open beside it
+✖ test_takeFirstTabSource_justCreatedWorktree_carriesTheAfterCreatePick, XCTAssertEqual failed: ("mainTerminalAgent("claude")") is not equal to ("savedCommand(…)")
+✖ test_takeFirstTabSource_markIsOneShot, XCTAssertEqual failed: ("mainTerminalAgent("claude")") is not equal to ("savedCommand(…)")
+```
+
+Restoring the rule turned all 625 green.
+
+**Deviations from the brief**
+
+None. Of the two seams the brief offered, the mark carries the command: skipping
+`markWorktreeCreated` when a pick exists would still have let `pane(for:)` open a login-shell first
+tab under the command's tab, which is the same defect one tab smaller.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 625 tests, 0 failures; SwiftLint zero errors and zero warnings.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`

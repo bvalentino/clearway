@@ -323,7 +323,10 @@ struct ContentView: View {
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
-            terminalManager.markWorktreeCreated(wt)
+            // The pick rides on the creation mark rather than being run from here: `pane(for:)` is
+            // the one place a first tab is built, so the command replaces the Main Terminal tab a
+            // created worktree opens instead of arriving as a second agent beside it.
+            terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand)
             detailSelection = .worktree(wt)
 
             // The hook runs in the secondary terminal, reusing the persistent login shell so its
@@ -333,11 +336,6 @@ struct ContentView: View {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
                 )
-            }
-
-            // Last, so the agent opens over a worktree that already has its TASK.md and its hook running.
-            if let afterCreateCommand, let app = ghosttyApp.app {
-                terminalManager.run(afterCreateCommand, in: wt, app: app)
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in

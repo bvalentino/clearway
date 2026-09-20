@@ -6,6 +6,10 @@ final class TerminalManagerTests: XCTestCase {
 
     private let testPath = "/opt/homebrew/bin:/usr/bin:/bin"
 
+    private func makeAgentCommand(name: String) -> SavedCommand {
+        SavedCommand(id: UUID(), name: name, kind: .agent, text: "", agent: "claude", autoRun: true)
+    }
+
     // MARK: - setInitialPanelVisibility
 
     func test_setInitialPanelVisibility_secondaryFollowsProvider() {
@@ -84,55 +88,93 @@ final class TerminalManagerTests: XCTestCase {
                       "the hook reveal must win over the open-on-start-off default")
     }
 
-    // MARK: - First tab command
+    // MARK: - First tab source
 
-    func test_takeFirstTabCommand_justCreatedWorktree_runsMainTerminalCommand() {
+    func test_firstTabSource_afterCreatePickReplacesTheMainTerminalTab() {
+        let pick = makeAgentCommand(name: "Review")
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: pick, mainCommand: "claude"),
+            .savedCommand(pick),
+            "the picked command is the first tab; the Main Terminal agent must not open beside it")
+    }
+
+    func test_firstTabSource_noPick_opensTheMainTerminalAgent() {
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: nil, mainCommand: "claude"),
+            .mainTerminalAgent("claude"))
+    }
+
+    func test_firstTabSource_noPickAndNoMainTerminalCommand_opensALoginShell() {
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: nil, mainCommand: nil),
+            .loginShell)
+    }
+
+    func test_firstTabSource_pickWinsWithNoMainTerminalCommand() {
+        let pick = makeAgentCommand(name: "Review")
+        XCTAssertEqual(
+            TerminalManager.firstTabSource(afterCreateCommand: pick, mainCommand: nil),
+            .savedCommand(pick))
+    }
+
+    func test_takeFirstTabSource_justCreatedWorktree_runsMainTerminalCommand() {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         manager.mainCommandProvider = { "claude" }
 
-        manager.markWorktreeCreated(wt)
-        XCTAssertEqual(manager.takeFirstTabCommand(for: wt.id), "claude")
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .mainTerminalAgent("claude"))
     }
 
-    func test_takeFirstTabCommand_existingWorktree_opensLoginShell() {
+    func test_takeFirstTabSource_justCreatedWorktree_carriesTheAfterCreatePick() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let pick = makeAgentCommand(name: "Review")
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: pick)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .savedCommand(pick))
+    }
+
+    func test_takeFirstTabSource_existingWorktree_opensLoginShell() {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         manager.mainCommandProvider = { "claude" }
 
-        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
-                     "a worktree Clearway did not create opens a login shell, whatever Main Terminal holds")
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "a worktree Clearway did not create opens a login shell, whatever Main Terminal holds")
     }
 
-    func test_takeFirstTabCommand_justCreatedWorktree_mainTerminalNone_opensLoginShell() {
+    func test_takeFirstTabSource_justCreatedWorktree_mainTerminalNone_opensLoginShell() {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         manager.mainCommandProvider = { nil }
 
-        manager.markWorktreeCreated(wt)
-        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id))
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell)
     }
 
-    func test_takeFirstTabCommand_markIsOneShot() {
+    func test_takeFirstTabSource_markIsOneShot() {
         let manager = TerminalManager()
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         manager.mainCommandProvider = { "claude" }
 
-        manager.markWorktreeCreated(wt)
-        XCTAssertEqual(manager.takeFirstTabCommand(for: wt.id), "claude")
-        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
-                     "closing a created worktree's terminals and reopening it is opening one that already exists")
+        let pick = makeAgentCommand(name: "Review")
+        manager.markWorktreeCreated(wt, afterCreateCommand: pick)
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .savedCommand(pick))
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "closing a created worktree's terminals and reopening it is opening one that already exists")
     }
 
-    func test_takeFirstTabCommand_marksOneWorktreeOnly() {
+    func test_takeFirstTabSource_marksOneWorktreeOnly() {
         let manager = TerminalManager()
         let created = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         let other = makeWorktree(branch: "other", path: "/tmp/other", isMain: false)
         manager.mainCommandProvider = { "claude" }
 
-        manager.markWorktreeCreated(created)
-        XCTAssertNil(manager.takeFirstTabCommand(for: other.id))
-        XCTAssertEqual(manager.takeFirstTabCommand(for: created.id), "claude")
+        manager.markWorktreeCreated(created, afterCreateCommand: nil)
+        XCTAssertEqual(manager.takeFirstTabSource(for: other.id), .loginShell)
+        XCTAssertEqual(manager.takeFirstTabSource(for: created.id), .mainTerminalAgent("claude"))
     }
 
     /// Tearing a worktree's terminals down drops every other per-worktree entry, so the creation
@@ -143,10 +185,10 @@ final class TerminalManagerTests: XCTestCase {
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
         manager.mainCommandProvider = { "claude" }
 
-        manager.markWorktreeCreated(wt)
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil)
         manager.removeSurface(for: wt.id)
-        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
-                     "the creation mark must not survive the worktree's terminals")
+        XCTAssertEqual(manager.takeFirstTabSource(for: wt.id), .loginShell,
+                       "the creation mark must not survive the worktree's terminals")
     }
 
     // MARK: - buildAgentPromptCommand
