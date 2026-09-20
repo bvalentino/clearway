@@ -199,7 +199,7 @@ struct ContentView: View {
                         ToolbarGroupBreak()
                         if !settings.openInApps.isEmpty, let path = currentWorktree?.path {
                             ToolbarItem(placement: .primaryAction) {
-                                OpenInMenu(path: path) {
+                                OpenInMenu(path: path, remembersLastUsed: true) {
                                     Text("Open in")
                                 }
                             }

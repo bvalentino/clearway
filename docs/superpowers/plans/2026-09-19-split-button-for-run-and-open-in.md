@@ -391,3 +391,36 @@ $ grep -c 'Text("Run")' Sources/App/RunCommandMenu.swift
 `private var label` alongside `items` instead. No other deviation.
 
 **Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### T4: Make the toolbar's Open in button a split button
+
+| File | State |
+| --- | --- |
+| `Sources/App/OpenInMenu.swift` | `init` gains `remembersLastUsed: Bool = false`, stored as a `private let`. `body` is a `@ViewBuilder` declaring the `Menu` twice, switched on `remembersLastUsed ? settings.lastUsedOpenInApp : nil` — with `primaryAction: { open(lastApp) }` when one resolves, without it when none does. The item list is one `@ViewBuilder private var items`; the label was already one stored `Label`, so both declarations share it. `open(_:)` records `settings.lastUsedOpenInAppId = app.id` when the flag is on, before the launch `Task`. `presentFailure` unchanged. Struct doc comment gains the split-button paragraph. |
+| `Sources/App/ContentView.swift` | The toolbar's call site passes `remembersLastUsed: true`. One argument on an existing call; nothing else in the file changed. |
+| `Sources/App/SidebarView.swift` | Untouched — its call omits the parameter and gets the default `false`. |
+
+**Watched failure.** None, by design. The plan and the spec both rule out a view test here: the
+only decision is `settings.lastUsedOpenInApp`, which T2 already pins in `SettingsManagerTests`, and
+XCTest cannot reach a SwiftUI body. Acceptance criterion 1 is on the operator's hand-check list.
+
+Reviewer checks, run against the files as committed:
+
+```
+$ git diff --stat
+ Sources/App/ContentView.swift |  2 +-
+ Sources/App/OpenInMenu.swift  | 30 ++++++++++++++++++++++--------
+ 2 files changed, 23 insertions(+), 9 deletions(-)
+$ grep -c 'ForEach(settings.openInApps)' Sources/App/OpenInMenu.swift
+1
+```
+
+`SidebarView.swift` is absent from the diff, and the `ContentView.swift` hunk is the one argument.
+
+**Deviations.** The plan describes factoring `body` into a separate property the way T3 did;
+`RunCommandMenu` needed that only to apply its `.disabled(...)` gate once around the switch.
+`OpenInMenu` has no such modifier — the toolbar item is hidden rather than disabled on an empty
+list — so `body` itself is the `@ViewBuilder` switch and no intermediate property is added. No
+other deviation.
+
+**Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
