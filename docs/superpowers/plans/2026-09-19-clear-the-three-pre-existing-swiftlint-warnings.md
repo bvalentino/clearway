@@ -373,3 +373,34 @@ would rely on was rewritten.
 **Gate**
 
 Not run — `sign-off` owns the single full gate run. This entry and the spec edit are docs only.
+
+### Merge `main` into the branch (merge-watch)
+
+PR #232 sat unmergeable and unchecked: `main` gained #229, #230 and #231 while the pipeline ran, and
+GitHub queues no CI run for a conflicting branch. `git merge origin/main` (a merge commit — the
+branch is pushed and the operator squash-merges) conflicted in
+`Sources/App/WorktreeConfigStore.swift` only; every other file auto-merged.
+
+**The conflict.** #230 moved worktree groups, order and grouping mode into git config and, in the
+same change, collapsed the file's decoding into one `private static func decoded(_ data: Data) ->
+String` wrapping `String(decoding: data, as: UTF8.self)` — the exact call T1 removed — and added a
+third caller of it in the new `readLocal(_:what:)`. So the two sides disagreed about the shape of
+the decode and about what invalid UTF-8 answers.
+
+**Resolution.** Both survive: `decoded(_:)` stays as the one place that decides how, and becomes
+failable.
+
+| Site | Resolved as |
+| --- | --- |
+| `decoded(_:)` | `-> String?`, `String(data: data, encoding: .utf8)`. Its doc comment previously stated the opposite rule ("an invalid sequence is replaced rather than failing the whole read") and now states that each caller answers for itself. |
+| `values(forWorktreeAt:)` | `guard let text = Self.decoded(data) else { log("read \(path)", "git printed bytes that are not UTF-8"); return nil }` — spec decisions 3 and 10, unchanged in intent, now reading through the helper. |
+| `trimmed(_:)` | `Self.decoded(data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""` — spec decision 4, non-optional return kept. |
+| `readLocal(_:what:)` | **New site from #230.** Same guard as `values(forWorktreeAt:)`, logging `what`: `guard let text = Self.decoded(data) else { log(what, "git printed bytes that are not UTF-8"); return nil }; return Self.parseNullSeparated(text)`. Converted because the helper is now failable and because the function's own contract already splits `nil` ("git could not answer", caller keeps what it publishes) from `[]`, which is spec decision 3 applied to its sibling. Without it `swiftlint lint --quiet` would not be empty. |
+
+`Sources/App/WorktreeDraft.swift` did not conflict; its directive is untouched.
+`grep -rn 'String(decoding' Sources/App Tests` returns nothing.
+
+**Gate**
+
+`./scripts/ci.sh` — see the run recorded below. `swiftlint lint --quiet --no-cache` prints nothing,
+exit status 0.

@@ -74,10 +74,15 @@ final class AppKeyboardShortcutsTests: XCTestCase {
     // MARK: - Menu-bar commands (declared in ClearwayApp, subject to the same table)
 
     /// `charactersIgnoringModifiers` still applies Shift, so these arrive uppercased — matching on a
-    /// bare `"t"` would leave New Shell Tab dead exactly as it was before it was claimed.
+    /// bare `"n"` would leave New Group dead exactly as it was before it was claimed.
     func testShiftedMenuLettersAreClaimedDespiteArrivingUppercased() {
-        XCTAssertTrue(claims([.command, .shift], "T"), "New Shell Tab")
         XCTAssertTrue(claims([.command, .shift], "N"), "New Group")
+    }
+
+    func testCommandOptionTIsClaimed() {
+        XCTAssertTrue(claims([.command, .option], "t"), "New Agent Tab")
+        XCTAssertFalse(claims([.command, .option, .shift], "T"))
+        XCTAssertFalse(claims([.command, .control], "t"))
     }
 
     func testCommandNIsClaimed() {
@@ -124,6 +129,12 @@ final class AppKeyboardShortcutsTests: XCTestCase {
     func testRetiredCommandControlDigitsAreNotClaimed() {
         XCTAssertFalse(claims([.command, .control], "3"))
         XCTAssertFalse(claims([.command, .control], "2"))
+    }
+
+    /// Cmd+Shift+T was New Shell Tab before Cmd+Option+T replaced it. Nothing declares it now, so
+    /// claiming it would take a key from the shell and answer it with nothing.
+    func testRetiredCommandShiftTIsNotClaimed() {
+        XCTAssertFalse(claims([.command, .shift], "T"))
     }
 
     /// Replacing SwiftUI's `.sidebar` command group leaves macOS's own Enter/Exit Full Screen item

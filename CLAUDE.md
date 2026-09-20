@@ -94,8 +94,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   converted these silently; `SWIFT_VERSION: "6.0"` turns them into hard traps. So **every**
   `DispatchSource` goes through `ClaudeSessionFiles.makeWatcher`, which is `nonisolated static` and
   takes the handler as a plain `() -> Void`. Never call `setEventHandler`/`setCancelHandler` from an
-  isolated method. `WorktreeGroupStore` builds its own sources safely only because the type is
-  `Sendable` rather than `@MainActor`, so its methods are already nonisolated.
+  isolated method.
 - A minimal probe of that shape does not reproduce the trap; it runs the body off-main silently.
   Verify by disassembling the built binary (`lldb -b -o "disassemble -a <addr>"`) and looking for
   `MainActor.shared` / `swift_task_isCurrentExecutor` in the closure's prologue.
@@ -128,11 +127,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   - `AppKeyboardShortcuts.swift` — the combos the app claims from focused terminal surfaces, plus the
     layout-independent key codes its `NSEvent` monitor matches on. Add a shortcut here in the same
     change that declares it — declaration sites are `ContentView`'s hidden buttons and `NSEvent`
-    monitor, and `ClearwayApp`'s menu commands (the view hierarchy is offered a key equivalent
-    before the main menu, so menu shortcuts need an entry too). Claim **exactly** what the app
+    monitor, `ClearwayApp`'s menu commands (the view hierarchy is offered a key equivalent
+    before the main menu, so menu shortcuts need an entry too), and the tab strip's `+` menu rows.
+    Those rows declare ⌘T and ⌥⌘T a **second** time on purpose: `.keyboardShortcut` is the only way
+    SwiftUI renders the glyph beside a menu row. Unlike the `PanelCommands.swift` case below, the
+    duplicate is harmless — both declarations run the same action on the same worktree, so whichever
+    layer wins is correct. Claim **exactly** what the app
     handles: a claimed combo no handler answers is taken from the shell and then dropped.
     A shortcut Clearway itself retires gets a not-claimed pin in `AppKeyboardShortcutsTests`
-    (⌘⌃2, ⌘⌃3); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
+    (⌘⌃2, ⌘⌃3, ⌘⇧T); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
     app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"3"` —
     the sidebar's three destinations.
   - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
@@ -152,20 +155,27 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     item renders enabled and silently does nothing: the Tasks bottom panel needs `ghosttyApp.app`
     as well as a `selectedTaskId`, since only `detailView` switches on readiness, so a failed
     `ghostty_app_new` still leaves the task list rendering and setting a selection.
-    `newTabAction` / `newShellTabAction` still split the two and are the known exceptions.
+    `newTabAction` / `newAgentTabAction` still split the two and are the known exceptions.
   - **A `.toolbar` for the detail column goes on the detail column's own content.** Attached to the
     `NavigationSplitView` in `ContentView`, SwiftUI routes the `ToolbarItem`s into the detail section
     but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
     `placement:` — which is why the worktree toolbar now hangs off `detailView` rather than the split
     view, and why `CommandsView` declares its own `+` and filter picker on its own root view.
-    A nested view's toolbar content merges **after** the enclosing view's, so the aside panels'
-    (`PromptsView`, `TodosPanelView`) items arrive behind `detailView`'s four worktree buttons: the
-    spacer that separates their `+` from those buttons precedes it, where every other view's follows.
+    A nested view's toolbar content merges **after** the enclosing view's, so its items land behind
+    the enclosing view's: a nested view puts the break that separates the two groups **before** its
+    own items. A break between two groups a single view owns simply goes between them — which is
+    every call site in the tree today, so none of them is precedent for the nested case.
     Every such break is a `ToolbarGroupBreak` (`Sources/App/ToolbarGroupBreak.swift`), which holds
     the macOS 26 availability check `ToolbarSpacer` needs in one place.
     `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
     overrides anything a column sets, so a per-destination window title is resolved in its
     `navigationTitle` property, not by a `.navigationTitle` inside the detail column.
+  - **A button never hand-builds its glass.** Buttons take the system styles — `.glass` /
+    `.glassProminent`, with `.bordered` / `.borderedProminent` below macOS 26 — through
+    `GlassButtonStyles.swift`, which owns that availability split. `.glassEffect` plus a stroke is
+    for non-button containers such as the aside tab strip and the main terminal tab strip; on a
+    button it drops the system font, padding, shape and hover/press treatment, so the control reads
+    as foreign beside stock buttons like Create Task.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
     and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
     what lets one behavior carry several entry points without the decision being written once per
@@ -175,33 +185,62 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     the status afterwards. `status` is frontmatter Clearway writes and round-trips but **never
     renders** — there is no badge and no label table, so an unrecognized slug needs no handling
     beyond being carried through untouched.
-  - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `grok`, `codex`) has exactly one reader: it
-    renders Settings → Main Terminal's picker rows in `SettingsView`. No launch is gated against it,
-    so adding a name there only offers it in the picker.
-    `buildAgentPromptCommand` backs the prompt launcher's submit. It writes the prompt to a
+  - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `codex`, `grok`) is display order and has three
+    readers: Settings → Main Terminal's picker rows in `SettingsView`; `agentMenuRows`, the tab
+    strip `+` menu's row rule, which lives in this file beside the list so the two orders cannot
+    disagree; and `CommandEditorSheet`, which renders a saved agent command's picker from it **and**
+    takes `agentAllowlist.first` as a new saved command's default agent. That default makes the head
+    of the list behaviour rather than presentation — a reorder changes what every new agent command
+    is created with — so `AgentMenuRowTests` pins it. `agentMenuRows` is pure — it marks the row
+    matching the configured Main Terminal command as the one carrying ⌥⌘T, and marks none when that
+    command is nil or unlisted. No launch is gated against the allowlist, so adding a name there only
+    offers it in those three pickers.
+    `buildAgentPromptCommand` backs a saved agent command's prompt. It writes the prompt to a
     mode-`0o600` temp file and builds `/bin/sh -c` around `$1 "$(cat "$2")"`, where `$1` — the agent
     command — is **unquoted on purpose** so a multi-word command word-splits. Unquoted parameter
     expansion is never re-scanned for shell operators, so `claude; rm -rf /` arrives as the literal
     argv words `claude;`, `rm`, `-rf`, `/` and nothing executes. Do not "fix" this by quoting `$1`:
     multi-word commands would then be looked up as a single filename. The prompt reaches the agent as
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
-    list too long" — the launcher's prompts sit well under that.
-  - `TerminalManager.appendLauncherTab` promotes the new tab straight to a login shell when
-    `startsAsLoginShell` is true — neither its `agentOverride` nor `mainCommandProvider()` names an
-    agent. Otherwise the tab stays a launcher and its view focuses the prompt input. The override is
-    what keeps an agent command's tab a launcher with Settings → Main Terminal at "None", where the
-    agent would otherwise be swallowed into a bare shell; the rule is `static` so the truth table is
-    testable without a `ghostty_app_t`.
+    list too long" — typical agent prompts sit well under that.
+  - `TerminalManager.appendTab` is the one door every main tab goes through: it builds the
+    `Ghostty.SurfaceView` with its command up front, appends, activates and focuses. No tab is ever
+    an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
+    shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
+    created pass an agent command built by
+    `buildBareCommand` (`TerminalManager+Agent.swift`).
+    An agent tab goes through `startAgentTab`, which is **synchronous** even though its body is a
+    `Task`: it has to take the per-worktree `agentLaunchesInFlight` claim in the caller's runloop
+    turn, because the `await ShellEnvironment.awaitPath()` that follows leaves the pane with no tabs
+    and `detailView` would render the "⌘T for a new tab" empty state for that frame. A login-shell tab
+    awaits nothing — the shell resolves its own PATH — so ⌘T never defers a frame and takes no claim.
+    The marker is a **rendering gate first**. Refusing on it is `refuseWhenInFlight`, a property of
+    the **door** rather than of the launch, so it carries no default and every call site states it.
+    Only ⌥⌘T passes `true` — the File menu item and the one `+` row that carries the same key —
+    because a second press during the wait is a repeat of the first. The `+` menu's other agent
+    rows, a saved `.agent` command and a created worktree's first tab pass `false`: each names a tab
+    the user asked for by itself, and two of them started within the same cold-launch PATH wait must
+    both open. Only the launch that owns the marker ends it, so a passing launch cannot clear the
+    gate out from under its owner.
+    Across the await the pane may be gone — closed, pruned, or the worktree deleted — so the `Task`
+    re-checks `hasPane` before appending. Without it `appendTab`'s pane-creation branch rebuilds the
+    pane and re-registers a worktree the user just tore down. The check sits *ahead* of building the
+    command so the argv path allocates no orphan prompt file. Nothing cancels the `Task`, which is
+    why the owner ends its claim on that path too rather than leaving the gate set.
+    The staged case (`submit` off) sends the prompt with **`sendText`, never `sendPaste`** —
+    `sendPaste` appends Enter, which runs the prompt the user's toggle said to stage.
+    `promptDelivery` and `proceedsWithLaunch` are `static` so both rules are testable without a
+    `ghostty_app_t`.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
     `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
-    wait and the stage-vs-promote branch live on the coordinator with the rest of the tab logic.
+    wait and the shell-vs-agent branch live on the coordinator with the rest of the tab logic.
     The Enter placement a terminal command needs is `ShellSend.steps`, not a surface method —
     nothing on `Ghostty.SurfaceView` is reachable from XCTest, and staging rather than running the
     last line is the rule most worth pinning.
   - `SavedCommandStore.swift` owns `<projectPath>/.clearway/commands.json`, one saved-command list
     per project, shared by every worktree of that repo. The store takes the project path and owns the
-    `.clearway` component itself, the way `WorktreeGroupStore` does, and the list is always read from
-    the project root rather than the selected worktree — a `commands.json` checked out differently on
+    `.clearway` component itself — `commands.json` is the only file under it — and the list is always
+    read from the project root rather than the selected worktree — a `commands.json` checked out differently on
     a branch must not change what the Run dropdown shows. Array order **is** display order — nothing
     sorts it, and a reorder rewrites the file. There is deliberately no watcher: `SavedCommandManager`
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
@@ -247,7 +286,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     shell's exit status behind it: a command like `myeditor &` failed in milliseconds and the user
     saw no alert, while a `DispatchQueue.global` worker stayed parked for the editor's session
     (libdispatch caps that pool, and `ShellPathStore` resolves PATH on the same queue and QoS, so
-    enough parked launches hung new launcher tabs with no diagnostic). Do not go back to a pipe:
+    enough parked launches hung new agent tabs with no diagnostic). Do not go back to a pipe:
     a regular file has no 64KB buffer, so nothing has to be drained, and unlinking at once means
     the space is reclaimed when the last descriptor closes. `standardInput` is `nullDevice` so a
     command that reads stdin gets EOF instead of the app's.
@@ -265,14 +304,28 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()` — because
     both open a menu rather than acting on a click, which an icon-only button reads as. The remaining
     toolbar items do act on a click and stay icon-only. The menu and the settings section are
-    separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
+    separate files because `ContentView.swift` sits at SwiftLint's 1000-line `file_length` limit and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.
     The menu claims **no** keyboard shortcut, so `AppKeyboardShortcuts` has no entry for it.
-  - `WorktreeGroupStore.openFileWatcher` has a known, deliberate leak: the `fileGone` reopen path
-    installs a new source over the old one without cancelling it, so the old cancel handler never
-    runs and its `O_EVTONLY` fd stays open for the process lifetime. Preserved as-is through the
-    Swift 6 migration because fixing it is a behaviour change; it needs its own task.
+  - `WorktreeGroupManager.swift` — sidebar grouping, stored entirely in git config through
+    `WorktreeConfigStore`. Four keys: repo-level `clearway.grouping` (the sectioning axis) and
+    `clearway.groupOrder` (a multivar, one value per group name in creation order — the registry),
+    and per worktree `clearway.group` and `clearway.position` in its own `config.worktree`. A group
+    is identified by its name; the registry is the only source of which groups exist, so a worktree
+    naming a group the registry does not list renders ungrouped. Nothing prunes a stale membership
+    or position, and nothing watches git config — values are re-read when the worktree list changes.
+    **The registry is written last**: a rename rewrites every member's `clearway.group` and a delete
+    unsets it, and either abandons the registry write if a member did not land, so a half-applied
+    rename never empties the group. **Positions are numbered per section from zero**, so every
+    gesture that moves a worktree between sections renumbers it at the target's maximum plus one —
+    `addWorktree`, `removeWorktreeFromGroup` and `deleteGroup` alike. A delete that skipped this
+    dropped its members onto slots the ungrouped rows already held, and they stayed interleaved
+    across relaunches because nothing renumbers a worktree that already has a position.
+    The two worktree keys must stay **single lowercase words** —
+    `git config --list` lowercases key names and `WorktreeConfigStore.parseList` keys its dictionary
+    on what git printed; the repo-level keys are read with `--get`/`--get-all`, which return values
+    only, so `clearway.groupOrder` keeps its camel case.
 - **project.yml** — xcodegen spec (generates `Clearway.xcodeproj`)
 - **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
 - swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.

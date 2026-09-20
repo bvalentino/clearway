@@ -89,6 +89,7 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var ghosttyApp: Ghostty.App
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var worktreeManager: WorktreeManager
+    @EnvironmentObject private var settings: SettingsManager
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
@@ -99,7 +100,7 @@ struct MainTerminalTabStrip: View {
         } else {
             HStack(spacing: 8) {
                 tabsCapsule
-                plusButton
+                plusMenu
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
@@ -158,8 +159,8 @@ struct MainTerminalTabStrip: View {
             .onChange(of: tabs.last?.id) { newLastId in
                 guard let newLastId else { return }
                 // Defer to the next runloop tick so SwiftUI finishes laying out
-                // the appended chip (and any synchronous follow-up mutations like
-                // `promoteLauncher`) before we ask for the new trailing offset.
+                // the appended chip before we ask for the new trailing offset — an agent
+                // tab is appended from a `Task`, so the chip arrives after this fires.
                 DispatchQueue.main.async {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(newLastId, anchor: .trailing)
@@ -169,22 +170,67 @@ struct MainTerminalTabStrip: View {
         }
     }
 
-    private var plusButton: some View {
-        Button {
-            guard let app = ghosttyApp.app,
-                  let worktree = worktreeManager.worktrees.first(where: { $0.id == worktreeId }) else { return }
-            terminalManager.appendLauncherTab(for: worktree, app: app)
+    /// ⌘T and ⌥⌘T are declared here a second time — the File menu items declare them first. Both
+    /// declarations run the same action on the same worktree, so whichever layer wins is correct,
+    /// and `.keyboardShortcut` is the only way SwiftUI draws the glyph beside a menu row. Do not
+    /// "fix" this by dropping them.
+    ///
+    /// That equivalence is what the `.disabled` below protects. The view hierarchy is offered a key
+    /// equivalent before the main menu, so this menu answers ⌘T whenever it is enabled — and it
+    /// resolves its worktree out of `worktreeManager.worktrees`, which `ContentView` deliberately
+    /// lets go empty on a transient `git worktree list` failure rather than pruning live panes. The
+    /// File menu's twin reads the stored `detailSelection` and survives that. Disabling on a nil
+    /// worktree is what hands ⌘T back to it instead of swallowing the key.
+    private var plusMenu: some View {
+        Menu {
+            Button("New Terminal") { newTerminal() }
+                .keyboardShortcut("t", modifiers: .command)
+            ForEach(
+                agentMenuRows(agents: agentAllowlist, mainCommand: settings.configuredMainTerminalCommand),
+                id: \.command
+            ) { row in
+                // Only the row carrying ⌥⌘T is the ⌥⌘T door, so only it refuses a launch already
+                // in flight; picking a different agent is never a repeat of that press.
+                Button(row.title) { newAgent(row.command, refuseWhenInFlight: row.carriesMainTerminalShortcut) }
+                    .keyboardShortcut(
+                        row.carriesMainTerminalShortcut
+                            ? KeyboardShortcut("t", modifiers: [.command, .option])
+                            : nil
+                    )
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .medium))
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
+        .menuIndicator(.hidden)
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .disabled(ghosttyApp.app == nil)
+        // Both preconditions its actions guard, or the menu opens and every row does nothing: a
+        // transient `git worktree list` failure zeroes `worktrees` while these panes stay alive.
+        .disabled(ghosttyApp.app == nil || worktree == nil)
     }
 
-    @ViewBuilder
+    private var worktree: Worktree? {
+        worktreeManager.worktrees.first(where: { $0.id == worktreeId })
+    }
+
+    private func newTerminal() {
+        guard let app = ghosttyApp.app, let worktree else { return }
+        terminalManager.appendTab(for: worktree, app: app)
+    }
+
+    private func newAgent(_ command: String, refuseWhenInFlight: Bool) {
+        guard let app = ghosttyApp.app, let worktree else { return }
+        terminalManager.startAgentTab(
+            for: worktree,
+            app: app,
+            command: command,
+            refuseWhenInFlight: refuseWhenInFlight
+        )
+    }
+
     private func chip(for tab: TerminalTab, isActive: Bool) -> some View {
         let onActivate = { terminalManager.activateMainTab(id: tab.id, in: worktreeId) }
         let onClose = { onCloseTab(tab.id, worktreeId) }
@@ -199,25 +245,13 @@ struct MainTerminalTabStrip: View {
             }
         }
 
-        switch tab.kind {
-        case .launcher:
-            TabChip(
-                title: "New Tab",
-                isActive: isActive,
-                onActivate: onActivate,
-                onClose: onClose,
-                onCloseOthers: onCloseOthers,
-                onCloseAll: onCloseAll
-            )
-        case .surface(let surface):
-            TerminalTabChip(
-                surface: surface,
-                isActive: isActive,
-                onActivate: onActivate,
-                onClose: onClose,
-                onCloseOthers: onCloseOthers,
-                onCloseAll: onCloseAll
-            )
-        }
+        return TerminalTabChip(
+            surface: tab.surface,
+            isActive: isActive,
+            onActivate: onActivate,
+            onClose: onClose,
+            onCloseOthers: onCloseOthers,
+            onCloseAll: onCloseAll
+        )
     }
 }

@@ -23,7 +23,7 @@ enum AppKeyboardShortcuts {
     ///
     /// Letters match on `chars`, lowercased: SwiftUI matches their `.keyboardShortcut` against the
     /// character the key produces, so this follows a non-QWERTY layout the way a key code would not
-    /// — but `charactersIgnoringModifiers` still applies Shift, so Cmd+Shift+T arrives as `"T"`.
+    /// — but `charactersIgnoringModifiers` still applies Shift, so Cmd+Shift+N arrives as `"N"`.
     /// Punctuation matches on `keyCode` instead, because Shift turns it into a different glyph that
     /// varies by layout (`[` → `{`, `,` → `<`); the brackets additionally need it to agree with the
     /// keyCode-matched `NSEvent` monitor that consumes them.
@@ -47,11 +47,11 @@ enum AppKeyboardShortcuts {
             return letter == "t" || letter == "w" || letter == "j" || letter == "b" || letter == "n"
                 || keyCode == KeyCode.comma
         case [.command, .shift]:
-            // previous/next tab, new shell tab, new group, reload configuration
+            // previous/next tab, new group, reload configuration
             return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket
-                || letter == "t" || letter == "n" || keyCode == KeyCode.comma
+                || letter == "n" || keyCode == KeyCode.comma
         case [.command, .option]:
-            return letter == "b"  // toggle aside
+            return letter == "b" || letter == "t"  // toggle aside, new agent tab
         default:
             return false
         }
