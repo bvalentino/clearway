@@ -44,8 +44,10 @@ final class WorktreeGroupManager: ObservableObject {
     /// Config writes run one after another, and every config read awaits the chain first.
     /// Creating a worktree writes a name and also changes the live worktree list, which fires the
     /// reload in the same turn; without the chain that reload can read the worktree's config
-    /// before the write lands and publish an empty name over the one just typed.
-    private var writeChain: Task<Void, Never>?
+    /// before the write lands and publish an empty name over the one just typed. Also awaited by
+    /// the test base, which needs something to wait on where a case asserts a gesture wrote
+    /// nothing — absence cannot be polled.
+    private(set) var writeChain: Task<Void, Never>?
 
     /// The initial load, awaited by every config read — and by the test base, which must not
     /// mutate state the load would then republish over.
@@ -281,7 +283,8 @@ final class WorktreeGroupManager: ObservableObject {
     /// calls a view makes in a row: on a relaunch `positions` is empty until the reload publishes
     /// it, so a seed racing ahead of it renumbers every worktree in `Worktree.sorted` order and the
     /// reload reads the values it just wrote back over the user's order.
-    func reconcile(_ worktrees: [Worktree], openIds: [String]) {
+    @discardableResult
+    func reconcile(_ worktrees: [Worktree], openIds: [String]) -> Task<Void, Never> {
         Task {
             await self.reloadConfig(for: worktrees)
             self.seedPositions(for: worktrees, openIds: openIds)

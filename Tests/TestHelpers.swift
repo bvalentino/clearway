@@ -198,9 +198,23 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     }
 
     override func tearDown() async throws {
+        // A sleep-free body can end with `git config` subprocesses still queued, and they must not
+        // run against a scratch root being removed.
+        await settle()
         manager = nil
         repo = nil
         try await super.tearDown()
+    }
+
+    /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
+    /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
+    /// `waitFor` returns the moment the expected value is already there.
+    ///
+    /// The parameter is for the suites that build their own managers rather than using `manager`.
+    func settle(_ target: WorktreeGroupManager? = nil) async {
+        let manager: WorktreeGroupManager? = target ?? self.manager
+        await manager?.loadTask?.value
+        await manager?.writeChain?.value
     }
 
     /// Replaces `manager` with a fresh one over the same root and waits for its load — the
