@@ -39,6 +39,7 @@
 		3AFCF67BAC9C1A2915C0578A /* WorktreeDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1D418C8459B8CD33885CCF /* WorktreeDraft.swift */; };
 		3C936F7524C192582602BA02 /* WorktreeStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94271FFA38EBBE0DCCCC1E46 /* WorktreeStatus.swift */; };
 		3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC9411B19B7913605A851B1 /* TodosView.swift */; };
+		3E191C47FB2E6AA58EBD33F0 /* AgentHookSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3077B1AC998D5DF794BE4FE2 /* AgentHookSettings.swift */; };
 		3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */; };
 		42155B76BB188431297E6DB4 /* ProjectSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B7DFE2FBC5E4336E055DC /* ProjectSelectorView.swift */; };
 		449E2BD69F4AAAFC69ADBDE3 /* TerminalSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565AC0451DC45348A309739E /* TerminalSurface.swift */; };
@@ -106,6 +107,7 @@
 		9C5DCA7C8D021A775B94678A /* ShellPathValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB28BB9D069A601AE8E718 /* ShellPathValidationTests.swift */; };
 		9D63570CEEBD24A6E23A637D /* OpenInAppsSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1619E5B757A9C885392E313 /* OpenInAppsSettingsTests.swift */; };
 		9E3AA295A79E40C65420829D /* WorktreeRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */; };
+		9EC8E812081EEFEE04F14C55 /* AgentHookScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EDB5E9A55F1CBB6FE16A30 /* AgentHookScript.swift */; };
 		9ECA5CFF97E74134CB98DF00 /* SavedCommandManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817FE51E6717FE77D1D2492E /* SavedCommandManager.swift */; };
 		9ECE1393362BF02D6F8CBB10 /* WorktreeConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887483E216E5DE343FBD8B6B /* WorktreeConfigStoreTests.swift */; };
 		9F0679943B3F29280ECD5474 /* OpenInAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8085B8AFE47063DF39964C /* OpenInAppLauncher.swift */; };
@@ -119,6 +121,7 @@
 		A594DF0DFD5CE4A2CF336DE9 /* SavedCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D39D30CC314308803C5426 /* SavedCommand.swift */; };
 		A5F032BA8995C6B45FC6001B /* SidebarHeaderControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
+		A6C532F303C5F08BB3450927 /* AgentHookSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */; };
 		A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */; };
 		AB0644D78E51323823D84DA9 /* AgentHookEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC46D569A48674B8AC75040 /* AgentHookEnvelopeTests.swift */; };
 		AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */; };
@@ -174,6 +177,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		00EDB5E9A55F1CBB6FE16A30 /* AgentHookScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookScript.swift; sourceTree = "<group>"; };
 		02A15AF63CD7636A38973624 /* PromptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManager.swift; sourceTree = "<group>"; };
 		02CBA2B1687EECDFB7B460D6 /* WorktreeConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeConfigStore.swift; sourceTree = "<group>"; };
 		03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarVisibilityTests.swift; sourceTree = "<group>"; };
@@ -199,6 +203,7 @@
 		2B64FF1CCAA5369E24C7A53D /* PortMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortMonitor.swift; sourceTree = "<group>"; };
 		2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarHeaderControls.swift; sourceTree = "<group>"; };
 		2E372333888BC8E073569810 /* PromptManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManagerTests.swift; sourceTree = "<group>"; };
+		3077B1AC998D5DF794BE4FE2 /* AgentHookSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookSettings.swift; sourceTree = "<group>"; };
 		3433F4B6B71E828C4ED9D94C /* PortScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortScannerTests.swift; sourceTree = "<group>"; };
 		3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
@@ -282,6 +287,7 @@
 		AF845FCB581E1B628B736556 /* MarkdownSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighter.swift; sourceTree = "<group>"; };
 		B138ED76CF9F4BF34515ACD0 /* AgentHookEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookEvent.swift; sourceTree = "<group>"; };
 		B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathValidation.swift; sourceTree = "<group>"; };
+		B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookSettingsTests.swift; sourceTree = "<group>"; };
 		B81142617650A73C69973357 /* SidebarSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarSheets.swift; sourceTree = "<group>"; };
 		B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathResolverTests.swift; sourceTree = "<group>"; };
@@ -362,6 +368,7 @@
 			children = (
 				C1ECAB4B3402CFEAC103DA45 /* AgentActivityStoreTests.swift */,
 				8CC46D569A48674B8AC75040 /* AgentHookEnvelopeTests.swift */,
+				B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */,
 				97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */,
 				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
 				7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */,
@@ -419,6 +426,8 @@
 				85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */,
 				1C32F696C94B49C864B77F78 /* AgentActivityStore.swift */,
 				B138ED76CF9F4BF34515ACD0 /* AgentHookEvent.swift */,
+				00EDB5E9A55F1CBB6FE16A30 /* AgentHookScript.swift */,
+				3077B1AC998D5DF794BE4FE2 /* AgentHookSettings.swift */,
 				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
 				DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
@@ -806,6 +815,8 @@
 				75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */,
 				A3359BD40D5D19AD72018EC6 /* AgentActivityStore.swift in Sources */,
 				4D279F5A55FF0BA16009ABBB /* AgentHookEvent.swift in Sources */,
+				9EC8E812081EEFEE04F14C55 /* AgentHookScript.swift in Sources */,
+				3E191C47FB2E6AA58EBD33F0 /* AgentHookSettings.swift in Sources */,
 				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
 				DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
@@ -914,6 +925,7 @@
 			files = (
 				E47602170CF2FCEAF1448709 /* AgentActivityStoreTests.swift in Sources */,
 				AB0644D78E51323823D84DA9 /* AgentHookEnvelopeTests.swift in Sources */,
+				A6C532F303C5F08BB3450927 /* AgentHookSettingsTests.swift in Sources */,
 				35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */,
 				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,
 				DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */,

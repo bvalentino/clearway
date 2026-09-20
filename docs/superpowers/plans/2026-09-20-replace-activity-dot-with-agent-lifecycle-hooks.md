@@ -834,3 +834,95 @@ Two details the plan left open, recorded for T6 and T9:
 
 **Gate.** `./scripts/ci.sh` — green. `Executed 707 tests, with 0 failures (0 unexpected) in 109.536
 seconds`, then `==> CI passed.`
+
+### T3: The hook script, the `~/.clearway` layout, and the pure settings merge
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookScript.swift` | New. `AgentHookScript` — the four paths, `dirMode`/`scriptMode`, `scriptPathMarker`, `command`, `body`, `installedEvents` — and `AgentHookIdentity` with the three env-var name constants and `environment(surfaceId:worktreeId:)`. Pure: `import Foundation` only. |
+| `Sources/App/AgentHookSettings.swift` | New. `install(into:)`, `uninstall(from:)`, `isClearwayEntry(_:)` over `[String: Any]`, plus the private `withoutClearwayEntries` that drives the collapse. Pure. |
+| `Tests/AgentHookSettingsTests.swift` | New. 10 cases: the nine installed events with no `matcher`, idempotency over three starting shapes, unrelated keys and user groups preserved, the round trip over three shapes, the collapse, foreign entries left alone, hand-edited recognition, the recognition refusals, the identity pairs, and the forwarder's guards and transport. |
+
+**Evidence.** The three rules most easily got wrong were implemented the careless way first —
+recognition by **equality** with `AgentHookScript.command`, an `install` that appends without
+removing Clearway's own entries first, and an `uninstall` that filters entries but collapses no
+container — and `./scripts/ci.sh` was run against that. Five of the ten cases went red; the other
+five passed:
+
+```
+Test Suite 'AgentHookSettingsTests' started at 2026-09-20 19:07:25.447.
+    ✖ testHandWrittenClearwayEntriesAreStillRecognised, XCTAssertTrue failed
+    ✖ testInstallIsIdempotentForEveryStartingShape, XCTAssertEqual failed: ("{
+    ✖ testInstallIsIdempotentForEveryStartingShape, XCTAssertEqual failed: ("{
+    ✖ testInstallIsIdempotentForEveryStartingShape, XCTAssertEqual failed: ("{
+    ✖ testUninstallLeavesEntriesItDoesNotOwn, XCTAssertEqual failed: ("{
+    ✖ testUninstallRemovesEveryContainerItEmpties, XCTAssertNil failed: "["PostToolUse": [["hooks": []]], "SubagentStop": [["hooks": []]], "SubagentStart": [["hooks": []]], "PreToolUse": [["hooks": []]], "Stop": [["hooks": []]], "SessionEnd": [["hooks": []]], "UserPromptSubmit": [["hooks": []]], "PermissionRequest": [["hooks": []]], "SessionStart": [["hooks": []]]]"
+    ✖ testUninstallRemovesEveryContainerItEmpties, XCTAssertTrue failed
+Executed 10 tests, with 10 failures (0 unexpected) in 0.089 (0.090) seconds
+```
+
+That quoted `XCTAssertNil` value **is** the defect the collapse rule exists to prevent: an uninstall
+that removes only the entries leaves nine event keys each holding an empty group, so the file keeps
+a visible trace of a feature the user turned off — and the next `install` would append beside them.
+The equality failure is the second: a user who hand-edits the entry, or an older spelling of the
+same path, leaves a hook forwarding to a socket nothing is listening on.
+
+**The forwarder was verified on the wire**, since nothing compiles shell text. Probe in the
+scratchpad only (`clearway-hook.sh` extracted verbatim from the Swift raw-string literal, `srv.py` an
+`AF_UNIX` `SOCK_STREAM` server); nothing was written into the repo:
+
+```
+RECV<<<8F1D4C0A-5B2E-4A77-9C31-6E0F2A8D1B44
+/Users/x/my repo/.worktrees/a b
+{
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash"
+}>>>
+send exit=0
+elapsed=0.027s
+unset-surface exit=0
+unset-worktree exit=0
+missing-socket exit=0
+```
+
+Both preamble lines arrive intact including the spaces in the path, the pretty-printed body is
+untouched, the server's `recv` loop sees EOF with no shutdown flag, and each of the three guards
+exits 0 without connecting.
+
+**Deviations from the plan.**
+
+- **A third guard, `[ -n "$CLEARWAY_WORKTREE_ID" ] || exit 0`.** The plan's printed script carries
+  two but its prose says "keep the three guards". `AgentHookIdentity.environment` returns two pairs
+  for a nil worktree id, so a surface Decision 7 excludes still carries `CLEARWAY_SURFACE_ID` and
+  would fork `nc` for a payload whose empty second line `AgentHookEnvelope.parse` refuses anyway.
+  The guard makes D7's "invisible" hold at the script rather than incidentally at the parser, and
+  saves a round trip per tool call on any such surface.
+- **`AgentHookScript.command` is built from `scriptPathMarker`**, not written out twice. The marker
+  is the recognition substring of D11, so spelling the command independently of it is the one way
+  `install` and `uninstall` could stop agreeing on what Clearway owns.
+- **`install` skips an event whose existing value it cannot read** rather than overwriting it. The
+  plan says only "ensure `settings["hooks"][event]` contains a group". A user's `hooks.Stop` holding
+  something other than an array of objects is data Clearway is a guest in — the same reasoning as
+  D14's refusal to quarantine an unparseable file.
+- **`uninstall` drops a container only when it emptied it.** An event array the user left empty, or
+  an empty `hooks` object, is returned untouched, so `uninstall` is a genuine identity on any file
+  carrying no Clearway entry. Without that the round-trip criterion would hold only for the three
+  shapes the tests name.
+
+Two details the plan left open, recorded for T4 and T5:
+
+- `dirMode`/`scriptMode` are plain `Int` octal literals; T4 wraps them for
+  `FileAttributeKey.posixPermissions`.
+- The script body is a raw string (`#"""`), so `printf`'s `\n` stays literal. The test asserts the
+  body carries all three env-var names, calls `/usr/bin/nc` by absolute path, contains no ` -N` and
+  ends with `exit 0` — the `-N` pin matters because macOS reads it as a probe count and a script
+  using it fails on every hook with no diagnostic.
+- `AgentHookScript.socketPath` is 37 bytes on this machine, well inside `sun_path`'s 104. The probe
+  above had to bind a relative path because the scratchpad's own directory exceeds it; `~/.clearway`
+  does not.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 717 tests, with 0 failures (0 unexpected) in 111.299
+seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
+three new files and the `xcodegen`-regenerated `project.pbxproj`.
