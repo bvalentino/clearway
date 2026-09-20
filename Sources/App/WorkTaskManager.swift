@@ -371,7 +371,7 @@ class WorkTaskManager: ObservableObject {
     /// a rename/delete event invalidates the current fd; without an immediate re-open, a second
     /// write during the 0.3s debounce (or after a no-op reload path) would be missed.
     private func makeTaskFileWatcher(path: String) -> DispatchSourceFileSystemObject? {
-        ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
+        FileWatchers.makeWatcher(path: path) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
                 // Re-open this path if still desired; the event may have been the atomic replace
@@ -449,7 +449,7 @@ class WorkTaskManager: ObservableObject {
     /// (re-armed from `write` once the directory appears). Task **files** use
     /// `makeTaskFileWatcher` so their inodes re-arm after atomic replace.
     private func makeWatcher(forPath path: String) -> DispatchSourceFileSystemObject? {
-        ClaudeSessionFiles.makeWatcher(path: path) { [weak self] in
+        FileWatchers.makeWatcher(path: path) { [weak self] in
             self?.scheduleReload()
         }
     }

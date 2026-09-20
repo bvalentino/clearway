@@ -141,7 +141,7 @@ class PromptManager: ObservableObject {
         let dir = directory
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
-        watcherSource = ClaudeSessionFiles.makeWatcher(path: dir, eventMask: .write) { [weak self] in
+        watcherSource = FileWatchers.makeWatcher(path: dir, eventMask: .write) { [weak self] in
             self?.scheduleReload()
         }
     }

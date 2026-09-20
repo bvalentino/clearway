@@ -134,7 +134,7 @@ class TodoManager: ObservableObject {
         // Only watch if the directory already exists — it gets created on first todo write.
         guard FileManager.default.fileExists(atPath: dir) else { return }
 
-        watcherSource = ClaudeSessionFiles.makeWatcher(path: dir, eventMask: .write) { [weak self] in
+        watcherSource = FileWatchers.makeWatcher(path: dir, eventMask: .write) { [weak self] in
             self?.scheduleReload()
         }
     }
