@@ -1357,3 +1357,43 @@ and the recorded fallback stands if it does not.
 (0 unexpected) in 109.242 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
 showed three modified files and nothing else: no new Swift file, so `xcodegen` left
 `project.pbxproj` untouched, and no `default.profraw`.
+
+---
+
+### T10: The tool name on the tab chip
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/MainTerminalTabStrip.swift` | `TabChip` gains `toolName: String?`, rendered after the title as an 11 pt `.secondary` `Text`, `lineLimit(1)`, `.truncationMode(.tail)`, and absent entirely when nil. Title and tool name sit in a nested `HStack` that carries the `frame(maxWidth: .infinity, alignment: .leading)` the title used to; the title keeps `.layoutPriority(1)` so a fixed-width chip truncates the tool name first. `TerminalTabChip` gains the same parameter and passes it through. `MainTerminalTabStrip` gains `@EnvironmentObject agentActivity: AgentActivityMonitor` and resolves the value once per chip as `surfaceToolNames[tab.surface.surfaceId.uuidString]`. |
+
+**Evidence.** No watched failure, and as in T9 that is the honest answer rather than a gap. The whole
+task is a SwiftUI body: `TabChip` is a `private struct` with no output an `XCTAssert` can read, and
+the strip needs five `EnvironmentObject`s and a live `Ghostty.SurfaceView`, which needs a real
+`ghostty_app_t`. The rule behind the value — a lead tool name present only while a tool is in
+flight — was lifted into `AgentActivityStore` in T2 and is pinned there
+(`AgentActivityStoreTests.swift:28,32,42,47,58,128,139,157`), and the key this view looks the value
+up under is pinned end to end in T6:
+`AgentActivityMonitorTests.swift:72` waits on `monitor.surfaceToolNames[surfaceId]` after driving a
+real `PreToolUse` through the installed forwarder, with `surfaceId` the same
+`CLEARWAY_SURFACE_ID` string `AgentHookIdentity.environment` stamps from `surfaceId.uuidString`.
+So the one line that could silently look up the wrong key is covered by an existing test rather
+than by a new one.
+
+**Deviations from the plan.** None in substance. Two shapes the task left open:
+
+- **The tool name is read in `MainTerminalTabStrip` and passed down**, as the task says, rather than
+  read by `TerminalTabChip` from its own `@EnvironmentObject`. Either spelling rebuilds the strip on
+  every `PreToolUse`/`PostToolUse` — the monitor's published dictionary is one object every observer
+  watches — so the choice is about scoping, and passing it down keeps `TerminalTabChip`'s
+  `@ObservedObject` the only per-surface observation, which is what its existing note is about.
+- **The title/tool pair is nested rather than placed side by side in the outer `HStack`.** The
+  title's `frame(maxWidth: .infinity, alignment: .leading)` moved to the pair, so with no tool name
+  the chip lays out exactly as before, and with one the two texts stay left-aligned together instead
+  of the title pushing the tool name off the end.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 740 tests, with 0 failures
+(0 unexpected) in 110.499 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
+showed one modified file and nothing else: no new Swift file, so `xcodegen` left `project.pbxproj`
+untouched, and no `default.profraw`.

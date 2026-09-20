@@ -5,6 +5,7 @@ import SwiftUI
 /// A tab chip: the title and the close button that appears on hover or while active.
 private struct TabChip: View {
     let title: String
+    let toolName: String?
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -15,11 +16,22 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(title)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .font(.system(size: 12))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .font(.system(size: 12))
+                    .layoutPriority(1)
+
+                if let toolName {
+                    Text(toolName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isHovering || isActive {
                 Button {
@@ -61,6 +73,7 @@ private struct TabChip: View {
 /// Scoping `@ObservedObject` here prevents whole-strip rebuilds on every title update.
 private struct TerminalTabChip: View {
     @ObservedObject var surface: Ghostty.SurfaceView
+    let toolName: String?
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -70,6 +83,7 @@ private struct TerminalTabChip: View {
     var body: some View {
         TabChip(
             title: surface.title.isEmpty ? "Terminal" : surface.title,
+            toolName: toolName,
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,
@@ -90,6 +104,7 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var agentActivity: AgentActivityMonitor
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
@@ -247,6 +262,7 @@ struct MainTerminalTabStrip: View {
 
         return TerminalTabChip(
             surface: tab.surface,
+            toolName: agentActivity.surfaceToolNames[tab.surface.surfaceId.uuidString],
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,
