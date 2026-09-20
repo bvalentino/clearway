@@ -126,3 +126,19 @@ That is the test harness's own `repo.unsetValue` losing git's config lock to the
 chain on the same `config.worktree`, not a product failure, and nothing in this change touches a
 write path. An immediately following run of the same command on the same bytes was green. Recorded
 as a follow-up, not fixed here.
+
+### Simplify
+
+Tightened `log(_:_:)`'s doc comment from four lines to three: it no longer restates that os_log
+redacts dynamic strings by default — `privacy: .public` says that — and keeps only what the code
+cannot say, that neither parameter is user-authored. The log line itself is unchanged. Reuse,
+efficiency and altitude passes found nothing: the annotation costs nothing at the call site, all
+twelve failure reports already funnel through this one helper, and a shared logging wrapper for the
+seven unannotated `Ghostty.logger` sites elsewhere in `Sources/App` is a follow-up the spec scopes
+out, not duplication this change introduced.
+
+`./scripts/ci.sh` — green, 676 tests, 0 failures, exit 0, `==> CI passed.` The run before it failed
+`WorktreeGroupManagerNameTests.testReconcilePopulatesNamesFromConfigAndDropsAClearedOne` on the same
+`could not lock config file …/config.worktree: File exists` race the build stage hit. Two
+occurrences across two stages makes it a reproducible test-harness flake rather than a one-off; the
+follow-up above stands.
