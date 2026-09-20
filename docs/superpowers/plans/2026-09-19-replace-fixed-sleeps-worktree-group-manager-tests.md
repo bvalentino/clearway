@@ -360,3 +360,41 @@ from the T1 `.xcresult`):
 | `WorktreeGroupManagerStatusTests` | 10.20s |
 | `WorktreeGroupManagerNameTests` | 10.14s |
 | Combined | 54.36s |
+
+### T2: Delete the 44 sleeps in WorktreeGroupManagerTests
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerTests.swift` | All 44 `try await Task.sleep` calls deleted. 26 insertions / 78 deletions, and the only two non-signature, non-blank insertions are the `addWorktree` gestures in `testAddWorktreeToGroupPlacesItInGroup` and `testAddMainWorktreeIsNoOp`, relocated below their `let` so the gesture sits next to its assertion. 31 test functions and 56 `XCTAssert` calls before and after; no assertion added, weakened or reordered. |
+
+Every test function in the file is now plain `func test…()`: `grep -n "async\|throws"` returns
+nothing, and the only remaining `await` is the word inside `countingEmissions`' doc comment. Five
+bodies that already had no `await` or `try` before this task
+(`testDeleteGroupAppendsItsMembersToTheUngroupedSection`, `testAddWorktreePublishesOnce`,
+`testReorderPublishesOnce`, `testSidebarOrderStableAcrossOpenStateChanges`,
+`testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid`) lost `async throws` too, because the
+acceptance criterion is absolute rather than scoped to the bodies a sleep was deleted from.
+
+**Evidence.** No watched failure applies: this task deletes waiting and adds no test. The proof that
+each deleted sleep guarded nothing is assumption 2 of the spec — the file never references `repo.`,
+`restartManager()` or `reconcile`, so no assertion in it can observe a write landing — plus the gate
+below, which runs all 31 cases against the sleep-free bodies. The reverted-guard proofs belong to
+T3–T6.
+
+**Deviations from the plan.** None.
+
+**Gate.** `./scripts/ci.sh` — passed. 556 tests, 0 failures, 97.1s. `git status --porcelain` showed
+only `Tests/WorktreeGroupManagerTests.swift` before this log was written; no `default.profraw`, as
+the app was never launched.
+
+**Suite wall time** (summed case durations from the T2 `.xcresult`):
+
+| Suite | Before | After |
+| --- | --- | --- |
+| `WorktreeGroupManagerTests` | 19.44s | 17.96s |
+
+5.55s of sleeps came out but the suite dropped only 1.48s, which is decision 6 working as the spec
+predicted: the `git config` subprocesses the sleeps used to overlap are now paid at `tearDown`,
+where `settle()` awaits the write chain. The remaining time is real git, not waiting. The other
+three suites moved too (Persistence 14.58→11.36, Status 10.20→10.07, Name 10.14→9.61) although T2
+did not touch them; that is run-to-run variance, and the T1–T3 checkpoint should re-read all four.

@@ -6,9 +6,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - createGroup / renameGroup / deleteGroup round-trip
 
-    func testCreateGroupAppearsInGroups() async throws {
+    func testCreateGroupAppearsInGroups() {
         manager.createGroup(named: "Alpha")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(manager.groups.count, 1)
         XCTAssertEqual(manager.groups.first?.name, "Alpha")
@@ -16,34 +15,25 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     /// A group is identified by its name, so `createGroup` refuses what would make a name-keyed
     /// lookup ambiguous rather than leaving the caller to check.
-    func testCreateGroupRefusesADuplicateOrEmptyName() async throws {
+    func testCreateGroupRefusesADuplicateOrEmptyName() {
         manager.createGroup(named: "Backlog")
-        try await Task.sleep(nanoseconds: 100_000_000)
         manager.createGroup(named: "Backlog")
-        try await Task.sleep(nanoseconds: 100_000_000)
         manager.createGroup(named: "  ")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(manager.groups.map(\.name), ["Backlog"])
     }
 
-    func testRenameGroupUpdatesName() async throws {
+    func testRenameGroupUpdatesName() {
         manager.createGroup(named: "Original")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         manager.renameGroup(named: "Original", to: "Renamed")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         XCTAssertEqual(manager.groups.first?.name, "Renamed")
     }
 
-    func testDeleteGroupRemovesIt() async throws {
+    func testDeleteGroupRemovesIt() {
         manager.createGroup(named: "ToDelete")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         manager.deleteGroup(named: "ToDelete")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         XCTAssertTrue(manager.groups.isEmpty)
     }
 
@@ -52,7 +42,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     /// on slots the ungrouped rows already held, and `ordered`'s tie-break then interleaved them
     /// among rows the user never moved — on every launch, since nothing renumbers a worktree that
     /// already has a position.
-    func testDeleteGroupAppendsItsMembersToTheUngroupedSection() async throws {
+    func testDeleteGroupAppendsItsMembersToTheUngroupedSection() {
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
         let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
@@ -70,22 +60,17 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - addWorktree / removeWorktreeFromGroup
 
-    func testAddWorktreeToGroupPlacesItInGroup() async throws {
+    func testAddWorktreeToGroupPlacesItInGroup() {
         manager.createGroup(named: "GroupA")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
-        manager.addWorktree(wt, toGroupNamed: "GroupA")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
+        manager.addWorktree(wt, toGroupNamed: "GroupA")
         XCTAssertEqual(manager.groupName(for: wt.id), "GroupA")
     }
 
-    func testAddWorktreeRemovesFromPreviousGroup() async throws {
+    func testAddWorktreeRemovesFromPreviousGroup() {
         manager.createGroup(named: "GroupA")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.createGroup(named: "GroupB")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.groups.map(\.name), ["GroupA", "GroupB"])
 
@@ -100,29 +85,22 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(manager.groupName(for: wt.id), "GroupB")
     }
 
-    func testAddMainWorktreeIsNoOp() async throws {
+    func testAddMainWorktreeIsNoOp() {
         manager.createGroup(named: "SomeGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         let mainWt = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
-        manager.addWorktree(mainWt, toGroupNamed: "SomeGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
+        manager.addWorktree(mainWt, toGroupNamed: "SomeGroup")
         XCTAssertNil(manager.groupName(for: mainWt.id), "main worktree must never be in any group")
     }
 
-    func testRemoveWorktreeFromGroup() async throws {
+    func testRemoveWorktreeFromGroup() {
         manager.createGroup(named: "G1")
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         let wt = makeWorktree(branch: "branch-rm", path: "/tmp/branch-rm")
+
         manager.addWorktree(wt, toGroupNamed: "G1")
-        try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(manager.groupName(for: wt.id), "G1")
 
         manager.removeWorktreeFromGroup(wt)
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         XCTAssertNil(manager.groupName(for: wt.id))
     }
 
@@ -131,7 +109,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     /// A drop changes a worktree's group and its slot together. Publishing them as two mutations
     /// fires `objectWillChange` twice, which re-enters the sidebar's `NSTableView` mid-animation
     /// and crashes it.
-    func testAddWorktreePublishesOnce() async throws {
+    func testAddWorktreePublishesOnce() {
         manager.createGroup(named: "Group")
         let wt = makeWorktree(branch: "feature", path: "/tmp/feature")
 
@@ -144,7 +122,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     /// Same rule for the reorder drop, which moves a slot per row: writing the slots one by one
     /// fires once per row moved.
-    func testReorderPublishesOnce() async throws {
+    func testReorderPublishesOnce() {
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
         let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
@@ -194,14 +172,12 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// Default-section worktrees appear before grouped worktrees.
-    func testDefaultSectionAppearsBeforeGroupedWorktrees() async throws {
+    func testDefaultSectionAppearsBeforeGroupedWorktrees() {
         manager.createGroup(named: "MyGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         let ungrouped = makeWorktree(branch: "ungrouped", path: "/tmp/ungrouped")
         let grouped = makeWorktree(branch: "grouped", path: "/tmp/grouped")
         manager.addWorktree(grouped, toGroupNamed: "MyGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         let result = manager.sidebarOrderedWorktrees(
             [ungrouped, grouped],
@@ -216,20 +192,16 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// Group sections follow the registry, which is creation order.
-    func testGroupsAppearInCreationOrder() async throws {
+    func testGroupsAppearInCreationOrder() {
         manager.createGroup(named: "Older")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.createGroup(named: "Newer")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.groups.map(\.name), ["Older", "Newer"])
 
         let wtOlder = makeWorktree(branch: "wt-older", path: "/tmp/wt-older")
         let wtNewer = makeWorktree(branch: "wt-newer", path: "/tmp/wt-newer")
         manager.addWorktree(wtOlder, toGroupNamed: "Older")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(wtNewer, toGroupNamed: "Newer")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let result = manager.sidebarOrderedWorktrees(
             [wtNewer, wtOlder],
@@ -245,9 +217,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// Search term filters within each section; empty sections contribute nothing.
-    func testSearchFilterAppliesWithinSectionsAndDropsEmptySections() async throws {
+    func testSearchFilterAppliesWithinSectionsAndDropsEmptySections() {
         manager.createGroup(named: "FilterGroup")
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         let fooUngrouped = makeWorktree(branch: "foo-ungrouped", path: "/tmp/foo-ungrouped")
         let barUngrouped = makeWorktree(branch: "bar-ungrouped", path: "/tmp/bar-ungrouped")
@@ -255,9 +226,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let barGrouped = makeWorktree(branch: "bar-grouped", path: "/tmp/bar-grouped")
 
         manager.addWorktree(fooGrouped, toGroupNamed: "FilterGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(barGrouped, toGroupNamed: "FilterGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let all = [fooUngrouped, barUngrouped, fooGrouped, barGrouped]
 
@@ -278,11 +247,9 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// main always lands in the default section regardless of addWorktree attempts.
-    func testMainAlwaysInDefaultSection() async throws {
+    func testMainAlwaysInDefaultSection() {
         manager.createGroup(named: "AGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.createGroup(named: "BGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(manager.groups.map(\.name), ["AGroup", "BGroup"])
 
@@ -312,9 +279,8 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     /// section. Already-positioned IDs and main are untouched. `zebra` is positioned first and
     /// sorts last alphabetically, so an order that re-sorted rather than appended would put
     /// `fresh` ahead of it.
-    func testSeedPositionsAppendsOnlyMissingIds() async throws {
+    func testSeedPositionsAppendsOnlyMissingIds() {
         manager.createGroup(named: "SomeGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let already = makeWorktree(branch: "zebra", path: "/tmp/zebra")
@@ -322,12 +288,9 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
 
         manager.setUngroupedOrder([already.id], in: [already], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(grouped, toGroupNamed: "SomeGroup")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         manager.seedPositions(for: [main, already, grouped, fresh], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
             renderedOrder([main, already, grouped, fresh]),
@@ -337,22 +300,19 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// Seeding is a no-op when every candidate already carries a position: nothing is reordered.
-    func testSeedPositionsIsIdempotent() async throws {
+    func testSeedPositionsIsIdempotent() {
         let zulu = makeWorktree(branch: "zulu", path: "/tmp/zulu")
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         manager.setUngroupedOrder([zulu.id, alpha.id], in: [zulu, alpha], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(renderedOrder([zulu, alpha]), [zulu.id, alpha.id])
 
         manager.seedPositions(for: [zulu, alpha], openIds: [])
-        try await Task.sleep(nanoseconds: 100_000_000)
-
         XCTAssertEqual(renderedOrder([zulu, alpha]), [zulu.id, alpha.id])
     }
 
     /// Once every non-main worktree carries a position, mutating
     /// `openIds` (click-to-open simulation) must not change the rendered order.
-    func testSidebarOrderStableAcrossOpenStateChanges() async throws {
+    func testSidebarOrderStableAcrossOpenStateChanges() {
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let wt1 = makeWorktree(branch: "one", path: "/tmp/one")
         let wt2 = makeWorktree(branch: "two", path: "/tmp/two")
@@ -360,7 +320,6 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
         let worktrees = [main, wt1, wt2, wt3]
 
         manager.seedPositions(for: worktrees, openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let closedOrder = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [], matches: { _ in true })
         let afterOpenLast = manager.sidebarOrderedWorktrees(worktrees, showingDetached: false, openIds: [wt3.id], matches: { _ in true })
@@ -376,20 +335,17 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     /// A reorder carries only the rows the sidebar rendered. The manager never sees why an id
     /// was omitted, so these pin the rule: an omitted id keeps its group and its slot.
-    func testSetGroupOrderKeepsIdsAbsentFromTheNewOrder() async throws {
+    func testSetGroupOrderKeepsIdsAbsentFromTheNewOrder() {
         manager.createGroup(named: "Group")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let first = makeWorktree(branch: "first", path: "/tmp/first")
         let hidden = makeWorktree(branch: nil, path: "/tmp/hidden", headStatus: .detached)
         let last = makeWorktree(branch: "last", path: "/tmp/last")
         for wt in [first, hidden, last] {
             manager.addWorktree(wt, toGroupNamed: "Group")
-            try await Task.sleep(nanoseconds: 50_000_000)
         }
 
         manager.setGroupOrder(named: "Group", ids: [last.id, first.id], in: [first, hidden, last], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
             renderedOrder([first, hidden, last], showingDetached: true),
@@ -399,16 +355,13 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     }
 
     /// Same rule for the ungrouped section's order.
-    func testSetUngroupedOrderKeepsIdsAbsentFromTheNewOrder() async throws {
+    func testSetUngroupedOrderKeepsIdsAbsentFromTheNewOrder() {
         let first = makeWorktree(branch: "first", path: "/tmp/first")
         let hidden = makeWorktree(branch: nil, path: "/tmp/hidden", headStatus: .detached)
         let last = makeWorktree(branch: "last", path: "/tmp/last")
 
         manager.setUngroupedOrder([first.id, hidden.id, last.id], in: [first, hidden, last], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
-
         manager.setUngroupedOrder([last.id, first.id], in: [first, hidden, last], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(
             renderedOrder([first, hidden, last], showingDetached: true),
@@ -425,7 +378,7 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
     /// arriving and `reconcile` publishing what git holds, which is when a drag can reach rows the
     /// seed has not numbered yet. `/tmp/zzz` sorts last by ID and second by `Worktree.sorted` —
     /// that gap is what the two orders disagree about.
-    func testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid() async throws {
+    func testADragKeepsTheSlotOfAnUnpositionedRowTheFilterHid() {
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let zulu = makeWorktree(branch: "zulu", path: "/tmp/zulu")
         let hidden = makeWorktree(branch: nil, path: "/tmp/zzz", headStatus: .detached)
@@ -463,15 +416,12 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     /// An id the manager has never seen — a worktree appended at render time and then dragged —
     /// is recorded rather than discarded.
-    func testSetUngroupedOrderRecordsAnIdItHasNotStored() async throws {
+    func testSetUngroupedOrderRecordsAnIdItHasNotStored() {
         let stored = makeWorktree(branch: "stored", path: "/tmp/stored")
         let fresh = makeWorktree(branch: "fresh", path: "/tmp/fresh")
 
         manager.setUngroupedOrder([stored.id], in: [stored], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
-
         manager.setUngroupedOrder([fresh.id, stored.id], in: [stored, fresh], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(renderedOrder([stored, fresh]), [fresh.id, stored.id])
     }
@@ -568,14 +518,12 @@ final class WorktreeGroupManagerTests: WorktreeGroupManagerGitTestCase {
 
     /// The filter runs before the group slices as well as the default one, so a bare-detached
     /// worktree inside a group is hidden on the same terms as an ungrouped one.
-    func testSidebarOrderedHidesDetachedWorktreeInsideAGroup() async throws {
+    func testSidebarOrderedHidesDetachedWorktreeInsideAGroup() {
         manager.createGroup(named: "Group")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
         manager.addWorktree(detached, toGroupNamed: "Group")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let hiding = manager.sidebarOrderedWorktrees(
             [main, detached],
