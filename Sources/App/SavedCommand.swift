@@ -4,7 +4,7 @@ import Foundation
 
 /// A saved, reusable action: either a command to run in a new terminal tab, or a prompt to hand to
 /// a named agent. `text` carries whichever the `kind` calls for.
-struct SavedCommand: Codable, Equatable, Identifiable {
+struct SavedCommand: Codable, Hashable, Identifiable {
 
     enum Kind: String, Codable, CaseIterable {
         case terminal

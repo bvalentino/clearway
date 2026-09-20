@@ -29,6 +29,12 @@ struct OpenInMenu: View {
     /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice: the split
     /// button for the toolbar, the plain submenu the sidebar's context menu needs. The switch is on
     /// the entry point rather than on state, so neither declaration replaces the other at runtime.
+    ///
+    /// The split button's `.id` is its own dropdown's contents: a toolbar `Menu` carrying a
+    /// `primaryAction` is realized as an `NSSegmentedControl` whose `NSMenu` is filled once, when
+    /// the control is built, and never refilled — see the split button note in CLAUDE.md. Keying
+    /// the view on what the dropdown draws rebuilds the control whenever that list changes, which
+    /// is the only way an edit in Settings reaches it.
     @ViewBuilder var body: some View {
         if remembersLastUsed {
             Menu {
@@ -38,6 +44,7 @@ struct OpenInMenu: View {
             } primaryAction: {
                 if let app = settings.primaryOpenInApp { open(app) }
             }
+            .id(settings.menuOpenInApps)
         } else {
             Menu {
                 items(settings.openInApps)

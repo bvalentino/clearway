@@ -32,6 +32,12 @@ struct RunCommandMenu: View {
     /// takes the plain declaration — it renders the editor door alone, which a disabled button
     /// would put out of reach for exactly the user who has yet to save a command. `runButtonTitle`
     /// is the generic "Run" in that case.
+    ///
+    /// The split button's `.id` is its own dropdown's contents: a toolbar `Menu` carrying a
+    /// `primaryAction` is realized as an `NSSegmentedControl` whose `NSMenu` is filled once, when
+    /// the control is built, and never refilled — see the split button note in CLAUDE.md. Saving
+    /// the first command flips the branch below and so rebuilds the control anyway; every command
+    /// saved after that reaches the dropdown only through this key.
     @ViewBuilder private var menu: some View {
         if let command = savedCommandManager.primaryCommand {
             Menu {
@@ -41,6 +47,7 @@ struct RunCommandMenu: View {
             } primaryAction: {
                 run(command)
             }
+            .id(savedCommandManager.menuCommands)
         } else {
             Menu {
                 items

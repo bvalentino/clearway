@@ -377,6 +377,21 @@ Requested after the review step. Three rules:
 Spec Decisions 1, 2, 10 and 18 are superseded or amended in place, Decisions 19-21 and Assumption 11
 record the shipped rules, and success criteria 9 and 11 restate the empty-list shapes.
 
+### C4: The split buttons' dropdowns go stale (operator, 2026-09-20)
+
+Bug found in the hands-on check after C3. Adding an app in Settings → Open In and closing the
+Settings window left the toolbar's Open in dropdown showing the list the window launched with.
+
+Root cause, proven below: SwiftUI realizes a toolbar `Menu` carrying a `primaryAction:` as an
+`NSSegmentedControl` whose `NSMenu` is filled once, when the control is built, and never refilled.
+The publish chain is intact and the view does re-render — the label segment updates — but the menu
+items, and the values their `Button` actions captured, stay as they were. `RunCommandMenu` has the
+same defect; saving the *first* command only looked fresh because it flips the `primaryCommand`
+branch and so rebuilds the control.
+
+Each split button now carries `.id(<its own dropdown's contents>)`, which rebuilds the control
+whenever that list changes. The rule is recorded in CLAUDE.md.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -658,3 +673,60 @@ item, and XCTest reaches no SwiftUI body here — the split this project already
    `SettingsView` is one `Form`, not a `TabView`.
 
 **Gate.** `./scripts/ci.sh` — 571 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### C4: The split buttons' dropdowns go stale
+
+| File | State |
+| --- | --- |
+| `Sources/App/OpenInMenu.swift` | The `remembersLastUsed` branch's `Menu` carries `.id(settings.menuOpenInApps)`. The plain submenu branch is untouched. |
+| `Sources/App/RunCommandMenu.swift` | The `primaryCommand` branch's `Menu` carries `.id(savedCommandManager.menuCommands)`. The empty-list branch is untouched. |
+| `Sources/App/OpenInApp.swift` | `OpenInApp` and `OpenInApp.Kind` conform to `Hashable` rather than `Equatable`, which `.id` requires. Synthesized; no stored or wire form changes. |
+| `Sources/App/SavedCommand.swift` | `SavedCommand` likewise. |
+| `CLAUDE.md` | New paragraph in the Open In / split button block: the `NSSegmentedControl` behaviour, why a plain `Menu` is exempt, and why the key must be the whole item rather than its label. |
+
+**Evidence.** No unit test: the defect is in how SwiftUI realizes a toolbar `Menu`, and nothing on
+that path is reachable from XCTest — the same split this project already makes for
+`Ghostty.SurfaceView`. It was instead reproduced and fixed against a standalone SwiftUI probe in the
+scratchpad (`toolbarprobe.swift` / `probe2.swift`, not in the repo), which walks the live
+`NSToolbar` and prints each item's realized AppKit control after mutating an app-level
+`ObservableObject`. Four toolbar declarations of the same list, one mutation (`["Finder"]` →
+`["Finder", "Cursor"]`):
+
+```
+---- BEFORE | apps=["Finder"] ----
+  SEG label="A Open in Finder" menu=[-|Edit Apps…]     # Menu(primaryAction:), ForEach content
+  SEG label="B Open in Finder" menu=[B-item-Finder]   # Menu(primaryAction:), one dynamic Button
+  SEG label="C Open in Finder" menu=[-|Edit Apps…]     # as A, plus .id(model.apps)
+  POP title="D Open in Finder" n=0 menu=[]            # plain Menu, no primaryAction
+---- AFTER append Cursor | apps=["Finder", "Cursor"] ----
+  SEG label="A Open in Finder" menu=[-|Edit Apps…]          # stale — no Cursor
+  SEG label="B Open in Finder" menu=[B-item-Finder]        # stale — not a ForEach identity problem
+  SEG label="C Open in Finder" menu=[Cursor|-|Edit Apps…]   # fresh
+  POP title="D Open in Finder" n=0 menu=[]                 # empty until opened, so never stale
+```
+
+A is the shipped shape and is stale. B rules out `ForEach` identity: the whole menu content is
+frozen, not just its rows. C is the fix. D shows the plain `Menu` is an `NSPopUpButton` whose menu
+is empty (`n=0`) until its coordinator fills it on open, which is why the sidebar's submenu and
+Run's empty-list menu need no key. A second run replacing the list with `["Zed", "Cursor"]` printed
+`SEG label="A Open in Zed" … menu=[-|Edit Apps…]`: the label segment updates while the menu does not,
+which is what rules out the publish chain and the re-render as causes.
+
+Ruled out along the way, each with its own evidence: `@Published` losing `objectWillChange` to its
+`didSet` observer (a Combine probe printed a send for the plain property, the `didSet` property's
+`append`, and its assignment alike — 3 sends, 3 mutations); a second `SettingsManager` behind the
+Settings scene (`grep` finds one `SettingsManager(` in `Sources/`, `ClearwayApp`'s `@StateObject`,
+reaching every window through `clearwayChrome` and the Settings scene through
+`SettingsView(settings:)`); and `ContentView` not re-rendering (the label segment refresh above is
+that re-render arriving).
+
+**Deviations.** One. The bug report names Open in; `RunCommandMenu` is fixed in the same change.
+It is the same declaration with the same defect, hidden only by its first-command branch flip, and
+the CLAUDE.md rule would otherwise record a shape the sibling contradicts.
+
+**Gate.** `./scripts/ci.sh` — 571 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+The first run of it reported 2 failures, both in `WorktreeGroupManagerStatusTests`
+(`testSetStatusPublishesAndPersistsToWorktreeConfig` and its neighbour, reading back
+`clearway.status` from a temp worktree's git config). Neither touches a menu, a toolbar or either
+model changed here, and both passed on the re-run above, which is the run that stands: flaky
+against real `git worktree` fixtures, not a regression from this change.

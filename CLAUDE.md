@@ -312,6 +312,18 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     record the pick rather than a successful launch — `RunCommandMenu.run(_:)` records before its
     `ghosttyApp.app` guard — or an app or command that fails to launch could never become the
     primary action again.
+    **A split button in a toolbar keeps the dropdown it was built with**, so each one carries
+    `.id(<its own dropdown's contents>)` — `.id(settings.menuOpenInApps)` on `OpenInMenu`,
+    `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`. SwiftUI realizes a toolbar `Menu`
+    that carries a `primaryAction:` as an `NSSegmentedControl` whose `NSMenu` is filled once, when
+    the control is built, and never refilled: later renders update the label segment and leave the
+    menu items — and the values their actions captured — as they were. A plain `Menu` has no such
+    problem, because it is an `NSPopUpButton` whose menu starts empty and is filled by its
+    coordinator each time it opens, which is why the sidebar's submenu and Run's empty-list menu
+    need no key. Keying the view on what the dropdown draws is what rebuilds the control. Do not
+    narrow the key to the items' labels: an edit that changes only a command would then leave the
+    old one behind the same title. Without this, adding an app in Settings → Open In left the
+    toolbar's dropdown showing the list from launch (operator change C4).
     Each view does still declare its `Menu` twice, on a condition that cannot change while the menu
     is open, and neither is the one above. `OpenInMenu` switches on `remembersLastUsed`: the
     sidebar's context submenu is not a split button, and a `primaryAction:` on a submenu row would
