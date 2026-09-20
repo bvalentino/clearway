@@ -78,3 +78,51 @@ Nothing else in the file changes. No call site changes. No new file, so `project
 - `swiftlint lint --quiet` reports zero errors, and the rewritten line stays under the
   200-character `line_length` warning (`.swiftlint.yml`).
 - `./scripts/ci.sh` green — the regression check this project's `## Pipeline` section names.
+
+## Build log
+
+### T1: Mark both of `log(_:_:)`'s interpolations public
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeConfigStore.swift` | Edited — `log(_:_:)` now interpolates both `what` and `message` with `privacy: .public`, and carries a doc comment saying why. Only changed file. |
+
+The line reads:
+
+```swift
+Ghostty.logger.warning("worktree config: \(what, privacy: .public) failed: \(message, privacy: .public)")
+```
+
+113 characters, against SwiftLint's 200-character warning. `grep -n logger Sources/App/WorktreeConfigStore.swift`
+returns that line and nothing else; `git diff --name-only` lists that file and nothing else.
+
+**Evidence**
+
+No test, per decision 5 of the spec and the plan's "No test" bullet: redaction is applied by the log
+reader according to its privilege, not baked into the stored entry, so a test reading its own
+process's entries sees identical text before and after and would pass either way. There is therefore
+no failure to watch. Verification is the source line above plus the gate below.
+
+**Deviations from the plan**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — green, 676 tests, 0 failures, `==> CI passed.`
+
+The first run of that command failed one test, `WorktreeGroupManagerNameTests`
+`testReconcilePopulatesNamesFromConfigAndDropsAClearedOne`:
+
+```
+caught error: "Failure(command: "-C …/.worktrees/feature config --worktree --unset clearway.name",
+status: 255, stderr: "error: could not lock config file
+…/.git/worktrees/feature/config.worktree: File exists")"
+```
+
+That is the test harness's own `repo.unsetValue` losing git's config lock to the manager's write
+chain on the same `config.worktree`, not a product failure, and nothing in this change touches a
+write path. An immediately following run of the same command on the same bytes was green. Recorded
+as a follow-up, not fixed here.
