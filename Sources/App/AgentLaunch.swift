@@ -33,14 +33,15 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 /// Prompts near the OS `ARG_MAX` (~1 MB on recent macOS) can fail with "Argument list too
 /// long". Typical agent prompts are well under that.
 ///
-/// - Returns: The shell command string and the prompt file path (callers that tear down
-///   surfaces early can delete the file if the agent never ran).
+/// - Returns: The shell command string and the path of the prompt file it will read, or `nil`
+///   when that file could not be written. The recipe removes the file itself; the path is
+///   returned so the tests can clean up after a command they never run.
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,
     path: String,
     filePrefix: String = "clearway-agent-prompt"
-) -> (command: String, promptFile: String) {
+) -> (command: String, promptFile: String)? {
     let tempDir = NSTemporaryDirectory()
     let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
     let data = Data(prompt.utf8)
@@ -49,10 +50,11 @@ func buildAgentPromptCommand(
         contents: data,
         attributes: [.posixPermissions: 0o600]
     )
-    if !wrote {
-        Ghostty.logger.warning(
+    guard wrote else {
+        Ghostty.logger.error(
             "buildAgentPromptCommand: failed to write prompt file \(promptFile, privacy: .public)"
         )
+        return nil
     }
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "

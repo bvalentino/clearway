@@ -1,3 +1,4 @@
+import AppKit
 import GhosttyKit
 
 /// Opening a main tab that runs an agent.
@@ -87,12 +88,20 @@ extension TerminalManager {
             case .bare, .staged:
                 launchCommand = buildBareCommand(agentCommand: command, path: path)
             case .argv:
-                launchCommand = buildAgentPromptCommand(
+                // No prompt file, no launch: the recipe's `$(cat)` would hand the agent an empty
+                // prompt, and a bare tab is not the tab that was asked for. The claim ends here
+                // too — nothing cancels this Task.
+                guard let launch = buildAgentPromptCommand(
                     agentCommand: command,
                     prompt: prompt,
                     path: path,
                     filePrefix: "clearway-agent-tab"
-                ).command
+                ) else {
+                    if ownsLaunch { endAgentLaunch(for: worktreeId) }
+                    presentPromptFileFailure(command: command)
+                    return
+                }
+                launchCommand = launch.command
             }
 
             let surface = appendTab(for: worktree, app: app, command: launchCommand)
@@ -100,11 +109,17 @@ extension TerminalManager {
 
             guard delivery == .staged else { return }
             await Self.awaitShellPrompt(on: surface)
-            // `sendText`, not `sendPaste`: the latter appends Enter, which would run the prompt the
-            // user's "Append Enter to run immediately" toggle says to stage. Same primitive the
-            // shell path's `ShellSend.Step.text` uses for the line it deliberately leaves unrun.
-            surface.sendText(prompt)
+            surface.sendText(Self.stagedText(prompt))
         }
+    }
+
+    private func presentPromptFileFailure(command: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't start \(command)"
+        alert.informativeText = "Clearway couldn't write the prompt file in \(NSTemporaryDirectory())."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     /// Build a `/bin/sh -c` wrapper that runs the agent command with no initial prompt.
