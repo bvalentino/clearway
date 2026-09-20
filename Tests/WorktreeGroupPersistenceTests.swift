@@ -121,6 +121,11 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
             ["Old"],
             "a rename no member accepted must not reach the registry"
         )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "New", path: path)],
+            "the abandoned registry is the one failure the user is told about"
+        )
         await restartManager()
         XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the next launch shows the old name")
     }

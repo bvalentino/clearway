@@ -40,6 +40,11 @@ final class WorktreeGroupManager: ObservableObject {
     /// The axis the sidebar sections its worktrees by.
     @Published private(set) var grouping: WorktreeGrouping = .group
 
+    /// Shows the user that a rename or delete abandoned its registry write. Defaults to the real
+    /// alert, so production wires nothing; the test base replaces it, because a modal raised on the
+    /// write chain would stall the chain the rest of a test waits on.
+    var presentWriteAlert: @MainActor @Sendable (WorktreeGroupWriteAlert) -> Void = { $0.present() }
+
     private let configStore: WorktreeConfigStore
 
     /// Config writes run one after another, and every config read awaits the chain first.
@@ -83,7 +88,7 @@ final class WorktreeGroupManager: ObservableObject {
     func createGroup(named name: String) {
         guard let trimmed = WorktreeGroup.available(name, in: groups.map(\.name)) else { return }
         groups.append(WorktreeGroup(name: trimmed))
-        writeRegistry()
+        writeRegistry(affecting: trimmed)
     }
 
     /// Renames the group with the given name. No-ops if no group carries it, or if the new name
@@ -97,7 +102,7 @@ final class WorktreeGroupManager: ObservableObject {
         mutatePlacement { placement in
             for id in members { placement.groupNames[id] = trimmed }
         }
-        writeRegistry(settingGroup: trimmed, on: members)
+        writeRegistry(affecting: trimmed, settingGroup: trimmed, on: members)
     }
 
     /// Deletes the group with the given name. No-ops if no group carries it.
@@ -121,7 +126,7 @@ final class WorktreeGroupManager: ObservableObject {
             for (id, position) in appended { placement.positions[id] = position }
         }
         writePositions(appended)
-        writeRegistry(settingGroup: nil, on: members)
+        writeRegistry(affecting: name, settingGroup: nil, on: members)
     }
 
     /// Adds a worktree to the specified group, at the end of it.
@@ -481,8 +486,16 @@ final class WorktreeGroupManager: ObservableObject {
     /// registry, and only if every member write landed: a worktree naming an unlisted group renders
     /// ungrouped, so a half-applied rename that published the registry first would empty the group
     /// on the next launch.
-    private func writeRegistry(settingGroup name: String? = nil, on members: [String] = []) {
+    ///
+    /// `group` is the group the gesture acted on, which the member value is not: a delete writes
+    /// `nil` to its members and the alert must still name what was deleted.
+    private func writeRegistry(
+        affecting group: String,
+        settingGroup name: String? = nil,
+        on members: [String] = []
+    ) {
         let registry = groups.map(\.name)
+        let presentAlert = presentWriteAlert
         enqueueWrite { configStore in
             for path in members {
                 guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
@@ -490,6 +503,9 @@ final class WorktreeGroupManager: ObservableObject {
                     Self.logFailure(
                         "clearway.groupOrder was not rewritten: clearway.group for \(path) was not saved"
                     )
+                    // Awaited, not fired and forgotten: nothing should keep writing behind a
+                    // message saying a write failed.
+                    await presentAlert(WorktreeGroupWriteAlert(group: group, path: path))
                     return
                 }
             }

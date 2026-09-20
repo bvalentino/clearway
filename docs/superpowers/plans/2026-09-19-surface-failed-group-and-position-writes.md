@@ -280,3 +280,44 @@ a key with the extension off is the state asked for and `WorktreeConfigStore.set
 **Gate.** `./scripts/ci.sh` — exit 0, `Executed 559 tests, with 0 failures (0 unexpected)`, run
 after the last source edit. `swiftlint lint --quiet` — exit 0, zero errors; the same two
 pre-existing warnings (`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:406`).
+
+### T3: Alert on the abandoned registry, and keep tests out of the modal
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | Edited. `var presentWriteAlert: @MainActor @Sendable (WorktreeGroupWriteAlert) -> Void = { $0.present() }` beside the published state; `writeRegistry` gains a non-optional `affecting group: String`, captures the presenter value (not `self`) before `enqueueWrite`, and awaits it at the member-write abandon added in T2. `createGroup` passes the new name, `renameGroup` the trimmed new name, `deleteGroup` the name being removed. Still no `import AppKit` and no `NSAlert`; 646 lines, under the 700-line warning. |
+| `Tests/TestHelpers.swift` | Edited. `WorktreeGroupManagerGitTestCase` builds every manager through one `private func makeRecordingManager()`, which installs a presenter appending to `private(set) var recordedWriteAlerts`. Both `setUp` and `restartManager()` now call it, so neither can hand back a manager carrying the live presenter. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | Edited. `testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched` asserts `recordedWriteAlerts` equals exactly `[WorktreeGroupWriteAlert(group: "New", path: path)]`, placed before `restartManager()` so it reads against the gesture it is about. |
+
+**Evidence.** The new assertion was watched red against the unfixed code: the `await presentAlert(…)`
+line was replaced by `_ = presentAlert` and the one test run on its own. The store's line and the
+manager's T2 line still appeared, and only the alert was missing:
+
+```
+[ghostty] worktree config: set clearway.group at /var/folders/…/clearway-manager-tests-0AF980C2…/.worktrees/member failed: fatal: cannot change to '…/.worktrees/member': No such file or directory
+[ghostty] worktree groups: clearway.groupOrder was not rewritten: clearway.group for /var/folders/…/.worktrees/member was not saved
+Tests/WorktreeGroupPersistenceTests.swift:124: error: -[ClearwayTests.WorktreeGroupPersistenceTests testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched] : XCTAssertEqual failed: ("[]") is not equal to ("[Clearway.WorktreeGroupWriteAlert(group: "New", path: "/var/folders/…/.worktrees/member")]") - the abandoned registry is the one failure the user is told about
+	 Executed 1 test, with 1 failure (0 unexpected) in 1.183 (1.184) seconds
+** TEST FAILED **
+```
+
+The alert call was then restored from a scratchpad copy and the gate re-run.
+
+That same green run is the live proof of spec assumption 4: the presenter is a plain
+`@MainActor @Sendable` function-typed value, not a `@convention(block)` one, so the write chain's
+nonisolated body hops to main and calls it rather than tripping
+`swift_task_isCurrentExecutor` — the recorder was in fact invoked from that body, and the suite
+finished.
+
+**Deviations from the plan.** One. The plan left open whether `restartManager()` should clear the
+recording; it does not. XCTest builds one instance per test method, so `recordedWriteAlerts` is
+already scoped to a single test, and clearing it on a relaunch would only weaken the "exactly one
+alert" assertion. Both construction sites are covered by construction rather than by two separate
+installs: `makeRecordingManager()` is the only place the base builds a manager.
+
+**Gate.** `./scripts/ci.sh` — exit 0, run after the last source edit (the restore), with the suite
+**finishing**: `IDETestOperationsObserverDebug: 96.963 elapsed -- Testing started completed`,
+`Test Suite 'All tests' passed`, `Executed 559 tests, with 0 failures (0 unexpected)`. No test
+opened a modal. `swiftlint lint --quiet` — exit 0, zero errors; the same two pre-existing warnings
+(`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:406`). `git status --porcelain` lists only
+the three edited files; no `default.profraw`, since the app was never launched.
