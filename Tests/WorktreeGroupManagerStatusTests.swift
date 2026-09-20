@@ -35,12 +35,34 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let main = makeWorktree(branch: "main", path: repo.root, isMain: true)
 
         manager.setStatus(.todo, for: main)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await settle()
 
         XCTAssertTrue(manager.statuses.isEmpty)
         XCTAssertNil(
             try repo.value(ofLocalKey: "extensions.worktreeConfig"),
             "a main-worktree status must not even bootstrap the extension"
+        )
+    }
+
+    /// `setStatus` refuses main, but `config.worktree` is hand-editable, so a status can still
+    /// reach `statuses` under main's id. The read path has to refuse it too, or main drops out of
+    /// the top of the by-status order and `⌘1` moves with it. Driven through two `Worktree` values
+    /// over one path, since `Worktree.id` is the path and nothing else can seed that entry.
+    func testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath() {
+        let mainPath = "/tmp/main"
+        manager.setStatus(.done, for: makeWorktree(branch: "main", path: mainPath))
+
+        let main = makeWorktree(branch: "main", path: mainPath, isMain: true)
+        let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
+        manager.setStatus(.todo, for: alpha)
+        manager.setGrouping(.status)
+
+        XCTAssertEqual(manager.statuses[main.id], .done, "the seed landed under main's id")
+        XCTAssertNil(manager.status(for: main))
+        XCTAssertEqual(
+            renderedOrder([main, alpha]),
+            [main.id, alpha.id],
+            "main stays first; honouring its stored `.done` would sort it behind alpha's `.todo`"
         )
     }
 
@@ -101,16 +123,14 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
 
     /// `.none` renders the base order under one header, so it must return exactly what
     /// `.group` returns — the view mode changes the sections, never the list.
-    func testNoneGroupingReturnsTheSameOrderAsGroup() async throws {
+    func testNoneGroupingReturnsTheSameOrderAsGroup() {
         manager.createGroup(named: "G")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
         let bravo = makeWorktree(branch: "bravo", path: "/tmp/bravo")
         let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
         manager.addWorktree(charlie, toGroupNamed: "G")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.done, for: alpha)
 
         let all = [main, alpha, bravo, charlie]
@@ -121,7 +141,6 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
             matches: { _ in true }
         )
         manager.setGrouping(.none)
-        try await Task.sleep(nanoseconds: 150_000_000)
         let none = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: false,
@@ -135,9 +154,8 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
 
     /// `.status` is a stable partition of the base order: no status first, then the five
     /// statuses in `allCases` order, each bucket keeping its members' `.group` relative order.
-    func testStatusGroupingStablyPartitionsTheBaseOrder() async throws {
+    func testStatusGroupingStablyPartitionsTheBaseOrder() {
         manager.createGroup(named: "G")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let alpha = makeWorktree(branch: "alpha", path: "/tmp/alpha")
@@ -145,9 +163,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let charlie = makeWorktree(branch: "charlie", path: "/tmp/charlie")
         let delta = makeWorktree(branch: "delta", path: "/tmp/delta")
         manager.addWorktree(charlie, toGroupNamed: "G")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.addWorktree(delta, toGroupNamed: "G")
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.done, for: alpha)
         manager.setStatus(.todo, for: bravo)
         manager.setStatus(.done, for: charlie)
@@ -160,7 +176,6 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
             matches: { _ in true }
         )
         manager.setGrouping(.status)
-        try await Task.sleep(nanoseconds: 150_000_000)
         let byStatus = manager.sidebarOrderedWorktrees(
             all,
             showingDetached: false,
@@ -180,15 +195,13 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
 
     /// The partition runs after `Worktree.visible`, so the detached rule is inherited by
     /// `.status` without restating it.
-    func testStatusGroupingAppliesVisibilityFirst() async throws {
+    func testStatusGroupingAppliesVisibilityFirst() {
         let main = makeWorktree(branch: "main", path: "/tmp/main", isMain: true)
         let closed = makeWorktree(branch: "closed", path: "/tmp/closed")
         let detached = makeWorktree(branch: nil, path: "/tmp/detached", headStatus: .detached)
         manager.setUngroupedOrder([detached.id, closed.id], in: [detached, closed], openIds: [])
-        try await Task.sleep(nanoseconds: 150_000_000)
         manager.setStatus(.todo, for: closed)
         manager.setGrouping(.status)
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let all = [main, closed, detached]
         let hiding = manager.sidebarOrderedWorktrees(
@@ -227,18 +240,16 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         XCTAssertFalse(manager.matches(wt, query: "nothing", taskTitle: "Rewrite the parser"))
     }
 
-    func testMatchesContainingGroupName() async throws {
+    func testMatchesContainingGroupName() {
         manager.createGroup(named: "Backend")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
         manager.addWorktree(wt, toGroupNamed: "Backend")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertTrue(manager.matches(wt, query: "backend", taskTitle: nil))
     }
 
-    func testMatchesStatusDisplayName() async throws {
+    func testMatchesStatusDisplayName() {
         let wt = makeWorktree(branch: "feature-x", path: "/tmp/feature-x")
         manager.setStatus(.inReview, for: wt)
 

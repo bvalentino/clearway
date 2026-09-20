@@ -113,6 +113,15 @@ struct GitRepoFixture {
         try Self.git(["-C", path, "config", "--worktree", key, value], in: root)
     }
 
+    func setLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", key, value], in: root)
+    }
+
+    /// Appends one more value to a repo-level multivar, the way the registry is written.
+    func addLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", "--add", key, value], in: root)
+    }
+
     func unsetValue(ofKey key: String, atWorktree path: String) throws {
         try Self.git(["-C", path, "config", "--worktree", "--unset", key], in: root)
     }
@@ -198,9 +207,26 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     }
 
     override func tearDown() async throws {
+        // A sleep-free body can end with `git config` subprocesses still queued, and they must not
+        // run against a scratch root being removed.
+        await settle()
         manager = nil
         repo = nil
         try await super.tearDown()
+    }
+
+    /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
+    /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
+    /// `waitFor` returns the moment the expected value is already there.
+    ///
+    /// The chain is sampled once, so a `reconcile` `Task` the body discarded is covered only
+    /// because `seedPositions` enqueues its write in the same continuation as the reload's publish,
+    /// with no suspension between them: a body that observed the publish has already let that
+    /// enqueue run. Put an `await` in `reconcile` between the two and this stops holding — await
+    /// the `Task` it returns instead, the way `testReconcileRereadsBothRepoLevelKeys` does.
+    func settle() async {
+        await manager?.loadTask?.value
+        await manager?.writeChain?.value
     }
 
     /// Replaces `manager` with a fresh one over the same root and waits for its load — the
