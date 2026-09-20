@@ -66,7 +66,7 @@ struct CreateWorktreeSheet: View {
                     .disabled(isCreating)
             }
 
-            if afterCreateSlot.offersField {
+            if case .offered = afterCreateSlot {
                 LabeledField(Self.afterCreateLabel) {
                     FullWidthPicker(
                         label: Self.afterCreateLabel,
@@ -132,8 +132,8 @@ struct CreateWorktreeSheet: View {
                             if let targetGroupName {
                                 groupManager.addWorktree(worktree, toGroupNamed: targetGroupName)
                             }
-                            if slot.offersField {
-                                savedCommandManager.setAfterCreateDefault(slot.command?.id)
+                            if case .offered(let command) = slot {
+                                savedCommandManager.setAfterCreateDefault(command?.id)
                             }
                             dismiss()
                         case .reportedFailure:
@@ -167,7 +167,7 @@ struct CreateWorktreeSheet: View {
         }
     }
 
-    static let afterCreateLabel = "Run agent command after create"
+    private static let afterCreateLabel = "Run agent command after create"
 
     private var afterCreateSlot: AfterCreateSlot {
         Self.afterCreateSlot(
@@ -201,9 +201,16 @@ extension CreateWorktreeSheet {
     }
 
     /// The sheet's "Run agent command after create" slot for the variant in front of the operator.
-    struct AfterCreateSlot: Equatable {
-        let offersField: Bool
-        let command: SavedCommand?
+    /// A hidden slot carrying a command is unrepresentable, so the Create button can read
+    /// `command` without first asking whether the field was ever drawn.
+    enum AfterCreateSlot: Equatable {
+        case hidden
+        case offered(SavedCommand?)
+
+        var command: SavedCommand? {
+            guard case .offered(let command) = self else { return nil }
+            return command
+        }
     }
 
     /// Only the Start Task variant carries the slot. A worktree created from the sidebar links no
@@ -213,10 +220,8 @@ extension CreateWorktreeSheet {
     static func afterCreateSlot(
         taskId: UUID?, pickedId: UUID?, commands: [SavedCommand]
     ) -> AfterCreateSlot {
-        guard taskId != nil else { return AfterCreateSlot(offersField: false, command: nil) }
-        return AfterCreateSlot(
-            offersField: true, command: CommandDefaults.resolve(pickedId, in: commands)
-        )
+        guard taskId != nil else { return .hidden }
+        return .offered(CommandDefaults.resolve(pickedId, in: commands))
     }
 
     enum Outcome: Equatable {

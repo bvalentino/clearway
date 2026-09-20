@@ -1,8 +1,9 @@
 import XCTest
 @testable import Clearway
 
-/// Pins what the New Worktree sheet does once `createWorktree` returns. Nothing in a SwiftUI body
-/// is reachable from XCTest, which is why the rule is a pure static on `CreateWorktreeSheet`.
+/// Pins what the create sheet does once `createWorktree` returns, and which of its two variants
+/// carries the "Run agent command after create" slot. Nothing in a SwiftUI body is reachable from
+/// XCTest, which is why both rules are pure statics on `CreateWorktreeSheet`.
 @MainActor
 final class CreateWorktreeOutcomeTests: XCTestCase {
 
@@ -55,7 +56,7 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
             taskId: nil, pickedId: agent.id, commands: [agent]
         )
 
-        XCTAssertEqual(slot, CreateWorktreeSheet.AfterCreateSlot(offersField: false, command: nil))
+        XCTAssertEqual(slot, .hidden)
     }
 
     func testTheStartTaskVariantResolvesThePickedAgentCommand() {
@@ -65,9 +66,7 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
             taskId: UUID(), pickedId: agent.id, commands: [agent]
         )
 
-        XCTAssertEqual(
-            slot, CreateWorktreeSheet.AfterCreateSlot(offersField: true, command: agent)
-        )
+        XCTAssertEqual(slot, .offered(agent))
     }
 
     /// None is a real pick on this variant, so it both runs nothing and is written back.
@@ -76,7 +75,7 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
             taskId: UUID(), pickedId: nil, commands: [makeAgentCommand()]
         )
 
-        XCTAssertEqual(slot, CreateWorktreeSheet.AfterCreateSlot(offersField: true, command: nil))
+        XCTAssertEqual(slot, .offered(nil))
     }
 
     // MARK: - Start Task prefill

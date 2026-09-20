@@ -176,6 +176,22 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     for non-button containers such as the aside tab strip and the main terminal tab strip; on a
     button it drops the system font, padding, shape and hover/press treatment, so the control reads
     as foreign beside stock buttons like Create Task.
+  - **A picker that has to fill its column goes through `FullWidthPicker`**
+    (`Sources/App/FullWidthPicker.swift`). A SwiftUI `Picker` clamps to the AppKit intrinsic width
+    of the `NSPopUpButton` it wraps — 80pt for these lists — and `.frame(maxWidth: .infinity)`
+    **centers** that 80pt control rather than stretching it, so the create sheet's fixed-width
+    column cannot be filled with one; `Form`, an exact `.frame(width:)` and frames on the option
+    rows all measure 80pt too. The wrapper is an `NSViewRepresentable` whose `sizeThatFits` adopts
+    the proposed width, and it is generic over the selection with rows carrying a title and an
+    optional tinted SF Symbol, so the Status and after-create pickers cannot drift. Three of its
+    lines are load-bearing and read as removable: the menu is rebuilt **only** when `rows` changes,
+    or an open menu closes on every keystroke elsewhere in the sheet; `menu.autoenablesItems =
+    false`, because items carrying no action of their own are validated against the responder chain
+    and the whole list greys out; and `isTemplate = false` on the configured symbol, or AppKit
+    recolors it to the menu's own text color and the status tint is lost. An `NSMenu` cannot host a
+    SwiftUI view, which is why the rows are built from `WorktreeStatus`'s `displayName` / `symbol` /
+    `color` rather than from `WorktreeStatusLabel` — the sidebar's Status submenu is that view's one
+    remaining renderer.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
     and awaits nothing, it calls a coordinator method (`resolveStart`, `confirmCreate`,
     `completePendingCreate`, `planTask`). This is what lets one behavior carry several entry points
@@ -305,7 +321,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `buildBareCommand` (`TerminalManager+Agent.swift`).
     A worktree's first tab is chosen once, by `TerminalManager.firstTabSource(afterCreateCommand:mainCommand:)`,
     which `takeFirstTabSource` consumes the creation mark to reach when `pane(for:)` builds the
-    pane: the create sheet's "Run after create" pick wins and goes through `run`, else the Main
+    pane: the create sheet's "Run agent command after create" pick wins and goes through `run`, else the Main
     Terminal command opens an agent tab, else a login shell. A pick **replaces** the Main Terminal
     tab rather than adding one — two agents on a fresh worktree is the bug the rule exists to
     prevent — and the rule is `static`, so the truth table is testable without a `ghostty_app_t`.
@@ -382,7 +398,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     dropdown omits it, and both rules are pinned by `SavedCommandManagerTests` rather than read out
     of a SwiftUI body.
     Beside it the same store owns `command-defaults.json`, one optional command id: the Start Task
-    sheet's "Run after create" slot. A `plan` key shipped there briefly and was retired with the
+    sheet's "Run agent command after create" slot. A `plan` key shipped there briefly and was retired with the
     Plan menu; a file still carrying it decodes fine, since an unknown key is ignored. Both files
     go through one `write` on the store and one `enqueue` chain on the manager, so a defaults write
     and a commands write cannot reach the queue out of order. The id is only ever read through
@@ -395,8 +411,20 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     untouched picker on a stale id is indistinguishable from the operator choosing None — without
     that guard the next successful create wrote the id away, which is the opposite of the sentence
     above. Clearing a slot that does resolve is a real pick and goes through. The after-create slot
-    is written back only on the `.apply` branch of the sheet's outcome, so a cancelled or failed
-    create changes no default. No watcher, for the same reason `commands.json` has none.
+    is written back only on the `.apply` branch of the sheet's outcome **and only by the Start Task
+    variant**, so a cancelled or failed create changes no default and neither does a hand-made
+    worktree. Which variant is in front of the operator is `CreateWorktreeSheet.afterCreateSlot`,
+    a pure static keyed on the sheet's own `startPrefill?.taskId`: `.hidden` for New Worktree, which
+    draws no field, resolves no command and calls `setAfterCreateDefault` not at all, or
+    `.offered(SavedCommand?)` for Start Task. It is an enum rather than a flag beside a command so
+    a hidden slot carrying one cannot be built, which is what lets the `confirmCreate` call read
+    `slot.command` without re-asking whether the field was drawn. The hidden case is not the
+    manager's guard doing its job — the guard only refuses a clear while the stored id resolves to
+    nothing, so a New Worktree sheet writing its untouched None back would clear a slot that does
+    resolve, and the sheet is the only layer that knows a picker was never shown. A worktree created
+    from the sidebar links no task, so there is no brief for a saved agent command to act on, and
+    its first tab is the Main Terminal tab. No watcher, for the same reason `commands.json` has
+    none.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached

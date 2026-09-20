@@ -313,12 +313,13 @@ Recorded in the spec as Decisions 11–13.
 
 | File | State |
 | --- | --- |
-| `Sources/App/SidebarSheets.swift` | Adds `CreateWorktreeSheet.AfterCreateSlot` (`offersField` + `command`) and the pure static `afterCreateSlot(taskId:pickedId:commands:)` beside `outcome`, plus a `private var afterCreateSlot` reading `startPrefill?.taskId`. The field's `LabeledField` is wrapped in `if afterCreateSlot.offersField`; the Create action takes `let slot = afterCreateSlot` and passes `slot.command` to `confirmCreate`; the `.apply` branch calls `setAfterCreateDefault` only `if slot.offersField`. |
+| `Sources/App/SidebarSheets.swift` | Adds `CreateWorktreeSheet.AfterCreateSlot` (`.hidden` / `.offered(SavedCommand?)`) and the pure static `afterCreateSlot(taskId:pickedId:commands:)` beside `outcome`, plus a `private var afterCreateSlot` reading `startPrefill?.taskId`. The field's `LabeledField` is wrapped in `if case .offered = afterCreateSlot`; the Create action takes `let slot = afterCreateSlot` and passes `slot.command` to `confirmCreate`; the `.apply` branch binds `if case .offered(let command) = slot` before calling `setAfterCreateDefault`. |
 | `Tests/CreateWorktreeOutcomeTests.swift` | Three cases under a `Run agent command after create` mark, over a local `makeAgentCommand` helper. |
 
 One value drives all three readers — the field's visibility, the command handed to `confirmCreate`,
-and the write-back guard — so they cannot disagree about which variant is on screen. `offersField`
-and "records the default" are the same fact, so they are one property rather than two.
+and the write-back guard — so they cannot disagree about which variant is on screen. "Draws the
+field" and "records the default" are the same fact, so they are one case rather than two, and the
+case that carries no field carries no command either.
 
 The `onAppear` seeding is untouched. On the hidden variant it sets a `@State` nothing reads;
 `afterCreateSlot` is the single gate, so no value can leak past it.
