@@ -96,7 +96,10 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(Self.listArgs(worktreePath: path)) {
         case .output(let data):
-            guard let text = String(data: data, encoding: .utf8) else { return nil }
+            guard let text = String(data: data, encoding: .utf8) else {
+                log("read \(path)", "git printed bytes that are not UTF-8")
+                return nil
+            }
             return Self.parseList(text)
         case .refused:
             return [:]

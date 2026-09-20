@@ -305,3 +305,26 @@ A first run of the gate, made while four review subagents were running, exited 6
 (`XCTAssertLessThan(Date().timeIntervalSince(started), 0.2)` against a 0.3s fake delay,
 `Tests/ShellPathStoreTests.swift:120-132`) that this branch does not touch and that predates it
 (`d7768d4`, PR #202). It passed on the unloaded re-run. Recorded as a follow-up, not fixed here.
+
+## Changelog
+
+### Log the non-UTF-8 read in `values(forWorktreeAt:)` (review follow-up)
+
+Review approved the branch with one accepted suggestion. The guard added by T1 in
+`Sources/App/WorktreeConfigStore.swift` returned `nil` silently while the `.unavailable` branch
+three lines below logged, so it now calls the file's `log(_:_:)` helper first:
+
+```swift
+guard let text = String(data: data, encoding: .utf8) else {
+    log("read \(path)", "git printed bytes that are not UTF-8")
+    return nil
+}
+```
+
+Recorded as spec decision 10. No behaviour change beyond the warning line — the function still
+answers `nil`, which spec decision 3 fixed. No test added: the store cannot produce non-UTF-8 git
+stdout (spec decision 8), and that is unchanged by logging.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the edit. `swiftlint lint --quiet` prints nothing.
