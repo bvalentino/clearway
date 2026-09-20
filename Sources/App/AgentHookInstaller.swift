@@ -13,15 +13,17 @@ enum AgentHookInstaller {
     /// seeding a config folder for a tool the user does not have is a change nobody asked for.
     private static let agentFiles = [(directory: ".claude", name: "settings.json"), (directory: ".codex", name: "hooks.json")]
 
-    static func install() {
-        installScript()
-        mergeAgentSettings(installing: true)
+    /// `home` is a parameter so the whole install can be driven against a temp root; every call site
+    /// outside the tests takes the default.
+    static func install(home: String = NSHomeDirectory()) {
+        installScript(AgentHookPaths(home: home))
+        mergeAgentSettings(installing: true, home: home)
     }
 
     /// The forwarder stays on disk. It exits 0 on its first guard once nothing is listening, so
     /// leaving it costs nothing and re-enabling the toggle is one settings write.
-    static func uninstall() {
-        mergeAgentSettings(installing: false)
+    static func uninstall(home: String = NSHomeDirectory()) {
+        mergeAgentSettings(installing: false, home: home)
     }
 
     /// `home` is a parameter so the round trip can be driven against a temp directory; every call
@@ -38,11 +40,11 @@ enum AgentHookInstaller {
 
     // MARK: - The forwarder
 
-    private static func installScript() {
+    private static func installScript(_ paths: AgentHookPaths) {
         let fileManager = FileManager.default
-        let path = AgentHookScript.scriptPath
+        let path = paths.scriptPath
         do {
-            for directory in [AgentHookScript.clearwayDir, AgentHookScript.hooksDir]
+            for directory in [paths.clearwayDir, paths.hooksDir]
             where !fileManager.fileExists(atPath: directory) {
                 try fileManager.createDirectory(
                     atPath: directory,

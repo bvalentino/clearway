@@ -94,6 +94,25 @@ final class RAIICleanupTests: TempRootTestCase {
         XCTAssertNil(weakMonitor, "ClaudeActivityMonitor leaked; its watcher sources are never cancelled")
     }
 
+    /// The listening socket rides on `HookSocketListener`'s release, so an enabled monitor must
+    /// still deallocate. The home is short and under `/tmp` because a Unix socket address has only
+    /// 104 bytes for its path and `NSTemporaryDirectory()` alone spends half of it.
+    func testAgentActivityMonitorDeallocates() throws {
+        let home = "/tmp/clearway-raii-\(UUID().uuidString.prefix(8))"
+        try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+
+        weak var weakMonitor: AgentActivityMonitor?
+        autoreleasepool {
+            let monitor = AgentActivityMonitor(home: home)
+            monitor.setEnabled(true)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: AgentHookPaths(home: home).socketPath))
+            weakMonitor = monitor
+            XCTAssertNotNil(weakMonitor)
+        }
+        XCTAssertNil(weakMonitor, "AgentActivityMonitor leaked; its listening source is never cancelled")
+    }
+
     func testWorkTaskManagerDeallocates() {
         weak var weakManager: WorkTaskManager?
         autoreleasepool {

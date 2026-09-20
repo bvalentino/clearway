@@ -63,7 +63,7 @@ final class AgentHookIdentityTests: XCTestCase {
 
         XCTAssertEqual(
             pairs.first(where: { $0.key == AgentHookIdentity.socketKey })?.value,
-            AgentHookScript.socketPath
+            AgentHookPaths().socketPath
         )
     }
 }

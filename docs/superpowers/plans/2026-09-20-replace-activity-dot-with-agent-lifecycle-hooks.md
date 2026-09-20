@@ -1083,3 +1083,101 @@ worktree positionally, `(UUID, String?)`, matching `AgentHookIdentity.environmen
 seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
 four files: the new test, the three modified sources, and the `xcodegen`-regenerated
 `project.pbxproj`. No `default.profraw` — nothing here launched the app.
+
+---
+
+### T6: The monitor — socket, roster, install/uninstall
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | New. `@MainActor AgentActivityMonitor` — the three `@Published private(set)` dictionaries, `setEnabled(_:)`, `retire(surfaceId:)`, and the change-gated `publish()` — plus `HookSocketListener`, the RAII holder whose `deinit` cancels the read source, with every socket call and both `DispatchSource` handlers in its `nonisolated static` factory. |
+| `Sources/App/AgentActivityStore.swift` | Gains the three whole-dictionary derivations the monitor publishes (`worktreePhases`, `worktreeSubagents`, `surfaceToolNames`); `phase(forWorktree:)` and `subagents(forWorktree:)` become lookups into them, so each rule is spelled once. |
+| `Sources/App/AgentHookScript.swift` | The four path statics become `AgentHookPaths(home:)`, a struct with a defaulted `home`. Everything else is unchanged. |
+| `Sources/App/AgentHookInstaller.swift` | `install(home:)` / `uninstall(home:)` thread that same `home` through `installScript`, which now takes the paths. |
+| `Tests/AgentActivityMonitorTests.swift` | New. 6 cases driving the monitor end to end through the installed forwarder — real script, real `/usr/bin/nc -U`, real socket — under a temp home. |
+| `Tests/RAIICleanupTests.swift` | `testAgentActivityMonitorDeallocates` added beside the existing `testClaudeActivityMonitorDeallocates`, which stays until T11. |
+| `Tests/AgentHookIdentityTests.swift`, `Tests/AgentHookSettingsTests.swift` | `AgentHookScript.socketPath` → `AgentHookPaths().socketPath`. |
+
+**Evidence.** The two rules that decide whether a payload is ever seen were implemented the careless
+way first — `bind` without unlinking the stale path, and a single `read` instead of a loop to EOF —
+and `./scripts/ci.sh` run against that. Exactly the two discriminating cases went red, with the
+other four monitor cases and the dealloc test green beside them:
+
+```
+Test Suite 'AgentActivityMonitorTests' started at 2026-09-20 19:46:40.129.
+    ✖ testAPayloadLargerThanOneReadArrivesIntact, XCTAssertEqual failed: ("nil") is not equal to ("Optional("Bash")") - the lead's in-flight tool
+    ✖ testAStaleSocketFileDoesNotStopTheListenerBinding, XCTAssertEqual failed: ("idle") is not equal to ("working") - the worktree's phase over a stale socket path
+Executed 6 tests, with 2 failures (0 unexpected) in 13.016 (13.018) seconds
+```
+
+Both failures are silent in production, which is why they are worth pinning: a socket inode left by
+a process that died without closing makes `bind` fail with `EADDRINUSE`, so every launch after a
+crash listens on nothing and no dot ever lights again; and a `PreToolUse` carries the whole
+`tool_input`, so one 4 KB read truncates an Edit or a Write into invalid JSON that `parse` drops
+without a trace.
+
+**The two structural criteria cannot be tested, so they were verified against the built binary**, as
+CLAUDE.md requires — a probe of this shape does not reproduce the trap, it runs the body off-main
+silently:
+
+```
+$ nm Clearway.debug.dylib | grep HookSocket | xcrun swift-demangle | grep '\.start(socketPath'
+0000000000012960 t closure #1 () -> () in static Clearway.HookSocketListener.start(socketPath:…)
+0000000000012be8 t closure #2 () -> () in static Clearway.HookSocketListener.start(socketPath:…)
+
+$ xcrun lldb -b -o "disassemble -s 0x12960 -c 200" Clearway.debug.dylib | grep -ciE "isCurrentExecutor|MainActor"
+0
+```
+
+The cancel handler disassembles to frame setup, the profile counter, `close` and `ret`. Neither
+block's prologue reaches `swift_task_isCurrentExecutor` or `MainActor.shared`, so neither traps when
+libdispatch runs it on the listener's queue. The no-clock criterion is the second:
+`grep -nE "DispatchWorkItem|asyncAfter|Timer|Date|sleep|expir"` over the file matches one word, in
+the comment saying the socket read timeout is not an expiry.
+
+**Deviations from the plan.**
+
+- **The `~/.clearway` layout became `AgentHookPaths(home:)`.** T6's only acceptance criterion that a
+  test can reach — that an enabled monitor still deallocates — requires enabling one, and
+  `setEnabled(true)` installs hooks. With T3's fixed statics that meant a test run writing into the
+  developer's real `~/.claude/settings.json` and binding their real `~/.clearway/hook.sock`, which is
+  exactly what T4's `home` parameter exists to prevent. One parameter now threads through the whole
+  feature, defaulted at every call site outside the tests, and the end-to-end coverage below is what
+  it buys.
+- **The store gained the three plural derivations.** The monitor publishes dictionaries and the store
+  kept `surfaces` private with only single-key readers, so there was no way to enumerate what to
+  publish. The single-key readers are now lookups into the plural ones rather than a second spelling
+  of the same rule. `worktreeSubagents` omits a worktree with an empty roster, so a surface merely
+  existing does not add a key.
+- **The listener has its own file-local type rather than a `FileWatchers` sibling.** The plan offered
+  either. `makeWatcher` opens a path `O_EVTONLY` and makes a file-system-object source; a listening
+  `AF_UNIX` socket shares none of that — only the rule that the handlers are formed outside every
+  actor, which `HookSocketListener` states in its own doc comment and is verified above.
+- **A dedicated serial queue, not a global one.** A connection is read to EOF on the queue the source
+  fires on. On `.global(qos:)` that parks a shared pool worker, which is what left `ShellPathStore`
+  waiting behind a backgrounded editor (CLAUDE.md, `OpenInAppLauncher`). The listening descriptor is
+  `O_NONBLOCK` and the accept loop drains until there is nothing pending, because a read source
+  coalesces and one event can stand for several hook processes that arrived together.
+- **`SO_RCVTIMEO` on the accepted connection.** Not an expiry on any state — the criterion the task
+  names — but a floor under a peer that connects and then says nothing, which would otherwise park
+  the one queue every later event is delivered on, permanently. Every real client is the forwarder's
+  `nc`, whose descriptor closes when it exits.
+- **`retire(worktreeId:)` is not exposed on the monitor.** T5 wires `TerminalManager.retireSurface`,
+  which is per-surface; the store's worktree overload has no caller yet and adding a second door for
+  nobody would be speculative.
+- **Six behavioural tests, not the plan's one.** The dealloc test is there as specified, but it
+  proves only that the source is cancelled. The socket, the accept loop, the read to EOF, the
+  change-gated publishing and the toggle are the whole of this task, and the temp home makes them
+  reachable: each test runs the forwarder `AgentHookInstaller` just wrote, with the three identity
+  variables in the environment and the hook JSON on stdin, which is what an agent does. That also
+  covers the installer's script half, which T4 left to the operator.
+
+One detail left open for T8: `setEnabled(_:)` is idempotent in both directions and takes the whole
+toggle, so the wiring is one call on launch and one in `.onChange`, with nothing to guard.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 737 tests, with 0 failures (0 unexpected) in 116.014
+seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
+files — two new, five modified — and the `xcodegen`-regenerated `project.pbxproj`. No
+`default.profraw`: nothing here launched the app.

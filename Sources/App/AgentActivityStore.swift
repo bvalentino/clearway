@@ -120,22 +120,36 @@ struct AgentActivityStore {
         }
     }
 
+    /// The three derivations the monitor publishes whole, so the views read a dictionary rather than
+    /// asking the store once per row. The single-key readers below are the same rules, looked up.
+    var worktreePhases: [String: AgentPhase] {
+        surfaces.values.reduce(into: [:]) { phases, state in
+            phases[state.worktreeId] = Swift.max(phases[state.worktreeId] ?? .idle, state.effectivePhase)
+        }
+    }
+
+    var worktreeSubagents: [String: [AgentSubagent]] {
+        var rosters: [String: [AgentSubagent]] = [:]
+        for state in surfaces.values {
+            rosters[state.worktreeId, default: []].append(contentsOf: state.subagents.values)
+        }
+        return rosters.compactMapValues { $0.isEmpty ? nil : $0.sorted { $0.id < $1.id } }
+    }
+
+    var surfaceToolNames: [String: String] {
+        surfaces.compactMapValues { $0.leadToolName }
+    }
+
     func phase(forWorktree id: String) -> AgentPhase {
-        states(forWorktree: id).reduce(AgentPhase.idle) { Swift.max($0, $1.effectivePhase) }
+        worktreePhases[id] ?? .idle
     }
 
     func subagents(forWorktree id: String) -> [AgentSubagent] {
-        states(forWorktree: id)
-            .flatMap { $0.subagents.values }
-            .sorted { $0.id < $1.id }
+        worktreeSubagents[id] ?? []
     }
 
     func leadToolName(forSurface id: String) -> String? {
         surfaces[id]?.leadToolName
-    }
-
-    private func states(forWorktree id: String) -> [AgentSurfaceState] {
-        surfaces.values.filter { $0.worktreeId == id }
     }
 
     private mutating func update(

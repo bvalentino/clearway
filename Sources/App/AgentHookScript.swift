@@ -1,12 +1,24 @@
 import Foundation
 
-/// The `~/.clearway` layout and the forwarder Clearway installs into it. Text and paths only — the
-/// disk is `AgentHookInstaller`'s business.
+/// The `~/.clearway` layout. `home` is a parameter so the installer, the listener and their tests
+/// can be pointed at a temp root; every call site outside the tests takes the default.
+struct AgentHookPaths {
+    let clearwayDir: String
+    let hooksDir: String
+    let scriptPath: String
+    let socketPath: String
+
+    init(home: String = NSHomeDirectory()) {
+        clearwayDir = (home as NSString).appendingPathComponent(".clearway")
+        hooksDir = (clearwayDir as NSString).appendingPathComponent("hooks")
+        scriptPath = (hooksDir as NSString).appendingPathComponent("clearway-hook.sh")
+        socketPath = (clearwayDir as NSString).appendingPathComponent("hook.sock")
+    }
+}
+
+/// The forwarder Clearway installs into that layout, and the hook entry that runs it. Text only —
+/// the disk is `AgentHookInstaller`'s business.
 enum AgentHookScript {
-    static let clearwayDir = (NSHomeDirectory() as NSString).appendingPathComponent(".clearway")
-    static let hooksDir = (clearwayDir as NSString).appendingPathComponent("hooks")
-    static let scriptPath = (hooksDir as NSString).appendingPathComponent("clearway-hook.sh")
-    static let socketPath = (clearwayDir as NSString).appendingPathComponent("hook.sock")
 
     /// `0700` on the directory is the whole access control on the socket: the app is unsandboxed and
     /// binds under `$HOME` rather than on a port, so nothing else gates who can connect.
@@ -69,7 +81,7 @@ enum AgentHookIdentity {
         if let worktreeId {
             pairs.append((key: worktreeIdKey, value: worktreeId))
         }
-        pairs.append((key: socketKey, value: AgentHookScript.socketPath))
+        pairs.append((key: socketKey, value: AgentHookPaths().socketPath))
         return pairs
     }
 }

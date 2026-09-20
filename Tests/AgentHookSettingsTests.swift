@@ -131,7 +131,7 @@ final class AgentHookSettingsTests: XCTestCase {
         XCTAssertEqual(Dictionary(uniqueKeysWithValues: stamped.map { ($0.key, $0.value) }), [
             "CLEARWAY_SURFACE_ID": surfaceId.uuidString,
             "CLEARWAY_WORKTREE_ID": "/Users/x/my repo",
-            "CLEARWAY_HOOK_SOCKET": AgentHookScript.socketPath,
+            "CLEARWAY_HOOK_SOCKET": AgentHookPaths().socketPath,
         ])
 
         let unstamped = AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: nil)
