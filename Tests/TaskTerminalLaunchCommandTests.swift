@@ -2,7 +2,7 @@ import XCTest
 @testable import Clearway
 
 /// Pins `taskTerminalLaunchCommand`, the choice behind both doors onto the task terminal (the
-/// toolbar toggle and Cmd+J): the bare Main Terminal command, or a plain shell. `toggleTaskTerminal`
+/// path bar toggle and Cmd+J): the bare Main Terminal command, or a plain shell. `toggleTaskTerminal`
 /// itself is unreachable from XCTest — it takes a non-optional `ghostty_app_t` — so this helper is
 /// the whole testable surface of the launch.
 @MainActor
