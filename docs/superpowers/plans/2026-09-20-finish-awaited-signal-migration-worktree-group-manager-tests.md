@@ -488,3 +488,115 @@ testReconcileDropsAnUnrecognisedStatusSlugAndKeepsTheName : XCTAssertEqual faile
 `./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 110.434
 seconds`, `Test Succeeded`, `==> CI passed.` `git status --porcelain` shows only this task's two
 files.
+
+### T4: Convert the three sites in WorktreeGroupManagerNameTests
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerNameTests.swift` | Three sites now `await manager.reconcile([wt], openIds: []).value` and assert once: `:109`/`:111` `XCTAssertEqual(manager.name(for: wt), "Stored name", "published name for \(wt.id)")`, `:118`/`:120` `XCTAssertNil(manager.name(for: wt), "published name for \(wt.id)")`, `:134`/`:136` the same `XCTAssertNil` with the existing `XCTAssertTrue(manager.names.isEmpty)` on the line after. `waitForPublishedName` deleted; `waitForStoredName` untouched. `testReconcileRightAfterSetNameDoesNotRaceTheWrite` is byte-identical (`diff` against `HEAD` over its lines is empty). |
+| `Sources/` | Unchanged. `git diff --stat Sources/` is empty. |
+
+`XCTAssert` count 15 → 18: each of the three polls moved its assertion out of `waitFor`'s body into
+the file. Nothing weakened, dropped or reordered. `grep -rn "waitForPublishedName" Tests/` returns
+nothing, and the only `manager.reconcile` left in the file is the race case's, which binds the
+`Task` and awaits it.
+
+`testReconcileDropsAWhitespaceOnlyStoredName`'s three-line comment lost its first sentence. It said
+the seed makes the assertion "a transition rather than an absence" because "waiting for `nil` on an
+empty map is satisfied before the reload has run at all" — the poll's caveat, which the awaited form
+retires. The sentence that is still true, that the external write needs the extension the seed
+bootstraps, stays.
+
+**Evidence** — two watched failures, each run alone with
+`xcodebuild … -only-testing:ClearwayTests/WorktreeGroupManagerNameTests/<case> test`, the revert made
+with `Edit` and restored with `Edit`, `git diff --stat Sources/` empty after each restore.
+
+1. `testReconcilePopulatesNamesFromConfigAndDropsAClearedOne`, `if reloaded.names != names { names =
+   reloaded.names }` (`WorktreeGroupManager.swift:413`) deleted:
+
+```
+WorktreeGroupManagerNameTests.swift:111: error:
+testReconcilePopulatesNamesFromConfigAndDropsAClearedOne : XCTAssertEqual failed:
+("nil") is not equal to ("Optional("Stored name")") - published name for …/.worktrees/feature
+```
+
+2. `testReconcileDropsAWhitespaceOnlyStoredName`, `readConfig`'s trim and empty check replaced with
+   `reloaded.names[id] = values[WorktreeConfigStore.nameKey]`:
+
+```
+WorktreeGroupManagerNameTests.swift:132: error: testReconcileDropsAWhitespaceOnlyStoredName :
+XCTAssertNil failed: "   " - published name for …/.worktrees/feature
+WorktreeGroupManagerNameTests.swift:133: error: testReconcileDropsAWhitespaceOnlyStoredName :
+XCTAssertTrue failed
+```
+
+**Deviations**
+
+One addition, the risk table's first row realised. The first gate run was **red**, not on an
+assertion but on the test body's own `git config`:
+
+```
+✖ testReconcilePopulatesNamesFromConfigAndDropsAClearedOne, failed: caught error:
+"Failure(command: "-C …/.worktrees/feature config --worktree --unset clearway.name", status: 255,
+stderr: "error: could not lock config file …/.git/worktrees/feature/config.worktree: File exists")"
+```
+
+The reconcile's `seedPositions` enqueues a `clearway.position` write and `reconcile`'s `Task` returns
+without waiting for it, so `try repo.unsetValue(…)` on the next line is a second `git config`
+process contending the same `config.worktree` lock. The poll this conversion replaced hid it: its
+first read was `nil`, so it slept one 20 ms tick, which the seed write landed inside. The two
+per-case proof runs above passed for the same reason a race passes.
+
+The fix is the plan's own decision 3 — a case that touches git after an awaited reconcile follows it
+with `await settle()` — applied here to a case that *writes* git rather than reads it. The
+`await settle()` sits after the converted assertion, so the assertion is still evaluated
+immediately after the reconcile. No other converted case in T2–T4 touches git after an awaited
+reconcile without already settling.
+
+Re-checked with `-test-iterations 10 -run-tests-until-failure` over the whole suite:
+`Executed 110 tests, with 0 failures (0 unexpected) in 90.362 seconds`, `** TEST SUCCEEDED **`.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, run twice after the fix:
+`Executed 677 tests, with 0 failures (0 unexpected) in 110.099 seconds` and `… in 109.073 seconds`,
+`Test Succeeded`, `==> CI passed.` `git status --porcelain` shows only
+`Tests/WorktreeGroupManagerNameTests.swift` and this plan file — no `default.profraw`, nothing
+untracked.
+
+**Final wall times**, summed per case the same way as T1's baseline, from the two post-fix gate runs
+(`Test-ClearwayTests-2026.09.20_19-17-48--0300.xcresult` and `…_19-20-07--0300.xcresult`):
+
+| Suite | Cases | Run 1 | Run 2 | T1 baseline |
+| --- | --- | --- | --- | --- |
+| `WorktreeGroupManagerTests` | 33 | 18.230s | 18.200s | 15.810s |
+| `WorktreeGroupPersistenceTests` | 18 | 16.040s | 16.030s | 15.820s (17 cases) |
+| `WorktreeGroupManagerStatusTests` | 14 | 9.840s | 9.950s | 8.900s |
+| `WorktreeGroupManagerNameTests` | 11 | 9.120s | 8.500s | 8.830s |
+| **Combined** | **76** | **53.230s** | **52.680s** | **49.360s** (75 cases) |
+
+A pass, and machine variance rather than a cost of the conversions. `WorktreeGroupManagerTests` is
++2.4s on its own — 62% of the combined delta — and no conversion task edited it; T1's
+`waitForStoredValue` settle, the one change that reaches it, was already in the baseline run. Both
+post-fix runs agree to within 0.6s of each other while differing from the single baseline sample, so
+the difference is between measurement sessions, not between the two versions of the code. The plan
+says a move inside run-to-run variance is a pass, not a finding, and this is that.
+
+## Checkpoint: after T1–T4 — result
+
+- `grep -rn "manager.reconcile" Tests/` leaves two calls whose `Task` is not `.value`-awaited inline:
+  `WorktreeGroupPersistenceTests.swift:82` (T2's new settle case, which is the point of that case)
+  and `WorktreeGroupManagerNameTests.swift:148` (the race case, which binds the `Task` and awaits it
+  two lines later). Criterion 1 holds.
+- `grep -rn "waitForPublishedName\|waitForPublishedStatuses" Tests/` returns nothing (criterion 7).
+- `waitForStoredValue`, `waitForRegistry` and `waitForLocalValue` each open with `await settle()`
+  (criterion 2).
+- Nine converted cases and one new case each carry a watched failure above, counting the two extra
+  proofs T2 and T3 recorded for converted lines their named revert did not discriminate (criteria 5
+  and 6).
+- `./scripts/ci.sh` green, exit 0, twice (criterion 3).
+- Combined wall time recorded against the T1 baseline (criterion 8).
+- `git status --porcelain` shows only this change's files; `git diff Sources/` shows only
+  `reconcileTask` (criterion 9).
