@@ -92,6 +92,7 @@ final class ShellPathStoreTests: XCTestCase {
     /// dead time added to every launch, forever.
     func testAFailedResolutionIsNotAwaitedASecondTime() async {
         let resolver = FakeResolver(outcomes: [.failed, .failed], holdingCall: 2)
+        defer { resolver.release() }
         let store = ShellPathStore(resolve: { resolver.next() })
 
         _ = await store.awaitPath()
@@ -100,7 +101,6 @@ final class ShellPathStoreTests: XCTestCase {
 
         XCTAssertEqual(second, baseline)
         XCTAssertEqual(resolver.finishedCount, 1, "a retry must run behind the caller")
-        resolver.release()
     }
 
     func testTwoConcurrentCallsStartOneResolution() async {
@@ -122,6 +122,7 @@ final class ShellPathStoreTests: XCTestCase {
             outcomes: [.degraded("/usr/local/bin"), .full("/opt/homebrew/bin")],
             holdingCall: 2
         )
+        defer { resolver.release() }
         let store = ShellPathStore(resolve: { resolver.next() })
 
         let first = await store.awaitPath()
@@ -131,7 +132,6 @@ final class ShellPathStoreTests: XCTestCase {
 
         XCTAssertEqual(second, "/usr/local/bin:\(baseline)")
         XCTAssertEqual(resolver.finishedCount, 1, "A degraded value must never be awaited")
-        resolver.release()
     }
 
     func testALaterInteractiveSuccessReplacesADegradedValue() async throws {
@@ -203,9 +203,13 @@ final class ShellPathStoreTests: XCTestCase {
 /// Two knobs, for two different jobs. `delay` sleeps every call, widening the window for a second
 /// caller to arrive while a resolution is in flight. `holdingCall` blocks the call at that 1-based
 /// index until `release()`, so a case can prove the caller did not await that resolution: a held
-/// call cannot finish, whatever the machine is doing. Its wait is bounded, so a store that wrongly
-/// awaits the resolution fails an assertion instead of hanging the suite. A held call skips
-/// `delay`; no case passes both.
+/// call cannot finish, whatever the machine is doing. A held call skips `delay`.
+///
+/// The hold's wait is bounded, and `finished` advances when it times out as much as when
+/// `release()` lets the call go. That is what makes a store that wrongly awaits the resolution fail
+/// an assertion instead of hanging the suite: the held call returns, `finishedCount` reaches 2, the
+/// case goes red. Returning early on `.timedOut` would leave it at 1 and pass both cases against
+/// the very defect they pin.
 private final class FakeResolver: @unchecked Sendable {
     private let lock = NSLock()
     private var outcomes: [ShellPathResolver.Outcome]
@@ -226,12 +230,11 @@ private final class FakeResolver: @unchecked Sendable {
         lock.withLock { calls }
     }
 
-    /// Calls that have returned an outcome. A held call counts only once `release()` lets it go.
+    /// Calls that have returned an outcome, a held call included once its wait ends.
     var finishedCount: Int {
         lock.withLock { finished }
     }
 
-    /// Lets the held call return.
     func release() {
         gate.signal()
     }
