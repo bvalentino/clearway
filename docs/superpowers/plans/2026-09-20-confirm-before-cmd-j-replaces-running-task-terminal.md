@@ -177,3 +177,37 @@ or any dialog.
 - `swiftlint lint --quiet` introduces no new warning.
 - Operator hand-check of spec success criteria 1–5 (hide/re-show with an agent configured, focus on
   reveal, the "None" setting, the no-surface case, and the toolbar toggle not taking focus).
+
+## Build log
+
+### T1: Pure Cmd+J toggle decision, with its truth table pinned
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | Added `TaskTerminalToggle` (`.hide`/`.reveal`/`.launch`) and `static func taskTerminalToggle(isVisible:hasSurface:hasLaunchCommand:)` implementing D5, placed above `taskTerminalLaunchCommand` and shaped after `TerminalManager.FirstTabSource` / `firstTabSource`. `toggleTaskTerminal(taskId:app:focusOnReveal:)` untouched. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | Added a `// MARK: - Toggling the task terminal` section with three tests covering all eight combinations: `testVisiblePanelAlwaysHides` (the four `isVisible == true` rows, via nested loops), `testHiddenSurfaceIsRevealedEvenWithALaunchCommand` (both `hasSurface == true` rows, the fix), `testNoSurfaceLaunchesOnlyWhenACommandIsConfigured` (the two pre-existing branches). |
+
+**Watched failure.** The tests were written first and `./scripts/ci.sh` run against the unimplemented
+function. It failed to build:
+
+```
+❌ Tests/TaskTerminalLaunchCommandTests.swift:84:33: type 'WorkTaskCoordinator' has no member 'taskTerminalToggle'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:86:14: type 'Equatable' has no member 'launch'
+```
+
+A behavioral red is not available for this task: the function is new and pure, and the bug it encodes
+lives in `toggleTaskTerminal`, which T2 rewrites and which is unreachable from XCTest (non-optional
+`ghostty_app_t`). The `.reveal` assertion for `hasSurface == true, hasLaunchCommand == true` is the
+row that fails against the shipped decision, which returns the launch branch there.
+
+**Deviations from the plan.** None. The plan asked for all eight combinations; they are asserted
+across three named tests rather than one, so a failure names which rule broke. The four
+`isVisible == true` rows are asserted in a loop with a message identifying the combination.
+
+**Gate.** `./scripts/ci.sh` — green: `Executed 679 tests, with 0 failures`, `==> CI passed.`
+`swiftlint lint --quiet` runs inside it and printed nothing new.
+
+One flake was seen on the first green-code run and did not reproduce:
+`WorktreeGroupManagerNameTests.testReconcilePopulatesNamesFromConfigAndDropsAClearedOne` failed with
+`could not lock config file …/config.worktree: File exists` — a git config lock in its own temp repo,
+unrelated to this change. The immediately following run of the same commit was fully green.

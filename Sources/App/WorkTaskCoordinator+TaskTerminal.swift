@@ -38,6 +38,31 @@ extension WorkTaskCoordinator {
         NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)
     }
 
+    /// What a press of the task terminal toggle does.
+    enum TaskTerminalToggle: Equatable {
+        /// Flip the visible panel closed, keeping its surface.
+        case hide
+        /// Flip the panel open on the surface the task already has, creating a plain-shell one only
+        /// when there is none.
+        case reveal
+        /// Open a fresh surface running the Main Terminal command.
+        case launch
+    }
+
+    /// The toggle's whole decision. A hidden surface is **revealed, never relaunched**: the launch
+    /// path goes through `openTaskTerminal`, which closes the surface it replaces
+    /// (`TerminalManager+TaskTerminals.swift:84-86`), so a configured Main Terminal command turned
+    /// the second Cmd+J into a silent kill of the agent running in the terminal the operator had
+    /// just hidden. `hasSurface` outranking `hasLaunchCommand` is what makes that unreachable, and
+    /// so what makes a confirmation dialog on this path unnecessary.
+    static func taskTerminalToggle(
+        isVisible: Bool, hasSurface: Bool, hasLaunchCommand: Bool
+    ) -> TaskTerminalToggle {
+        if isVisible { return .hide }
+        if hasSurface { return .reveal }
+        return hasLaunchCommand ? .launch : .reveal
+    }
+
     /// The command the task terminal runs, as a function of the resolved shell PATH — deferred
     /// so the choice is made up front but the command is built after the `await`. `nil` means
     /// nothing is configured to run, so the terminal opens on a plain shell.

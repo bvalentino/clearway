@@ -45,4 +45,50 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         XCTAssertTrue(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: true))
         XCTAssertFalse(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: false))
     }
+
+    // MARK: - Toggling the task terminal
+
+    /// A visible panel hides, whatever else is true: Cmd+J on an open terminal never launches.
+    func testVisiblePanelAlwaysHides() {
+        for hasSurface in [true, false] {
+            for hasLaunchCommand in [true, false] {
+                XCTAssertEqual(
+                    WorkTaskCoordinator.taskTerminalToggle(
+                        isVisible: true, hasSurface: hasSurface, hasLaunchCommand: hasLaunchCommand),
+                    .hide,
+                    "isVisible with hasSurface: \(hasSurface), hasLaunchCommand: \(hasLaunchCommand)"
+                )
+            }
+        }
+    }
+
+    /// The fix: a hidden surface is revealed even when a Main Terminal command is configured. The
+    /// launch path would close that surface, killing the agent running in it.
+    func testHiddenSurfaceIsRevealedEvenWithALaunchCommand() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: true, hasLaunchCommand: true),
+            .reveal
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: true, hasLaunchCommand: false),
+            .reveal
+        )
+    }
+
+    /// With no surface, the configured command launches one and an unset setting reveals a plain
+    /// shell — the two branches that shipped before the fix, unchanged.
+    func testNoSurfaceLaunchesOnlyWhenACommandIsConfigured() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: false, hasLaunchCommand: true),
+            .launch
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: false, hasLaunchCommand: false),
+            .reveal
+        )
+    }
 }
