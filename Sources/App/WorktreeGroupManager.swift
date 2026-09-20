@@ -146,7 +146,12 @@ final class WorktreeGroupManager: ObservableObject {
         }
         enqueueWrite { configStore in
             await Self.write(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
-            await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
+            await Self.write(
+                String(position),
+                forKey: WorktreeConfigStore.positionKey,
+                worktreeAt: path,
+                in: configStore
+            )
         }
     }
 
@@ -160,7 +165,12 @@ final class WorktreeGroupManager: ObservableObject {
         }
         enqueueWrite { configStore in
             await Self.write(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
-            await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
+            await Self.write(
+                String(position),
+                forKey: WorktreeConfigStore.positionKey,
+                worktreeAt: path,
+                in: configStore
+            )
         }
     }
 
@@ -470,8 +480,7 @@ final class WorktreeGroupManager: ObservableObject {
         Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")
     }
 
-    /// Writes one worktree-scoped value, naming the gesture if git refused. The message is built
-    /// from `key`, so it cannot come to name a key other than the one written.
+    /// Writes one worktree-scoped value, naming the gesture if git refused.
     ///
     /// `writeRegistry`'s member write stays bespoke: it abandons the loop and raises an alert, and
     /// its one line names both the registry it gave up on and the member write that lost it.
@@ -624,7 +633,12 @@ final class WorktreeGroupManager: ObservableObject {
         guard !changed.isEmpty else { return }
         enqueueWrite { configStore in
             for (path, position) in changed {
-                await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
+                await Self.write(
+                    String(position),
+                    forKey: WorktreeConfigStore.positionKey,
+                    worktreeAt: path,
+                    in: configStore
+                )
             }
         }
     }

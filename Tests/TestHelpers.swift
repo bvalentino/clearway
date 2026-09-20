@@ -190,8 +190,7 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
 
     /// Every alert the managers built here would have shown, in the order they were raised.
     /// Not cleared by `restartManager()`: XCTest builds one instance per test method, so the list
-    /// is already per-test, and keeping it whole is what lets a test assert one gesture raised
-    /// exactly one alert across a relaunch.
+    /// is already per-test.
     private(set) var recordedWriteAlerts: [WorktreeGroupWriteAlert] = []
 
     override func setUp() async throws {

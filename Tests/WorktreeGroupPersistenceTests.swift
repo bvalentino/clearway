@@ -97,6 +97,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
         try await waitForStoredValue("New", ofKey: WorktreeConfigStore.groupKey, at: path)
         try await waitForRegistry(["New", "Later"])
+        XCTAssertTrue(recordedWriteAlerts.isEmpty, "a gesture that landed tells the user nothing")
     }
 
     /// The registry is written last and only if every member write landed, so a rename whose
@@ -128,6 +129,35 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         )
         await restartManager()
         XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the next launch shows the old name")
+    }
+
+    /// The same abandon as the rename above, reached by the one gesture whose member value is not
+    /// the group it acts on: a delete writes `nil`, so the name the alert carries can only have
+    /// come from the gesture. The failing `clearway.position` write the delete queues ahead of the
+    /// registry stays log-only, which is what the single recorded alert pins.
+    func testADeleteWhoseMemberWritesFailLeavesTheRegistryUntouched() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.createGroup(named: "Doomed")
+        manager.addWorktree(member, toGroupNamed: "Doomed")
+        try await waitForStoredValue("Doomed", ofKey: WorktreeConfigStore.groupKey, at: path)
+        try repo.removeWorktree(at: path)
+
+        manager.deleteGroup(named: "Doomed")
+        // Queued behind the delete on the write chain, so its arrival proves the delete is done.
+        manager.setGrouping(.status)
+        try await waitForLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
+
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Doomed"],
+            "a delete no member accepted must not reach the registry"
+        )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "Doomed", path: path)],
+            "the alert names the deleted group, never the nil written to its members"
+        )
     }
 
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
@@ -246,13 +276,19 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try FileManager.default.createDirectory(atPath: plainRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: plainRoot) }
 
+        // Built outside the base's recording seam, in a project where every write fails, so the
+        // presenters are what keep the run off a modal nothing can dismiss: `createGroup` passes
+        // no members and reaches only the log-only registry failure. Should that stop holding,
+        // this fails by name instead of hanging until the timeout.
         let first = WorktreeGroupManager(projectPath: plainRoot)
+        first.presentWriteAlert = { XCTFail("createGroup must not alert: \($0)") }
         await first.loadTask?.value
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
         try await Task.sleep(nanoseconds: 300_000_000)
 
         let second = WorktreeGroupManager(projectPath: plainRoot)
+        second.presentWriteAlert = { XCTFail("a manager that only reads must not alert: \($0)") }
         await second.loadTask?.value
 
         XCTAssertTrue(second.groups.isEmpty)
