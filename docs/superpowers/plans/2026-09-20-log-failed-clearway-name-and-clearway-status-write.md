@@ -227,3 +227,61 @@ vacuous:
 `./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `git status --porcelain` clean; only ignored `.clearway/`, `.work/` and
 `Sources/App/BuildInfo.generated.swift`.
+
+## PR review pass
+
+Four agents read `git diff main...HEAD` from a fresh context: general code review against
+`CLAUDE.md`, test coverage, error handling, and type design. The code review and the type-design
+review returned nothing to change. Two findings were applied, both in the new test.
+
+**The premise was unasserted.** The case relies on `repo.removeWorktree(at:)` making every
+`git -C <path> config --worktree` fail, but asserted nothing that could only hold if it had. A
+fixture or store change that let those writes succeed would have left the only failure-path case
+for these two keys passing while covering nothing. One line, using a helper that already exists:
+
+```swift
+XCTAssertFalse(try repo.statusSucceeds(in: path), "git can no longer run in the worktree")
+```
+
+**"The next reload corrects" was wrong**, and the doc comment also read as though it checked the
+log. `reloadConfig` has one non-test caller, `reconcile`, whose own single non-test caller is
+`ContentView.swift:349` inside `.onChange(of: worktreeManager.worktrees)`; `Worktree` is `Hashable`
+over `branch`, `path`, `isMain` and `headStatus` alone, so a refresh that returns the same worktree
+set reconciles nothing — the sidebar's refresh button included. `reloadConfig`'s own doc comment
+already says the accurate version: "a lost gesture would stay lost for the session." The comment now
+says the next *launch* corrects it, and says outright that the log line has no test seam, so a
+reader debugging a failure does not go looking for an assertion that was never there.
+
+Neither touches the production diff, which stands as T1 left it.
+
+### Findings not acted on
+
+- **`@discardableResult` on `WorktreeConfigStore.set` / `setLocal` / `replaceLocalValues` is now
+  load-bearing for tests only.** No `Sources/` caller discards any of the three after this change,
+  so the attribute's only remaining production effect is to keep the compiler quiet the next time
+  someone drops the `Bool` — the exact defect this change repairs. Dropping it and writing `_ =` at
+  the dozen-odd test sites would buy back that static check. Out of scope: "any change to
+  `WorktreeConfigStore`", and the simplify pass already recorded keeping it.
+- **`WorktreeConfigStore`'s own failure line redacts in a release build.** `worktree config:
+  \(what) failed: \(message)` carries no `privacy:` annotation, and non-annotated `String`
+  interpolation in unified logging defaults to private, which is why `logFailure` carries
+  `privacy: .public` and says so. So in a shipped build the operator sees `worktree config:
+  <private> failed: <private>` above the new public line. This makes the new line strictly more
+  valuable than the spec claimed — it is the only one naming the key and the path — but it also
+  means `logFailure`'s doc comment ("`WorktreeConfigStore` has already logged why git refused … so
+  this line cannot repeat it") is true in source and false in a shipped log. The line and its
+  comment are both pre-existing, and its redaction is named in Out of scope.
+- **Re-applying the same value after a failed write is a fully silent no-op.** `setName` and
+  `setStatus` guard on `names[wt.id] != stored` / `statuses[wt.id] != status`, and the publish is
+  optimistic, so a user who suspects a rename did not take and re-confirms the same name enqueues
+  no write and logs nothing. Decision 2's "the next gesture overwrites it" holds for a *different*
+  value, not a repeat. The guard predates this change and reverting the optimistic publish is named
+  in Out of scope, but the rationale is weaker than the decision it supports.
+- **Decision 2's "the next reload corrects" carries the same inaccuracy** the test comment did.
+  The decision itself — log-only, no alert — is unaffected: a lost single value is still not the
+  half-applied multi-step write that earns a modal. Only the sentence justifying it needs the
+  narrower wording, and the Decisions table is not reopened at review.
+- **No seam for the log line.** `presentWriteAlert` is precedent for one: a sibling injectable
+  `reportWriteFailure` closure would make all six log-only sites in the file assertable for about
+  four lines. Decision 7 settled that the line is unpinned, and PR #236 left its four sites the
+  same way.
