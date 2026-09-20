@@ -3,24 +3,33 @@ import GhosttyKit
 
 extension WorkTaskCoordinator {
 
-    /// Toggles the task terminal: hides it when open, otherwise opens it running the Main
-    /// Terminal command (or a plain shell).
+    /// Toggles the task terminal, on the three outcomes `taskTerminalToggle` decides between: hide
+    /// the visible panel, reveal the surface the task already has, or launch a fresh one running the
+    /// Main Terminal command. A hidden surface is revealed rather than relaunched, so whatever is
+    /// running in it survives the round trip.
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
-    /// toolbar button `false`, so a click never steals focus. Focus lands after the launch's
-    /// `await` rather than on the keypress: the resolved shell PATH is unbounded on a session's
-    /// first call.
+    /// toolbar button `false`, so a click never steals focus. On a launch focus lands after the
+    /// `await` rather than on the keypress, because the resolved shell PATH is unbounded on a
+    /// session's first call; a reveal awaits nothing and focuses on the keypress itself.
     func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
         guard workTaskManager.tasks.contains(where: { $0.id == taskId }) else { return }
         let projectPath = worktreeManager.projectPath
+        let makeCommand = taskTerminalLaunchCommand()
 
-        if terminalManager.isTaskTerminalVisible(for: taskId) {
+        switch Self.taskTerminalToggle(
+            isVisible: terminalManager.isTaskTerminalVisible(for: taskId),
+            hasSurface: terminalManager.existingTaskSurface(for: taskId) != nil,
+            hasLaunchCommand: makeCommand != nil
+        ) {
+        case .hide:
             terminalManager.toggleTaskTerminal(for: taskId, app: app, projectPath: projectPath)
             return
-        }
-
-        if let makeCommand = taskTerminalLaunchCommand() {
-            guard terminalManager.beginTaskLaunch(for: taskId) else { return }
+        case .reveal:
+            terminalManager.toggleTaskTerminal(for: taskId, app: app, projectPath: projectPath)
+            if focusOnReveal { focusTaskTerminal(taskId) }
+        case .launch:
+            guard let makeCommand, terminalManager.beginTaskLaunch(for: taskId) else { return }
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
@@ -28,9 +37,6 @@ extension WorkTaskCoordinator {
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
             }
-        } else {
-            terminalManager.toggleTaskTerminal(for: taskId, app: app, projectPath: projectPath)
-            if focusOnReveal { focusTaskTerminal(taskId) }
         }
 
         // The editor owns the live (possibly unsaved) body buffer, so it decides whether there's

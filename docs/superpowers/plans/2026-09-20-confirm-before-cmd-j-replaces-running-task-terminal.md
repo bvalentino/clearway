@@ -211,3 +211,47 @@ One flake was seen on the first green-code run and did not reproduce:
 `WorktreeGroupManagerNameTests.testReconcilePopulatesNamesFromConfigAndDropsAClearedOne` failed with
 `could not lock config file …/config.worktree: File exists` — a git config lock in its own temp repo,
 unrelated to this change. The immediately following run of the same commit was fully green.
+
+### T2: Route the task terminal toggle through the decision
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | `toggleTaskTerminal(taskId:app:focusOnReveal:)` rewritten: keeps the `workTaskManager.tasks.contains` guard and `projectPath`, resolves `taskTerminalLaunchCommand()` once into `makeCommand`, then `switch Self.taskTerminalToggle(isVisible: terminalManager.isTaskTerminalVisible(for:), hasSurface: terminalManager.existingTaskSurface(for:) != nil, hasLaunchCommand: makeCommand != nil)`. `.hide` flips the manager's toggle and returns before the post; `.reveal` flips it, focuses when `focusOnReveal`, falls through to the post; `.launch` is the old configured-command branch verbatim (`beginTaskLaunch` guard, `Task { @MainActor in }` with `defer { endTaskLaunch }`, `await ShellEnvironment.awaitPath()`, `openTaskTerminal`, focus after the await) and falls through to the post. Doc comment restated: three outcomes, a hidden surface revealed rather than relaunched, and `focusOnReveal` landing after the `await` only on `.launch`. |
+
+**Acceptance criteria, read off the switch** (the method takes a non-optional `ghostty_app_t`, so it is
+unreachable from XCTest — the plan says to read these off the code):
+
+- The only decision left in the body is the `switch`. No `isVisible`, `hasSurface` or
+  command-presence branching is repeated: the three inputs are computed inline in the
+  `taskTerminalToggle(...)` call and nowhere else.
+- Hidden surface + configured Main Terminal command → `isVisible == false`, `hasSurface == true`, so
+  the decision is `.reveal`, whose body calls only
+  `terminalManager.toggleTaskTerminal(for:app:projectPath:)`. `openTaskTerminal` and
+  `beginTaskLaunch` appear only inside `case .launch`.
+- `.launch` still guards on `beginTaskLaunch`, still `defer`s `endTaskLaunch`, and still builds its
+  command from `await ShellEnvironment.awaitPath()`.
+- `.hide` returns before `NotificationCenter.default.post`; `.reveal` and `.launch` each reach it
+  exactly once. A `.launch` whose `beginTaskLaunch` claim is refused returns without posting, as it
+  does today.
+- No alert, dialog or `@State` flag was added; no signature changed; the two call sites
+  (`ContentView.swift:115`, `WorkTaskListView.swift:311`) are untouched.
+
+**Evidence.** T2 adds no test, and no new watched failure is available for it: the behavior it
+changes lives in a method XCTest cannot call, and the rule it now routes through is the one T1 pinned
+— the red quoted in T1's build log is the red for this fix. `.reveal` for
+`hasSurface == true, hasLaunchCommand == true` is asserted by
+`testHiddenSurfaceIsRevealedEvenWithALaunchCommand`, and the shipped code reached
+`openTaskTerminal` on exactly that row.
+
+**Deviations from the plan.** One, in the plan's own direction: `taskTerminalLaunchCommand()` is now
+resolved before the switch, so it is also evaluated on the `.hide` path, where the old code returned
+first. It reads `terminalManager.mainCommandProvider()` — which `ContentView.swift:400` wires to
+`settings.configuredMainTerminalCommand` — and builds a closure; there is no side effect, and it is
+still read exactly once per press. The `.launch` case unwraps `makeCommand` in the same `guard` as
+the `beginTaskLaunch` claim; the nil arm is unreachable, since `hasLaunchCommand` is what selected
+the case.
+
+**Gate.** `./scripts/ci.sh` — green after the last edit: `Executed 679 tests, with 0 failures`,
+`Test Succeeded`, `==> CI passed.` `swiftlint lint --quiet` printed nothing. `git status --porcelain`
+showed only ` M Sources/App/WorkTaskCoordinator+TaskTerminal.swift` before this build log was
+appended; no `default.profraw`, since the app was not launched.
