@@ -20,16 +20,19 @@ Breaks down `docs/superpowers/specs/2026-09-20-move-task-terminal-toggle-to-stat
    so nothing has to be handed in — unlike `WorktreeStatusBar`, which does not know which worktree
    it draws. `ContentView` gains nothing; it is at 1014 lines against SwiftLint's 1000-line
    `file_length` error and only builds on its file-wide disable.
-4. The toolbar item's `.disabled(selectedTask == nil || ghosttyApp.readiness != .ready)` splits: the
-   `selectedTask == nil` half becomes structural and disappears, because `pathBar` renders only
-   inside `body`'s `if let task`. The readiness half survives verbatim as
-   `.disabled(ghosttyApp.readiness != .ready)` on the button.
-5. The gate is `readiness`, not `ghosttyApp.app`: `readiness` is `@Published`, `app` is a plain
-   computed property with no change to publish. The `guard let app = ghosttyApp.app` stays inside
-   the action, where the launch needs the pointer.
-6. Not ready means **disabled, not omitted** — a terminal still coming up is a momentarily
-   unavailable action, and a button that materialises a second after the window opens reads as a
-   glitch in a bar whose only other content is static text.
+4. The toolbar item's `.disabled(selectedTask == nil || ghosttyApp.readiness != .ready)` does not
+   come along: **both** halves become structural at the new site, so the button carries no
+   `.disabled`. `pathBar` renders only inside `body`'s `if let task`, and `TaskDetailView` is
+   constructed only inside `readinessDetailView`'s `.ready` branch (`ContentView.swift:810-811`,
+   `934`) while `Ghostty.App.readiness` is written only in `init()`. The old toolbar site needed the
+   modifier because `WorkTaskListView` renders outside that readiness switch; the new one does not.
+5. No `readiness` gate on the button, because item 4 makes one unreachable. The
+   `guard let app = ghosttyApp.app` stays inside the action, where the launch needs the pointer. Had
+   a view gate been needed it would have read `readiness`, not `ghosttyApp.app`: `readiness` is
+   `@Published`, `app` is a plain computed property with no change to publish — the reason
+   `WorkTaskListView`'s own controls, which do render outside the readiness switch, keep using it.
+6. The disabled-versus-omitted question does not arise at the new site: the not-ready state is
+   unreachable there. It still governs the controls that stayed in the Tasks toolbar.
 7. The action is the non-focusing one: `focusOnReveal` is left at its `false` default, the same call
    the toolbar button makes today. ⌘J keeps `true`.
 8. The button's idiom is the bar's, not the toolbar's: `.font(.system(size: 11))`,
@@ -115,7 +118,6 @@ Button(action: toggleTerminal) {
 .help(terminalToggleLabel)
 .accessibilityLabel(terminalToggleLabel)
 .pointerCursorOnHover()
-.disabled(ghosttyApp.readiness != .ready)
 ```
 
 Add no comment anywhere in this edit — CLAUDE.md treats one here as a smell.
@@ -158,8 +160,8 @@ At line 235, change "the copy/terminal/`…` group" to "the copy/`…` group". C
 3. The glyph is `.primary` while the terminal is visible and `.secondary` while it is hidden; the
    tooltip reads "Hide terminal" or "Show terminal" to match; hovering shows the pointing-hand
    cursor.
-4. While `ghosttyApp.readiness` is not `.ready` the button is present and disabled, and becomes
-   enabled without further interaction once the terminal is ready.
+4. The button carries no readiness gate. The path bar renders only inside `readinessDetailView`'s
+   `.ready` branch, so the not-ready state never shows a path bar to gate.
 5. Clicking the path text still copies it and still shows "Copied!"; clicking the button does not
    copy the path.
 6. The Tasks toolbar reads `+ │ Start Now │ Copy · … · Picker` — no terminal button, and no doubled
@@ -275,3 +277,30 @@ Dropped the now-false "the sibling toolbar buttons already use it" cross-referen
 sibling — leaving the `readiness`-over-`app` reason stated on its own. Renamed the caller in
 `WorkTaskCoordinator+TaskTerminal.swift`'s doc comment from "status bar button" to "path bar button",
 matching `TaskDetailView.pathBar(for:)`. Comments only; no code changed.
+
+## Changelog
+
+### Review follow-up: drop the unreachable readiness gate
+
+Two findings from the review step, applied on top of `9e68df3` and `9f2cf9b`.
+
+| File | State |
+| --- | --- |
+| `Sources/App/TaskDetailView.swift` | −1 line. `.disabled(ghosttyApp.readiness != .ready)` removed from the path bar button. `toggleTerminal()`'s `guard let app = ghosttyApp.app` unchanged. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | Doc comment only: "the toolbar toggle and Cmd+J" → "the path bar toggle and Cmd+J". |
+| `docs/superpowers/specs/2026-09-20-move-task-terminal-toggle-to-status-bar.md` | Decisions 4-6 rewritten and re-sourced to Operator; success criterion 5 and the `TaskDetailView.swift` row of "Files touched" restated. |
+| `docs/superpowers/plans/2026-09-20-move-task-terminal-toggle-to-status-bar.md` | Carried decisions 4-6, T1's code snippet and acceptance criterion 4 restated; this section. |
+
+The gate was unreachable, not merely redundant: `TaskDetailView` is constructed only at
+`ContentView.swift:934`, inside `readinessDetailView`'s `.ready` branch (`ContentView.swift:810-811`),
+and `Ghostty.App.readiness` is assigned only in `init()` (`Ghostty.App.swift:39`, `49`, `84`). So the
+view cannot be on screen while readiness is `.loading` or `.error`, and the condition is constant
+`false` wherever the button renders. The old toolbar site did need it — `WorkTaskListView` renders
+whenever `detailSelection == .tasks`, outside that switch — which is why the modifier came across in
+the first place.
+
+The T1 build log above is left as the record of what that commit landed; it is not rewritten.
+
+**Gate**
+
+`./scripts/ci.sh` — see the result recorded with the commit.

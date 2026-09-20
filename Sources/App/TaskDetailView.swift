@@ -207,7 +207,6 @@ struct TaskDetailView: View {
             .help(terminalToggleLabel)
             .accessibilityLabel(terminalToggleLabel)
             .pointerCursorOnHover()
-            .disabled(ghosttyApp.readiness != .ready)
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
