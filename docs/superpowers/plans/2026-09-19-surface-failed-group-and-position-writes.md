@@ -236,3 +236,47 @@ prints are pre-existing (`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:40
 tests are confirmed present in the result bundle as
 `ClearwayTests/WorktreeGroupWriteAlertTests/*`. `git status --porcelain` shows only the two new
 files and the regenerated `project.pbxproj`; no `default.profraw`, since the app was never launched.
+
+### T2: Log every failed write in the manager
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupManager.swift` | Edited. `import os`; a `private nonisolated static func logFailure(_:)` next to `enqueueWrite` emitting `Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")`; the six write sites now handle `false` — `addWorktree`, `removeWorktreeFromGroup`, `setGrouping`, `writePositions`, and both halves of `writeRegistry`. `setName` and `setStatus` still discard their result, by decision 13. 630 lines, under the 700-line warning. |
+
+**Evidence.** The lines are log-only, so nothing user-visible changes and no unit test can observe
+them: the manager writes to `Ghostty.logger` with no seam, and the plan adds none until T3. They
+were proved instead by a temporary probe — `logFailure` also appended its message to a file named
+by `CLEARWAY_LOG_PROBE`, and a throwaway test drove one manager over a directory that is not a
+repository through `createGroup`, `addWorktree`, `renameGroup`, `removeWorktreeFromGroup`,
+`seedPositions` and `setGrouping`, so every store write could only fail. All five strings came out
+verbatim, in gesture order:
+
+```
+worktree groups: clearway.groupOrder was not saved
+worktree groups: clearway.group for /tmp/probe-worktree was not saved
+worktree groups: clearway.position for /tmp/probe-worktree was not saved
+worktree groups: clearway.groupOrder was not rewritten: clearway.group for /tmp/probe-worktree was not saved
+worktree groups: clearway.position for /tmp/probe-worktree was not saved
+worktree groups: clearway.grouping was not saved
+```
+
+The same run showed decision 3 holding on a real repository. `testARenameWhoseMemberWritesFailLeavesTheRegistryUntouched`
+produced exactly two lines for its one failed write, the store's naming the git error and the
+manager's naming the gesture, with neither repeating the other:
+
+```
+[ghostty] worktree config: set clearway.group at /var/folders/…/T/clearway-manager-tests-AF76B9A6…/.worktrees/member failed: fatal: cannot change to '/var/folders/…/T/clearway-manager-tests-AF76B9A6…/.worktrees/member': No such file or directory
+[ghostty] worktree groups: clearway.groupOrder was not rewritten: clearway.group for /var/folders/…/T/clearway-manager-tests-AF76B9A6…/.worktrees/member was not saved
+```
+
+Both the probe hook and the throwaway test were then removed; `git status --porcelain` lists only
+`Sources/App/WorktreeGroupManager.swift`.
+
+**Deviations from the plan.** None. One observation for T3 rather than a deviation: in the probe's
+non-repository, `removeWorktreeFromGroup`'s `clearway.group` write logged nothing, because clearing
+a key with the extension off is the state asked for and `WorktreeConfigStore.set` answers `true`
+(`WorktreeConfigStore.swift:203-206`). That is the store's rule, unchanged here.
+
+**Gate.** `./scripts/ci.sh` — exit 0, `Executed 559 tests, with 0 failures (0 unexpected)`, run
+after the last source edit. `swiftlint lint --quiet` — exit 0, zero errors; the same two
+pre-existing warnings (`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:406`).

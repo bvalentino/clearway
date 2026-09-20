@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftUI
 
 // MARK: - Manager
@@ -139,12 +140,14 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            await configStore.set(
+            let wroteGroup = await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+            if !wroteGroup { Self.logFailure("clearway.group for \(path) was not saved") }
+            let wrotePosition = await configStore.set(
                 String(position),
                 forKey: WorktreeConfigStore.positionKey,
                 worktreeAt: path
             )
+            if !wrotePosition { Self.logFailure("clearway.position for \(path) was not saved") }
         }
     }
 
@@ -157,12 +160,14 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            await configStore.set(
+            let wroteGroup = await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+            if !wroteGroup { Self.logFailure("clearway.group for \(path) was not saved") }
+            let wrotePosition = await configStore.set(
                 String(position),
                 forKey: WorktreeConfigStore.positionKey,
                 worktreeAt: path
             )
+            if !wrotePosition { Self.logFailure("clearway.position for \(path) was not saved") }
         }
     }
 
@@ -269,7 +274,8 @@ final class WorktreeGroupManager: ObservableObject {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
         enqueueWrite { configStore in
-            await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
+            let wrote = await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
+            if !wrote { Self.logFailure("clearway.grouping was not saved") }
         }
     }
 
@@ -463,6 +469,14 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
+    /// Names the gesture a failed config write lost. `WorktreeConfigStore` has already logged why
+    /// git refused, under its own `worktree config:` prefix, and hands back only a `Bool` — so this
+    /// line cannot repeat it. The message is public because the worktree it names is the point of
+    /// it; a release build would otherwise redact the path.
+    private nonisolated static func logFailure(_ message: String) {
+        Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")
+    }
+
     /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
     /// registry, and only if every member write landed: a worktree naming an unlisted group renders
     /// ungrouped, so a half-applied rename that published the registry first would empty the group
@@ -472,9 +486,15 @@ final class WorktreeGroupManager: ObservableObject {
         enqueueWrite { configStore in
             for path in members {
                 guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-                else { return }
+                else {
+                    Self.logFailure(
+                        "clearway.groupOrder was not rewritten: clearway.group for \(path) was not saved"
+                    )
+                    return
+                }
             }
-            await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
+            let wrote = await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
+            if !wrote { Self.logFailure("clearway.groupOrder was not saved") }
         }
     }
 
@@ -585,11 +605,12 @@ final class WorktreeGroupManager: ObservableObject {
         guard !changed.isEmpty else { return }
         enqueueWrite { configStore in
             for (path, position) in changed {
-                await configStore.set(
+                let wrote = await configStore.set(
                     String(position),
                     forKey: WorktreeConfigStore.positionKey,
                     worktreeAt: path
                 )
+                if !wrote { Self.logFailure("clearway.position for \(path) was not saved") }
             }
         }
     }
