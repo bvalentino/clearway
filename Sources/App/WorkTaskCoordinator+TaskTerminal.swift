@@ -24,7 +24,7 @@ extension WorkTaskCoordinator {
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
-                terminalManager.openTaskTerminalWithCommand(
+                terminalManager.openTaskTerminal(
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
             }
@@ -50,7 +50,54 @@ extension WorkTaskCoordinator {
         }
     }
 
+    /// Plan a backlog task: run the chosen agent command against the task's own bottom terminal,
+    /// from the primary worktree. Nothing is written to the task — planning shapes the brief, it
+    /// does not start the work.
+    ///
+    /// The task terminal rather than a main-terminal tab because the Tasks destination renders no
+    /// terminal pane at all: a tab appended to the primary worktree's pane runs where nobody
+    /// watching the task can see it, which is how the first cut of this looked like a dead button.
+    ///
+    /// `autoRun` decides submit-or-stage the way `TerminalManager.run` does. Submitting runs the
+    /// agent directly on the prompt; staging has no launcher to hold a draft here, so it opens a
+    /// login shell and leaves the invocation on its prompt line for the operator to send.
+    func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
+        guard let resolved = planCommand(for: task, using: command),
+              case .agent(let agent, let prompt, let submit) = CommandLaunch.launch(for: resolved)
+        else { return }
+
+        let taskId = task.id
+        let directory = Self.planWorkingDirectory(
+            worktrees: worktreeManager.worktrees,
+            projectPath: worktreeManager.projectPath
+        )
+        guard terminalManager.beginTaskLaunch(for: taskId) else { return }
+        Task { @MainActor in
+            defer { terminalManager.endTaskLaunch(for: taskId) }
+            guard submit else {
+                let surface = terminalManager.openTaskTerminal(
+                    for: taskId, app: app, projectPath: directory, command: nil)
+                await TerminalManager.awaitShellPrompt(on: surface)
+                surface.sendText(
+                    buildAgentPromptLine(agentCommand: agent, prompt: prompt, filePrefix: planFilePrefix).line)
+                return
+            }
+            let launch = buildAgentPromptCommand(
+                agentCommand: agent,
+                prompt: prompt,
+                path: await ShellEnvironment.awaitPath(),
+                filePrefix: planFilePrefix
+            )
+            terminalManager.openTaskTerminal(
+                for: taskId, app: app, projectPath: directory, command: launch.command)
+        }
+
+        NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)
+    }
+
     private func focusTaskTerminal(_ taskId: UUID) {
         terminalManager.existingTaskSurface(for: taskId)?.takeFocus(after: 0.25)
     }
 }
+
+private let planFilePrefix = "clearway-plan"

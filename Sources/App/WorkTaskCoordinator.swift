@@ -114,13 +114,12 @@ class WorkTaskCoordinator: ObservableObject {
         return CommandPlaceholders.substituted(command, taskPath: workTaskManager.filePath(for: current))
     }
 
-    /// Plan a backlog task: run the chosen agent command in the primary worktree, where the task
-    /// still lives. Nothing is written to the task — planning shapes the brief, it does not start
-    /// the work.
-    func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
-        guard let resolved = planCommand(for: task, using: command),
-              let main = worktreeManager.worktrees.first(where: \.isMain) else { return }
-        terminalManager.run(resolved, in: main, app: app)
+    /// Where a plan run's agent starts: the primary worktree, which is where a backlog task's file
+    /// still lives. `projectPath` is the fallback rather than a second convention — the worktree
+    /// list is empty until the first `git worktree list` returns, and a plan run before then must
+    /// still land somewhere, not silently do nothing.
+    static func planWorkingDirectory(worktrees: [Worktree], projectPath: String) -> String {
+        worktrees.first(where: \.isMain)?.path ?? projectPath
     }
 
     func worktreeForTask(_ task: WorkTask) -> Worktree? {

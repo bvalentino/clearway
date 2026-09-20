@@ -46,12 +46,11 @@ extension SavedCommand {
 
 // MARK: - Defaults
 
-/// The commands a project runs without being asked each time: one after a worktree is created, one
-/// to plan a task. Each slot names a command by id, so renaming or editing the command keeps the
-/// default pointing at it.
+/// The command a project runs without being asked each time: the one the Start Task sheet offers
+/// after a worktree is created. The slot names a command by id, so renaming or editing the command
+/// keeps the default pointing at it.
 struct CommandDefaults: Codable, Equatable {
     var afterCreate: UUID?
-    var plan: UUID?
 
     /// A slot resolves only to a **live** `.agent`-kind command: an id that was deleted, or that now
     /// names a terminal-kind command, reads as None. The stored id is left alone either way — it may

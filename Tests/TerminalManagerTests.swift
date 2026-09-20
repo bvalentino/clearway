@@ -181,6 +181,45 @@ final class TerminalManagerTests: XCTestCase {
         )
     }
 
+    // MARK: - buildAgentPromptLine
+
+    /// The staged form of the same launch: the prompt stays in the temp file, so what lands on the
+    /// prompt line is one short readable command whatever the prompt contains.
+    func test_buildAgentPromptLine_keepsThePromptInTheFile_notInTheLine() {
+        let prompt = "say \"hi\"\n$HOME `id` 'x'"
+        let staged = buildAgentPromptLine(agentCommand: "claude", prompt: prompt, filePrefix: "clearway-test-line")
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        XCTAssertEqual(
+            try? String(contentsOfFile: staged.promptFile, encoding: .utf8),
+            prompt,
+            "prompt file must preserve the body byte-for-byte"
+        )
+        XCTAssertFalse(staged.line.contains("$HOME"),
+                       "prompt metacharacters must not reach the staged line; got: \(staged.line)")
+        XCTAssertEqual(staged.line, "claude \"$(cat '\(staged.promptFile)')\"")
+    }
+
+    /// Same contract as the `/bin/sh -c` recipe: the agent command word-splits, the file does not.
+    func test_buildAgentPromptLine_leavesTheAgentCommandUnquoted_andQuotesTheFile() {
+        let staged = buildAgentPromptLine(agentCommand: "claude --model opus", prompt: "x")
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        XCTAssertTrue(staged.line.hasPrefix("claude --model opus \""),
+                      "a multi-word agent command must stay unquoted; got: \(staged.line)")
+        XCTAssertTrue(staged.line.contains("'\(staged.promptFile)'"),
+                      "the prompt file must be single-quoted; got: \(staged.line)")
+    }
+
+    func test_buildAgentPromptLine_writesTheFileWithRestrictivePermissions() throws {
+        let staged = buildAgentPromptLine(agentCommand: "grok", prompt: "p", filePrefix: "clearway-test-line")
+        defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
+
+        let mode = try FileManager.default.attributesOfItem(atPath: staged.promptFile)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(mode?.int16Value, 0o600)
+        XCTAssertTrue((staged.promptFile as NSString).lastPathComponent.hasPrefix("clearway-test-line-"))
+    }
+
     // MARK: - buildBareCommand
 
     /// The bare command must `exec` the agent so tab-close signals reach the

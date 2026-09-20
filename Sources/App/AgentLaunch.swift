@@ -24,21 +24,41 @@ func buildAgentPromptCommand(
     path: String,
     filePrefix: String = "clearway-agent-prompt"
 ) -> (command: String, promptFile: String) {
-    let tempDir = NSTemporaryDirectory()
-    let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
-    let data = Data(prompt.utf8)
-    let wrote = FileManager.default.createFile(
-        atPath: promptFile,
-        contents: data,
-        attributes: [.posixPermissions: 0o600]
-    )
-    if !wrote {
-        Ghostty.logger.warning(
-            "buildAgentPromptCommand: failed to write prompt file \(promptFile, privacy: .public)"
-        )
-    }
+    let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix)
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "
         + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(path)
     return (command, promptFile)
+}
+
+/// The same launch as one line for a user to read and press Enter on, for a surface that has no
+/// launcher to stage a draft in. The prompt stays in the same `0o600` temp file, so a multi-line
+/// prompt stages as one short line and still reaches the agent as one argv element.
+///
+/// `agentCommand` is unquoted and the file is, for the reasons `buildAgentPromptCommand` gives.
+/// Nothing deletes the file here: the line is the user's to edit, re-run or abandon, and a `rm`
+/// welded onto it would take the prompt away the first time they interrupt the agent.
+func buildAgentPromptLine(
+    agentCommand: String,
+    prompt: String,
+    filePrefix: String = "clearway-agent-prompt"
+) -> (line: String, promptFile: String) {
+    let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix)
+    return (agentCommand + " \"$(cat " + shellEscape(promptFile) + ")\"", promptFile)
+}
+
+private func writeAgentPromptFile(_ prompt: String, filePrefix: String) -> String {
+    let tempDir = NSTemporaryDirectory()
+    let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
+    let wrote = FileManager.default.createFile(
+        atPath: promptFile,
+        contents: Data(prompt.utf8),
+        attributes: [.posixPermissions: 0o600]
+    )
+    if !wrote {
+        Ghostty.logger.warning(
+            "writeAgentPromptFile: failed to write prompt file \(promptFile, privacy: .public)"
+        )
+    }
+    return promptFile
 }

@@ -221,15 +221,22 @@ final class SavedCommandTests: XCTestCase {
         XCTAssertNil(CommandDefaults.resolve(terminal.id, in: [terminal]))
     }
 
-    func testEmptyDefaultsRoundTripThroughJSONAsBothNil() throws {
+    func testEmptyDefaultsRoundTripThroughJSONAsUnset() throws {
         let data = try JSONEncoder().encode(CommandDefaults())
         let decoded = try JSONDecoder().decode(CommandDefaults.self, from: data)
         XCTAssertNil(decoded.afterCreate)
-        XCTAssertNil(decoded.plan)
+    }
+
+    /// A `command-defaults.json` written before the plan slot was retired still carries it, and has
+    /// to keep decoding: an unknown key is ignored, not a reason to read the file as unset.
+    func testDefaultsDecodeIgnoringARetiredSlot() throws {
+        let stored = #"{"afterCreate":"11111111-1111-1111-1111-111111111111","plan":"22222222-2222-2222-2222-222222222222"}"#
+        let decoded = try JSONDecoder().decode(CommandDefaults.self, from: Data(stored.utf8))
+        XCTAssertEqual(decoded.afterCreate, UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
     }
 
     func testPopulatedDefaultsRoundTripThroughJSONEqual() throws {
-        let defaults = CommandDefaults(afterCreate: UUID(), plan: UUID())
+        let defaults = CommandDefaults(afterCreate: UUID())
         let data = try JSONEncoder().encode(defaults)
         XCTAssertEqual(try JSONDecoder().decode(CommandDefaults.self, from: data), defaults)
     }

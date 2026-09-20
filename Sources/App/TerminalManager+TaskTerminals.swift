@@ -70,11 +70,17 @@ extension TerminalManager {
         taskLaunchesInFlight.remove(taskId)
     }
 
-    /// Open a task terminal that runs the given command directly (no login shell).
-    /// Replaces any existing task surface for the same task.
-    func openTaskTerminalWithCommand(for taskId: UUID, app: ghostty_app_t, projectPath: String?, command: String) {
+    /// Open a task terminal on a fresh surface and reveal the panel, replacing any surface the
+    /// task already had. A non-nil `command` runs directly, with no login shell in front of it; a
+    /// nil one opens a login shell, which is what a caller that means to stage a line wants.
+    @discardableResult
+    func openTaskTerminal(
+        for taskId: UUID,
+        app: ghostty_app_t,
+        projectPath: String?,
+        command: String?
+    ) -> Ghostty.SurfaceView {
         ghosttyApp = app
-        // Close existing surface if any
         if let old = taskSurfaces.removeValue(forKey: taskId) {
             old.closeSurface()
         }
@@ -82,6 +88,7 @@ extension TerminalManager {
         taskSurfaces[taskId] = surface
         openTaskIds.insert(taskId)
         taskTerminalVisible[taskId] = true
+        return surface
     }
 
     /// Find the task ID that owns the given surface.

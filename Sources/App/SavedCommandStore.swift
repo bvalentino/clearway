@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`, beside
-/// that project's `groups.json`, and the two ids that index it in the sibling
+/// that project's `groups.json`, and the id that indexes it in the sibling
 /// `command-defaults.json`.
 ///
 /// The array is stored and returned in order — that order is the display order, so nothing here

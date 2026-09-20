@@ -60,11 +60,11 @@ struct WorkTaskListView: View {
             ToolbarGroupBreak()
 
             ToolbarItem(placement: .primaryAction) {
-                planMenu(for: selectedTask)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button("Start Now") {
+                Menu {
+                    planItems(for: selectedTask)
+                } label: {
+                    Text("Start Now")
+                } primaryAction: {
                     if let task = selectedTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
@@ -191,8 +191,13 @@ struct WorkTaskListView: View {
                 WorkTaskRow(task: task, hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id))
                     .tag(task.id)
                     .contextMenu {
-                        planMenu(for: task)
-                        Button { startTask(task) } label: {
+                        Menu {
+                            Button("Start Task…") { startTask(task) }
+                            if !agentCommands.isEmpty {
+                                Divider()
+                                planItems(for: task)
+                            }
+                        } label: {
                             Label("Start Now", systemImage: "play.fill")
                         }
                         Divider()
@@ -209,54 +214,34 @@ struct WorkTaskListView: View {
         .listStyle(.inset)
     }
 
-    // MARK: - Plan
+    // MARK: - Start Now
 
     private var agentCommands: [SavedCommand] {
         SavedCommand.filter(savedCommandManager.commands, by: .agent)
     }
 
-    /// The Plan dropdown, rendered by both the toolbar and the row context menu. The task is a
-    /// parameter so the context menu plans the right-clicked row rather than the selection; a nil
-    /// task is the toolbar with nothing selected.
+    /// The dropdown half of Start Now: one item per agent command, each planning the task in its
+    /// own bottom terminal. The task is a parameter so the context menu plans the right-clicked
+    /// row rather than the selection; a nil task is the toolbar with nothing selected.
     ///
-    /// `primaryAction:` is declared only while the project has a plan default, so the first click
-    /// opens the list when there is nothing to repeat.
-    @ViewBuilder
-    private func planMenu(for task: WorkTask?) -> some View {
-        if let preferred = savedCommandManager.planCommand {
-            Menu {
-                planItems(for: task)
-            } label: {
-                Text("Plan")
-            } primaryAction: {
-                plan(task, using: preferred)
-            }
-            .disabled(planIsUnavailable(for: task))
-        } else {
-            Menu {
-                planItems(for: task)
-            } label: {
-                Text("Plan")
-            }
-            .disabled(planIsUnavailable(for: task))
-        }
-    }
-
+    /// The toolbar renders this behind a split button whose primary action opens the Start Task
+    /// sheet. A context-menu item carrying a submenu cannot also be clicked, so that surface
+    /// leads with the same action as the submenu's first item instead.
     @ViewBuilder
     private func planItems(for task: WorkTask?) -> some View {
         ForEach(agentCommands) { command in
             Button(command.name) { plan(task, using: command) }
+                .disabled(task == nil || ghosttyApp.app == nil)
         }
     }
 
-    private func planIsUnavailable(for task: WorkTask?) -> Bool {
-        task == nil || agentCommands.isEmpty || ghosttyApp.app == nil
-    }
-
+    /// Selecting the task is part of running it: the terminal the plan opens is the one
+    /// `TaskDetailView` renders for the selection, so planning a row the user only right-clicked
+    /// would otherwise run out of sight.
     private func plan(_ task: WorkTask?, using command: SavedCommand) {
         guard let task, let app = ghosttyApp.app else { return }
+        selection = task.id
         workTaskCoordinator.planTask(task, using: command, app: app)
-        savedCommandManager.setPlanDefault(command.id)
     }
 
     private func createAndEdit() {

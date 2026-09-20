@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// One project's ordered list of saved commands and the two default slots that index it, owned by
+/// One project's ordered list of saved commands and the default slot that indexes it, owned by
 /// that project's window.
 ///
 /// Every mutation rewrites the whole array through `SavedCommandStore`. The file is not watched, so
@@ -11,9 +11,9 @@ import SwiftUI
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
 
-    /// The two ids from `command-defaults.json`, held raw. Reading either goes through
-    /// `afterCreateCommand` / `planCommand`, so an id that no longer names a live agent command
-    /// reads as None without the stored id being rewritten away.
+    /// The id from `command-defaults.json`, held raw. Reading it goes through `afterCreateCommand`,
+    /// so an id that no longer names a live agent command reads as None without the stored id being
+    /// rewritten away.
     @Published private(set) var defaults = CommandDefaults()
 
     private let store: SavedCommandStore
@@ -39,10 +39,6 @@ final class SavedCommandManager: ObservableObject {
 
     var afterCreateCommand: SavedCommand? {
         CommandDefaults.resolve(defaults.afterCreate, in: commands)
-    }
-
-    var planCommand: SavedCommand? {
-        CommandDefaults.resolve(defaults.plan, in: commands)
     }
 
     // MARK: - Mutations
@@ -75,11 +71,6 @@ final class SavedCommandManager: ObservableObject {
 
     func setAfterCreateDefault(_ id: UUID?) {
         defaults.afterCreate = id
-        saveDefaults()
-    }
-
-    func setPlanDefault(_ id: UUID?) {
-        defaults.plan = id
         saveDefaults()
     }
 

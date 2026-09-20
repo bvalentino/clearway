@@ -353,6 +353,36 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertNil(taskManager.freshTask(id: seed.id)?.worktree)
     }
 
+    /// A plan run starts where the backlog task's file lives: the primary checkout, not whichever
+    /// worktree happens to be selected.
+    func testPlanWorkingDirectoryIsThePrimaryWorktree() {
+        let worktrees = [
+            makeWorktree(branch: "feature", path: "/repo/.worktrees/feature"),
+            makeWorktree(branch: "main", path: "/repo", isMain: true)
+        ]
+
+        XCTAssertEqual(
+            WorkTaskCoordinator.planWorkingDirectory(worktrees: worktrees, projectPath: "/elsewhere"),
+            "/repo"
+        )
+    }
+
+    /// The worktree list is empty until the first `git worktree list` returns, and a plan run in
+    /// that window has to land somewhere rather than silently do nothing.
+    func testPlanWorkingDirectoryFallsBackToTheProjectPath() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.planWorkingDirectory(worktrees: [], projectPath: "/repo"),
+            "/repo"
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.planWorkingDirectory(
+                worktrees: [makeWorktree(branch: "main", path: nil, isMain: true)],
+                projectPath: "/repo"
+            ),
+            "/repo"
+        )
+    }
+
     private func agentCommand(text: String) -> SavedCommand {
         SavedCommand(id: UUID(), name: "Plan", kind: .agent, text: text, agent: "claude", autoRun: true)
     }

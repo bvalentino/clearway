@@ -55,7 +55,9 @@ extension TerminalManager {
     /// arrives — `/bin/dash -i` never reported one, and the wait timed out at 763 ms, after which
     /// both the run and the stage landed cleanly on dash's prompt. 750 ms is ~3.5x the observed
     /// 200 ms prompt latency, and only a shell that reports nothing ever pays it.
-    private static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
+    ///
+    /// Internal, not private: the task terminal stages its plan line on the same gate.
+    static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
         let deadline = ContinuousClock.now + shellReadinessFallback
         while surface.pwd == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: shellReadinessPoll)

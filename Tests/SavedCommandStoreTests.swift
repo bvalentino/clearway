@@ -66,8 +66,6 @@ final class SavedCommandStoreTests: TempRootTestCase {
         autoRun: false
     )
 
-    private let planCommandId = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
-
     // MARK: - Codable round-trip
 
     func testCodableRoundTripPreservesEveryField() throws {
@@ -255,8 +253,8 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
     // MARK: - Defaults
 
-    func testSaveThenLoadDefaultsRoundTripsBothSlots() async throws {
-        let defaults = CommandDefaults(afterCreate: agentCommand.id, plan: planCommandId)
+    func testSaveThenLoadDefaultsRoundTripsTheSlot() async throws {
+        let defaults = CommandDefaults(afterCreate: agentCommand.id)
         try await store.saveDefaults(defaults)
 
         let loaded = await store.loadDefaults()
@@ -264,22 +262,21 @@ final class SavedCommandStoreTests: TempRootTestCase {
     }
 
     func testSaveDefaultsPersistsAClearedSlot() async throws {
-        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id, plan: planCommandId))
-        try await store.saveDefaults(CommandDefaults(afterCreate: nil, plan: planCommandId))
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
+        try await store.saveDefaults(CommandDefaults(afterCreate: nil))
 
         let loaded = await store.loadDefaults()
         XCTAssertNil(loaded.afterCreate, "A cleared slot has to survive the reload, not fall back to the old id")
-        XCTAssertEqual(loaded.plan, planCommandId)
     }
 
-    func testLoadDefaultsMissingFileIsBothNil() async {
+    func testLoadDefaultsMissingFileIsUnset() async {
         let loaded = await store.loadDefaults()
         XCTAssertEqual(loaded, CommandDefaults())
     }
 
-    /// Two ids the user cannot repair by hand, so an unreadable file is read as None and left where
-    /// it is — losing them costs one re-pick, and quarantining would only litter `.clearway`.
-    func testLoadDefaultsCorruptFileIsBothNilAndLeavesTheFileInPlace() async throws {
+    /// An id the user cannot repair by hand, so an unreadable file is read as None and left where
+    /// it is — losing it costs one re-pick, and quarantining would only litter `.clearway`.
+    func testLoadDefaultsCorruptFileIsUnsetAndLeavesTheFileInPlace() async throws {
         let original = "not valid json {{{"
         try writeDefaultsFile(original)
 
@@ -297,7 +294,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
             "The commands directory must not exist before the first save"
         )
 
-        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id, plan: nil))
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
 
         let fm = FileManager.default
         let dirMode = try fm.attributesOfItem(atPath: clearwayDir)[.posixPermissions] as? NSNumber
@@ -314,7 +311,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
         let storeA = SavedCommandStore(projectPath: (tempRoot as NSString).appendingPathComponent("a"))
         let storeB = SavedCommandStore(projectPath: (tempRoot as NSString).appendingPathComponent("b"))
 
-        try await storeA.saveDefaults(CommandDefaults(afterCreate: agentCommand.id, plan: nil))
+        try await storeA.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
 
         let loadedB = await storeB.loadDefaults()
         XCTAssertEqual(loadedB, CommandDefaults(), "Project B must not see project A's defaults")
@@ -326,12 +323,12 @@ final class SavedCommandStoreTests: TempRootTestCase {
     /// paths — a save of one must not touch the other.
     func testTheTwoFilesAreWrittenIndependently() async throws {
         try await store.save([terminalCommand, agentCommand])
-        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id, plan: nil))
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
 
         let fm = FileManager.default
         let commandsBytes = fm.contents(atPath: commandsFile)
 
-        try await store.saveDefaults(CommandDefaults(afterCreate: nil, plan: planCommandId))
+        try await store.saveDefaults(CommandDefaults(afterCreate: nil))
         XCTAssertEqual(fm.contents(atPath: commandsFile), commandsBytes, "Saving defaults rewrote commands.json")
 
         let defaultsBytes = fm.contents(atPath: defaultsFile)
@@ -342,6 +339,6 @@ final class SavedCommandStoreTests: TempRootTestCase {
             "Saving commands rewrote command-defaults.json"
         )
         let reloaded = await store.loadDefaults()
-        XCTAssertEqual(reloaded.plan, planCommandId)
+        XCTAssertNil(reloaded.afterCreate)
     }
 }

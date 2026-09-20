@@ -400,6 +400,85 @@ correctly against the shipped behaviour of T1–T8.
 | Two windows on one project each own a `SavedCommandManager`, so the later default write wins | Low | Accepted; the same exposure `commands.json` and `groups.json` already carry. |
 | A `{{ task_path }}` inside a shell snippet the agent runs is re-scanned by that shell | Low | Accepted; same contract as `buildOpenInScript` and `WorktreeHooks.interpolated`. |
 
+## Changelog
+
+Operator-requested changes made after T1–T9 were committed. Recorded here so no later step reverts
+them as unintentional.
+
+### C1: Start Now becomes a split button, and Plan runs where it can be seen
+
+**Reported:** after running the app, "I click Plan and commands in the menu and nothing is
+happening."
+
+**Diagnosis.** The launch was not failing — it was invisible. `planTask` called
+`TerminalManager.run(_:in: main, app:)`, whose `.agent` branch appends a launcher tab to the
+**primary worktree's** pane. `ContentView.readinessDetailView` renders a pane only when
+`detailSelection?.worktree != nil`; on the Tasks destination it renders `TaskDetailView`, so the
+tab, its promotion and the agent all happened off-screen. `ghosttyApp.app` is a process-wide
+`Ghostty.App` and is non-nil on every destination, so the menu was never disabled and nothing
+refused; with `autoRun` off the run did not even start, it only set `launcherDrafts` on a tab the
+operator could not reach. A secondary effect: the primary worktree's active main tab was hijacked,
+so switching to it later showed a surprise tab.
+
+**Changes.**
+
+1. The Plan menu and the separate Start Now button are replaced by one "Start Now" control. Its
+   primary action opens the Start Task sheet (`resolveStart`, unchanged); its items are the
+   project's agent-kind saved commands, and picking one plans the task. The toolbar gets a split
+   button; the row context menu gets the same action as the submenu's first item, because an
+   AppKit menu item carrying a submenu has no body to click and SwiftUI documents the primary
+   action as firing "when the user taps or clicks on the body of the control".
+2. The plan default slot is **removed**, not kept. With the primary action now Start Now, nothing
+   read `planCommand` or `setPlanDefault`; keeping them would have cost a persisted field, a
+   setter, an accessor and five tests for no reader. `CommandDefaults` keeps `afterCreate` alone,
+   and a `command-defaults.json` still carrying `plan` decodes fine (unknown keys are ignored) —
+   pinned by `SavedCommandTests.testDefaultsDecodeIgnoringARetiredSlot`.
+3. `planTask` moves to `WorkTaskCoordinator+TaskTerminal.swift` and runs in the **task's** bottom
+   terminal instead of a main-terminal tab, working directory
+   `WorkTaskCoordinator.planWorkingDirectory` — the `isMain` worktree's path, falling back to
+   `projectPath` for the window before the first `git worktree list` returns (the old code returned
+   early there and did nothing). `plan` in the view selects the task first, so a plan started from
+   a right-clicked row opens the terminal the operator is looking at.
+4. `autoRun` is respected the way `TerminalManager.run` respects it, adapted to a surface with no
+   launcher: submit runs `buildAgentPromptCommand` directly; stage opens a login shell, waits on
+   `TerminalManager.awaitShellPrompt` (now internal, not private) and `sendText`s
+   `buildAgentPromptLine`'s invocation without Enter.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentLaunch.swift` | `buildAgentPromptLine` added; the temp-file write it shares with `buildAgentPromptCommand` extracted to `writeAgentPromptFile`. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | `openTaskTerminalWithCommand` → `openTaskTerminal`, taking `command: String?` and returning the surface. |
+| `Sources/App/TerminalManager+Commands.swift` | `awaitShellPrompt` internal. |
+| `Sources/App/WorkTaskCoordinator.swift` | `planTask` removed; `planWorkingDirectory` added. |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | `planTask` re-landed against the task terminal. |
+| `Sources/App/WorkTaskListView.swift` | One Start Now control; `planMenu` / `planIsUnavailable` gone. |
+| `Sources/App/SavedCommand.swift`, `SavedCommandManager.swift`, `SavedCommandStore.swift` | Plan slot removed. |
+| `Tests/TerminalManagerTests.swift` | Three `buildAgentPromptLine` cases. |
+| `Tests/WorkTaskCoordinatorTests.swift` | Two `planWorkingDirectory` cases. |
+| `Tests/SavedCommand*Tests.swift` | Plan-slot cases removed; the retired-key decode case added. |
+| `CLAUDE.md` | Task start-up, `AgentLaunch` and `command-defaults.json` bullets rewritten to the shipped shape. |
+
+**Evidence.** The defect is not unit-testable: `planTask` takes a `ghostty_app_t` and the
+visibility rule lives in `ContentView`'s view hierarchy, neither of which XCTest can reach — the
+same limit `CLAUDE.md` records for `Ghostty.SurfaceView`. What is testable was lifted out and
+pinned: `planWorkingDirectory` and `buildAgentPromptLine`. The fallback case was watched failing
+first — with the body reverted to the old rule's "no primary worktree, nowhere to go"
+(`worktrees.first(where: \.isMain)?.path ?? ""`), `./scripts/ci.sh` reported:
+
+```
+✖ testPlanWorkingDirectoryFallsBackToTheProjectPath, XCTAssertEqual failed: ("") is not equal to ("/repo")
+Executed 584 tests, with 2 failures (0 unexpected)
+```
+
+The fix was restored from the scratchpad copy and the gate re-run. The re-target itself is on the
+operator's Try list.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`

@@ -182,12 +182,24 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
     to the relocated file), the shadow task, the selection, the afterCreate hook, and the command
     **last** — after the hook is *started*, not after it exits, since nothing has ever awaited a
-    hook. Plan (`planTask`, from `WorkTaskListView`'s toolbar and its row context menu) runs a
-    chosen agent command in the **primary** worktree, where a backlog task still lives, and writes
-    nothing at all: no status, no branch link, no relocation. Its `Menu` is declared twice, with and
-    without `primaryAction:`, because `primaryAction:` cannot be applied conditionally — with no
-    plan default the first click has to open the list, and a `primaryAction:` that no-ops instead
-    swallows it.
+    hook. `WorkTaskListView` offers both doors as **one** control labelled "Start Now": its primary
+    action opens the Start Task sheet, its items plan the task with one of the project's agent-kind
+    saved commands. There is no remembered pick — the plan slot that once drove the primary action
+    was retired with it, so `command-defaults.json` carries the after-create id alone.
+    On the toolbar it is a split button; in the row context menu it cannot be, because an AppKit
+    menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the primary
+    action as firing "when the user taps or clicks on the body of the control" — so there the same
+    action is the submenu's first item instead. Either way `plan` selects the task first: the
+    terminal a plan opens is the one `TaskDetailView` renders for the selection.
+    Plan (`planTask`, in `WorkTaskCoordinator+TaskTerminal.swift`) runs the chosen command in the
+    **task's own bottom terminal**, working directory `planWorkingDirectory` — the `isMain`
+    worktree, where a backlog task's file still lives, falling back to `projectPath` for the window
+    before the first `git worktree list` returns. It writes nothing at all: no status, no branch
+    link, no relocation. It must not go back to `TerminalManager.run`: that appends a tab to the
+    primary worktree's pane, and the Tasks destination renders no pane, so the agent ran where
+    nobody could see it and Plan read as a dead button. `autoRun` still decides submit-or-stage,
+    but the task terminal has no launcher to hold a draft, so staging opens a login shell and leaves
+    `buildAgentPromptLine`'s invocation on its prompt line for the operator to send.
     **Clearway launches no agent of its own**, and nothing advances the status afterwards — every
     agent either path starts is a command the user saved and picked. `status` is frontmatter
     Clearway writes and round-trips but **never renders** — there is no badge and no label table, so
@@ -203,6 +215,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     multi-word commands would then be looked up as a single filename. The prompt reaches the agent as
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
     list too long" — the launcher's prompts sit well under that.
+    `buildAgentPromptLine` is the same launch staged rather than run, for a surface with no launcher
+    to hold a draft: same temp file, same unquoted `$1` contract, but the line is `agent "$(cat
+    'file')"` for the operator to press Enter on. It welds no `rm` onto that line — the file is the
+    prompt the operator may re-run or edit, and removing it on first exit would take it away.
     `CommandPlaceholders.substituted` resolves `{{ task_path }}` in a saved command's text **raw**,
     and that is a consequence of the above: the text becomes the prompt, the prompt reaches the
     agent as one argv element read out of the temp file, and no shell ever parses it — so a path
@@ -231,13 +247,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
     an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
     reopens.
-    Beside it the same store owns `command-defaults.json`, two optional command ids: the Start Task
-    sheet's "Run after create" slot and the Plan menu's. Both files go through one `write` on the
-    store and one `enqueue` chain on the manager, so a defaults write and a commands write cannot
-    reach the queue out of order. An id is only ever read through `CommandDefaults.resolve`, which
+    Beside it the same store owns `command-defaults.json`, one optional command id: the Start Task
+    sheet's "Run after create" slot. A `plan` key shipped there briefly and was retired with the
+    Plan menu; a file still carrying it decodes fine, since an unknown key is ignored. Both files
+    go through one `write` on the store and one `enqueue` chain on the manager, so a defaults write
+    and a commands write cannot
+    reach the queue out of order. The id is only ever read through `CommandDefaults.resolve`, which
     answers for a **live `.agent`-kind** command and nothing else: an id naming a deleted command,
     or one retyped to terminal, shows None and is **not** rewritten away, and a missing or
-    undecodable file reads as both-unset and is left exactly where it is — losing two ids the user
+    undecodable file reads as unset and is left exactly where it is — losing an id the user
     cannot repair by hand costs one re-pick, which beats quarantining a file. The after-create slot
     is written back only on the `.apply` branch of the sheet's outcome, so a cancelled or failed
     create changes no default. No watcher, for the same reason `commands.json` has none.
