@@ -138,7 +138,11 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(Self.listArgs(worktreePath: path)) {
         case .output(let data):
-            return Self.parseList(Self.decoded(data))
+            guard let text = Self.decoded(data) else {
+                log("read \(path)", "git printed bytes that are not UTF-8")
+                return nil
+            }
+            return Self.parseList(text)
         case .refused:
             return [:]
         case .unavailable(let message):
@@ -173,7 +177,11 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(args) {
         case .output(let data):
-            return Self.parseNullSeparated(Self.decoded(data))
+            guard let text = Self.decoded(data) else {
+                log(what, "git printed bytes that are not UTF-8")
+                return nil
+            }
+            return Self.parseNullSeparated(text)
         // git-config(1): "Returns error code 1 if key is not present." Only that status means the
         // key is absent, so every other refusal answers `nil` and the caller keeps what it
         // publishes: a repo-level read has no counterpart to `--list`'s exit 128 on a worktree with
@@ -397,12 +405,13 @@ final class WorktreeConfigStore: Sendable {
     }
 
     private func trimmed(_ data: Data) -> String {
-        Self.decoded(data).trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.decoded(data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    /// git's bytes as text, in the one place that decides how. A config value is whatever the user
-    /// typed, so an invalid sequence is replaced rather than failing the whole read.
-    private static func decoded(_ data: Data) -> String {
-        String(decoding: data, as: UTF8.self)
+    /// git's bytes as text, in the one place that decides how, and `nil` for a sequence that is not
+    /// valid UTF-8. Each caller answers for that itself: a read whose result the caller publishes
+    /// keeps `nil` and "nothing there" apart, while `trimmed(_:)` has no such caller.
+    private static func decoded(_ data: Data) -> String? {
+        String(data: data, encoding: .utf8)
     }
 }
