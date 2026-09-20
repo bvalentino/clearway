@@ -246,7 +246,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     primary worktree's pane, and the Tasks destination renders no pane, so the agent ran where
     nobody could see it and Plan read as a dead button. `autoRun` still decides submit-or-stage,
     but nothing holds a staged draft, so staging opens a login shell and leaves
-    `buildAgentPromptLine`'s invocation on its prompt line for the operator to send.
+    `buildAgentPromptLine`'s invocation on its prompt line for the operator to send, through
+    `TerminalManager.stagedText` like every other staged delivery. Either branch refuses on a
+    prompt file that could not be written, and refuses **before** opening the surface:
+    `openTaskTerminal` closes the task's current one to open the new one, so a downgraded launch
+    would take away what was already running there.
     **Clearway launches no agent of its own**, and nothing advances the status afterwards — every
     agent either path starts is a command the user saved and picked. `status` is frontmatter
     Clearway writes and round-trips but **never renders** — there is no badge and no label table, so
@@ -268,14 +272,24 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     argv words `claude;`, `rm`, `-rf`, `/` and nothing executes. Do not "fix" this by quoting `$1`:
     multi-word commands would then be looked up as a single filename. The prompt reaches the agent as
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
-    list too long" — typical agent prompts sit well under that.
+    list too long" — typical agent prompts sit well under that. It returns **`nil`** when the prompt
+    file cannot be written: the recipe's `$(cat)` over a missing file would seed the agent with an
+    empty prompt, so the caller refuses the launch instead. `startAgentTab`'s `.argv` case ends its
+    in-flight claim when it owns it, runs an `NSAlert` naming the command and the temp directory,
+    and opens no tab. There is deliberately no fallback to a bare tab — silently downgrading "run
+    this prompt" to "type it in for me" is the same defect as the empty start it replaces.
     `buildAgentPromptLine` is the same launch staged rather than run, for a surface that has to show
     the invocation instead: same temp file, but the line is `agent "$(cat 'file')"`, which `sendText` puts
     on an interactive prompt for the operator to press Enter on. There is no `$1` and no parameter
     expansion on this path — the command text is concatenated in as typed and the operator's own
     shell parses it as source, the same contract as `buildOpenInScript`; only the file path is
     escaped, because Clearway chose that one. It welds no `rm` onto that line — the file is the
-    prompt the operator may re-run or edit, and removing it on first exit would take it away.
+    prompt the operator may re-run or edit, and removing it on first exit would take it away. It
+    carries the same `nil` refusal, because an unwritten file empties the prompt the moment the
+    operator presses Enter — both writers go through one `writeAgentPromptFile`, whose failure is
+    the single source of that `nil`. The refusal reaches the plan launch through
+    `presentPromptFileFailure`, internal rather than `private` so `TerminalManager+Commands.swift`
+    can run the same alert.
     `CommandPlaceholders.substituted` resolves `{{ task_path }}` in a saved command's text **raw**,
     and that is a consequence of the above: the text becomes the prompt, the prompt reaches the
     agent as one argv element read out of the temp file, and no shell ever parses it — so a path
@@ -313,10 +327,20 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     pane and re-registers a worktree the user just tore down. The check sits *ahead* of building the
     command so the argv path allocates no orphan prompt file. Nothing cancels the `Task`, which is
     why the owner ends its claim on that path too rather than leaving the gate set.
-    The staged case (`submit` off) sends the prompt with **`sendText`, never `sendPaste`** —
-    `sendPaste` appends Enter, which runs the prompt the user's toggle said to stage.
-    `promptDelivery` and `proceedsWithLaunch` are `static` so both rules are testable without a
-    `ghostty_app_t`.
+    The staged case (`submit` off) goes through `stagedText` + **`sendText`**, the one staging rule,
+    shared with `sendToActiveMainTab(asCommand: false)` — the Prompts aside's play button, which
+    often targets a plain shell, so the rule lives beside it in `TerminalManager.swift` rather than
+    in this agent-only extension. Neither uses `sendPaste`, which appends Enter and would run the
+    prompt staging exists to leave unrun.
+    The trim `stagedText` does is load-bearing, not cosmetic: outside bracketed paste libghostty
+    rewrites every `\n` to `\r` (`ghostty/src/input/paste.zig`), so an untrimmed trailing newline is
+    itself an Enter. Trimming the ends is the **whole** guarantee — an interior newline still
+    arrives as an Enter on a target without bracketed paste, as it did under `sendPaste`, and
+    closing that needs a bracketed-paste query the C API does not expose. `sendPaste` survives only
+    for `TerminalManager+Panels.swift`'s hook command, where Enter is wanted; no prompt-delivery
+    path names it.
+    `promptDelivery`, `stagedText` and `proceedsWithLaunch` are `static` so all three rules are
+    testable without a `ghostty_app_t`.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
     `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
     wait and the shell-vs-agent branch live on the coordinator with the rest of the tab logic.

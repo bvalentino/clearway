@@ -42,6 +42,11 @@ extension TerminalManager {
     /// `autoRun` picks submit-or-stage the same way. Submitting opens the surface straight onto the
     /// agent; staging has nothing to hold a draft here, so it opens a login shell and leaves the
     /// invocation on its prompt line for the operator to send.
+    ///
+    /// Both forms refuse when the prompt file cannot be written, the same rule `startAgentTab`
+    /// applies: a `$(cat)` over a missing file seeds the agent with an empty prompt, and this door
+    /// closes the task's existing terminal to open the new one, so a downgraded launch would cost
+    /// the operator what was already there.
     func run(
         _ command: SavedCommand,
         inTaskTerminalFor taskId: UUID,
@@ -50,18 +55,28 @@ extension TerminalManager {
     ) async {
         guard case .agent(let agent, let prompt, let submit) = CommandLaunch.launch(for: command) else { return }
         guard submit else {
+            guard let staged = buildAgentPromptLine(
+                agentCommand: agent,
+                prompt: prompt,
+                filePrefix: planFilePrefix
+            ) else {
+                presentPromptFileFailure(command: agent)
+                return
+            }
             let surface = openTaskTerminal(for: taskId, app: app, projectPath: directory, command: nil)
             await Self.awaitShellPrompt(on: surface)
-            surface.sendText(
-                buildAgentPromptLine(agentCommand: agent, prompt: prompt, filePrefix: planFilePrefix).line)
+            surface.sendText(Self.stagedText(staged.line))
             return
         }
-        let launch = buildAgentPromptCommand(
+        guard let launch = buildAgentPromptCommand(
             agentCommand: agent,
             prompt: prompt,
             path: await ShellEnvironment.awaitPath(),
             filePrefix: planFilePrefix
-        )
+        ) else {
+            presentPromptFileFailure(command: agent)
+            return
+        }
         openTaskTerminal(for: taskId, app: app, projectPath: directory, command: launch.command)
     }
 

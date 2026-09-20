@@ -33,15 +33,16 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 /// Prompts near the OS `ARG_MAX` (~1 MB on recent macOS) can fail with "Argument list too
 /// long". Typical agent prompts are well under that.
 ///
-/// - Returns: The shell command string and the prompt file path (callers that tear down
-///   surfaces early can delete the file if the agent never ran).
+/// - Returns: The shell command string and the path of the prompt file it will read, or `nil`
+///   when that file could not be written. The recipe removes the file itself; the path is
+///   returned so the tests can clean up after a command they never run.
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,
     path: String,
     filePrefix: String = "clearway-agent-prompt"
-) -> (command: String, promptFile: String) {
-    let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix)
+) -> (command: String, promptFile: String)? {
+    guard let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix) else { return nil }
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "
         + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(path)
@@ -60,16 +61,19 @@ func buildAgentPromptCommand(
 ///
 /// Nothing deletes the file here: the line is the user's to edit, re-run or abandon, and a `rm`
 /// welded onto it would take the prompt away the first time they interrupt the agent.
+///
+/// - Returns: `nil` when the prompt file could not be written, for the same reason the run form
+///   refuses: the line's `$(cat)` over a missing file would seed the agent with an empty prompt.
 func buildAgentPromptLine(
     agentCommand: String,
     prompt: String,
     filePrefix: String = "clearway-agent-prompt"
-) -> (line: String, promptFile: String) {
-    let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix)
+) -> (line: String, promptFile: String)? {
+    guard let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix) else { return nil }
     return (agentCommand + " \"$(cat " + shellEscape(promptFile) + ")\"", promptFile)
 }
 
-private func writeAgentPromptFile(_ prompt: String, filePrefix: String) -> String {
+private func writeAgentPromptFile(_ prompt: String, filePrefix: String) -> String? {
     let tempDir = NSTemporaryDirectory()
     let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
     let wrote = FileManager.default.createFile(
@@ -77,10 +81,11 @@ private func writeAgentPromptFile(_ prompt: String, filePrefix: String) -> Strin
         contents: Data(prompt.utf8),
         attributes: [.posixPermissions: 0o600]
     )
-    if !wrote {
-        Ghostty.logger.warning(
+    guard wrote else {
+        Ghostty.logger.error(
             "writeAgentPromptFile: failed to write prompt file \(promptFile, privacy: .public)"
         )
+        return nil
     }
     return promptFile
 }

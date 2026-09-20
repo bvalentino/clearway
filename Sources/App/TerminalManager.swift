@@ -247,14 +247,27 @@ class TerminalManager: ObservableObject {
     /// Whether `sendToActiveMainTab` has somewhere to dispatch: there is an active surface.
     var canSendToActiveMainTab: Bool { activeMainSurface != nil }
 
-    /// Send text to the active main tab's running process: `sendCommand` (asCommand=true,
-    /// appends a newline) or `sendPaste`.
+    /// What staged delivery hands the surface — the one definition, shared with `startAgentTab`.
+    ///
+    /// The trim is load-bearing, not cosmetic. Outside bracketed paste libghostty rewrites every
+    /// `\n` to `\r` (`ghostty/src/input/paste.zig`), which is an Enter — so an untrimmed trailing
+    /// newline submits the text this rule exists to leave unsubmitted.
+    ///
+    /// Trimming the ends is the whole guarantee. An interior newline still arrives as an Enter on
+    /// a target without bracketed paste, exactly as `sendPaste` delivered it before; closing that
+    /// needs a bracketed-paste query libghostty's C API does not expose.
+    static func stagedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Send text to the active main tab's running process. `asCommand: true` runs it, submitting
+    /// with Enter; `false` stages it on whatever the tab is running, leaving it unsubmitted.
     func sendToActiveMainTab(_ text: String, asCommand: Bool) {
         guard let surface = activeMainSurface else { return }
         if asCommand {
             surface.sendCommand(text)
         } else {
-            surface.sendPaste(text)
+            surface.sendText(Self.stagedText(text))
         }
         transferFirstResponder(to: surface)
     }

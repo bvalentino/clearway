@@ -193,8 +193,8 @@ final class TerminalManagerTests: XCTestCase {
 
     // MARK: - buildAgentPromptCommand
 
-    func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: "hello", path: testPath)
+    func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "grok", prompt: "hello", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("\"$(cat \"$2\")\""),
                       "prompt must be a positional arg via cat-into-quotes; got: \(launch.command)")
@@ -204,8 +204,8 @@ final class TerminalManagerTests: XCTestCase {
 
     /// `$1` must stay bare in the recipe. Quoting it would make a multi-word command
     /// (`claude --model sonnet`) be looked up as one filename, so the launch would fail.
-    func test_buildAgentPromptCommand_leavesTheAgentCommandExpansionUnquoted() {
-        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_leavesTheAgentCommandExpansionUnquoted() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("; $1 \""),
                       "the agent command must expand unquoted; got: \(launch.command)")
@@ -215,8 +215,8 @@ final class TerminalManagerTests: XCTestCase {
 
     /// The builder must export the PATH it was given, not one it reads for itself: the
     /// caller is the only place that knows whether a resolution has completed.
-    func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() {
-        let launch = buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_exportsTheGivenPath_andDisablesGlobbing() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "claude", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("export PATH=") && launch.command.contains("'\(testPath)'"),
                       "must export the given PATH; got: \(launch.command)")
@@ -225,13 +225,13 @@ final class TerminalManagerTests: XCTestCase {
                       "must clean up the prompt file after the agent exits; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() {
-        let launch = buildAgentPromptCommand(
+    func test_buildAgentPromptCommand_writesPromptFile_andQuotesAgentCommand() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(
             agentCommand: "claude; rm -rf /",
             prompt: "do the work",
             path: testPath,
             filePrefix: "clearway-test-prompt"
-        )
+        ))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: launch.promptFile),
                       "must write the prompt temp file")
@@ -249,9 +249,9 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positionals; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() {
+    func test_buildAgentPromptCommand_keepsSpecialCharsInFile_notInShellString() throws {
         let prompt = "say \"hi\"\n$HOME `id` 'x'"
-        let launch = buildAgentPromptCommand(agentCommand: "grok", prompt: prompt, path: testPath)
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "grok", prompt: prompt, path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         if let data = try? Data(contentsOf: URL(fileURLWithPath: launch.promptFile)),
            let body = String(data: data, encoding: .utf8) {
@@ -267,20 +267,20 @@ final class TerminalManagerTests: XCTestCase {
                       "must still use positional cat expansion; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() {
-        let launch = buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x", path: testPath)
+    func test_buildAgentPromptCommand_escapesSingleQuotes_inAgentCommand() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(agentCommand: "weird'name", prompt: "x", path: testPath))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(launch.command.contains("'weird'\\''name'"),
                       "single quotes in agent command must be shell-escaped; got: \(launch.command)")
     }
 
-    func test_buildAgentPromptCommand_usesFilePrefix() {
-        let launch = buildAgentPromptCommand(
+    func test_buildAgentPromptCommand_usesFilePrefix() throws {
+        let launch = try XCTUnwrap(buildAgentPromptCommand(
             agentCommand: "grok",
             prompt: "p",
             path: testPath,
             filePrefix: "clearway-agent-tab"
-        )
+        ))
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(
             (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-agent-tab-"),
@@ -288,13 +288,31 @@ final class TerminalManagerTests: XCTestCase {
         )
     }
 
+    /// A prefix naming a directory that does not exist makes `FileManager.createFile` fail. The
+    /// builder must answer `nil` there rather than hand back a command whose `$(cat)` would seed the
+    /// agent with an empty prompt.
+    func test_buildAgentPromptCommand_returnsNil_whenThePromptFileCannotBeWritten() {
+        let missingDir = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("clearway-missing-dir-\(UUID().uuidString)")
+        let launch = buildAgentPromptCommand(
+            agentCommand: "claude",
+            prompt: "do the work",
+            path: testPath,
+            filePrefix: "\((missingDir as NSString).lastPathComponent)/prompt"
+        )
+        XCTAssertNil(launch, "an unwritable prompt file must refuse the launch, not build a command")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingDir),
+                       "the builder must not create the directory it failed to write into")
+    }
+
     // MARK: - buildAgentPromptLine
 
     /// The staged form of the same launch: the prompt stays in the temp file, so what lands on the
     /// prompt line is one short readable command whatever the prompt contains.
-    func test_buildAgentPromptLine_keepsThePromptInTheFile_notInTheLine() {
+    func test_buildAgentPromptLine_keepsThePromptInTheFile_notInTheLine() throws {
         let prompt = "say \"hi\"\n$HOME `id` 'x'"
-        let staged = buildAgentPromptLine(agentCommand: "claude", prompt: prompt, filePrefix: "clearway-test-line")
+        let staged = try XCTUnwrap(
+            buildAgentPromptLine(agentCommand: "claude", prompt: prompt, filePrefix: "clearway-test-line"))
         defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
 
         XCTAssertEqual(
@@ -308,8 +326,8 @@ final class TerminalManagerTests: XCTestCase {
     }
 
     /// Same contract as the `/bin/sh -c` recipe: the agent command word-splits, the file does not.
-    func test_buildAgentPromptLine_leavesTheAgentCommandUnquoted_andQuotesTheFile() {
-        let staged = buildAgentPromptLine(agentCommand: "claude --model opus", prompt: "x")
+    func test_buildAgentPromptLine_leavesTheAgentCommandUnquoted_andQuotesTheFile() throws {
+        let staged = try XCTUnwrap(buildAgentPromptLine(agentCommand: "claude --model opus", prompt: "x"))
         defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
 
         XCTAssertTrue(staged.line.hasPrefix("claude --model opus \""),
@@ -319,12 +337,29 @@ final class TerminalManagerTests: XCTestCase {
     }
 
     func test_buildAgentPromptLine_writesTheFileWithRestrictivePermissions() throws {
-        let staged = buildAgentPromptLine(agentCommand: "grok", prompt: "p", filePrefix: "clearway-test-line")
+        let staged = try XCTUnwrap(
+            buildAgentPromptLine(agentCommand: "grok", prompt: "p", filePrefix: "clearway-test-line"))
         defer { try? FileManager.default.removeItem(atPath: staged.promptFile) }
 
         let mode = try FileManager.default.attributesOfItem(atPath: staged.promptFile)[.posixPermissions] as? NSNumber
         XCTAssertEqual(mode?.int16Value, 0o600)
         XCTAssertTrue((staged.promptFile as NSString).lastPathComponent.hasPrefix("clearway-test-line-"))
+    }
+
+    /// The staged form carries the run form's refusal: a line whose `$(cat)` names a file that was
+    /// never written would seed the agent with an empty prompt the moment the operator presses
+    /// Enter.
+    func test_buildAgentPromptLine_returnsNil_whenThePromptFileCannotBeWritten() {
+        let missingDir = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("clearway-missing-dir-\(UUID().uuidString)")
+        let staged = buildAgentPromptLine(
+            agentCommand: "claude",
+            prompt: "do the work",
+            filePrefix: "\((missingDir as NSString).lastPathComponent)/prompt"
+        )
+        XCTAssertNil(staged, "an unwritable prompt file must refuse the staged line too")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingDir),
+                       "the builder must not create the directory it failed to write into")
     }
 
     // MARK: - buildBareCommand
@@ -497,5 +532,30 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: false), .bare)
         XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: true), .argv)
         XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: false), .staged)
+    }
+
+    // MARK: - stagedText
+
+    /// Outside bracketed paste libghostty rewrites every `\n` to `\r`, which is an Enter, so a
+    /// trailing newline on "staged" text submits it. The trim is what keeps staging staged.
+    func test_stagedText_stripsTheNewlinesThatWouldSubmitIt() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff\n"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("\nreview the diff"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("  review the diff \n\n"), "review the diff")
+    }
+
+    /// Only the ends are trimmed. An interior newline still reaches a target without bracketed
+    /// paste as an Enter — unchanged from `sendPaste`, and not something a trim can fix.
+    func test_stagedText_keepsInteriorNewlines() {
+        XCTAssertEqual(TerminalManager.stagedText("\nfirst\n\nsecond\n"), "first\n\nsecond")
+    }
+
+    func test_stagedText_whitespaceOnlyReducesToEmpty() {
+        XCTAssertEqual(TerminalManager.stagedText(" \n\t "), "")
+        XCTAssertEqual(TerminalManager.stagedText(""), "")
+    }
+
+    func test_stagedText_leavesOrdinaryTextAlone() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff"), "review the diff")
     }
 }
