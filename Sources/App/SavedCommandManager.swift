@@ -1,7 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// One project's ordered list of saved commands, owned by that project's window.
+/// One project's ordered list of saved commands and the default slot that indexes it, owned by
+/// that project's window.
 ///
 /// Every mutation rewrites the whole array through `SavedCommandStore`. The file is not watched, so
 /// an edit made outside the app — in a text editor, or by `git pull` — shows once the window is
@@ -9,6 +10,11 @@ import SwiftUI
 @MainActor
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
+
+    /// The id from `command-defaults.json`, held raw. Reading it goes through `afterCreateCommand`,
+    /// so an id that no longer names a live agent command reads as None without the stored id being
+    /// rewritten away.
+    @Published private(set) var defaults = CommandDefaults()
 
     private let store: SavedCommandStore
 
@@ -27,7 +33,19 @@ final class SavedCommandManager: ObservableObject {
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        commands = await store.load()
+        async let loadedCommands = store.load()
+        async let loadedDefaults = store.loadDefaults()
+        (commands, defaults) = await (loadedCommands, loadedDefaults)
+    }
+
+    var afterCreateCommand: SavedCommand? {
+        CommandDefaults.resolve(defaults.afterCreate, in: commands)
+    }
+
+    /// The one answer to "which commands may run as an agent", so the Start Now menu, the Start
+    /// Task sheet's picker and the default slot cannot disagree.
+    var agentCommands: [SavedCommand] {
+        SavedCommand.filter(commands, by: .agent)
     }
 
     // MARK: - Mutations
@@ -58,20 +76,44 @@ final class SavedCommandManager: ObservableObject {
         save()
     }
 
+    /// Clearing is refused while the stored id resolves to nothing. The picker is seeded from
+    /// `afterCreateCommand`, so a stale id already reads as None there and an untouched picker is
+    /// indistinguishable from the operator choosing None — writing it back would drop an id the
+    /// store keeps on purpose, one that may name a command a reverted `commands.json` edit brings
+    /// back. Clearing a slot that does resolve is the operator's own pick and goes through.
+    func setAfterCreateDefault(_ id: UUID?) {
+        guard id != nil || afterCreateCommand != nil else { return }
+        guard defaults.afterCreate != id else { return }
+        defaults.afterCreate = id
+        saveDefaults()
+    }
+
     // MARK: - Persistence
 
-    /// Chains each write onto the one before it. Independent `Task`s reach the store's write queue
-    /// in whatever order the scheduler hands them over, so two quick mutations could otherwise land
-    /// with the earlier snapshot last and drop the newer one from disk.
     private func save() {
         let snapshot = commands
+        let store = self.store
+        enqueue("commands") { try await store.save(snapshot) }
+    }
+
+    private func saveDefaults() {
+        let snapshot = defaults
+        let store = self.store
+        enqueue("defaults") { try await store.saveDefaults(snapshot) }
+    }
+
+    /// Chains each write onto the one before it — commands and defaults share the chain, so two
+    /// writes cannot reach the store's queue out of order. Independent `Task`s are handed over in
+    /// whatever order the scheduler picks, so two quick mutations could otherwise land with the
+    /// earlier snapshot last and drop the newer one from disk.
+    private func enqueue(_ label: String, _ write: @escaping @Sendable () async throws -> Void) {
         let previous = pendingSave
         pendingSave = Task { @MainActor in
             await previous?.value
             do {
-                try await store.save(snapshot)
+                try await write()
             } catch {
-                Ghostty.logger.error("SavedCommandManager: failed to save commands: \(error)")
+                Ghostty.logger.error("SavedCommandManager: failed to save \(label): \(error)")
             }
         }
     }

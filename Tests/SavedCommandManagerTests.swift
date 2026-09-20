@@ -42,6 +42,16 @@ final class SavedCommandManagerTests: TempRootTestCase {
         return loaded
     }
 
+    private func persistedDefaults(matching expected: CommandDefaults) async -> CommandDefaults {
+        let deadline = Date().addingTimeInterval(2)
+        var loaded = await store.loadDefaults()
+        while loaded != expected, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            loaded = await store.loadDefaults()
+        }
+        return loaded
+    }
+
     // MARK: - load
 
     func testLoadPopulatesTheListInFileOrder() async throws {
@@ -158,5 +168,105 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
         let persisted = await persistedCommands(matching: [agent, firstTerminal, secondTerminal])
         XCTAssertEqual(persisted, [agent, firstTerminal, secondTerminal])
+    }
+
+    // MARK: - Defaults
+
+    func testLoadPublishesTheDefaultsOnDisk() async throws {
+        let stored = CommandDefaults(afterCreate: UUID())
+        try await store.saveDefaults(stored)
+
+        await manager.load()
+
+        XCTAssertEqual(manager.defaults, stored)
+    }
+
+    func testLoadOfAMissingDefaultsFileLeavesTheSlotUnset() async {
+        await manager.load()
+        XCTAssertEqual(manager.defaults, CommandDefaults())
+    }
+
+    func testSetAfterCreateDefaultPersistsForTheNextManager() async {
+        let agent = makeCommand(name: "Kickoff", kind: .agent, text: "Start on {{ task_path }}.")
+        manager.add(agent)
+
+        manager.setAfterCreateDefault(agent.id)
+
+        XCTAssertEqual(manager.defaults.afterCreate, agent.id)
+        let persisted = await persistedDefaults(matching: CommandDefaults(afterCreate: agent.id))
+        XCTAssertEqual(persisted.afterCreate, agent.id)
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+        XCTAssertEqual(reopened.defaults.afterCreate, agent.id)
+        XCTAssertEqual(reopened.afterCreateCommand, agent)
+    }
+
+    func testSetAfterCreateDefaultToNilPersistsTheClearedSlot() async {
+        let agent = makeCommand(name: "Kickoff", kind: .agent, text: "Start on {{ task_path }}.")
+        manager.add(agent)
+        manager.setAfterCreateDefault(agent.id)
+        _ = await persistedDefaults(matching: CommandDefaults(afterCreate: agent.id))
+
+        manager.setAfterCreateDefault(nil)
+
+        XCTAssertNil(manager.defaults.afterCreate)
+        let persisted = await persistedDefaults(matching: CommandDefaults())
+        XCTAssertEqual(persisted, CommandDefaults())
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+        XCTAssertNil(reopened.defaults.afterCreate)
+    }
+
+    /// The sheet's picker is seeded from `afterCreateCommand`, so a stale id reads as None there
+    /// and an untouched picker looks exactly like the operator choosing None. Clearing is
+    /// therefore refused while the slot resolves to nothing: the id survives for the day the
+    /// operator reverts the `commands.json` edit that hid it.
+    func testSetAfterCreateDefaultToNilKeepsAStaleId() async {
+        let stale = UUID()
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+        manager.setAfterCreateDefault(stale)
+        _ = await persistedDefaults(matching: CommandDefaults(afterCreate: stale))
+        XCTAssertNil(manager.afterCreateCommand, "the id names no live agent command")
+
+        manager.setAfterCreateDefault(nil)
+
+        XCTAssertEqual(manager.defaults.afterCreate, stale)
+        let persisted = await persistedDefaults(matching: CommandDefaults(afterCreate: stale))
+        XCTAssertEqual(persisted.afterCreate, stale, "the stored id is not rewritten away")
+    }
+
+    func testAfterCreateCommandIsNilForAnUnsetSlot() {
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+
+        XCTAssertNil(manager.afterCreateCommand)
+    }
+
+    func testAfterCreateCommandIsNilForAnIdNamingNoCommand() {
+        manager.add(makeCommand(name: "Kickoff", kind: .agent, text: "Start."))
+
+        manager.setAfterCreateDefault(UUID())
+
+        XCTAssertNil(manager.afterCreateCommand)
+    }
+
+    func testAfterCreateCommandIsNilForATerminalKindCommand() {
+        let terminal = makeCommand(name: "Dev")
+        manager.add(terminal)
+
+        manager.setAfterCreateDefault(terminal.id)
+
+        XCTAssertNil(manager.afterCreateCommand)
+    }
+
+    func testAfterCreateCommandResolvesALiveAgentCommand() {
+        let agent = makeCommand(name: "Kickoff", kind: .agent, text: "Start on {{ task_path }}.")
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(agent)
+
+        manager.setAfterCreateDefault(agent.id)
+
+        XCTAssertEqual(manager.afterCreateCommand, agent)
     }
 }

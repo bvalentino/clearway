@@ -177,14 +177,84 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     button it drops the system font, padding, shape and hover/press treatment, so the control reads
     as foreign beside stock buttons like Create Task.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
-    and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
-    what lets one behavior carry several entry points without the decision being written once per
-    door. Starting a task creates the worktree, relocates its `TASK.md` into it and writes
-    `status = in_progress`; if the task's branch already has a live worktree it is focused instead,
-    and that branch writes nothing. **Clearway launches no agent of its own**, and nothing advances
-    the status afterwards. `status` is frontmatter Clearway writes and round-trips but **never
-    renders** — there is no badge and no label table, so an unrecognized slug needs no handling
-    beyond being carried through untouched.
+    and awaits nothing, it calls a coordinator method (`resolveStart`, `confirmCreate`,
+    `completePendingCreate`, `planTask`). This is what lets one behavior carry several entry points
+    without the decision being written once per door. Start Now **writes nothing**: `resolveStart`
+    returns a `StartPrefill` carrying the branch — `task.worktree` if set, else `deriveBranchName` —
+    and `ContentView` presents it as the Start Task sheet, which is `CreateWorktreeSheet` with a
+    prefill rather than a second sheet; a task whose branch already has a live worktree is focused
+    with no sheet. The frontmatter write is the sheet's Create button: `confirmCreate` writes
+    `status = in_progress` and `worktree = <branch as confirmed>`, so a cancelled sheet leaves the
+    task on its backlog marker and the branch recorded is the one the operator confirmed. It
+    also records `pendingCreate`, which carries the agent command to run once the worktree is live
+    and a `TaskLink?` — **one** optional, not a task id beside an optional prior-fields snapshot,
+    so a link `abandonPendingCreate` cannot unwind is unrepresentable. It is `nil` for a hand-made
+    worktree, which goes through the same call, and also when `updateFields` refuses because the
+    task's file vanished between Start Now and Create: the worktree the operator confirmed is still
+    created, but nothing was written, so there is nothing to unwind and nothing to relocate. The
+    slot is `private(set)`; `confirmCreate` is the only thing that can build a well-formed record.
+    `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
+    `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
+    to the relocated file), the shadow task, the creation mark — which **carries that command** —
+    the selection, and the afterCreate hook. The handler launches nothing itself: the command rides
+    the mark into `TerminalManager.pane(for:)` and becomes the worktree's **first** tab, in place of
+    the Settings → Main Terminal tab a created worktree otherwise opens. Running it from the handler
+    instead opened both, since `markWorktreeCreated` had already claimed the first tab for the Main
+    Terminal agent. Relocation still precedes the launch — the mark is read only when the pane is
+    built, which cannot happen before the handler reaches `markWorktreeCreated`. Nothing has ever
+    awaited the hook, and nothing does now. That handler clears `lastCreatedBranch` **before** its worktree lookup, not after: the
+    signal is an edge, and one left standing through a silent failure makes a retry that assigns
+    the same branch not a change, so the create that did succeed would never be handled at all.
+    The path `completePendingCreate` substitutes comes from `relocateTaskToWorktree` **returning
+    that it landed**, never from the destination being where the file was meant to go — the
+    relocation refuses a worktree that already carries a `TASK.md`, which a branch can, since
+    `.clearway` is committed, and naming the destination regardless handed the agent a different
+    task's brief. `WorkTaskListView` offers both doors as **one** control labelled "Start Now": its primary
+    action opens the Start Task sheet, its items plan the task with one of the project's agent-kind
+    saved commands. There is no remembered pick — the plan slot that once drove the primary action
+    was retired with it, so `command-defaults.json` carries the after-create id alone.
+    Its menu (`startNowItems`) lists the agent commands first and always **ends with
+    "Add Agent Command…"**, which presents `CommandEditorSheet(command: nil, newCommandKind: .agent)`
+    — the `newCommandKind` parameter exists for this one call. That item is unconditional: a project
+    with none saved yet would otherwise open an empty menu, which AppKit draws as nothing happening
+    at all. The `Divider()` above it is gated on the list being non-empty so it never leads the menu.
+    The command items are **omitted**, never rendered `.disabled`, when there is no task or
+    `ghosttyApp.readiness != .ready`: a macOS toolbar menu updates an existing `NSMenuItem`'s
+    enabled flag unreliably, and a menu first built with nothing selected kept its commands greyed
+    out after a task was selected, while the unconditional editor door beside them stayed live.
+    Changing the item set changes the content's structural identity, which rebuilds the menu.
+    The terminal half of that gate is `readiness` and not `ghosttyApp.app` for the same reason the
+    sibling toolbar buttons use it: `app` is a computed property over `appHandle` with no
+    `@Published` change to re-evaluate against. `app` stays the guard inside `plan`, where the
+    launch actually needs the pointer.
+    That is also why the toolbar control carries **no `.disabled`**: it would take the chevron with
+    it and put the editor out of reach, so the unstartable case is guarded inside the primary
+    action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
+    control in the app.
+    On the toolbar it is a split button in its **own** `ToolbarGroupBreak` capsule, between the `+`
+    and the copy/terminal/`…` group; in the row context menu it cannot be a split button, because
+    an AppKit menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the
+    primary action as firing "when the user taps or clicks on the body of the control" — so there
+    the same action is the submenu's first item, ahead of the shared `startNowItems`. Either way
+    `plan` selects the task first: the terminal a plan opens is the one `TaskDetailView` renders
+    for the selection.
+    Plan (`planTask`, in `WorkTaskCoordinator+TaskTerminal.swift`) runs the chosen command in the
+    **task's own bottom terminal**, working directory `planWorkingDirectory` — the `isMain`
+    worktree, where a backlog task's file still lives, falling back to `projectPath` for the window
+    before the first `git worktree list` returns. It writes nothing at all: no status, no branch
+    link, no relocation. It must not go back to `TerminalManager.run`: that appends a tab to the
+    primary worktree's pane, and the Tasks destination renders no pane, so the agent ran where
+    nobody could see it and Plan read as a dead button. `autoRun` still decides submit-or-stage,
+    but nothing holds a staged draft, so staging opens a login shell and leaves
+    `buildAgentPromptLine`'s invocation on its prompt line for the operator to send, through
+    `TerminalManager.stagedText` like every other staged delivery. Either branch refuses on a
+    prompt file that could not be written, and refuses **before** opening the surface:
+    `openTaskTerminal` closes the task's current one to open the new one, so a downgraded launch
+    would take away what was already running there.
+    **Clearway launches no agent of its own**, and nothing advances the status afterwards — every
+    agent either path starts is a command the user saved and picked. `status` is frontmatter
+    Clearway writes and round-trips but **never renders** — there is no badge and no label table, so
+    an unrecognized slug needs no handling beyond being carried through untouched.
   - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `codex`, `grok`) is display order and has three
     readers: Settings → Main Terminal's picker rows in `SettingsView`; `agentMenuRows`, the tab
     strip `+` menu's row rule, which lives in this file beside the list so the two orders cannot
@@ -208,12 +278,37 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     in-flight claim when it owns it, runs an `NSAlert` naming the command and the temp directory,
     and opens no tab. There is deliberately no fallback to a bare tab — silently downgrading "run
     this prompt" to "type it in for me" is the same defect as the empty start it replaces.
+    `buildAgentPromptLine` is the same launch staged rather than run, for a surface that has to show
+    the invocation instead: same temp file, but the line is `agent "$(cat 'file')"`, which `sendText` puts
+    on an interactive prompt for the operator to press Enter on. There is no `$1` and no parameter
+    expansion on this path — the command text is concatenated in as typed and the operator's own
+    shell parses it as source, the same contract as `buildOpenInScript`; only the file path is
+    escaped, because Clearway chose that one. It welds no `rm` onto that line — the file is the
+    prompt the operator may re-run or edit, and removing it on first exit would take it away. It
+    carries the same `nil` refusal, because an unwritten file empties the prompt the moment the
+    operator presses Enter — both writers go through one `writeAgentPromptFile`, whose failure is
+    the single source of that `nil`. The refusal reaches the plan launch through
+    `presentPromptFileFailure`, internal rather than `private` so `TerminalManager+Commands.swift`
+    can run the same alert.
+    `CommandPlaceholders.substituted` resolves `{{ task_path }}` in a saved command's text **raw**,
+    and that is a consequence of the above: the text becomes the prompt, the prompt reaches the
+    agent as one argv element read out of the temp file, and no shell ever parses it — so a path
+    with spaces or metacharacters arrives intact and quoting it would deliver the quotes. This is
+    the opposite of `WorktreeHooks.interpolated`, whose placeholders do land in a shell line and are
+    escaped. A `nil` path leaves the token verbatim rather than blanking it: a command that names no
+    task has nothing to say about one, and an empty argument reads as a malformed path.
   - `TerminalManager.appendTab` is the one door every main tab goes through: it builds the
     `Ghostty.SurfaceView` with its command up front, appends, activates and focuses. No tab is ever
     an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
     shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
     created pass an agent command built by
     `buildBareCommand` (`TerminalManager+Agent.swift`).
+    A worktree's first tab is chosen once, by `TerminalManager.firstTabSource(afterCreateCommand:mainCommand:)`,
+    which `takeFirstTabSource` consumes the creation mark to reach when `pane(for:)` builds the
+    pane: the create sheet's "Run after create" pick wins and goes through `run`, else the Main
+    Terminal command opens an agent tab, else a login shell. A pick **replaces** the Main Terminal
+    tab rather than adding one — two agents on a fresh worktree is the bug the rule exists to
+    prevent — and the rule is `static`, so the truth table is testable without a `ghostty_app_t`.
     An agent tab goes through `startAgentTab`, which is **synchronous** even though its body is a
     `Task`: it has to take the per-worktree `agentLaunchesInFlight` claim in the caller's runloop
     turn, because the `await ShellEnvironment.awaitPath()` that follows leaves the pane with no tabs
@@ -261,6 +356,22 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
     an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
     reopens.
+    Beside it the same store owns `command-defaults.json`, one optional command id: the Start Task
+    sheet's "Run after create" slot. A `plan` key shipped there briefly and was retired with the
+    Plan menu; a file still carrying it decodes fine, since an unknown key is ignored. Both files
+    go through one `write` on the store and one `enqueue` chain on the manager, so a defaults write
+    and a commands write cannot reach the queue out of order. The id is only ever read through
+    `CommandDefaults.resolve`, which answers for a **live `.agent`-kind** command and nothing else:
+    an id naming a deleted command, or one retyped to terminal, shows None and is **not** rewritten
+    away, and a missing or undecodable file reads as unset and is left exactly where it is — losing
+    an id the user cannot repair by hand costs one re-pick, which beats quarantining a file. Keeping
+    it is `setAfterCreateDefault`'s job, not the sheet's: **clearing the slot is refused while it
+    resolves to nothing**, because the picker is seeded from `afterCreateCommand` and so an
+    untouched picker on a stale id is indistinguishable from the operator choosing None — without
+    that guard the next successful create wrote the id away, which is the opposite of the sentence
+    above. Clearing a slot that does resolve is a real pick and goes through. The after-create slot
+    is written back only on the `.apply` branch of the sheet's outcome, so a cancelled or failed
+    create changes no default. No watcher, for the same reason `commands.json` has none.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached

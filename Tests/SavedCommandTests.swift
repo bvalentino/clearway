@@ -196,4 +196,48 @@ final class SavedCommandTests: XCTestCase {
         let data = try JSONEncoder().encode(command)
         XCTAssertEqual(try JSONDecoder().decode(SavedCommand.self, from: data), command)
     }
+
+    // MARK: - Command defaults
+
+    func testResolveIsNilForAnUnsetSlot() {
+        XCTAssertNil(CommandDefaults.resolve(nil, in: [makeCommand(kind: .agent)]))
+    }
+
+    func testResolveFindsTheLiveAgentCommand() {
+        let agent = makeCommand(name: "Plan", kind: .agent)
+        let commands = [makeCommand(kind: .terminal), agent]
+        XCTAssertEqual(CommandDefaults.resolve(agent.id, in: commands), agent)
+    }
+
+    /// A command deleted since the default was picked.
+    func testResolveIsNilForAnIdNamingNoCommand() {
+        XCTAssertNil(CommandDefaults.resolve(UUID(), in: [makeCommand(kind: .agent)]))
+    }
+
+    /// The kind clause: a default edited into a terminal command reads as None rather than running
+    /// a shell line where an agent prompt is expected.
+    func testResolveIsNilForATerminalKindCommand() {
+        let terminal = makeCommand(kind: .terminal)
+        XCTAssertNil(CommandDefaults.resolve(terminal.id, in: [terminal]))
+    }
+
+    func testEmptyDefaultsRoundTripThroughJSONAsUnset() throws {
+        let data = try JSONEncoder().encode(CommandDefaults())
+        let decoded = try JSONDecoder().decode(CommandDefaults.self, from: data)
+        XCTAssertNil(decoded.afterCreate)
+    }
+
+    /// A `command-defaults.json` written before the plan slot was retired still carries it, and has
+    /// to keep decoding: an unknown key is ignored, not a reason to read the file as unset.
+    func testDefaultsDecodeIgnoringARetiredSlot() throws {
+        let stored = #"{"afterCreate":"11111111-1111-1111-1111-111111111111","plan":"22222222-2222-2222-2222-222222222222"}"#
+        let decoded = try JSONDecoder().decode(CommandDefaults.self, from: Data(stored.utf8))
+        XCTAssertEqual(decoded.afterCreate, UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+    }
+
+    func testPopulatedDefaultsRoundTripThroughJSONEqual() throws {
+        let defaults = CommandDefaults(afterCreate: UUID())
+        let data = try JSONEncoder().encode(defaults)
+        XCTAssertEqual(try JSONDecoder().decode(CommandDefaults.self, from: data), defaults)
+    }
 }

@@ -4,21 +4,44 @@ import SwiftUI
 
 struct CreateWorktreeSheet: View {
     let targetGroupName: String?
+    /// Non-nil when Start Now opened the sheet: it retitles the sheet, adds the read-only Task row
+    /// and seeds the draft, and its task id is what `confirmCreate` links to the new branch.
+    let startPrefill: WorkTaskCoordinator.StartPrefill?
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var groupManager: WorktreeGroupManager
+    @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = WorktreeDraft()
+    @State private var draft: WorktreeDraft
     @State private var status: WorktreeStatus = .inProgress
     @State private var showingAdvanced = false
     @State private var baseBranch = ""
     @State private var fetchBeforeCreate = true
     @State private var isCreating = false
+    @State private var afterCreateCommandId: UUID?
+
+    init(targetGroupName: String?, startPrefill: WorkTaskCoordinator.StartPrefill? = nil) {
+        self.targetGroupName = targetGroupName
+        self.startPrefill = startPrefill
+        _draft = State(initialValue: startPrefill.map {
+            Self.prefill(name: $0.title, branch: $0.branch)
+        } ?? WorktreeDraft())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New Worktree")
+            Text(startPrefill == nil ? "New Worktree" : "Start Task")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .center)
+
+            if let startPrefill {
+                LabeledField("Task") {
+                    Text(startPrefill.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
 
             LabeledField("Name") {
                 TextField("", text: Binding(
@@ -76,6 +99,17 @@ struct CreateWorktreeSheet: View {
 
                     Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
                         .disabled(isCreating)
+
+                    LabeledField("Run after create") {
+                        Picker("Run after create", selection: $afterCreateCommandId) {
+                            Text("None").tag(UUID?.none)
+                            ForEach(savedCommandManager.agentCommands) { command in
+                                Text(command.name).tag(UUID?.some(command.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .disabled(isCreating)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -87,6 +121,12 @@ struct CreateWorktreeSheet: View {
                 Spacer()
                 Button {
                     isCreating = true
+                    let command = CommandDefaults.resolve(
+                        afterCreateCommandId, in: savedCommandManager.commands
+                    )
+                    workTaskCoordinator.confirmCreate(
+                        taskId: startPrefill?.taskId, branch: draft.branch, command: command
+                    )
                     Task {
                         let created = await worktreeManager.createWorktree(
                             branch: draft.branch,
@@ -100,11 +140,14 @@ struct CreateWorktreeSheet: View {
                             if let targetGroupName {
                                 groupManager.addWorktree(worktree, toGroupNamed: targetGroupName)
                             }
+                            savedCommandManager.setAfterCreateDefault(command?.id)
                             dismiss()
                         case .reportedFailure:
+                            workTaskCoordinator.abandonPendingCreate()
                             isCreating = false
                         case .silentFailure:
                             Ghostty.logger.warning("CreateWorktreeSheet: creation returned no worktree and no error; the sheet stays open")
+                            workTaskCoordinator.abandonPendingCreate()
                             isCreating = false
                         }
                     }
@@ -125,10 +168,22 @@ struct CreateWorktreeSheet: View {
         }
         .padding(20)
         .frame(width: 320)
+        .onAppear {
+            afterCreateCommandId = savedCommandManager.afterCreateCommand?.id
+        }
     }
 }
 
 extension CreateWorktreeSheet {
+
+    /// A draft seeded from a task. The branch goes through `setBranch`, which marks it
+    /// hand-edited, so a later Name keystroke cannot regenerate over a collision-resolved branch.
+    static func prefill(name: String, branch: String) -> WorktreeDraft {
+        var draft = WorktreeDraft()
+        draft.setName(name)
+        draft.setBranch(branch)
+        return draft
+    }
 
     enum Outcome: Equatable {
         case apply(Worktree)

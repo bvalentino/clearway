@@ -78,6 +78,7 @@ struct ContentView: View {
     @State private var taskWindowObservers: [Any] = []
     @State private var worktreeShortcutsDisabled = false
     @State private var hookSheet: HookSheet?
+    @State private var startPrefill: WorkTaskCoordinator.StartPrefill?
     @State private var selectedTaskId: UUID?
     /// One-shot: id of a task just created via an explicit "New Task" action. The matching
     /// `TaskDetailView` focuses its title field on mount, then clears this. Plain selection
@@ -230,6 +231,9 @@ struct ContentView: View {
         .sheet(item: $hookSheet) { hook in
             HookTerminalSheet(hook: hook)
         }
+        .sheet(item: $startPrefill) { prefill in
+            CreateWorktreeSheet(targetGroupName: nil, startPrefill: prefill)
+        }
         .confirmationDialog(
             "Remove worktree \"\(currentWorktree?.displayName ?? "")\"?",
             isPresented: $showRemoveConfirmation,
@@ -299,16 +303,30 @@ struct ContentView: View {
         }
         .onChange(of: worktreeManager.lastCreatedBranch) { branch in
             guard let branch else { return }
-            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
+            // Cleared before the worktree guard, not after it: on a silent failure the branch is
+            // never listed, and a signal left standing means a retry that assigns the same branch
+            // is not a change, so this handler would never run for the create that did succeed.
             worktreeManager.lastCreatedBranch = nil
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
 
-            workTaskCoordinator.completePendingLaunch(branch: branch, worktree: wt)
+            // Cleared here because this handler is the single point every successful create lands
+            // on, whichever door opened the sheet.
+            if WorkTaskCoordinator.startedTaskIsSelected(
+                workTaskCoordinator.pendingCreate, branch: branch, selectedTaskId: selectedTaskId
+            ) {
+                selectedTaskId = nil
+            }
+
+            let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.
             // Task-initiated creates already have their task linked, so this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
-            terminalManager.markWorktreeCreated(wt)
+            // The pick rides on the creation mark rather than being run from here: `pane(for:)` is
+            // the one place a first tab is built, so the command replaces the Main Terminal tab a
+            // created worktree opens instead of arriving as a second agent beside it.
+            terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand)
             detailSelection = .worktree(wt)
 
             // The hook runs in the secondary terminal, reusing the persistent login shell so its
@@ -701,15 +719,15 @@ struct ContentView: View {
     // MARK: - Task Actions
 
     private func startWorkTask(_ task: WorkTask) {
-        handleStartResult(workTaskCoordinator.startTask(task))
+        handleStartResult(workTaskCoordinator.resolveStart(task))
     }
 
     private func handleStartResult(_ result: WorkTaskCoordinator.StartResult) {
         switch result {
         case .reuse(let wt):
             selectedTaskId = nil; detailSelection = .worktree(wt)
-        case .createWorktree(let branch):
-            selectedTaskId = nil; Task { await worktreeManager.createWorktree(branch: branch) }
+        case .prefill(let prefill):
+            startPrefill = prefill
         case .ignored: break
         }
     }

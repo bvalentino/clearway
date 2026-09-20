@@ -1,10 +1,43 @@
 import Foundation
+import os
 
 /// Coordinates starting a task: resolving or creating its worktree and relocating its `TASK.md`
 /// into it. Extracted from ContentView to keep the view focused on layout and navigation.
 @MainActor
 class WorkTaskCoordinator: ObservableObject {
-    var pendingLaunch: (id: UUID, branch: String)?
+
+    /// What the Start Task sheet opens with. The branch is resolved here rather than in the view
+    /// so `deriveBranchName` stays beside the rest of the task logic.
+    struct StartPrefill: Equatable, Identifiable {
+        let taskId: UUID
+        let title: String
+        let branch: String
+
+        var id: UUID { taskId }
+    }
+
+    /// A worktree creation this coordinator is waiting on. `command` is the agent command to run
+    /// once the worktree is live.
+    struct PendingCreate: Equatable {
+        /// The task this create links, carrying the three system-managed fields `confirmCreate`
+        /// overwrote as they read before it did — one value rather than two optionals, so a link
+        /// `abandonPendingCreate` cannot unwind is unrepresentable.
+        struct TaskLink: Equatable {
+            let id: UUID
+            let priorStatus: String
+            let priorWorktree: String?
+            let priorAttempt: Int?
+        }
+
+        /// `nil` for a hand-made worktree, which has no task to link or unwind.
+        let task: TaskLink?
+        let branch: String
+        let command: SavedCommand?
+    }
+
+    /// Set only by `confirmCreate`, which is the one place a well-formed record can be built:
+    /// the record carries an obligation to unwind, so it must not be assignable from outside.
+    private(set) var pendingCreate: PendingCreate?
 
     // MARK: - Dependencies
 
@@ -23,10 +56,12 @@ class WorkTaskCoordinator: ObservableObject {
     enum StartResult {
         case ignored
         case reuse(Worktree)
-        case createWorktree(String)
+        case prefill(StartPrefill)
     }
 
-    func startTask(_ task: WorkTask) -> StartResult {
+    /// Start Now. Resolves what the task would start as and writes nothing: the frontmatter write
+    /// belongs to Create, so a sheet the user cancels leaves the task on its backlog marker.
+    func resolveStart(_ task: WorkTask) -> StartResult {
         // Content authority is disk/pool by id — never the UI-captured snapshot (a stale title/body
         // would otherwise clobber whatever the task terminal just wrote, on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
@@ -39,32 +74,113 @@ class WorkTaskCoordinator: ObservableObject {
            let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
             return .reuse(wt)
         }
-        // No live worktree yet → create it (reusing a prior branch link if present). `pendingLaunch`
-        // is set so `completePendingLaunch` relocates TASK.md into the worktree.
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
         let branch = current.worktree
             ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
-        let written = workTaskManager.updateFields(id: current.id) { updated in
-            if updated.status == WorkTask.ReservedStatus.canceled {
-                updated.attempt = (updated.attempt ?? 0) + 1
-            }
-            updated.status = WorkTask.ReservedStatus.inProgress
-            updated.worktree = branch
-        }
-        guard written != nil else { return .ignored }
-        pendingLaunch = (id: current.id, branch: branch)
-        return .createWorktree(branch)
+        return .prefill(StartPrefill(taskId: current.id, title: current.title, branch: branch))
     }
 
-    /// If a task launch was pending for this branch, relocates its TASK.md into the now-live worktree.
-    func completePendingLaunch(branch: String, worktree: Worktree) {
-        guard let pending = pendingLaunch, pending.branch == branch,
-              let task = workTaskManager.tasks.first(where: { $0.id == pending.id }) else { return }
-        pendingLaunch = nil
-
-        if let path = worktree.path {
-            workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path)
+    /// The Create button on either presentation of the worktree sheet. Links the task to the branch
+    /// the operator confirmed and records the pending create so `completePendingCreate` can relocate
+    /// TASK.md and run the command once the worktree is live. A hand-made worktree passes no task id
+    /// and so writes no task file.
+    func confirmCreate(taskId: UUID?, branch: String, command: SavedCommand?) {
+        var link: PendingCreate.TaskLink?
+        if let taskId {
+            let written = workTaskManager.updateFields(id: taskId) { updated in
+                link = PendingCreate.TaskLink(
+                    id: taskId,
+                    priorStatus: updated.status,
+                    priorWorktree: updated.worktree,
+                    priorAttempt: updated.attempt
+                )
+                if updated.status == WorkTask.ReservedStatus.canceled {
+                    updated.attempt = (updated.attempt ?? 0) + 1
+                }
+                updated.status = WorkTask.ReservedStatus.inProgress
+                updated.worktree = branch
+            }
+            // The task's file can disappear between Start Now and Create — another window's
+            // Delete, a `git pull`. The worktree the operator confirmed is still created, but
+            // nothing was written, so there is nothing to unwind and nothing to relocate: a link
+            // recorded here would claim a write that never landed.
+            if written == nil {
+                link = nil
+                Ghostty.logger.error(
+                    "confirmCreate: task \(taskId, privacy: .public) no longer exists; creating \(branch, privacy: .public) unlinked")
+            }
         }
+        pendingCreate = PendingCreate(task: link, branch: branch, command: command)
+    }
+
+    /// Unwinds a create that never happened. `confirmCreate` writes the frontmatter before
+    /// `git worktree add` runs, so a failed create would otherwise leave the task on `in_progress`
+    /// naming a branch with no worktree — a state `resolveStart` refuses, making the task
+    /// unstartable from the UI.
+    func abandonPendingCreate() {
+        guard let pending = pendingCreate else { return }
+        pendingCreate = nil
+        guard let task = pending.task else { return }
+        let restored = workTaskManager.updateFields(id: task.id) { updated in
+            updated.status = task.priorStatus
+            updated.worktree = task.priorWorktree
+            updated.attempt = task.priorAttempt
+        }
+        if restored == nil {
+            Ghostty.logger.error(
+                "abandonPendingCreate: task \(task.id, privacy: .public) no longer exists; its start marker stands")
+        }
+    }
+
+    /// Consumes the pending create for this branch: relocates the task's TASK.md into the now-live
+    /// worktree and returns the command to run there, with `{{ task_path }}` resolved to the
+    /// relocated file. A pending create carrying no task leaves the token verbatim — there is no
+    /// path to name (D6).
+    ///
+    /// The path comes from the relocation reporting that it landed, never from the destination
+    /// being where the file was *meant* to go: `relocateTaskToWorktree` refuses a worktree that
+    /// already carries a `TASK.md`, which a branch can, since `.clearway` is committed. Naming the
+    /// destination regardless would hand the agent a different task's brief.
+    @discardableResult
+    func completePendingCreate(branch: String, worktree: Worktree) -> SavedCommand? {
+        guard let pending = pendingCreate, pending.branch == branch else { return nil }
+        pendingCreate = nil
+
+        var taskPath: String?
+        if let task = pending.task, let path = worktree.path,
+           workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path) {
+            taskPath = WorkTaskManager.taskMarkdownPath(inWorktree: path)
+        }
+
+        guard let command = pending.command else { return nil }
+        return CommandPlaceholders.substituted(command, taskPath: taskPath)
+    }
+
+    /// Whether a successful create should clear the Tasks selection: the started task's file moves
+    /// into the new worktree and so leaves the backlog, and a selection still naming it leaves the
+    /// toolbar acting on a task that is no longer there. A hand-made create, or a create for some
+    /// other task, leaves the selection alone.
+    static func startedTaskIsSelected(
+        _ pending: PendingCreate?, branch: String, selectedTaskId: UUID?
+    ) -> Bool {
+        guard let pending, let taskId = pending.task?.id else { return false }
+        return pending.branch == branch && taskId == selectedTaskId
+    }
+
+    /// The command Plan would run for this task: `{{ task_path }}` resolved to wherever the task
+    /// currently lives, which `filePath(for:)` already decides. Split out of `planTask` because
+    /// that one needs a `ghostty_app_t` XCTest cannot produce.
+    func planCommand(for task: WorkTask, using command: SavedCommand) -> SavedCommand? {
+        guard let current = workTaskManager.freshTask(id: task.id) else { return nil }
+        return CommandPlaceholders.substituted(command, taskPath: workTaskManager.filePath(for: current))
+    }
+
+    /// Where a plan run's agent starts: the primary worktree, which is where a backlog task's file
+    /// still lives. `projectPath` is the fallback rather than a second convention — the worktree
+    /// list is empty until the first `git worktree list` returns, and a plan run before then must
+    /// still land somewhere, not silently do nothing.
+    static func planWorkingDirectory(worktrees: [Worktree], projectPath: String) -> String {
+        worktrees.first(where: \.isMain)?.path ?? projectPath
     }
 
     func worktreeForTask(_ task: WorkTask) -> Worktree? {

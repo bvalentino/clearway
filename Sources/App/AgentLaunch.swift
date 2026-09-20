@@ -42,22 +42,50 @@ func buildAgentPromptCommand(
     path: String,
     filePrefix: String = "clearway-agent-prompt"
 ) -> (command: String, promptFile: String)? {
-    let tempDir = NSTemporaryDirectory()
-    let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
-    let data = Data(prompt.utf8)
-    let wrote = FileManager.default.createFile(
-        atPath: promptFile,
-        contents: data,
-        attributes: [.posixPermissions: 0o600]
-    )
-    guard wrote else {
-        Ghostty.logger.error(
-            "buildAgentPromptCommand: failed to write prompt file \(promptFile, privacy: .public)"
-        )
-        return nil
-    }
+    guard let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix) else { return nil }
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "
         + shellEscape(agentCommand) + " " + shellEscape(promptFile) + " " + shellEscape(path)
     return (command, promptFile)
+}
+
+/// The same launch as one line for a user to read and press Enter on, for a surface that has to
+/// show the invocation instead. The prompt stays in the same `0o600` temp file, so a multi-line
+/// prompt stages as one short line and still reaches the agent as one argv element.
+///
+/// Clearway runs nothing here: `sendText` stages the line on an interactive prompt, visible and
+/// editable, and it is the operator's own shell that reads it as source if they press Enter. So
+/// `agentCommand` is concatenated in as typed — the command is the user's, the same contract as
+/// `buildOpenInScript`, and a command carrying flags or shell operators is the point. Only the
+/// file path is escaped, because Clearway chose that one.
+///
+/// Nothing deletes the file here: the line is the user's to edit, re-run or abandon, and a `rm`
+/// welded onto it would take the prompt away the first time they interrupt the agent.
+///
+/// - Returns: `nil` when the prompt file could not be written, for the same reason the run form
+///   refuses: the line's `$(cat)` over a missing file would seed the agent with an empty prompt.
+func buildAgentPromptLine(
+    agentCommand: String,
+    prompt: String,
+    filePrefix: String = "clearway-agent-prompt"
+) -> (line: String, promptFile: String)? {
+    guard let promptFile = writeAgentPromptFile(prompt, filePrefix: filePrefix) else { return nil }
+    return (agentCommand + " \"$(cat " + shellEscape(promptFile) + ")\"", promptFile)
+}
+
+private func writeAgentPromptFile(_ prompt: String, filePrefix: String) -> String? {
+    let tempDir = NSTemporaryDirectory()
+    let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
+    let wrote = FileManager.default.createFile(
+        atPath: promptFile,
+        contents: Data(prompt.utf8),
+        attributes: [.posixPermissions: 0o600]
+    )
+    guard wrote else {
+        Ghostty.logger.error(
+            "writeAgentPromptFile: failed to write prompt file \(promptFile, privacy: .public)"
+        )
+        return nil
+    }
+    return promptFile
 }

@@ -30,9 +30,22 @@ final class SavedCommandStoreTests: TempRootTestCase {
         (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
     }
 
+    private var defaultsFile: String {
+        (clearwayDir as NSString).appendingPathComponent("command-defaults.json")
+    }
+
+    private var defaultsCorruptFile: String {
+        (clearwayDir as NSString).appendingPathComponent("command-defaults.json.corrupt")
+    }
+
     private func writeCommandsFile(_ contents: String) throws {
         try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: commandsFile, contents: Data(contents.utf8))
+    }
+
+    private func writeDefaultsFile(_ contents: String) throws {
+        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: defaultsFile, contents: Data(contents.utf8))
     }
 
     private let terminalCommand = SavedCommand(
@@ -236,5 +249,96 @@ final class SavedCommandStoreTests: TempRootTestCase {
         _ = await store.load()
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: corruptFile))
+    }
+
+    // MARK: - Defaults
+
+    func testSaveThenLoadDefaultsRoundTripsTheSlot() async throws {
+        let defaults = CommandDefaults(afterCreate: agentCommand.id)
+        try await store.saveDefaults(defaults)
+
+        let loaded = await store.loadDefaults()
+        XCTAssertEqual(loaded, defaults)
+    }
+
+    func testSaveDefaultsPersistsAClearedSlot() async throws {
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
+        try await store.saveDefaults(CommandDefaults(afterCreate: nil))
+
+        let loaded = await store.loadDefaults()
+        XCTAssertNil(loaded.afterCreate, "A cleared slot has to survive the reload, not fall back to the old id")
+    }
+
+    func testLoadDefaultsMissingFileIsUnset() async {
+        let loaded = await store.loadDefaults()
+        XCTAssertEqual(loaded, CommandDefaults())
+    }
+
+    /// An id the user cannot repair by hand, so an unreadable file is read as None and left where
+    /// it is — losing it costs one re-pick, and quarantining would only litter `.clearway`.
+    func testLoadDefaultsCorruptFileIsUnsetAndLeavesTheFileInPlace() async throws {
+        let original = "not valid json {{{"
+        try writeDefaultsFile(original)
+
+        let loaded = await store.loadDefaults()
+
+        XCTAssertEqual(loaded, CommandDefaults())
+        let fm = FileManager.default
+        XCTAssertFalse(fm.fileExists(atPath: defaultsCorruptFile), "The defaults file is never moved aside")
+        XCTAssertEqual(fm.contents(atPath: defaultsFile), Data(original.utf8))
+    }
+
+    func testSaveDefaultsCreatesDirectoryAndFileWithRestrictivePermissions() async throws {
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: clearwayDir),
+            "The commands directory must not exist before the first save"
+        )
+
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
+
+        let fm = FileManager.default
+        let dirMode = try fm.attributesOfItem(atPath: clearwayDir)[.posixPermissions] as? NSNumber
+        let fileMode = try fm.attributesOfItem(atPath: defaultsFile)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(dirMode?.int16Value, 0o700)
+        XCTAssertEqual(fileMode?.int16Value, 0o600)
+        XCTAssertFalse(
+            fm.fileExists(atPath: (clearwayDir as NSString).appendingPathComponent("command-defaults.json.tmp")),
+            "command-defaults.json.tmp should be renamed away by the atomic save"
+        )
+    }
+
+    func testStoresOnDifferentProjectPathsDoNotSeeEachOthersDefaults() async throws {
+        let storeA = SavedCommandStore(projectPath: (tempRoot as NSString).appendingPathComponent("a"))
+        let storeB = SavedCommandStore(projectPath: (tempRoot as NSString).appendingPathComponent("b"))
+
+        try await storeA.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
+
+        let loadedB = await storeB.loadDefaults()
+        XCTAssertEqual(loadedB, CommandDefaults(), "Project B must not see project A's defaults")
+        let loadedA = await storeA.loadDefaults()
+        XCTAssertEqual(loadedA.afterCreate, agentCommand.id)
+    }
+
+    /// The two files are siblings under one `.clearway`, and each write path names its own pair of
+    /// paths — a save of one must not touch the other.
+    func testTheTwoFilesAreWrittenIndependently() async throws {
+        try await store.save([terminalCommand, agentCommand])
+        try await store.saveDefaults(CommandDefaults(afterCreate: agentCommand.id))
+
+        let fm = FileManager.default
+        let commandsBytes = fm.contents(atPath: commandsFile)
+
+        try await store.saveDefaults(CommandDefaults(afterCreate: nil))
+        XCTAssertEqual(fm.contents(atPath: commandsFile), commandsBytes, "Saving defaults rewrote commands.json")
+
+        let defaultsBytes = fm.contents(atPath: defaultsFile)
+        try await store.save([agentCommand])
+        XCTAssertEqual(
+            fm.contents(atPath: defaultsFile),
+            defaultsBytes,
+            "Saving commands rewrote command-defaults.json"
+        )
+        let reloaded = await store.loadDefaults()
+        XCTAssertNil(reloaded.afterCreate)
     }
 }

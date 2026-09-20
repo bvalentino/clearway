@@ -1,7 +1,8 @@
 import Foundation
 import os
 
-/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`.
+/// Reads and writes one project's command list at `<projectPath>/.clearway/commands.json`, and the
+/// id that indexes it in the sibling `command-defaults.json`.
 ///
 /// The array is stored and returned in order — that order is the display order, so nothing here
 /// sorts or re-keys. A missing file loads as empty. An unreadable or undecodable one loads as empty
@@ -34,6 +35,14 @@ final class SavedCommandStore: Sendable {
 
     private var commandsCorruptFile: String {
         (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
+    }
+
+    private var defaultsFile: String {
+        (clearwayDir as NSString).appendingPathComponent("command-defaults.json")
+    }
+
+    private var defaultsTempFile: String {
+        (clearwayDir as NSString).appendingPathComponent("command-defaults.json.tmp")
     }
 
     // MARK: - Load
@@ -77,13 +86,34 @@ final class SavedCommandStore: Sendable {
         }
     }
 
+    /// The slot is an id the user cannot repair by hand, so a missing, unreadable or undecodable
+    /// file reads as None and is left exactly where it is: losing it costs one re-pick, which is
+    /// cheaper than a quarantined file nobody can use.
+    func loadDefaults() async -> CommandDefaults {
+        let path = defaultsFile
+        return await Task.detached(priority: .utility) {
+            guard let data = FileManager.default.contents(atPath: path) else { return CommandDefaults() }
+            do {
+                return try JSONDecoder().decode(CommandDefaults.self, from: data)
+            } catch {
+                Ghostty.logger.warning("command-defaults.json is corrupt — loading as unset: \(error)")
+                return CommandDefaults()
+            }
+        }.value
+    }
+
     // MARK: - Save
 
     func save(_ commands: [SavedCommand]) async throws {
-        let data = try JSONEncoder().encode(commands)
+        try await write(JSONEncoder().encode(commands), to: commandsFile, via: commandsTempFile)
+    }
+
+    func saveDefaults(_ defaults: CommandDefaults) async throws {
+        try await write(JSONEncoder().encode(defaults), to: defaultsFile, via: defaultsTempFile)
+    }
+
+    private func write(_ data: Data, to finalPath: String, via tmpPath: String) async throws {
         let dir = clearwayDir
-        let tmpPath = commandsTempFile
-        let finalPath = commandsFile
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             writeQueue.async {

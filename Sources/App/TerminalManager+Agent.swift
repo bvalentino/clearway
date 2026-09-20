@@ -113,7 +113,9 @@ extension TerminalManager {
         }
     }
 
-    private func presentPromptFileFailure(command: String) {
+    /// Internal (not `private`) so the plan launch in `TerminalManager+Commands.swift` refuses the
+    /// same way: `private` does not cross a file even within a type.
+    func presentPromptFileFailure(command: String) {
         let alert = NSAlert()
         alert.messageText = "Couldn't start \(command)"
         alert.informativeText = "Clearway couldn't write the prompt file in \(NSTemporaryDirectory())."

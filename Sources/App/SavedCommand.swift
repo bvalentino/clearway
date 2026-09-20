@@ -44,6 +44,23 @@ extension SavedCommand {
     }
 }
 
+// MARK: - Defaults
+
+/// The command a project runs without being asked each time: the one the Start Task sheet offers
+/// after a worktree is created. The slot names a command by id, so renaming or editing the command
+/// keeps the default pointing at it.
+struct CommandDefaults: Codable, Equatable {
+    var afterCreate: UUID?
+
+    /// A slot resolves only to a **live** `.agent`-kind command: an id that was deleted, or that now
+    /// names a terminal-kind command, reads as None. The stored id is left alone either way — it may
+    /// name a command that returns when the user reverts a `commands.json` edit.
+    static func resolve(_ id: UUID?, in commands: [SavedCommand]) -> SavedCommand? {
+        guard let id else { return nil }
+        return commands.first { $0.id == id && $0.kind == .agent }
+    }
+}
+
 // MARK: - Launch
 
 /// What running a `SavedCommand` amounts to, with the terminal work factored out so the rule is
