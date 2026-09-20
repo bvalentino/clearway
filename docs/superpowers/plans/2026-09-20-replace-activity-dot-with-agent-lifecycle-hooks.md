@@ -1,0 +1,735 @@
+# Plan: replace the JSONL-mtime activity dot with agent lifecycle hooks
+
+**Date:** 2026-09-20
+**Base:** 5d8df20
+
+Breaks down `docs/superpowers/specs/2026-09-20-replace-activity-dot-with-agent-lifecycle-hooks.md`.
+Every design decision lives there; this file only orders the work and says how each piece is
+verified. Read the spec's Decisions table before starting any task — the decision numbers below
+refer to it.
+
+## Architecture decisions carried from the spec
+
+One line each, so a build agent reading only this file builds the right thing.
+
+1. **Transport** — a `SOCK_STREAM` Unix domain socket at `~/.clearway/hook.sock`; one connection per
+   hook invocation; the server reads to EOF. No TCP, no port, no entitlement. (D1)
+2. **Forwarder** — `/usr/bin/nc -U -w 1 "$CLEARWAY_HOOK_SOCKET"`, absolute path. macOS `nc` has **no**
+   `-N` flag; it already shuts the write side on stdin EOF. Never use `-N`. (D2, Risk "nc is the
+   transport")
+3. **Framing** — line 1 the surface id, line 2 the worktree id, then the agent's raw JSON to EOF.
+   No escaping, no `jq`, no length prefix. (D3)
+4. **Events installed** — `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`,
+   `PostToolUse`, `PermissionRequest`, `SubagentStart`, `SubagentStop`, `Stop`. (D4)
+5. **Identity** — three env vars on the surface: `CLEARWAY_SURFACE_ID` (a UUID per
+   `Ghostty.SurfaceView`), `CLEARWAY_WORKTREE_ID` (the worktree id, which is its path), and
+   `CLEARWAY_HOOK_SOCKET`. The script's first line is `[ -n "$CLEARWAY_SURFACE_ID" ] || exit 0`,
+   which makes a `claude` started in Terminal.app a no-op. (D5)
+6. **Two ids, not one** — the surface id does not survive a relaunch; the worktree id does. An event
+   whose surface id is unknown to this process still lights its worktree's dot and renders its
+   subagent rows. (D6)
+7. **Which surfaces are stamped** — pane main tabs, pane secondary, task bottom terminal. The
+   before-remove hook sheet and the debug terminal are not. (D7)
+8. **Managed block is unversioned** — compute the desired block, remove every entry recognised as
+   Clearway's, insert the desired one, write only if the result differs. (D10)
+9. **Recognition rule** — `type == "command"` and a `command` containing
+   `/.clearway/hooks/clearway-hook.sh`. No marker key. Emptied group, emptied event array and
+   emptied `hooks` object are each removed in turn. (D11)
+10. **No `matcher` key** — it is omitted, which matches everything. `"*"` is not a valid regex. (D12)
+11. **Settings merge** — `JSONSerialization`, re-serialised `.prettyPrinted` **and** `.sortedKeys`,
+    written atomically. Values preserved, key order and whitespace not. One backup to
+    `settings.json.clearway-backup` before the first modification. (D13, operator-confirmed)
+12. **Unparseable settings** — write nothing, log through `Ghostty.logger`, no quarantine, no
+    rename. (D14)
+13. **Codex** — `~/.codex/hooks.json` written only when `~/.codex` already exists; Clearway never
+    creates the directory. (D15)
+14. **Codex trust copy** — the Settings toggle carries one line of copy naming the `/hooks` trust
+    step. This is the deliberate exception to CLAUDE.md's "no helper text". (D16,
+    operator-confirmed)
+15. **Toggle** — Settings → Appearance, `Toggle("Show agent activity", …)`, default **on**, key
+    `clearway.agentHooksEnabled`. Off uninstalls the block and closes the listener; on installs and
+    opens. (D17)
+16. **One owner** — a single app-level `AgentActivityMonitor` (`@MainActor ObservableObject`) as a
+    `@StateObject` on `ClearwayApp`, injected with `.environmentObject`. It replaces the per-window
+    `ClaudeActivityMonitor`: one process, one socket. (D18)
+17. **Pure state machine** — `AgentActivityStore` is a value type with no I/O. The monitor does
+    socket plumbing and publishing only. (D19)
+18. **Transitions** — `SessionStart` resets the surface to idle with an empty roster;
+    `UserPromptSubmit` → working, lead tool cleared; `PreToolUse` without `agent_id` → working with
+    lead tool, with `agent_id` → upsert that subagent's tool and mark the surface working;
+    `PostToolUse` clears the corresponding tool and stays working; `PermissionRequest` → waiting,
+    recording `tool_name`; `SubagentStart` upserts from `agent_id`/`agent_type`; `SubagentStop`
+    removes it; `Stop` → idle, clearing the lead tool **and the whole roster**; `SessionEnd` drops
+    the surface entry. An event for a surface id retired in this process is ignored. (D20)
+19. **Dot derivation** — `waiting > working > idle` over every surface carrying the worktree id,
+    including surfaces this process never owned. Working is any surface working **or** any surface
+    holding a live subagent. (D21)
+20. **Waiting has its own colour** — a static 7 pt `.purple` dot, tooltip "Waiting for permission".
+    The operator overrode the spec's original reuse of the blue notification dot. Orange is the
+    working dot, blue the plain-shell notification, red means failure and green success elsewhere in
+    the app, and yellow is both a status-badge colour and one hue family from orange. Purple appears
+    nowhere in `Sources/` today. Working keeps its pulsing orange; waiting does not pulse, so shape
+    separates them as well as hue. Precedence in `WorktreeRow`: waiting, then working, then the
+    plain-shell notification. (D22, operator override)
+21. **No suppression for main** — `SidebarView`'s `!wt.isMain` goes. `isOpen` stays. (D23)
+22. **Subagent rows** — extra views inside the existing `ForEach` body, after the worktree row: no
+    `.tag` (so not selectable), `.moveDisabled(true)`,
+    `.padding(.leading, SidebarRowMetrics.statusRowIndent)`, text only — agent type with the
+    in-flight tool name as a secondary caption. No `OutlineGroup`, no `DisclosureGroup`. (D24)
+23. **Type alone** — no subagent description; `SubagentStart` carries only `agent_type` and
+    `agent_id`. (D25)
+24. **`ClaudeSessionFiles` is renamed, not deleted** — it keeps `makeWatcher` and
+    `defaultWatchMask` (CLAUDE.md's single `DispatchSource` door, four other callers) and loses the
+    Claude path helpers; the file and enum become `FileWatchers`. (D26)
+25. **Surface retirement** — a `static` callback on `TerminalManager`, wired once in
+    `ClearwayApp.init`, mirroring the `SurfaceView.claimsShortcut` provider. Never reconcile against
+    a list of live surfaces. (D27)
+26. **Tool name on the tab** — the lead's in-flight tool shows as secondary text on the tab chip,
+    present only while a tool is in flight. (D28)
+
+## Plan-level elaborations
+
+Two implementation shapes the spec left open. Both follow patterns CLAUDE.md already documents.
+
+- **The env-var names cross a layer boundary.** `Sources/Ghostty/` wraps libghostty and must not
+  import Clearway's hook feature. So `Ghostty.SurfaceView` gains a `nonisolated static var
+  agentEnvironment: (UUID, String?) -> [(key: String, value: String)]`, defaulting to
+  `{ _, _ in [] }` and wired once in `ClearwayApp.init` to `AgentHookIdentity.environment` — exactly
+  the process-scoped provider shape CLAUDE.md describes for `claimsShortcut`. The names live in one
+  place, on the App side, and a test can round-trip them without a `ghostty_app_t`.
+- **The `withCString` generalisation is a `strdup` pair, not a closure tower.** Assumption 2 records
+  that Zig `dupeZ`s both key and value into the surface config's arena, so the Swift C strings need
+  to live only across the `ghostty_surface_new` call. Build the `[ghostty_env_var_s]` with `strdup`,
+  `defer { free(…) }` after the call, and leave the existing nested `withCString` for
+  `working_directory` / `command` untouched.
+
+## Dependency graph
+
+```
+T1 AgentHookEvent (wire model)
+ │
+ ├─► T2 AgentActivityStore (state machine) ─┐
+ │                                          │
+T3 AgentHookScript + AgentHookSettings      │
+ │       │                                  │
+ │       └─► T4 AgentHookInstaller ─────────┤
+ │                                          │
+ ├─► T5 Surface identity (env vars, retire) │
+ │                                          ▼
+T6 AgentActivityMonitor  ◄── T7 Settings toggle
+ │
+ └─► T8 App wiring (ClearwayApp / ProjectWindow / ContentView)
+        │
+        ├─► T9  Sidebar dot + subagent rows
+        ├─► T10 Tab chip tool name
+        │
+        └─► T11 Delete ClaudeActivityMonitor
+              │
+              └─► T12 Rename ClaudeSessionFiles → FileWatchers
+                    │
+                    └─► T13 CLAUDE.md
+```
+
+T1, T3 and T7 have no dependencies and can run in parallel. T5 needs only T3. T9 and T10 are
+independent of each other.
+
+## Verification
+
+Every task's regression check is the project's one command:
+
+```bash
+./scripts/ci.sh
+```
+
+It regenerates the Xcode project — without which a new Swift file is invisible to the build — lints,
+builds and runs the suite. Do not hand-write an `xcodebuild` line. A task whose acceptance criteria
+name specific tests still runs the whole command, since that is the only runner.
+
+---
+
+### T1: The hook wire model
+
+**Files:** `Sources/App/AgentHookEvent.swift` (new), `Tests/AgentHookEnvelopeTests.swift` (new).
+
+**What it does.** Defines the value types the socket stream decodes into, and nothing else. Pure: no
+I/O, no actor, no `import AppKit`.
+
+- `AgentHookEvent`: `hookEventName: String`, `agentId: String?`, `agentType: String?`,
+  `toolName: String?`. Decoded from the hook JSON's `hook_event_name`, `agent_id`, `agent_type`,
+  `tool_name` (D3, Assumption 6). Every other field in the payload is ignored — decode with an
+  explicit `CodingKeys` and read only these four.
+- `AgentHookEnvelope`: `surfaceId: String`, `worktreeId: String`, `event: AgentHookEvent`.
+- `static func parse(_ data: Data) -> AgentHookEnvelope?`: splits the first two newline-terminated
+  lines off the front as the surface id and the worktree id, then JSON-decodes the remainder.
+  Returns `nil` when fewer than two lines precede the body, when either id is empty, when the body
+  is not an object, or when `hook_event_name` is absent.
+
+**Acceptance criteria.**
+
+- A payload of `"<uuid>\n/Users/x/my repo/.worktrees/a b\n{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\"}"`
+  parses to that surface id, that worktree id (spaces intact), and an event with
+  `hookEventName == "PreToolUse"` and `toolName == "Bash"`.
+- A pretty-printed, multi-line JSON body parses identically to its compact form — the split is on
+  the first two lines only, never on every newline.
+- A body carrying unknown fields (`session_id`, `cwd`, `transcript_path`, `tool_input`,
+  `permission_mode`, `turn_id`, `last_assistant_message`) parses and ignores them.
+- `parse` returns `nil` for: empty data, one line and no body, two lines and an empty body,
+  a non-JSON body, a JSON array body, and a body with no `hook_event_name`.
+- `agentId` / `agentType` are `nil` when absent and populated when present.
+
+**Verified by.** `Tests/AgentHookEnvelopeTests.swift`, run through `./scripts/ci.sh`.
+
+---
+
+### T2: The activity state machine
+
+**Files:** `Sources/App/AgentActivityStore.swift` (new), `Tests/AgentActivityStoreTests.swift` (new).
+
+**Depends on:** T1.
+
+**What it does.** The pure rule the monitor is a shell around. A `struct` with no I/O, no actor and
+no reference to `TerminalManager` or any view type — the same split as
+`TerminalManager.firstTabSource` and `Worktree.visible`.
+
+Types:
+
+- `enum AgentPhase { case idle, working, waiting }` — ordered so `waiting > working > idle` is
+  expressible as a rule, not as nested `if`s at the call site.
+- `struct AgentSubagent: Identifiable, Equatable { let id: String; var type: String?; var toolName: String? }`
+  — `id` is the hook's `agent_id`.
+- `struct AgentSurfaceState { var phase: AgentPhase; var leadToolName: String?; var subagents: [String: AgentSubagent] }`.
+
+API on `AgentActivityStore`:
+
+- `mutating func apply(_ envelope: AgentHookEnvelope)` — the transitions of D18 above, exactly.
+  Records the surface's worktree id on every event so the derivations can find it.
+- `mutating func retire(surfaceId: String)` — drops the entry **and** remembers the id as retired, so
+  a later in-flight event for it is ignored (D20's last sentence).
+- `mutating func retire(worktreeId: String)` — drops every surface carrying it.
+- `func phase(forWorktree id: String) -> AgentPhase` — D19: `waiting` if any surface carrying that
+  worktree id is waiting; else `working` if any is working **or** holds a non-empty roster; else
+  `idle`.
+- `func subagents(forWorktree id: String) -> [AgentSubagent]` — every live subagent across that
+  worktree's surfaces, in a deterministic order (sort by `id`) so the sidebar does not reshuffle.
+- `func leadToolName(forSurface id: String) -> String?` — what the tab chip reads.
+
+**Acceptance criteria.**
+
+- `UserPromptSubmit` → `working`; the same surface's `Stop` → `idle`.
+- `PreToolUse` with no `agent_id` sets `leadToolName`; the matching `PostToolUse` clears it and the
+  phase stays `working`.
+- `PreToolUse` carrying an `agent_id` sets that subagent's tool and leaves `leadToolName` alone; the
+  matching `PostToolUse` clears the subagent's tool, not the lead's.
+- `PermissionRequest` → `waiting` with the tool recorded; a following `PostToolUse` or
+  `UserPromptSubmit` returns it to `working`.
+- `SubagentStart` adds a row; its `SubagentStop` removes it; a `Stop` with two subagents still open
+  clears both.
+- `SessionStart` on a surface that was mid-work resets it to `idle` with an empty roster.
+- `SessionEnd` drops the surface entirely — its worktree reads `idle` if no sibling surface is busy.
+- An event for a surface retired by `retire(surfaceId:)` changes nothing.
+- Two surfaces on **different** worktrees produce independent phases and rosters; two surfaces on
+  the **same** worktree combine by the precedence rule (one waiting + one working → `waiting`).
+- A surface whose id was never seen before but whose worktree id is known still lights that
+  worktree (D6) — there is no registration step.
+- A surface that is `idle` but holds a live subagent makes its worktree read `working`.
+- `subagents(forWorktree:)` returns a stable order across repeated calls.
+- No timer, no `Date`, no expiry anywhere in the file.
+
+**Verified by.** `Tests/AgentActivityStoreTests.swift` — one test per bullet, driving envelopes
+built in-process through `AgentHookEnvelope.parse` so the wire format is exercised too. Run through
+`./scripts/ci.sh`.
+
+---
+
+### T3: The hook script, the `~/.clearway` layout, and the pure settings merge
+
+**Files:** `Sources/App/AgentHookScript.swift` (new), `Sources/App/AgentHookSettings.swift` (new),
+`Tests/AgentHookSettingsTests.swift` (new).
+
+**What it does.** Two pure files: the text and paths Clearway installs, and the merge that puts them
+into a decoded JSON object. No file I/O in either — T4 owns that.
+
+`AgentHookScript`:
+
+- `clearwayDir` = `~/.clearway`, `hooksDir` = `<clearwayDir>/hooks`,
+  `scriptPath` = `<hooksDir>/clearway-hook.sh`, `socketPath` = `<clearwayDir>/hook.sock`.
+- `dirMode: 0o700`, `scriptMode: 0o755`.
+- `body: String` — the forwarder, five lines of `/bin/sh`:
+
+  ```sh
+  #!/bin/sh
+  [ -n "$CLEARWAY_SURFACE_ID" ] || exit 0
+  [ -S "$CLEARWAY_HOOK_SOCKET" ] || exit 0
+  printf '%s\n%s\n' "$CLEARWAY_SURFACE_ID" "$CLEARWAY_WORKTREE_ID" | cat - | /usr/bin/nc -U -w 1 "$CLEARWAY_HOOK_SOCKET" >/dev/null 2>&1
+  exit 0
+  ```
+
+  The pipeline must forward the preamble **and** the hook JSON arriving on this script's stdin, in
+  that order, and must exit 0 unconditionally so no hook can ever block or deny anything. Use
+  `/usr/bin/nc` by absolute path and **never** `-N` (D2). Spell the exact pipeline however is
+  correct — `{ printf …; cat; } | /usr/bin/nc …` is the straightforward form — but keep the three
+  guards and the unconditional `exit 0`.
+- `command: String` — what goes in the hook entry: `"$HOME"/.clearway/hooks/clearway-hook.sh`, the
+  spelling both agents resolve because a `command` with no `args` runs through a shell
+  (Assumption 7).
+- `installedEvents: [String]` — the nine of D4, in a fixed order.
+- `AgentHookIdentity.environment(surfaceId: UUID, worktreeId: String?) -> [(key: String, value: String)]`
+  — `CLEARWAY_SURFACE_ID`, `CLEARWAY_WORKTREE_ID` (omitted when `worktreeId` is nil),
+  `CLEARWAY_HOOK_SOCKET`. This is the provider `Ghostty.SurfaceView` will call (see Plan-level
+  elaborations).
+
+`AgentHookSettings` — pure functions over `[String: Any]` (what `JSONSerialization` hands back), the
+same shape for both agents' files:
+
+- `static func install(into settings: [String: Any]) -> [String: Any]` — for each of
+  `installedEvents`, ensure `settings["hooks"][event]` contains a group `["hooks": [["type": "command", "command": AgentHookScript.command]]]`
+  with **no** `matcher` key (D12); remove any pre-existing Clearway entry first so the result is
+  idempotent.
+- `static func uninstall(from settings: [String: Any]) -> [String: Any]` — remove every recognised
+  Clearway entry (D11), then collapse: a group whose `hooks` array is now empty is removed; an event
+  array that is now empty is removed; a `hooks` object that is now empty is removed.
+- `static func isClearwayEntry(_ entry: Any) -> Bool` — `type == "command"` and `command` contains
+  `/.clearway/hooks/clearway-hook.sh`.
+
+**Acceptance criteria.**
+
+- `install` into `[:]` produces exactly nine event keys, each with one group, each group's single
+  hook `{"type":"command","command":<AgentHookScript.command>}`, and **no** `matcher` key anywhere.
+- `install` is idempotent: `install(install(x))` equals `install(x)` for an empty file, a file with
+  user hooks, and a file already carrying a Clearway block.
+- `install` into a settings object holding unrelated top-level keys and a user's own
+  `hooks.PreToolUse` group leaves both untouched and appends Clearway's group beside the user's.
+- `uninstall(install(x))` equals `x` for: `[:]`, a file with only user hooks, and a file with user
+  hooks on the same events Clearway installs.
+- `uninstall` on a file whose only hook was Clearway's leaves **no** `hooks` key at all — the
+  emptied group, the emptied event array and the emptied `hooks` object are each removed.
+- `uninstall` leaves a user's `{"type":"command","command":"~/bin/my-hook.sh"}` and a
+  non-`command`-type entry in place.
+- A hand-written Clearway entry that carries an extra `matcher` or a different quoting of the same
+  script path is still recognised and removed (the rule is substring containment, not equality).
+- `AgentHookIdentity.environment` returns three pairs for a non-nil worktree id and two for nil.
+
+**Verified by.** `Tests/AgentHookSettingsTests.swift`, run through `./scripts/ci.sh`.
+
+---
+
+### T4: The installer — the file side
+
+**Files:** `Sources/App/AgentHookInstaller.swift` (new).
+
+**Depends on:** T3.
+
+**What it does.** Everything T3 refuses to do: touch the disk. `nonisolated` throughout; it is
+called from the monitor but does no UI work.
+
+- `static func install()` / `static func uninstall()`.
+- Creates `~/.clearway` at `0o700` and `~/.clearway/hooks` at `0o700`, writes `scriptPath` with
+  `AgentHookScript.body` at `0o755`, rewriting only when the on-disk bytes differ.
+- For `~/.claude/settings.json`: read; if absent, treat as `[:]`; if present but not parseable as a
+  JSON **object**, write nothing and log through `Ghostty.logger` (D14) and return. Apply
+  `AgentHookSettings.install`/`uninstall`. Re-serialise with
+  `[.prettyPrinted, .sortedKeys]`. If the bytes equal what is on disk, write nothing. Otherwise: if
+  `settings.json.clearway-backup` does not already exist, copy the current file to it first (the
+  one-time backup of D13), then write atomically.
+- For `~/.codex/hooks.json`: identical, but **only when `~/.codex` exists as a directory**. Clearway
+  never creates it (D15). An absent `hooks.json` inside an existing `~/.codex` is created.
+- Logs one line per file actually written, through `Ghostty.logger`.
+
+**Acceptance criteria.**
+
+- Running `install()` twice in a row writes the settings file at most once — the second call finds
+  identical bytes and is a no-op. This is what makes D10's "no version counter" work.
+- A settings file that is valid JSON but a top-level array, or that is not JSON at all, is left
+  byte-identical and the failure is logged; `install()` still returns without throwing.
+- With `~/.codex` absent, no `~/.codex` directory and no `hooks.json` appear.
+- The backup is taken before the first modification and never overwritten afterwards.
+- Both files are written atomically (`Data.write(to:options: .atomic)`), never truncated in place.
+
+**Verified by.** Not unit-tested directly — the paths are absolute under `$HOME` and a test that
+rewrote the developer's real `~/.claude/settings.json` would be worse than no test. The pure half is
+already covered by T3's tests; this task's criteria are verified by reading the code against them and
+by the operator's by-hand check listed in the spec's success criteria. `./scripts/ci.sh` must still
+be green (this file compiles and lints).
+
+> If a build agent wants coverage here, the only acceptable shape is to make the two file paths
+> injectable parameters defaulting to the real ones and drive a temp directory. Do that only if it
+> costs no extra indirection at the call sites; do not invent a protocol.
+
+---
+
+### T5: Surface identity
+
+**Files:** `Sources/Ghostty/Ghostty.SurfaceView.swift`, `Sources/App/TerminalManager.swift`,
+`Sources/App/TerminalManager+TaskTerminals.swift`, `Tests/AgentHookIdentityTests.swift` (new).
+
+**Depends on:** T3 (for `AgentHookIdentity`), T1 (for the round-trip test).
+
+**What it does.** Stamps every surface that can host an agent with its identity, and gives the app a
+way to retire a surface id.
+
+`Ghostty.SurfaceView`:
+
+- `init` gains `worktreeId: String? = nil` as its last parameter. The view gains
+  `let surfaceId = UUID()` and `let worktreeId: String?`, stored beside `initialWorkingDirectory`.
+- `nonisolated static var agentEnvironment: (UUID, String?) -> [(key: String, value: String)] = { _, _ in [] }`
+  — the process-scoped provider, wired in T8. Keeps `Sources/Ghostty` free of App types.
+- `init` calls the provider, `strdup`s each key and value into a `[ghostty_env_var_s]`, sets
+  `config.env_vars` and `config.env_var_count`, and `free`s them after `ghostty_surface_new`
+  returns. Zig dupes both strings into the surface config's arena (Assumption 2), so they need to
+  live only across that call. Leave the existing nested `withCString` for `working_directory` and
+  `command` exactly as it is.
+
+`TerminalManager`:
+
+- Pass `worktreeId:` at the four construction sites — the pane secondary in `pane(for:)`, both
+  surfaces in `appendTab` (the tab and the cold-pane secondary), and the respawn in
+  `replaceSurface`. `replaceSurface` passes the **dead surface's stored `worktreeId`**, not a
+  recomputed one (D9).
+- `nonisolated(unsafe) static var retireSurface: (UUID) -> Void = { _ in }` — the D27 callback,
+  wired once in T8. Call it for every surface being dropped from `removeSurface`,
+  `closeWorktree`, `cleanupState(for:)`'s pane teardown and `replaceSurface`'s dead secondary.
+  Never reconcile against a list of live surfaces.
+
+`TerminalManager+TaskTerminals`:
+
+- `taskSurface(for:app:projectPath:)` and `openTaskTerminal(…)` pass `worktreeId: projectPath` —
+  that parameter already carries the task terminal's working directory, which is the main worktree's
+  path (`WorkTaskCoordinator.planWorkingDirectory`), and a worktree id **is** its path
+  (Assumption 8).
+- `closeTaskTerminal` retires the surface it removes.
+
+**Acceptance criteria.**
+
+- Every `Ghostty.SurfaceView(...)` call in `TerminalManager.swift` and
+  `TerminalManager+TaskTerminals.swift` passes a `worktreeId`. The two that must **not** —
+  `ContentView.swift:710` (before-remove hook sheet) and `DebugTerminalSheet.swift:47` — are
+  untouched and still compile on the defaulted parameter (D7).
+- `replaceSurface` copies the dead surface's `worktreeId` rather than deriving one.
+- Every path that drops a surface calls `TerminalManager.retireSurface` with its id.
+- No `@convention(c)` or `@convention(block)` literal is introduced anywhere in this task, and no
+  `DispatchSource` is created outside `makeWatcher`.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** `Tests/AgentHookIdentityTests.swift`, the round trip that needs no `ghostty_app_t`:
+take `AgentHookIdentity.environment(surfaceId:worktreeId:)`, build the two-line preamble from the
+values it returns exactly as the script's `printf` would, append a hook JSON body, and assert
+`AgentHookEnvelope.parse` recovers the same surface id and worktree id — including for a worktree
+path containing spaces. Plus a compile-time check: the construction sites are enumerated by
+`grep -n "Ghostty.SurfaceView(" Sources/` and read against the list above.
+
+---
+
+### T6: The monitor — socket, roster, install/uninstall
+
+**Files:** `Sources/App/AgentActivityMonitor.swift` (new), `Tests/RAIICleanupTests.swift`.
+
+**Depends on:** T2, T4, T7.
+
+**What it does.** The one object that owns the socket, holds an `AgentActivityStore`, and publishes
+what the views read.
+
+- `@MainActor final class AgentActivityMonitor: ObservableObject`.
+- `@Published private(set) var worktreePhases: [String: AgentPhase]`,
+  `@Published private(set) var worktreeSubagents: [String: [AgentSubagent]]`,
+  `@Published private(set) var surfaceToolNames: [String: String]` — derived from the store after
+  every applied event, republished only when the derived value actually changed, so a per-tool-call
+  event storm does not re-render the sidebar on every event.
+- `func setEnabled(_ enabled: Bool)` — the whole toggle behaviour (D17): on, it calls
+  `AgentHookInstaller.install()` and opens the listener; off, it closes the listener, clears the
+  published state and calls `AgentHookInstaller.uninstall()`. Idempotent.
+- `func retire(surfaceId: UUID)` — forwards to the store; this is what `TerminalManager.retireSurface`
+  is wired to.
+
+Socket plumbing — read CLAUDE.md's Concurrency section before writing a line of it:
+
+- Unlink any stale `hook.sock`, `bind`, `listen`, then a `DispatchSource.makeReadSource` on the
+  listening descriptor whose handler `accept`s and reads one connection to EOF.
+- **Every** `DispatchSource` in this file is built by a `nonisolated static` factory that takes its
+  handler as a plain `() -> Void`, and `setEventHandler` / `setCancelHandler` are never called from
+  an isolated method. This is the rule that cost v1.9.3 a shipped crash. Prefer extending
+  `FileWatchers`/`ClaudeSessionFiles` with a `makeReadSource` sibling over writing a second door, or
+  put the factory on `AgentActivityMonitor` itself as `nonisolated static`.
+- The accept/read handler hops to the main actor with `Task { @MainActor in }`, never
+  `MainActor.assumeIsolated` — a `DispatchSource` callback is exactly the path CLAUDE.md forbids it
+  on.
+- Cleanup is RAII: the source lives in a holder whose own `deinit` cancels it, so the
+  `nonisolated deinit` reads nothing isolated. `ScheduledWork` and `ClaudeActivityMonitor`'s
+  `WatcherState` are the precedents.
+- No timer anywhere. No expiry. No polling.
+
+**Acceptance criteria.**
+
+- `AgentActivityMonitor` contains no `DispatchWorkItem`, no `asyncAfter`, no `Timer` and no `Date`.
+- No `setEventHandler` or `setCancelHandler` call appears inside an actor-isolated method in this
+  file.
+- `setEnabled(false)` after `setEnabled(true)` leaves no bound socket and no published state.
+- A monitor built and enabled inside an `autoreleasepool` deallocates when the pool drains.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** A new `testAgentActivityMonitorDeallocates` in `Tests/RAIICleanupTests.swift`,
+modelled on the existing `testClaudeActivityMonitorDeallocates` (which stays until T11): build the
+monitor, enable it, let the pool drain, assert the weak reference is nil — proving the read source is
+cancelled. The no-timer and no-isolated-handler criteria are verified by reading the file; they are
+structural, not behavioural, and a test cannot pin them.
+
+---
+
+### T7: The Settings toggle
+
+**Files:** `Sources/App/SettingsManager.swift`, `Sources/App/SettingsView.swift`,
+`Tests/SettingsManagerTests.swift`.
+
+**What it does.** Adds `clearway.agentHooksEnabled` and the Appearance row that drives it.
+
+- `SettingsKey.agentHooksEnabled = "clearway.agentHooksEnabled"`.
+- `@Published var agentHooksEnabled: Bool` with the same `didSet { defaults.set(…) }` shape as
+  `showDetachedWorktrees`, read in `init` as
+  `defaults.object(forKey:) as? Bool ?? true` — default **on** (D17).
+- In `SettingsView`'s `Section("Appearance")`, below `Toggle("Show detached worktrees", …)`:
+  `Toggle("Show agent activity", isOn: $settings.agentHooksEnabled)` plus **one** line of secondary
+  copy naming the Codex trust step — the deliberate exception to CLAUDE.md's no-helper-text rule
+  (D16). One sentence, e.g. "Codex requires running `/hooks` once to trust the hooks Clearway
+  installs." Nothing else: no subtitle for the toggle itself, no explanation of what the dot means.
+
+**Acceptance criteria.**
+
+- A `SettingsManager` built over a fresh `UserDefaults` suite reads `agentHooksEnabled == true`.
+- Setting it to `false` persists; a new manager over the same suite reads `false`.
+- The Appearance section carries exactly one new toggle and exactly one new line of copy.
+
+**Verified by.** Two cases added to `Tests/SettingsManagerTests.swift` following the file's existing
+suite-based pattern, run through `./scripts/ci.sh`.
+
+---
+
+### T8: App-level wiring
+
+**Files:** `Sources/App/ClearwayApp.swift`, `Sources/App/ProjectWindow.swift`,
+`Sources/App/ContentView.swift`.
+
+**Depends on:** T5, T6, T7.
+
+**What it does.** Makes one monitor for the process, wires the two process-scoped providers, and
+removes the per-window monitor's plumbing.
+
+`ClearwayApp`:
+
+- `@StateObject private var agentActivity = AgentActivityMonitor()`, injected with
+  `.environmentObject(agentActivity)` beside `caffeine` and `portMonitor`.
+- In `init()`, beside the existing `Ghostty.SurfaceView.claimsShortcut = AppKeyboardShortcuts.claims`
+  line and for the same reason: `Ghostty.SurfaceView.agentEnvironment = AgentHookIdentity.environment`
+  and `TerminalManager.retireSurface = { … }` forwarding to the monitor. Both are process-scoped
+  statics, so they belong here and nowhere else.
+- Call `agentActivity.setEnabled(settings.agentHooksEnabled)` once the scene is up, and again
+  whenever the setting changes — an `.onChange(of: settings.agentHooksEnabled)` on the window
+  group's content is the least machinery. `setEnabled` is idempotent, so a duplicate call is
+  harmless.
+
+`ProjectWindow`: delete the `@StateObject private var claudeActivityMonitor` and its
+`.environmentObject(claudeActivityMonitor)`.
+
+`ContentView`: delete `@EnvironmentObject private var claudeActivityMonitor` and both
+`claudeActivityMonitor.updateWorktrees(…)` calls (`:340` and `:403`). Add nothing — the file sits at
+SwiftLint's `file_length` limit.
+
+**Acceptance criteria.**
+
+- `ClaudeActivityMonitor` is referenced from exactly two files after this task —
+  `ClaudeActivityMonitor.swift`, `SidebarView.swift` — plus `RAIICleanupTests.swift`. (T9 and T11
+  take the rest.)
+- The `retireSurface` closure captures the monitor weakly or reaches it through a stored weak
+  reference; it must not keep the app's monitor alive past teardown or capture a window.
+- `ContentView.swift` does not grow — `swiftlint lint --quiet` reports no new `file_length`
+  violation.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** `./scripts/ci.sh`; the reference count by
+`grep -rn "ClaudeActivityMonitor\|claudeActivityMonitor" Sources/ Tests/`.
+
+---
+
+### T9: The sidebar dot and the subagent rows
+
+**Files:** `Sources/App/SidebarView.swift`, `Sources/App/WorktreeRow.swift`.
+
+**Depends on:** T8.
+
+**What it does.** Renders the three-way phase and the roster.
+
+`WorktreeRow`:
+
+- `var isWorking: Bool` becomes `var phase: AgentPhase = .idle`. The dot `Group` becomes, in order:
+  `.waiting` → a static 7 pt `Circle().fill(.purple)` with `.help("Waiting for permission")`, no
+  pulse; `.working` → the existing pulsing orange circle with `.help("Agent is working")` (the
+  string stops naming Claude); else `hasNotification` → the existing blue circle with
+  `.help("Terminal notification")`. The `.animation(…, value:)` follows `phase`.
+- A new `SubagentRow` view in the same file: the agent type as the primary text and the in-flight
+  tool name as a `.font(.subheadline).foregroundStyle(.secondary)` caption when there is one. Text
+  only, no icon (D24).
+
+`SidebarView`:
+
+- `@EnvironmentObject private var agentActivity: AgentActivityMonitor` replaces
+  `claudeActivityMonitor`.
+- `worktreeRowView` computes `let phase = isOpen ? agentActivity.worktreePhases[wt.id] ?? .idle : .idle`
+  — `isOpen` stays, `!wt.isMain` **goes** (D23) — and becomes a `@ViewBuilder` returning the worktree
+  row followed by one `SubagentRow` per `agentActivity.worktreeSubagents[wt.id]`, each with no
+  `.tag`, `.moveDisabled(true)` and `.padding(.leading, SidebarRowMetrics.statusRowIndent + leadingIndent)`.
+  All three `ForEach` bodies (`worktreesSection`, `groupSection`, `statusSection`) already go through
+  this one function, so emitting the extra rows there covers every section at once.
+
+**Acceptance criteria.**
+
+- The main worktree's row shows the working dot when its surface is working — nothing suppresses it.
+- Waiting renders purple and does not pulse; working renders orange and does; a worktree that is
+  neither but has a terminal notification renders blue. Precedence is waiting > working >
+  notification.
+- A closed worktree (`!isOpen`) renders no agent dot regardless of stored phase.
+- Subagent rows appear under their worktree in all three sections, are not selectable (no `.tag`),
+  cannot be dragged, and are indented to the status-row indent.
+- `.onMove` still reorders worktrees correctly with subagent rows present — the move closure indexes
+  `rows`, which is unchanged.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** `./scripts/ci.sh` plus the store-level tests from T2, which already pin the
+precedence rule and the roster contents. Nothing in a SwiftUI body is reachable from XCTest — the
+rules that can be tested were lifted into `AgentActivityStore` in T2, and the rendering itself is an
+operator by-hand check from the spec's success criteria.
+
+> The spec's "Extra rows inside a reorderable `ForEach`" risk lands here. If drag targeting
+> misbehaves, the recorded fallback is to suppress subagent rows while a drag is in progress —
+> report it rather than inventing a different shape.
+
+---
+
+### T10: The tool name on the tab chip
+
+**Files:** `Sources/App/MainTerminalTabStrip.swift`.
+
+**Depends on:** T8.
+
+**What it does.** Shows the lead agent's in-flight tool beside the surface title, and only while a
+tool is in flight (D28).
+
+- `TerminalTabChip` gains the tool name and passes it to `TabChip`, which renders it as secondary
+  text after the title — smaller, `.secondary`, `lineLimit(1)`, and absent entirely when nil so the
+  chip does not reserve space for it.
+- The value comes from `agentActivity.surfaceToolNames[surface.surfaceId.uuidString]`. Read it in
+  `MainTerminalTabStrip` (which already holds `@EnvironmentObject`s) and pass it down, so
+  `TerminalTabChip` keeps observing only its own surface — the file's existing note explains why
+  that scoping matters.
+
+**Acceptance criteria.**
+
+- A tab with no agent, or an agent between tool calls, renders exactly as it does today — same
+  width, same layout.
+- A tab whose lead agent is mid-tool renders the tool name after the title.
+- The active chip's accent background and the hover close button are unchanged.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** `./scripts/ci.sh`; the underlying rule (`leadToolName(forSurface:)`) is already
+pinned by T2's tests. The rendering is an operator by-hand check.
+
+---
+
+### T11: Retire `ClaudeActivityMonitor`
+
+**Files:** `Sources/App/ClaudeActivityMonitor.swift` (deleted),
+`Tests/RAIICleanupTests.swift`.
+
+**Depends on:** T9.
+
+**What it does.** Deletes the mtime heuristic now that nothing reads it, and drops its RAII test —
+`testAgentActivityMonitorDeallocates` from T6 already covers the replacement.
+
+**Acceptance criteria.**
+
+- `grep -rn "ClaudeActivityMonitor\|claudeActivityMonitor\|workingWorktreeIds" Sources/ Tests/`
+  returns nothing.
+- No timer-based expiry survives anywhere in the codebase's activity path — the 8-second
+  `expirySeconds` constant is gone with the file.
+- `./scripts/ci.sh` is green. `xcodegen generate` inside it is what makes the deletion take effect;
+  a hand-written `xcodebuild` would still compile the removed file.
+
+**Verified by.** The grep above, then `./scripts/ci.sh`.
+
+---
+
+### T12: Rename `ClaudeSessionFiles` to `FileWatchers`
+
+**Files:** `Sources/App/ClaudeSessionFiles.swift` → `Sources/App/FileWatchers.swift`,
+`Sources/App/TodoManager.swift`, `Sources/App/PromptManager.swift`,
+`Sources/App/WorkTaskManager.swift`.
+
+**Depends on:** T11.
+
+**What it does.** Keeps CLAUDE.md's single `DispatchSource` door and drops the Claude relationship
+the name claims but the type no longer has (D26).
+
+- `git mv Sources/App/ClaudeSessionFiles.swift Sources/App/FileWatchers.swift` so history follows.
+- Rename `enum ClaudeSessionFiles` to `enum FileWatchers`. Keep `makeWatcher` and
+  `defaultWatchMask` and their doc comments verbatim — the `nonisolated` comment on `makeWatcher` is
+  load-bearing documentation. Rewrite the type's own doc comment to say what it now is.
+- Delete `claudeDir`, `encodePathForClaude`, `projectsParentDir` and
+  `projectDir(forWorktreePath:)` — T11 removed their only caller.
+- Update the four call sites in `TodoManager.swift:137`, `PromptManager.swift:144` and
+  `WorkTaskManager.swift:374,452`.
+- Leave the `@preconcurrency import Dispatch` on line 1 alone. CLAUDE.md names it as the one
+  remaining instance and as predating the RAII holder; removing it is a separate change.
+
+**Acceptance criteria.**
+
+- `grep -rn "ClaudeSessionFiles\|encodePathForClaude\|projectsParentDir" Sources/ Tests/` returns
+  nothing.
+- `FileWatchers.makeWatcher` is still the only `DispatchSource.makeFileSystemObjectSource` call in
+  the codebase.
+- `./scripts/ci.sh` is green.
+
+**Verified by.** The greps above, then `./scripts/ci.sh`.
+
+---
+
+### T13: Document the pipeline in CLAUDE.md
+
+**Files:** `CLAUDE.md`.
+
+**Depends on:** T12.
+
+**What it does.** Records what a future reader cannot recover from the code.
+
+- A bullet under `Sources/App/` for the hook pipeline: the six new files and what each owns, the
+  two-line framing, why `nc` and not `curl`, why the transport is a Unix socket and not a port, that
+  the managed block is reconciled by content rather than versioned, that Codex hooks need the
+  user's `/hooks` trust step, and that the one line of Settings copy is the deliberate exception to
+  the no-helper-text rule.
+- The `Ghostty.SurfaceView` bullet gains the `agentEnvironment` provider beside `claimsShortcut`,
+  with the same reason: process-scoped, not per-window, and it keeps `Sources/Ghostty` free of App
+  types.
+- The Concurrency section's `DispatchSource` rule: `ClaudeSessionFiles.makeWatcher` becomes
+  `FileWatchers.makeWatcher`, and the `@preconcurrency import Dispatch` sentence follows the file to
+  `FileWatchers.swift:1`.
+- The sidebar-dot sentence: the dot is now derived from agent lifecycle events with no timer and no
+  expiry, main is no longer suppressed, and waiting-on-permission is purple because orange, blue,
+  red, green and yellow are each already spoken for.
+
+**Acceptance criteria.**
+
+- Every sentence added is one a reader could not get from the code — no restating a function
+  signature, no comment-shaped prose.
+- No stale `ClaudeSessionFiles` or `ClaudeActivityMonitor` reference survives in the file.
+- `./scripts/ci.sh` is green (it lints and builds; the doc change is inert to it, which is the
+  point — run it anyway so the task ends on a green tree).
+
+**Verified by.** `grep -n "ClaudeSessionFiles\|ClaudeActivityMonitor" CLAUDE.md` returns nothing,
+then `./scripts/ci.sh`.
+
+## Risks carried from the spec
+
+| Risk | Lands in | Mitigation |
+| --- | --- | --- |
+| Codex hooks do nothing until trusted | T7 | One line of Settings copy. There is no API to pre-trust. |
+| A fork per tool call on both sides of every call | T3 | Accepted. If agents measurably slow, drop `PreToolUse`/`PostToolUse` — which also drops the tool readout. |
+| `settings.json` key order changes once | T4 | Sorted, deterministic output afterwards; one backup before the first write. |
+| Extra rows inside a reorderable `ForEach` | T9 | Fallback is to suppress subagent rows during a drag. Report, do not redesign. |
+| A `SIGKILL`ed session pins a dot | T2 | Accepted by design — no timers. Clears on the next relaunch. |
+| A shadowed `nc` breaks forwarding silently | T3 | `/usr/bin/nc` by absolute path. |
