@@ -223,6 +223,40 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(reloaded.lastRunCommand, second)
     }
 
+    /// Upgrade day for every project that already had commands: the bare array loads, the first
+    /// run rewrites the file as a payload, and a later window reads back both halves. The store
+    /// covers the legacy decode and the record/reload covers an empty file, but neither walks the
+    /// transition, where losing the commands would leave both of them green.
+    func testALegacyFileKeepsItsCommandsOnceSomethingIsRun() async throws {
+        let clearwayDir = (tempRoot as NSString).appendingPathComponent(".clearway")
+        try FileManager.default.createDirectory(atPath: clearwayDir, withIntermediateDirectories: true)
+        let legacy = makeCommand(name: "Dev")
+        let encoded = try JSONEncoder().encode([legacy])
+        FileManager.default.createFile(
+            atPath: (clearwayDir as NSString).appendingPathComponent("commands.json"),
+            contents: encoded
+        )
+
+        await manager.load()
+        XCTAssertEqual(manager.commands, [legacy])
+
+        manager.recordLastRun(legacy)
+        let persisted = await persistedLastRunId(matching: legacy.id)
+        XCTAssertEqual(persisted, legacy.id, "The first run rewrites the bare array as a payload")
+
+        let reopened = SavedCommandManager(projectPath: tempRoot)
+        await reopened.load()
+
+        XCTAssertEqual(reopened.commands, [legacy])
+        XCTAssertEqual(reopened.lastRunCommand, legacy)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: (clearwayDir as NSString).appendingPathComponent("commands.json.corrupt")
+            ),
+            "The upgrade must not quarantine the list it just read"
+        )
+    }
+
     // MARK: - Primary command
 
     func testPrimaryCommandIsNilWhenThereAreNoCommands() {
@@ -246,6 +280,26 @@ final class SavedCommandManagerTests: TempRootTestCase {
         manager.recordLastRun(second)
 
         XCTAssertEqual(manager.primaryCommand, second)
+    }
+
+    /// `update` keeps the command's id, so the memory survives an edit and everything derived from
+    /// it has to carry the new value — the label half runs `text`, and running the pre-edit one is
+    /// the regression this resolves-on-read rule exists to prevent.
+    func testPrimaryCommandCarriesAnEditToTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        var edited = second
+        edited.name = "Test (watch)"
+        edited.text = "bin/test --watch"
+        manager.update(edited)
+
+        XCTAssertEqual(manager.lastRunCommand, edited)
+        XCTAssertEqual(manager.primaryCommand, edited)
+        XCTAssertEqual(manager.runButtonTitle, "Test (watch)")
     }
 
     func testPrimaryCommandFallsBackToTheFirstOnceTheRecordedCommandIsDeleted() {

@@ -4,6 +4,10 @@ import Foundation
 
 /// A saved, reusable action: either a command to run in a new terminal tab, or a prompt to hand to
 /// a named agent. `text` carries whichever the `kind` calls for.
+///
+/// `Hashable` must stay **whole-value**, not narrowed to `id`: the Run split button is rebuilt by
+/// `.id(SavedCommandManager.menuCommands)`, so an `==` over ids alone would leave the toolbar
+/// showing a command's pre-edit text with every test still green.
 struct SavedCommand: Codable, Hashable, Identifiable {
 
     enum Kind: String, Codable, CaseIterable {

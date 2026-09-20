@@ -211,10 +211,19 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     array. `load()` tries the payload first, a bare `[SavedCommand]` array second, and only then
     moves the file aside to `commands.json.corrupt`. That legacy branch is **required**, not a
     courtesy: `load()` treats anything it cannot decode as corruption, so without it every file
-    written before the payload would have its list renamed away and logged as corrupt. A missing
-    `lastRunId` decodes to nil through the synthesized `init(from:)`, so no custom `CodingKeys` are
-    needed, and the payload's memberwise init deliberately carries no defaults — a field added later
-    is then a compile error at `save()` rather than a silent erase.
+    written before the payload would have its list renamed away and logged as corrupt. The same
+    asymmetry runs the other way and is not fixable from here: an **older build** decodes only a
+    bare array, so rolling Clearway back renames every project's list to `.corrupt`. It is
+    recoverable by hand, which is the whole reason `load()` moves a file aside instead of
+    overwriting it.
+    The payload's `init(from:)` decodes `commands` strictly and `lastRunId` leniently: absence and
+    an unparseable id both read as nothing remembered, because throwing on the one field the user
+    never asked for would send a list of working commands down that corrupt path over a preference
+    whose loss costs nothing. The memberwise init deliberately carries no defaults — a field added
+    later is then a compile error at `save()` rather than a silent erase. When a document decodes as
+    neither shape, the warning carries **both** errors: a bare array fails the payload decode at the
+    top level with nothing but "found an array instead", so on a legacy-shaped file it is the second
+    one that names the offending key and index, which is what makes the file hand-repairable.
     `SavedCommandManager.lastRunCommand` resolves the id against the live list on every read, so an
     id naming a deleted command reads as nothing remembered. No delete path cleans it up, and none
     should. `primaryCommand` is that value or `commands.first` — what the Run button's label half
@@ -310,9 +319,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     closure only unwraps it. It unwraps it **inside the closure**, on the click, never as a value the
     branch's `if let` bound for it: the realized control keeps whatever its actions captured (see the
     `.id` rule below), and Run's key omits the primary, so editing the primary command's text rebuilt
-    nothing and the label half went on running the old text (operator change C5). Both menus
-    therefore read `savedCommandManager.primaryCommand` / `settings.primaryOpenInApp` in the action
-    and branch on the same value only to choose the declaration.
+    nothing and the label half went on running the old text (operator change C5). `RunCommandMenu`
+    therefore reads `savedCommandManager.primaryCommand` in the action and branches on that same
+    value only to choose the declaration; `OpenInMenu` reads `settings.primaryOpenInApp` in the
+    action but branches on `remembersLastUsed` (below), never on the resolved app.
     Do not go back to declaring the `Menu` twice on whether something was
     **picked**: that drew a plain dropdown in the fresh state, which is what this replaced. Both
     record the pick rather than a successful launch — `RunCommandMenu.run(_:)` records before its
@@ -342,7 +352,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `clearway.lastUsedOpenInApp` beside the list itself, because the list it names is a global
     preference rather than per-project the way Run's `lastRunId` is. `lastUsedOpenInApp` resolves it
     against `openInApps` on every read, so a deleted app falls back to the first in the list with
-    nothing cleaned up. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`,
+    nothing cleaned up. Both ids are `private(set)` with one writer each — `recordOpenInUse` and
+    `recordLastRun` — so the no-op guard those two carry cannot be stepped around by assigning the
+    property, which on an app-wide `EnvironmentObject` would re-evaluate every view observing
+    settings for no change. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`,
     defaulting to off, and `ContentView`'s call is the one that passes true — picking from the
     sidebar's submenu neither reads nor writes it. The menu and the settings section are
     separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and

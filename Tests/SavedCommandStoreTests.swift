@@ -203,6 +203,35 @@ final class SavedCommandStoreTests: TempRootTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: commandsFile))
     }
 
+    /// `lastRunId` decodes leniently. The file is advertised as hand-repairable, so a typo in the
+    /// one field the user never asked for must not throw and send a list of working commands down
+    /// the corrupt path — losing the preference costs nothing, losing the list costs everything.
+    func testAnUnparseableLastRunIdLoadsAsNothingRememberedAndKeepsTheList() async throws {
+        try writeCommandsFile("""
+        {
+          "commands": [{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Dev server",
+            "kind": "terminal",
+            "text": "bin/dev",
+            "agent": "claude",
+            "autoRun": true
+          }],
+          "lastRunId": "not-a-uuid"
+        }
+        """)
+
+        let loaded = await store.load()
+
+        XCTAssertEqual(loaded.commands, [terminalCommand])
+        XCTAssertNil(loaded.lastRunId)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: corruptFile),
+            "A bad id is not a corrupt document and must not take the command list with it"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: commandsFile))
+    }
+
     /// Pins the stored document shape. A round-trip test cannot catch a renamed key.
     func testPayloadDecodesFromItsStoredBytes() throws {
         let decoded = try JSONDecoder().decode(SavedCommandsPayload.self, from: Data("""

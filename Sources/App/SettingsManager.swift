@@ -113,6 +113,14 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    /// `recordOpenInUse` is the only writer, the way `SavedCommandManager.lastRunId` has only
+    /// `recordLastRun`, so the no-op guard there cannot be stepped around.
+    @Published private(set) var lastUsedOpenInAppId: UUID? {
+        didSet {
+            defaults.set(lastUsedOpenInAppId?.uuidString, forKey: SettingsKey.lastUsedOpenInApp)
+        }
+    }
+
     /// The app the toolbar's Open in button repeats on a click. Resolved against the live list on
     /// every read, so an id naming a deleted app is nothing remembered and needs no cleanup.
     var lastUsedOpenInApp: OpenInApp? { openInApps.first { $0.id == lastUsedOpenInAppId } }
@@ -142,16 +150,6 @@ class SettingsManager: ObservableObject {
     func recordOpenInUse(_ app: OpenInApp) {
         guard lastUsedOpenInAppId != app.id else { return }
         lastUsedOpenInAppId = app.id
-    }
-
-    @Published var lastUsedOpenInAppId: UUID? {
-        didSet {
-            if let lastUsedOpenInAppId {
-                defaults.set(lastUsedOpenInAppId.uuidString, forKey: SettingsKey.lastUsedOpenInApp)
-            } else {
-                defaults.removeObject(forKey: SettingsKey.lastUsedOpenInApp)
-            }
-        }
     }
 
     @Published var colorScheme: ColorSchemePreference {

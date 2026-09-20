@@ -22,7 +22,7 @@ final class SavedCommandManager: ObservableObject {
     var primaryCommand: SavedCommand? { lastRunCommand ?? commands.first }
 
     /// The Run button's label, which names what a click will do rather than reading "Run". An empty
-    /// list has no primary and leaves the button disabled, so it keeps the generic word.
+    /// list has no primary command, so it keeps the generic word over the editor door alone.
     var runButtonTitle: String { primaryCommand?.name ?? "Run" }
 
     /// The dropdown half's items: everything the label half does not already run. A one-command

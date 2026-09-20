@@ -142,7 +142,7 @@ final class SettingsManagerTests: XCTestCase {
         let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
         manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
 
-        manager.lastUsedOpenInAppId = zed.id
+        manager.recordOpenInUse(zed)
 
         XCTAssertEqual(manager.lastUsedOpenInApp, zed)
     }
@@ -152,7 +152,7 @@ final class SettingsManagerTests: XCTestCase {
         let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
         let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
         manager.openInApps = [finder, zed]
-        manager.lastUsedOpenInAppId = zed.id
+        manager.recordOpenInUse(zed)
 
         manager.openInApps = [finder]
 
@@ -164,22 +164,11 @@ final class SettingsManagerTests: XCTestCase {
         let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
         let first = SettingsManager(defaults: defaults)
         first.openInApps = [zed]
-        first.lastUsedOpenInAppId = zed.id
+        first.recordOpenInUse(zed)
 
         let second = SettingsManager(defaults: defaults)
         XCTAssertEqual(second.lastUsedOpenInAppId, zed.id)
         XCTAssertEqual(second.lastUsedOpenInApp, zed)
-    }
-
-    func test_lastUsedOpenInAppId_setBackToNilRemovesTheKey() {
-        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
-        let first = SettingsManager(defaults: defaults)
-        first.openInApps = [zed]
-        first.lastUsedOpenInAppId = zed.id
-        first.lastUsedOpenInAppId = nil
-
-        XCTAssertNil(defaults.object(forKey: SettingsKey.lastUsedOpenInApp))
-        XCTAssertNil(SettingsManager(defaults: defaults).lastUsedOpenInAppId)
     }
 
     func test_recordOpenInUse_remembersTheApp() {
@@ -215,7 +204,7 @@ final class SettingsManagerTests: XCTestCase {
         let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
         manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
 
-        manager.lastUsedOpenInAppId = zed.id
+        manager.recordOpenInUse(zed)
 
         XCTAssertEqual(manager.primaryOpenInApp, zed)
     }
@@ -225,7 +214,7 @@ final class SettingsManagerTests: XCTestCase {
         let finder = OpenInApp(kind: .builtIn(.finder), command: "open")
         let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
         manager.openInApps = [finder, zed]
-        manager.lastUsedOpenInAppId = zed.id
+        manager.recordOpenInUse(zed)
 
         manager.openInApps = [finder]
 
@@ -249,9 +238,24 @@ final class SettingsManagerTests: XCTestCase {
         let cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
         manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), cursor]
 
-        manager.lastUsedOpenInAppId = cursor.id
+        manager.recordOpenInUse(cursor)
 
         XCTAssertEqual(manager.openInButtonTitle, "Open in Cursor")
+    }
+
+    /// `upsert` keeps the edited entry's id, so the memory survives a rename and the label has to
+    /// follow it. Resolving against the live list on every read is what makes that true.
+    func test_openInButtonTitle_followsARenameOfTheRememberedApp() {
+        let manager = SettingsManager(defaults: defaults)
+        var cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), cursor]
+        manager.recordOpenInUse(cursor)
+
+        cursor.kind = .custom(label: "Cursor Nightly")
+        manager.openInApps = OpenInApp.upsert(cursor, into: manager.openInApps)
+
+        XCTAssertEqual(manager.primaryOpenInApp, cursor)
+        XCTAssertEqual(manager.openInButtonTitle, "Open in Cursor Nightly")
     }
 
     func test_openInButtonTitle_isTheBareLabelWhenTheListIsEmpty() {
@@ -294,7 +298,7 @@ final class SettingsManagerTests: XCTestCase {
         let cursor = OpenInApp(kind: .custom(label: "Cursor"), command: "cursor")
         manager.openInApps = [finder, zed, cursor]
 
-        manager.lastUsedOpenInAppId = zed.id
+        manager.recordOpenInUse(zed)
 
         XCTAssertEqual(manager.menuOpenInApps, [finder, cursor])
     }

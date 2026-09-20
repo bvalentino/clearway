@@ -17,6 +17,17 @@ struct SavedCommandsPayload: Codable, Equatable {
         self.commands = commands
         self.lastRunId = lastRunId
     }
+
+    /// `commands` decodes strictly, `lastRunId` leniently: a present-but-unparseable id would
+    /// otherwise throw and send the whole document down `load()`'s corrupt path, renaming a list of
+    /// working commands to `commands.json.corrupt` over a preference whose loss costs nothing. The
+    /// file is advertised as hand-repairable, so a typo in that one field has to stay survivable.
+    /// Absence decodes to nil either way.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.commands = try container.decode([SavedCommand].self, forKey: .commands)
+        self.lastRunId = try? container.decodeIfPresent(UUID.self, forKey: .lastRunId)
+    }
 }
 
 /// Reads and writes one project's command document at `<projectPath>/.clearway/commands.json`,
@@ -70,17 +81,22 @@ final class SavedCommandStore: Sendable {
             }
             do {
                 return try JSONDecoder().decode(SavedCommandsPayload.self, from: data)
-            } catch {
+            } catch let payloadError {
                 // A file written before this store grew a payload holds a bare array. It is not
                 // corrupt, and moving it aside would rename the user's list to `.corrupt`.
-                if let legacy = try? JSONDecoder().decode([SavedCommand].self, from: data) {
+                do {
+                    let legacy = try JSONDecoder().decode([SavedCommand].self, from: data)
                     return SavedCommandsPayload(commands: legacy, lastRunId: nil)
+                } catch let legacyError {
+                    // Both errors: a bare array fails the payload decode at the top level with
+                    // nothing but "found an array instead", so on a legacy-shaped file it is the
+                    // second one that names the offending key and index — which is what makes the
+                    // file hand-repairable.
+                    let detail = "as a document: \(payloadError); as a bare array: \(legacyError)"
+                    Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(detail)")
+                    Self.moveAside(path, to: corruptPath)
+                    return .empty
                 }
-                // The error names the offending key and index, which is what makes the file
-                // hand-repairable — a bare "corrupt" tells its reader nothing.
-                Ghostty.logger.warning("commands.json is corrupt — loading as empty: \(error)")
-                Self.moveAside(path, to: corruptPath)
-                return .empty
             }
         }.value
     }
