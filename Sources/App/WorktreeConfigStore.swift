@@ -402,7 +402,8 @@ final class WorktreeConfigStore: Sendable {
 
     /// The one line every failure the store reports goes through. Both values are public because a
     /// release build would otherwise redact the whole line, and neither is user-authored: `what` is
-    /// a key name, a worktree path or a git argument vector, and `message` is git's stderr.
+    /// a key name, a worktree path or a git argument vector, and `message` is the diagnostic it
+    /// failed with — git's stderr, its exit status, or the error that stopped git running.
     private func log(_ what: String, _ message: String) {
         Ghostty.logger.warning("worktree config: \(what, privacy: .public) failed: \(message, privacy: .public)")
     }
