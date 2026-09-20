@@ -145,14 +145,8 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            let wroteGroup = await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            if !wroteGroup { Self.logFailure("clearway.group for \(path) was not saved") }
-            let wrotePosition = await configStore.set(
-                String(position),
-                forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path
-            )
-            if !wrotePosition { Self.logFailure("clearway.position for \(path) was not saved") }
+            await Self.write(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
+            await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
         }
     }
 
@@ -165,14 +159,8 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            let wroteGroup = await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            if !wroteGroup { Self.logFailure("clearway.group for \(path) was not saved") }
-            let wrotePosition = await configStore.set(
-                String(position),
-                forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path
-            )
-            if !wrotePosition { Self.logFailure("clearway.position for \(path) was not saved") }
+            await Self.write(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
+            await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
         }
     }
 
@@ -482,6 +470,21 @@ final class WorktreeGroupManager: ObservableObject {
         Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")
     }
 
+    /// Writes one worktree-scoped value, naming the gesture if git refused. The message is built
+    /// from `key`, so it cannot come to name a key other than the one written.
+    ///
+    /// `writeRegistry`'s member write stays bespoke: it abandons the loop and raises an alert, and
+    /// its one line names both the registry it gave up on and the member write that lost it.
+    private nonisolated static func write(
+        _ value: String?,
+        forKey key: String,
+        worktreeAt path: String,
+        in configStore: WorktreeConfigStore
+    ) async {
+        let wrote = await configStore.set(value, forKey: key, worktreeAt: path)
+        if !wrote { logFailure("\(key) for \(path) was not saved") }
+    }
+
     /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
     /// registry, and only if every member write landed: a worktree naming an unlisted group renders
     /// ungrouped, so a half-applied rename that published the registry first would empty the group
@@ -621,12 +624,7 @@ final class WorktreeGroupManager: ObservableObject {
         guard !changed.isEmpty else { return }
         enqueueWrite { configStore in
             for (path, position) in changed {
-                let wrote = await configStore.set(
-                    String(position),
-                    forKey: WorktreeConfigStore.positionKey,
-                    worktreeAt: path
-                )
-                if !wrote { Self.logFailure("clearway.position for \(path) was not saved") }
+                await Self.write(String(position), forKey: WorktreeConfigStore.positionKey, worktreeAt: path, in: configStore)
             }
         }
     }

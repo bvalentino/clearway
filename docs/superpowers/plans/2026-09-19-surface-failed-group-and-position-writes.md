@@ -321,3 +321,15 @@ installs: `makeRecordingManager()` is the only place the base builds a manager.
 opened a modal. `swiftlint lint --quiet` — exit 0, zero errors; the same two pre-existing warnings
 (`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:406`). `git status --porcelain` lists only
 the three edited files; no `default.profraw`, since the app was never launched.
+
+### Simplify
+
+`Sources/App/WorktreeGroupManager.swift`: the `let wrote = await configStore.set(…)` /
+`if !wrote { logFailure(…) }` pair that T2 repeated at five worktree-scoped write sites
+(`addWorktree` ×2, `removeWorktreeFromGroup` ×2, `writePositions`) collapsed into one
+`private nonisolated static func write(_:forKey:worktreeAt:in:)`, which builds the message from
+`key` instead of a hand-typed `"clearway.group"` / `"clearway.position"`. Every logged line is
+byte-identical; `writeRegistry`'s member write stays bespoke so its one compound line does not
+become two. **Gate.** `./scripts/ci.sh` — exit 0, `Executed 559 tests, with 0 failures
+(0 unexpected)`, run after the last edit; `swiftlint lint --quiet` — exit 0, the same two
+pre-existing warnings.
