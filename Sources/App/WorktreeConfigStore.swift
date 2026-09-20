@@ -96,7 +96,8 @@ final class WorktreeConfigStore: Sendable {
         }
         switch await run(Self.listArgs(worktreePath: path)) {
         case .output(let data):
-            return Self.parseList(String(decoding: data, as: UTF8.self))
+            guard let text = String(data: data, encoding: .utf8) else { return nil }
+            return Self.parseList(text)
         case .refused:
             return [:]
         case .unavailable(let message):
@@ -263,6 +264,6 @@ final class WorktreeConfigStore: Sendable {
     }
 
     private func trimmed(_ data: Data) -> String {
-        String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }

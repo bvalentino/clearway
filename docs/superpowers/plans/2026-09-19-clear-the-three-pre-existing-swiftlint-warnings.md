@@ -1,0 +1,214 @@
+# Plan: Clear the three pre-existing SwiftLint warnings
+
+**Date:** 2026-09-19
+**Base:** 484482d3fe5e7e539176c4c1f8ae5720d5414836
+
+Breaks down `docs/superpowers/specs/2026-09-19-clear-the-three-pre-existing-swiftlint-warnings.md`.
+
+## Architecture decisions carried from the spec
+
+1. The three warnings are fixed at their call sites. Nothing is added to `.swiftlint.yml` — no rule
+   is disabled, enabled or reconfigured. Both rules are right in general and the project wants them
+   live on new code (spec decision 1).
+2. `String(decoding: data, as: UTF8.self)` becomes `String(data: data, encoding: .utf8)` — the
+   rule's own non-triggering example, and the shape the rest of the app already uses on process
+   stdout (`Worktree.swift:357`, `Worktree.swift:401`, `OpenInAppLauncher.swift:98`). Not
+   `String(bytes:encoding:)`, despite the warning text naming it (spec decision 2).
+3. `values(forWorktreeAt:)` answers `nil` on bytes that are not valid UTF-8. The function keeps
+   `nil` and `[:]` apart on purpose: `nil` means the read could not be performed and the caller
+   keeps the name and status it is showing, `[:]` means the worktree genuinely holds nothing. A
+   `?? [:]` or `?? ""` here would quietly claim the second (spec decision 3).
+4. `trimmed(_:)` answers `""` for the same bytes, via `?? ""`. All three of its callers already
+   treat an empty result as "nothing usable" (`:163`, `:191-195`, `:201-202`), so returning
+   `String?` would add three nil branches for a condition the store cannot produce (spec decision 4).
+5. `WorktreeDraft.init() {}` is **kept** and the rule suppressed with one
+   `// swiftlint:disable:next unneeded_synthesized_initializer` line. Deleting it — what the rule
+   and `--fix` would do — restores an internal memberwise `init(name:branch:branchIsHandEdited:)`
+   that can build a hand-edited draft with an empty branch, a state no mutator can reach. The rule's
+   only documented escape is a `private`/`fileprivate` init, which this one must not have (spec
+   decision 5).
+6. The `private` stored-property restructure that would make the memberwise initializer unreachable
+   by construction is rejected: it needs a private store plus an internal computed forwarder for
+   `branchIsHandEdited`, indirection with no product meaning, and the tidier single-property variant
+   contradicts what `Tests/WorktreeDraftTests.swift:67-77` pins (spec decision 6).
+7. The doc comment above `init()` (`WorktreeDraft.swift:13-16`) stays unchanged. The directive goes
+   **between** that comment and the declaration (spec decision 7).
+8. No new tests. The only behavioural delta is git stdout that is not valid UTF-8, which the store
+   cannot produce — every value reaches git as a Swift `String` through `setArgs` — so pinning it
+   would mean writing raw bytes into `config.worktree` behind the store's back (spec decision 8).
+9. `swiftlint lint --strict` in `scripts/ci.sh` is out of scope. Warnings not failing the gate is
+   current stated policy; changing it is a policy change the task does not ask for (spec decision 9).
+10. `Sources/Ghostty/Ghostty.App.swift:104` is untouched: it decodes an `UnsafeBufferPointer`, not
+    `Data`, and `Sources/Ghostty` is excluded from linting (`.swiftlint.yml:6-7`).
+
+## Dependency graph
+
+```
+T1 (WorktreeConfigStore: two decodings)
+T2 (WorktreeDraft: one directive)
+```
+
+No edges. The two tasks touch different files, answer different rules, and neither reads anything
+the other writes. They may run in either order or in parallel. Lint output is empty only after both
+have landed, so each task's lint check is scoped to its own file.
+
+## Task list
+
+### T1: Decode git stdout failably in `WorktreeConfigStore`
+
+**Files**
+
+- `Sources/App/WorktreeConfigStore.swift`
+
+**What it does**
+
+Replaces the file's two `String(decoding:as:)` calls with the failable
+`String(data:encoding:)`, giving each site the answer its own contract already implies.
+
+At `:99`, inside `values(forWorktreeAt:)`'s `case .output(let data):`, currently:
+
+```swift
+return Self.parseList(String(decoding: data, as: UTF8.self))
+```
+
+becomes a guard that returns `nil` when the bytes do not decode:
+
+```swift
+guard let text = String(data: data, encoding: .utf8) else { return nil }
+return Self.parseList(text)
+```
+
+`nil`, not `[:]` — see decision 3. Do not add a `log(...)` call on that branch; the surrounding
+`.unavailable` case logs because git reported a message, and there is none here. The doc comment
+above the function (`:82-89`) already describes the `nil`/`[:]` split and needs no change.
+
+At `:265-267`, the private helper currently:
+
+```swift
+private func trimmed(_ data: Data) -> String {
+    String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+```
+
+becomes, matching `Worktree.swift:401` exactly:
+
+```swift
+private func trimmed(_ data: Data) -> String {
+    String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+}
+```
+
+Its return type stays `String` — see decision 4. Its three callers (`:163`, `:191-195`, `:201-202`)
+are untouched.
+
+Add no comment at either site, and change nothing else in the file — in particular not the
+deliberate behaviour of `parseList`, `extensionState`, or any other pre-existing defect there.
+
+**Acceptance criteria**
+
+- `Sources/App/WorktreeConfigStore.swift` contains no `String(decoding:` occurrence.
+- `values(forWorktreeAt:)` returns `nil`, not `[:]`, when `.output` data fails to decode;
+  `trimmed(_:)` still returns a non-optional `String` and answers `""` in the same case.
+- Nothing is added to `.swiftlint.yml`, and no `swiftlint:disable` appears in this file.
+- Every existing test in `Tests/WorktreeConfigStoreTests.swift` passes unmodified.
+
+**Verification**
+
+`swiftlint lint --quiet` prints no warning for `WorktreeConfigStore.swift` (the
+`WorktreeDraft.swift:17` warning may still stand until T2 lands). `./scripts/ci.sh` is green.
+
+### T2: Keep `WorktreeDraft.init()` behind a one-line suppression
+
+**Files**
+
+- `Sources/App/WorktreeDraft.swift`
+
+**What it does**
+
+Adds exactly one line to the file: `// swiftlint:disable:next unneeded_synthesized_initializer`,
+placed between the existing doc comment (`:13-16`) and `init() {}` (`:17`), so the file reads:
+
+```swift
+    /// Declared so the synthesized memberwise initializer is not: `private(set)` does not
+    /// suppress it, and it would let a caller build a hand-edited draft with an empty branch —
+    /// a state no mutator can reach, which neither regenerates from the name nor creates.
+    // swiftlint:disable:next unneeded_synthesized_initializer
+    init() {}
+```
+
+`disable:next`, not a file-wide `swiftlint:disable` and not a `disable`/`enable` pair — the
+suppression must cover this one declaration and nothing else. The doc comment is not reworded,
+reordered or extended; the directive does not restate it. `init()` keeps internal access: making it
+`private` or `fileprivate` would also silence the rule but would break `SidebarSheets.swift:10` and
+the `WorktreeDraft()` calls in `Tests/WorktreeDraftTests.swift`.
+
+Do not delete `init()`, do not run `swiftlint --fix` against this file, and change nothing else —
+no property access levels, no mutators, no `slug`.
+
+**Acceptance criteria**
+
+- `WorktreeDraft.init() {}` still exists with internal access, and the three stored properties keep
+  their `private(set) var` declarations, so the memberwise initializer stays unavailable outside the
+  type.
+- The file's only diff is the single added directive line.
+- `swiftlint lint --quiet` reports neither `unneeded_synthesized_initializer` nor
+  `superfluous_disable_command` for this file — the second is the check that the directive is
+  actually silencing something rather than sitting unused.
+- Every existing test in `Tests/WorktreeDraftTests.swift` passes unmodified.
+
+**Verification**
+
+`swiftlint lint --quiet` prints no warning for `WorktreeDraft.swift`. `./scripts/ci.sh` is green.
+
+## Exit condition
+
+After both tasks: `swiftlint lint --quiet` prints nothing at all, `./scripts/ci.sh` is green, and
+the diff against base is three changed lines plus one added line across two files, with
+`.swiftlint.yml` and `scripts/ci.sh` untouched.
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| `--fix` or a future autocorrect run deletes `WorktreeDraft.init()` | High — silently reopens the memberwise initializer | T2's directive stops the rule firing at all, so there is nothing left for `--fix` to correct |
+| `String(data:encoding:)` does not satisfy `optional_data_string_conversion` | Blocks the objective | Both replacement shapes were run through `swiftlint lint --quiet` on a scratchpad file at plan time and produced no output |
+| A build agent "tidies" the `?? ""` in `trimmed(_:)` into an optional return | Medium — three new nil branches for an unreachable condition | Decision 4 and T1's acceptance criteria pin the non-optional return type |
+
+## Build log
+
+### T1: Decode git stdout failably in `WorktreeConfigStore`
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeConfigStore.swift` | `values(forWorktreeAt:)` `:99` now guards `String(data:encoding:)` and returns `nil` when the bytes do not decode; `trimmed(_:)` `:266` now uses `String(data:encoding:)?.trimmingCharacters(...) ?? ""` and keeps its non-optional `String` return. No other change; no `swiftlint:disable` added. |
+| `.swiftlint.yml`, `scripts/ci.sh` | Untouched. |
+| `Tests/WorktreeConfigStoreTests.swift` | Unmodified; passes. |
+
+**Evidence**
+
+Both warnings observed at base `484482d` before the change, via `swiftlint lint --quiet`:
+
+```
+Sources/App/WorktreeConfigStore.swift:99:35: warning: Optional Data -> String Conversion Violation: Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String` (optional_data_string_conversion)
+Sources/App/WorktreeConfigStore.swift:266:9: warning: Optional Data -> String Conversion Violation: Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String` (optional_data_string_conversion)
+```
+
+After the change `swiftlint lint --quiet` prints only the `WorktreeDraft.swift:17:5` warning T2
+owns, and `grep -n 'String(decoding:' Sources/App/WorktreeConfigStore.swift` returns nothing.
+
+No new test. Spec decision 8 stands unchanged: the only behavioural delta is git stdout that is not
+valid UTF-8, which the store cannot produce because every value reaches git as a Swift `String`
+through `setArgs`. There is therefore no failure to watch go red, and no regression test is claimed
+here — the lint output above is the whole of the evidence.
+
+**Deviations from the plan**
+
+None. Both replacements are the exact shapes T1 specifies, and `trimmed(_:)`'s three callers were
+not touched.
+
+**Gate**
+
+`./scripts/ci.sh` — green. `Executed 535 tests, with 0 failures (0 unexpected)`; the script runs
+under `set -euo pipefail` and reached its final `==> CI passed.` line, so exit status 0.
