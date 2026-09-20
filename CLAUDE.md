@@ -186,11 +186,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     action opens the Start Task sheet, its items plan the task with one of the project's agent-kind
     saved commands. There is no remembered pick — the plan slot that once drove the primary action
     was retired with it, so `command-defaults.json` carries the after-create id alone.
-    Its menu (`startNowItems`) always **leads with "Add Agent Command…"**, which presents
-    `CommandEditorSheet(command: nil, newCommandKind: .agent)` — the `newCommandKind` parameter
-    exists for this one call — and only then, behind a `Divider()`, the agent commands. A project
+    Its menu (`startNowItems`) lists the agent commands first and always **ends with
+    "Add Agent Command…"**, which presents `CommandEditorSheet(command: nil, newCommandKind: .agent)`
+    — the `newCommandKind` parameter exists for this one call. That item is unconditional: a project
     with none saved yet would otherwise open an empty menu, which AppKit draws as nothing happening
-    at all; the divider is gated on the list being non-empty so it never trails the last item.
+    at all. The `Divider()` above it is gated on the list being non-empty so it never leads the menu.
     That is also why the toolbar control carries **no `.disabled`**: it would take the chevron with
     it and put the editor out of reach, so the unstartable case is guarded inside the primary
     action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens

@@ -531,6 +531,33 @@ operator's hands-on check below.
 
 `./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
 
+### C3: Add Agent Command… moves to the bottom of Start Now's menu
+
+**Reported:** after running the app, the editor door should sit at the **bottom** of the Start Now
+menu rather than the top, so the agent commands are what the menu opens onto.
+
+**Changes.** `startNowItems` now emits the agent commands first, then a `Divider()` — still gated on
+the list being non-empty, so it never leads the menu — and finally "Add Agent Command…". The item
+stays unconditional for the reason C2 gave: an empty `NSMenu` opens nothing at all, so a project
+with no agent commands saved still needs the door. The row context submenu keeps "Start Task…"
+first and calls the same helper, so the two surfaces stay identical below it.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `startNowItems` reordered; its doc comment follows. |
+| `CLAUDE.md` | The Start Now paragraph states the new order. |
+| `docs/superpowers/specs/2026-09-19-prompt-for-tasks-and-worktrees.md` | Decisions 20 and 21. |
+
+**Evidence.** No test. This is menu item order inside a SwiftUI `Menu`'s `@ViewBuilder`, which
+XCTest cannot observe — the app has no view-hierarchy test host, the same limit `CLAUDE.md` records
+for `Ghostty.SurfaceView`. Verification is the operator's hands-on check.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`
