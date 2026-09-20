@@ -263,3 +263,53 @@ Acceptance greps:
   and `Sources/App/TerminalManager+Panels.swift:12,20` (the hook command). No prompt-delivery path
   names it.
 - `git diff --stat` → three files, none of them `ContentView.swift` or `TodosPanelView.swift`.
+
+### T2: A prompt file that cannot be written refuses the launch
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentLaunch.swift` | `buildAgentPromptCommand` returns `(command: String, promptFile: String)?`; the failed-write branch is now a `guard` that logs at `.error` (same message and path) and returns `nil` before the recipe is built; doc comment carries the `nil` contract and the refused launch |
+| `Sources/App/TerminalManager+Agent.swift` | gains `import AppKit`; the `.argv` case is a `guard let launch = buildAgentPromptCommand(...)` that, on `nil`, ends the claim when `ownsLaunch`, runs an `NSAlert` and returns without `appendTab` |
+| `Tests/TerminalManagerTests.swift` | the seven existing `buildAgentPromptCommand` cases unwrap with `try XCTUnwrap` and gained `throws`; one new case pins the `nil` branch |
+
+**Evidence**
+
+The `nil` case was written first and watched fail against the unfixed code. `./scripts/ci.sh` on that
+tree:
+
+```
+✖ test_buildAgentPromptCommand_returnsNil_whenThePromptFileCannotBeWritten, XCTAssertNil failed:
+  "(command: "/bin/sh -c 'export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\";
+  exit $rc' -- 'claude' '/var/folders/.../clearway-missing-dir-80DBBF01-.../prompt-A1F1A5D7-....md'
+  '/opt/homebrew/bin:/usr/bin:/bin'", promptFile: "...")"
+  - an unwritable prompt file must refuse the launch, not build a command
+Executed 561 tests, with 1 failure (0 unexpected)
+```
+
+That failure is the bug itself: with the write failed, the builder still handed back a command whose
+`$(cat)` over the missing file seeds the agent with an empty prompt.
+
+`try XCTUnwrap` on the seven existing cases is a no-op against the pre-change signature —
+`XCTUnwrap` takes `T?` and a non-optional `T` promotes — so those seven neither failed nor needed to.
+Their assertions are unchanged.
+
+The refused launch itself has no test that can watch it fail: `startAgentTab` needs a
+`ghostty_app_t` and `appendTab` builds a `Ghostty.SurfaceView`, neither reachable from XCTest. The
+decision rule is what got lifted out — `buildAgentPromptCommand`'s `nil` — and it is pinned; the
+`guard` at the call site is one branch over it.
+
+**Deviations**
+
+None. The alert wording is the planned shape: `messageText` "Couldn't start \<command\>",
+`informativeText` naming `NSTemporaryDirectory()`, inlined at the single call site with
+`.warning` style and an OK button, matching `OpenInMenu.presentFailure`.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, "==> CI passed.", 561 tests, 0 failures. `swiftlint lint --quiet` — exit
+0; the only two warnings are pre-existing (`WorktreeConfigStore.swift:406`, `WorktreeDraft.swift:17`)
+and neither is in a file this task touched.
+
+`git status --porcelain` before the commit: the three files above, modified, nothing untracked.

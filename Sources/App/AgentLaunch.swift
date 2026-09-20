@@ -34,13 +34,15 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 /// long". Typical agent prompts are well under that.
 ///
 /// - Returns: The shell command string and the prompt file path (callers that tear down
-///   surfaces early can delete the file if the agent never ran).
+///   surfaces early can delete the file if the agent never ran), or `nil` when the prompt file
+///   could not be written. `$(cat)` over a missing file would seed the agent with an empty
+///   prompt, so the caller refuses the launch rather than starting the agent without its prompt.
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,
     path: String,
     filePrefix: String = "clearway-agent-prompt"
-) -> (command: String, promptFile: String) {
+) -> (command: String, promptFile: String)? {
     let tempDir = NSTemporaryDirectory()
     let promptFile = (tempDir as NSString).appendingPathComponent("\(filePrefix)-\(UUID().uuidString).md")
     let data = Data(prompt.utf8)
@@ -49,10 +51,11 @@ func buildAgentPromptCommand(
         contents: data,
         attributes: [.posixPermissions: 0o600]
     )
-    if !wrote {
-        Ghostty.logger.warning(
+    guard wrote else {
+        Ghostty.logger.error(
             "buildAgentPromptCommand: failed to write prompt file \(promptFile, privacy: .public)"
         )
+        return nil
     }
     let recipe = "export PATH=\"$3\"; set -f; $1 \"$(cat \"$2\")\"; rc=$?; rm -f \"$2\"; exit $rc"
     let command = "/bin/sh -c " + shellEscape(recipe) + " -- "

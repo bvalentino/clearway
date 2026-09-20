@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GhosttyKit
 
@@ -98,12 +99,26 @@ extension TerminalManager {
             case .bare, .staged:
                 launchCommand = buildBareCommand(agentCommand: command, path: path)
             case .argv:
-                launchCommand = buildAgentPromptCommand(
+                // No prompt file, no launch: the recipe's `$(cat)` would hand the agent an empty
+                // prompt, and falling back to a bare tab would silently downgrade "run this prompt"
+                // to "type it in for me". The claim has to end here too — nothing cancels this Task.
+                guard let launch = buildAgentPromptCommand(
                     agentCommand: command,
                     prompt: prompt,
                     path: path,
                     filePrefix: "clearway-agent-tab"
-                ).command
+                ) else {
+                    if ownsLaunch { endAgentLaunch(for: worktreeId) }
+                    let alert = NSAlert()
+                    alert.messageText = "Couldn't start \(command)"
+                    alert.informativeText =
+                        "Clearway couldn't write the prompt file in \(NSTemporaryDirectory())."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                    return
+                }
+                launchCommand = launch.command
             }
 
             let surface = appendTab(for: worktree, app: app, command: launchCommand)
