@@ -513,6 +513,36 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertNil(taskManager.freshTask(id: seed.id)?.worktree)
     }
 
+    /// Only an agent command means anything to a plan run, so the kind alone refuses it — the task
+    /// here resolves, isolating the kind as the reason.
+    func testPlanCommandRefusesATerminalKindCommand() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Shape me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        let resolved = coordinator.planCommand(
+            for: seed, using: terminalCommand(text: "echo {{ task_path }}"))
+
+        XCTAssertNil(resolved)
+    }
+
+    /// The other direction of the same rule: an agent command still resolves, so a future change
+    /// that refuses everything cannot pass.
+    func testPlanCommandAcceptsAnAgentKindCommand() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Shape me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        let resolved = coordinator.planCommand(
+            for: seed, using: agentCommand(text: "plan {{ task_path }}"))
+
+        XCTAssertNotNil(resolved)
+    }
+
     /// A plan run starts where the backlog task's file lives: the primary checkout, not whichever
     /// worktree happens to be selected.
     func testPlanWorkingDirectoryIsThePrimaryWorktree() {
@@ -545,6 +575,10 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
     private func agentCommand(text: String) -> SavedCommand {
         SavedCommand(id: UUID(), name: "Plan", kind: .agent, text: text, agent: "claude", autoRun: true)
+    }
+
+    private func terminalCommand(text: String) -> SavedCommand {
+        SavedCommand(id: UUID(), name: "Plan", kind: .terminal, text: text, agent: "claude", autoRun: true)
     }
 
     // MARK: - Start Now freshness
