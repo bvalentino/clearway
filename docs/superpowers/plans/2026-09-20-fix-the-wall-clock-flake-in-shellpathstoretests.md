@@ -373,3 +373,73 @@ None.
 (110.178) seconds`, `Test Succeeded`, `==> CI passed.` `swiftlint lint --quiet
 Tests/ShellPathStoreTests.swift` exits 0 with no output. `git status --porcelain` showed only
 `Tests/ShellPathStoreTests.swift` before this log entry was appended.
+
+#### T3: Prove both cases still fail when the rule is reverted
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/ShellPathStore.swift` | Line 57 changed to `return task` for one suite run, then restored from a scratchpad copy taken before the edit. `shasum` matches the pre-edit copy, `sed -n '57p'` reads `return hasCompletedAResolution ? nil : task`, and `git diff --stat Sources/` is empty. Not part of this task's diff. |
+| `docs/superpowers/plans/2026-09-20-fix-the-wall-clock-flake-in-shellpathstoretests.md` | This entry. |
+
+**Evidence**
+
+With `awaitPath`'s line 57 reduced to `return task`, so every caller awaits the resolution it
+started, `./scripts/ci.sh` exited 65 with `Executed 676 tests, with 3 failures (0 unexpected) in
+120.686 (120.916) seconds`. All three failures are the two rewritten cases, verbatim from the
+xcresult (`Test-ClearwayTests-2026.09.20_19-02-41--0300.xcresult`, read with
+`xcrun xcresulttool get test-results tests`):
+
+```
+ShellPathStoreTests.testADegradedValueIsReturnedWithoutWaiting()   Failed   5.113757967948914s
+  Tests/ShellPathStoreTests.swift:132
+    XCTAssertEqual failed: ("/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin") is not equal to
+    ("/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+  Tests/ShellPathStoreTests.swift:133
+    XCTAssertEqual failed: ("2") is not equal to ("1") - A degraded value must never be awaited
+
+ShellPathStoreTests.testAFailedResolutionIsNotAwaitedASecondTime() Failed   5.004783034324646s
+  Tests/ShellPathStoreTests.swift:102
+    XCTAssertEqual failed: ("2") is not equal to ("1") - a retry must run behind the caller
+```
+
+The console form, from the run's own output:
+
+```
+Test Suite 'ShellPathStoreTests' started at 2026-09-20 19:03:16.733.
+    ✖ testADegradedValueIsReturnedWithoutWaiting, XCTAssertEqual failed: ("/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin") is not equal to ("/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+    ✖ testADegradedValueIsReturnedWithoutWaiting, XCTAssertEqual failed: ("2") is not equal to ("1") - A degraded value must never be awaited
+    ✖ testAFailedResolutionIsNotAwaitedASecondTime, XCTAssertEqual failed: ("2") is not equal to ("1") - a retry must run behind the caller
+Executed 13 tests, with 3 failures (0 unexpected) in 10.552 (10.558) seconds
+```
+
+Every failure names `finishedCount` (`("2") is not equal to ("1")` against the two messages the
+cases carry) and none names an elapsed time — spec criterion 4. The failure shape is what the plan
+predicted for each case: the degraded case fails **both** its assertions, because the wrongly
+awaited call 2 publishes `/opt/homebrew/bin` before the second `awaitPath()` returns; the failed
+case fails only `finishedCount`, since both outcomes are `.failed` and the value is the baseline
+either way, which is why that counter is the whole signal there.
+
+Each case took ~5 s to fail, the held call's bounded wait releasing the wrongly-awaiting caller.
+That is the cost paid only on the broken path — and it is the bound doing its job: the suite failed
+an assertion rather than hanging.
+
+**Other cases under the revert**
+
+None. The other 11 cases in `ShellPathStoreTests` passed, and so did the other 663 tests in the
+suite. The plan allowed for collateral failures on `callCount` and value assertions; there were
+none, so there is nothing to report or act on.
+
+**Deviations**
+
+None. The restore was done by copying back a `cp` of the file taken before the edit, not by
+`git checkout` — the project's git hygiene rule forbids `git checkout <path>` on the working tree.
+
+**Gate**
+
+`./scripts/ci.sh` on the restored tree — exit 0, green. `Executed 676 tests, with 0 failures
+(0 unexpected) in 109.552 (109.770) seconds`, `Test Succeeded`, `==> CI passed.`
+`git diff --stat Sources/` empty.
+`git status --porcelain` shows only this plan file, `Tests/ShellPathStoreTests.swift` being already
+committed by T2.
