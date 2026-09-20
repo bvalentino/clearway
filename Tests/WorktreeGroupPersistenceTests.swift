@@ -31,11 +31,13 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
 
         await restartManager()
-        manager.reconcile([alpha, bravo], openIds: [])
+        await manager.reconcile([alpha, bravo], openIds: []).value
 
-        try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
-            self.renderedOrder([alpha, bravo])
-        }
+        XCTAssertEqual(
+            renderedOrder([alpha, bravo]),
+            [bravo.id, alpha.id],
+            "rendered order after a relaunch"
+        )
         XCTAssertEqual(manager.groupName(for: alpha.id), "Group")
         XCTAssertEqual(manager.groupName(for: bravo.id), "Group")
     }
@@ -55,15 +57,35 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
         await restartManager()
         // The one call `ContentView` makes when the worktree list changes.
-        manager.reconcile([alpha, bravo], openIds: [])
+        await manager.reconcile([alpha, bravo], openIds: []).value
+        await settle()
 
-        try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
-            self.renderedOrder([alpha, bravo])
-        }
+        XCTAssertEqual(
+            renderedOrder([alpha, bravo]),
+            [bravo.id, alpha.id],
+            "rendered order after a relaunch"
+        )
         XCTAssertEqual(
             try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: bravoPath),
             "0",
             "the seed must not renumber a worktree git already holds a position for"
+        )
+    }
+
+    /// `tearDown` settles a manager whose last `reconcile` no body kept, and the seed write is
+    /// enqueued inside that `Task`. A `settle()` blind to it returns before the first `git config`
+    /// has run, so the read below is the whole case — a poll would wait the write out and hide it.
+    func testSettleCoversAReconcileNoBodyAwaited() async throws {
+        let path = try repo.addWorktree(branch: "alpha")
+        let alpha = makeWorktree(branch: "alpha", path: path)
+
+        manager.reconcile([alpha], openIds: [])
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: path),
+            "0",
+            "the reconcile's seed write must have landed by the time settle() returns"
         )
     }
 
@@ -245,11 +267,9 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try repo.setValue("Ghost", ofKey: WorktreeConfigStore.groupKey, atWorktree: path)
         try repo.setValue("Ghosted", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
 
-        manager.reconcile([ghosted], openIds: [])
+        await manager.reconcile([ghosted], openIds: []).value
 
-        try await waitFor("Ghosted" as String?, describing: "published name for \(ghosted.id)") {
-            self.manager.name(for: ghosted)
-        }
+        XCTAssertEqual(manager.name(for: ghosted), "Ghosted", "published name for \(ghosted.id)")
         XCTAssertNil(manager.groupName(for: ghosted.id), "the membership names no listed group")
         XCTAssertEqual(manager.groups.map(\.name), ["Real"], "no phantom section")
         XCTAssertEqual(renderedOrder([ghosted]), [ghosted.id])
@@ -285,11 +305,10 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: stayingPath)
 
         try repo.removeWorktree(at: goingPath)
-        manager.reconcile([main, staying], openIds: [])
+        await manager.reconcile([main, staying], openIds: []).value
+        await settle()
 
-        try await waitFor([staying.id: "Group"], describing: "published memberships") {
-            self.manager.groupNames
-        }
+        XCTAssertEqual(manager.groupNames, [staying.id: "Group"], "published memberships")
         XCTAssertEqual(manager.positions, [staying.id: 1])
         XCTAssertEqual(renderedOrder([main, staying]), [main.id, staying.id])
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: repo.root))
@@ -381,6 +400,8 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
+        // Reads git back, so the manager's queued writes must have landed first.
+        await settle()
         try await waitFor(
             expected,
             describing: WorktreeConfigStore.groupOrderKey,
@@ -397,6 +418,8 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
+        // Reads git back, so the manager's queued writes must have landed first.
+        await settle()
         try await waitFor(expected, describing: key, file: file, line: line) {
             try self.repo.value(ofLocalKey: key)
         }

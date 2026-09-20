@@ -343,3 +343,86 @@ be measured the same way to compare.
 | `WorktreeGroupManagerStatusTests` | 14 | 8.900s |
 | `WorktreeGroupManagerNameTests` | 11 | 8.830s |
 | **Combined** | **75** | **49.360s** |
+
+### T2: Convert the four sites in WorktreeGroupPersistenceTests
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupPersistenceTests.swift` | Four sites now `await manager.reconcile(…).value` and assert once. `testTheStoredOrderSurvivesContentViewsReloadSequence` and `testRemovingAWorktreeLeavesNothingBehind` follow the awaited reconcile with `await settle()`. Each poll's `describing:` string became the plain assert's message. `waitForRegistry` and `waitForLocalValue` each open with `await settle()` and the same one-line comment `waitForStoredValue` carries. One new case, `testSettleCoversAReconcileNoBodyAwaited`, at the end of the Relaunch section. |
+| `Sources/` | Unchanged. `git diff --stat Sources/` is empty. |
+
+`XCTAssert` count 35 → 40: the four converted polls each moved their assertion out of `waitFor`'s
+body into the file, plus the new case's one. Nothing weakened, dropped or reordered. The only bare
+`manager.reconcile` left in the file is the new case's (`:82`); the three remaining `waitFor` calls
+are the write-alert wait and the two helpers, none paired with a reconcile.
+
+**Evidence** — five watched failures, each run alone with
+`xcodebuild … -only-testing:ClearwayTests/WorktreeGroupPersistenceTests/<case> test`, the revert made
+with `Edit` and restored with `Edit`, `git diff --stat Sources/` empty after each restore.
+
+1. New settle case, `reconcileTask = task` removed from `reconcile`:
+
+```
+WorktreeGroupPersistenceTests.swift:85: error: testSettleCoversAReconcileNoBodyAwaited :
+XCTAssertEqual failed: ("nil") is not equal to ("Optional("0")") -
+the reconcile's seed write must have landed by the time settle() returns
+```
+
+2. `testMembershipAndPositionSurviveARelaunch`, `mutatePlacement` block in `reloadConfig` removed:
+
+```
+WorktreeGroupPersistenceTests.swift:36: error: XCTAssertEqual failed:
+("[…/alpha", "…/bravo"]") is not equal to ("[…/bravo", "…/alpha"]") - rendered order after a relaunch
+```
+
+3. `testTheStoredOrderSurvivesContentViewsReloadSequence`, the two statements inside `reconcile`'s
+   `Task` swapped so the seed runs first:
+
+```
+WorktreeGroupPersistenceTests.swift:63: error: XCTAssertEqual failed:
+("[…/alpha", "…/bravo"]") is not equal to ("[…/bravo", "…/alpha"]") - rendered order after a relaunch
+WorktreeGroupPersistenceTests.swift:68: error: XCTAssertEqual failed:
+("Optional("1")") is not equal to ("Optional("0")") -
+the seed must not renumber a worktree git already holds a position for
+```
+
+4. `testAMembershipNamingAnUnlistedGroupRendersUngrouped`, the `listed.contains` filter removed:
+
+```
+WorktreeGroupPersistenceTests.swift:273: error: XCTAssertNil failed: "Ghost" -
+the membership names no listed group
+WorktreeGroupPersistenceTests.swift:275: error: XCTAssertEqual failed: ("[]") is not equal to ("[…/ghosted"]")
+```
+
+5. `testRemovingAWorktreeLeavesNothingBehind`, `mutatePlacement` block removed:
+
+```
+WorktreeGroupPersistenceTests.swift:311: error: XCTAssertEqual failed:
+("[…/staying": "Group", "…/going": "Group"]") is not equal to ("[…/staying": "Group"]") - published memberships
+WorktreeGroupPersistenceTests.swift:312: error: XCTAssertEqual failed:
+("[…/going": 0, "…/staying": 1]") is not equal to ("[…/staying": 1]")
+```
+
+**Deviations**
+
+One addition, no departure. Proof 4's named revert turns the case red at `:273`/`:275` but leaves
+the **converted** assertion at `:272` green — the `listed.contains` filter is not the rule that
+assertion pins. A sixth run was made to prove the converted line discriminates, reverting
+`if reloaded.names != names { names = reloaded.names }` (`WorktreeGroupManager.swift:406`, T4's
+revert, restored immediately):
+
+```
+WorktreeGroupPersistenceTests.swift:272: error: XCTAssertEqual failed:
+("nil") is not equal to ("Optional("Ghosted")") - published name for …/ghosted
+```
+
+The new case is placed directly after `testTheStoredOrderSurvivesContentViewsReloadSequence` rather
+than after the Relaunch section's last case, which is where the plan's two phrasings differ; this is
+the more specific of the two and keeps it beside the other reconcile-and-position cases.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 109.953
+seconds`, `Test Succeeded`, `==> CI passed.` (676 before this task; the new case is the 677th.)
