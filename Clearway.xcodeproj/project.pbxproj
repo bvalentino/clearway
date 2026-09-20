@@ -57,6 +57,7 @@
 		54E9896F4259A22B58055175 /* GroupByMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4270AB86F0A7397441CA6916 /* GroupByMenu.swift */; };
 		580D2E6B477C1421F4BCEF8B /* PreviewCSS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867076303E561F4171EF4C92 /* PreviewCSS.swift */; };
 		583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */; };
+		5D5471650D23DE262F5330B1 /* GlassButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD97378BE652541A9A9B29A /* GlassButtonStyles.swift */; };
 		5F11BA6320AC63FC957E90F3 /* RunCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE00EF69FF4F7A8D0B528163 /* RunCommandMenu.swift */; };
 		60A44D6F22C85CFC83500AA6 /* CreateWorktreeOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD127323A40CFBB60CFB849 /* CreateWorktreeOutcomeTests.swift */; };
 		620139128784E65D9ECEEA90 /* TerminalManager+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF720870D88FBC9161364AEC /* TerminalManager+Commands.swift */; };
@@ -78,6 +79,7 @@
 		75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */; };
 		75D939A83F53A21140A85DA7 /* OpenInMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6E7BC2C6D71F7BAE3F31ED /* OpenInMenu.swift */; };
 		7739376590F4EE192D1C46C9 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB42EDB75EED976AD230B319 /* SettingsManager.swift */; };
+		77D61BFA62E223BC072BD67B /* AsideAddButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0F53F234DB9E85715BCB33 /* AsideAddButton.swift */; };
 		78C1B08688DBF1C02B5FFD67 /* TodoManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDD7D8AFCCD8757C5507EC2 /* TodoManager.swift */; };
 		78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */; };
 		7948BECFE863C3076C46407D /* WorkTaskManagerWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09830C5C5C57BECC73694B93 /* WorkTaskManagerWatcherTests.swift */; };
@@ -179,6 +181,7 @@
 		179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
 		17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewHelpers.swift; sourceTree = "<group>"; };
 		1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinatorTests.swift; sourceTree = "<group>"; };
+		1CD97378BE652541A9A9B29A /* GlassButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButtonStyles.swift; sourceTree = "<group>"; };
 		1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		1EE5A902DC0EB7560E2470B5 /* PortAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortAttribution.swift; sourceTree = "<group>"; };
 		267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupManagerTests.swift; sourceTree = "<group>"; };
@@ -226,6 +229,7 @@
 		755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSAppearance+IsDark.swift"; sourceTree = "<group>"; };
 		7862270D9FA477C155E4EB09 /* Ghostty.Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.Config.swift; sourceTree = "<group>"; };
 		7AD127323A40CFBB60CFB849 /* CreateWorktreeOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateWorktreeOutcomeTests.swift; sourceTree = "<group>"; };
+		7C0F53F234DB9E85715BCB33 /* AsideAddButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsideAddButton.swift; sourceTree = "<group>"; };
 		7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKeyboardShortcutsTests.swift; sourceTree = "<group>"; };
 		7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomPanelActionTests.swift; sourceTree = "<group>"; };
 		817FE51E6717FE77D1D2492E /* SavedCommandManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedCommandManager.swift; sourceTree = "<group>"; };
@@ -396,6 +400,7 @@
 				E7A3868EDD642635D44655B0 /* AgentLaunch.swift */,
 				DD351879B44EC5E12A537F2E /* AppKeyboardShortcuts.swift */,
 				946872F556F95BBB45E91EBD /* AppNotifications.swift */,
+				7C0F53F234DB9E85715BCB33 /* AsideAddButton.swift */,
 				C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */,
 				9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */,
 				6ABF783A68A2ECAFF5F8498C /* ClaudeActivityMonitor.swift */,
@@ -408,6 +413,7 @@
 				17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */,
 				E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */,
 				AF04318569BD95EFE4C470CA /* GitResolver.swift */,
+				1CD97378BE652541A9A9B29A /* GlassButtonStyles.swift */,
 				4270AB86F0A7397441CA6916 /* GroupByMenu.swift */,
 				082941B45A325DC6BC9C8DF6 /* HookTerminalView.swift */,
 				FA1D6938F91E5CBDA6AFF4C9 /* LabeledField.swift */,
@@ -777,6 +783,7 @@
 				7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */,
 				DAC10ABFC18A910781F96000 /* AppKeyboardShortcuts.swift in Sources */,
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
+				77D61BFA62E223BC072BD67B /* AsideAddButton.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,
 				463BA801BBC392709E59B997 /* CaffeineManager.swift in Sources */,
 				583F171B12ED0A94B257F841 /* ClaudeActivityMonitor.swift in Sources */,
@@ -793,6 +800,7 @@
 				980A81CFA86592849DCBC170 /* Ghostty.SurfaceView.swift in Sources */,
 				269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */,
 				1D79BDC62A43580E0D889E6C /* GitResolver.swift in Sources */,
+				5D5471650D23DE262F5330B1 /* GlassButtonStyles.swift in Sources */,
 				54E9896F4259A22B58055175 /* GroupByMenu.swift in Sources */,
 				9A487EAD60BF5CCC0B857480 /* HookTerminalView.swift in Sources */,
 				6DDC09D07687D99F385A3584 /* LabeledField.swift in Sources */,
