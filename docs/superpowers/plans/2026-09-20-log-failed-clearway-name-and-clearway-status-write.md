@@ -198,3 +198,32 @@ plan's, reflowed to the file's 110-column comment width.
 
 `./scripts/ci.sh` — green. `Executed 677 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 SwiftLint runs inside it and reported nothing.
+
+## Simplify pass
+
+Nothing simplified: the change is two call-site substitutions onto an existing helper, which is
+itself the reuse a simplify pass would have asked for, and `setStatus`'s multi-line call matches
+the `positionKey` sites of the same width. `@discardableResult` on `WorktreeConfigStore.set` is now
+unused by `Sources/` but still needed by `Tests/WorktreeConfigStoreTests.swift`, so it stays.
+
+Coverage was re-checked rather than extended. The success path of both keys is pinned by the
+round-trips in `WorktreeGroupManagerNameTests` and `WorktreeGroupManagerStatusTests`, which read
+back through `git config --worktree --get`, so a wrong key or a lost write on the new route fails
+them; `testTwoNamesInOneTurnLandInTheOrderTheyWereMade` pins the chain order through the helper and
+`testSetNameEmptyOnAWorktreeWithNoStoredNameChangesNothing` pins the silent extension-off clear.
+The failure path of both keys is the one new case. `Self.write` adds only the log to the `set` those
+cover, so it carries no untested behaviour this route change relies on.
+
+Both refusals were re-observed on the built binary, one line each, confirming the new case is not
+vacuous:
+
+```
+[ghostty] worktree config: set clearway.name at <tmp>/.worktrees/member failed: fatal: cannot change to …
+[ghostty] worktree groups: clearway.name for <tmp>/.worktrees/member was not saved
+[ghostty] worktree config: set clearway.status at <tmp>/.worktrees/member failed: fatal: cannot change to …
+[ghostty] worktree groups: clearway.status for <tmp>/.worktrees/member was not saved
+```
+
+`./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `git status --porcelain` clean; only ignored `.clearway/`, `.work/` and
+`Sources/App/BuildInfo.generated.swift`.
