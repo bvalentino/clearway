@@ -218,6 +218,12 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
     /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
     /// `waitFor` returns the moment the expected value is already there.
+    ///
+    /// The chain is sampled once, so a `reconcile` `Task` the body discarded is covered only
+    /// because `seedPositions` enqueues its write in the same continuation as the reload's publish,
+    /// with no suspension between them: a body that observed the publish has already let that
+    /// enqueue run. Put an `await` in `reconcile` between the two and this stops holding — await
+    /// the `Task` it returns instead, the way `testReconcileRereadsBothRepoLevelKeys` does.
     func settle() async {
         await manager?.loadTask?.value
         await manager?.writeChain?.value
