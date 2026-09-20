@@ -13,7 +13,7 @@ struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @EnvironmentObject private var agentActivity: AgentActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
     @EnvironmentObject private var settings: SettingsManager
@@ -522,7 +522,8 @@ struct SidebarView: View {
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
-        let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
+        let phase = isOpen ? agentActivity.worktreePhases[wt.id] ?? .idle : .idle
+        let subagents = isOpen ? agentActivity.worktreeSubagents[wt.id] ?? [] : []
         let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
         let (primaryText, subtitle) = WorktreeRow.rowTexts(
             for: wt,
@@ -534,7 +535,7 @@ struct SidebarView: View {
             primaryText: primaryText,
             subtitle: subtitle,
             hasNotification: hasNotification,
-            isWorking: isWorking,
+            phase: phase,
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
@@ -544,6 +545,12 @@ struct SidebarView: View {
             .contextMenu { worktreeContextMenu(wt) }
             .draggableIf(!wt.isMain && groupManager.grouping != .none, id: wt.id) { WorktreeDragChip() }
             .moveDisabled(moveDisabled)
+        // No `.tag`, so these carry no selection, the way the search, loading and error rows do.
+        ForEach(subagents) { subagent in
+            SubagentRow(subagent: subagent)
+                .padding(.leading, SidebarRowMetrics.statusRowIndent + leadingIndent)
+                .moveDisabled(true)
+        }
     }
 
     // Defer @Published mutation past the NSTableView drop delegate to avoid a reentrant-list warning.

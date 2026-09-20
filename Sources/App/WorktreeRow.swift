@@ -7,7 +7,7 @@ struct WorktreeRow: View {
     var primaryText: String? = nil
     var subtitle: String? = nil
     var hasNotification: Bool = false
-    var isWorking: Bool = false
+    var phase: AgentPhase = .idle
     var shortcutIndex: Int? = nil
     var status: WorktreeStatus? = nil
     @State private var glowExpanded = false
@@ -48,7 +48,14 @@ struct WorktreeRow: View {
                 }
                 Spacer()
                 Group {
-                    if isWorking {
+                    switch phase {
+                    case .waiting:
+                        Circle()
+                            .fill(.purple)
+                            .frame(width: 7, height: 7)
+                            .transition(.opacity)
+                            .help("Waiting for permission")
+                    case .working:
                         Circle()
                             .fill(.orange)
                             .frame(width: 7, height: 7)
@@ -58,15 +65,17 @@ struct WorktreeRow: View {
                             .onAppear { glowExpanded = true }
                             .onDisappear { glowExpanded = false }
                             .transition(.opacity)
-                            .help("Claude is working")
-                    } else if hasNotification {
-                        Circle()
-                            .fill(.blue)
-                            .frame(width: 7, height: 7)
-                            .help("Terminal notification")
+                            .help("Agent is working")
+                    case .idle:
+                        if hasNotification {
+                            Circle()
+                                .fill(.blue)
+                                .frame(width: 7, height: 7)
+                                .help("Terminal notification")
+                        }
                     }
                 }
-                .animation(.easeOut(duration: 0.6), value: isWorking)
+                .animation(.easeOut(duration: 0.6), value: phase)
             }
         } icon: {
             SidebarIcon(
@@ -74,6 +83,28 @@ struct WorktreeRow: View {
                 shortcut: shortcutIndex.map { "⌘\($0)" }
             )
         }
+    }
+}
+
+// MARK: - Subagent Row
+
+/// One live subagent under its worktree. Text only, no icon: the sidebar's icon column belongs to
+/// the rows that are selection destinations, and this one is not.
+struct SubagentRow: View {
+    let subagent: AgentSubagent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(subagent.type ?? "Subagent")
+                .lineLimit(1)
+            if let toolName = subagent.toolName {
+                Text(toolName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

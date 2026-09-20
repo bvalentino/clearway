@@ -1307,3 +1307,53 @@ reached for it would fault, the same way the `ClaudeActivityMonitor` note above 
 (0 unexpected) in 107.656 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
 showed three modified files and nothing else: no new Swift file, so `xcodegen` left
 `project.pbxproj` untouched, and no `default.profraw` — the test host's launch does not drop one.
+
+---
+
+### T9: The sidebar dot and the subagent rows
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `isWorking: Bool` → `phase: AgentPhase`. The dot `Group` is a `switch` over it: `.waiting` → a static 7 pt purple circle, "Waiting for permission"; `.working` → the pulsing orange circle, its tooltip now "Agent is working"; `.idle` → the blue notification circle when there is one. `.animation(…, value: phase)`. New `SubagentRow` in the same file: the agent type, with the in-flight tool as a `.subheadline`/`.secondary` caption. |
+| `Sources/App/SidebarView.swift` | `@EnvironmentObject agentActivity: AgentActivityMonitor` replaces `claudeActivityMonitor`. `worktreeRowView` reads `worktreePhases[wt.id]` and `worktreeSubagents[wt.id]` — `!wt.isMain` gone (D23), `isOpen` kept — and emits one `SubagentRow` per roster entry after the worktree row, each with no `.tag`, `.moveDisabled(true)` and `.padding(.leading, statusRowIndent + leadingIndent)`. |
+| `Sources/App/ProjectWindow.swift` | The `ClaudeActivityMonitor` `@StateObject` and its `.environmentObject` deleted, as T8's log requires: the reader and the injection go in one change or the app faults. |
+
+**Evidence.** No watched failure, and the task is the one place in this feature where that is the
+honest answer rather than a gap. Every rule T9 could get wrong that a test can reach —
+`waiting > working > idle`, the roster's contents and its stable order — was lifted into
+`AgentActivityStore` in T2 and is pinned there. What is left is a SwiftUI body: `WorktreeRow` needs
+no `ghostty_app_t` but has no output an `XCTAssert` can read, and `SidebarView` needs six
+`EnvironmentObject`s and a `List`. The rendering is the operator's by-hand check, exactly as the
+task's **Verified by** says.
+
+Both halves of the type change are load-bearing and neither can fail quietly: `isWorking: Bool` →
+`phase: AgentPhase` is a compile error at the one call site until it is updated, and deleting
+`ProjectWindow`'s injection while `SidebarView` still read the old monitor would be the
+`@EnvironmentObject` `fatalError` T8 recorded — which is why the two lines moved in this commit and
+not the last one.
+
+**Deviations from the plan.**
+
+- **The subagent rows are gated on `isOpen` too**, not only the dot. The task names the gate for the
+  dot alone, but a closed worktree has had its surfaces retired by `cleanupState(for:)`, so a
+  non-empty roster there is stale state rather than something to draw. One `isOpen` decides both,
+  which is also what keeps the row and its children from disagreeing about whether the worktree is
+  live.
+- **A subagent with no `agent_type` renders "Subagent".** `AgentSubagent.type` is optional because a
+  `PreToolUse` carrying an `agent_id` whose `SubagentStart` was missed creates the entry with no
+  type (T2's `startTool` upsert). Blanking the primary text would draw an empty row with a tool name
+  under it.
+- **The purple dot carries `.transition(.opacity)` and no pulse**, per D22 — shape as well as hue
+  separates it from working.
+
+The reorder risk the task flags did not need its fallback: `./scripts/ci.sh` is green and the
+`.onMove` closures still index `rows`, the worktree collection, which no extra view changes. Whether
+drag targeting behaves with a variable number of views per element is the operator's check below,
+and the recorded fallback stands if it does not.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 740 tests, with 0 failures
+(0 unexpected) in 109.242 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
+showed three modified files and nothing else: no new Swift file, so `xcodegen` left
+`project.pbxproj` untouched, and no `default.profraw`.
