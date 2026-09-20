@@ -195,7 +195,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     argv words `claude;`, `rm`, `-rf`, `/` and nothing executes. Do not "fix" this by quoting `$1`:
     multi-word commands would then be looked up as a single filename. The prompt reaches the agent as
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
-    list too long" — typical agent prompts sit well under that.
+    list too long" — typical agent prompts sit well under that. It returns **`nil`** when the prompt
+    file cannot be written: the recipe's `$(cat)` over a missing file would seed the agent with an
+    empty prompt, so the caller refuses the launch instead. `startAgentTab`'s `.argv` case ends its
+    in-flight claim when it owns it, runs an `NSAlert` naming the command and the temp directory,
+    and opens no tab. There is deliberately no fallback to a bare tab — silently downgrading "run
+    this prompt" to "type it in for me" is the same defect as the empty start it replaces.
   - `TerminalManager.appendTab` is the one door every main tab goes through: it builds the
     `Ghostty.SurfaceView` with its command up front, appends, activates and focuses. No tab is ever
     an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
@@ -220,10 +225,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     pane and re-registers a worktree the user just tore down. The check sits *ahead* of building the
     command so the argv path allocates no orphan prompt file. Nothing cancels the `Task`, which is
     why the owner ends its claim on that path too rather than leaving the gate set.
-    The staged case (`submit` off) sends the prompt with **`sendText`, never `sendPaste`** —
-    `sendPaste` appends Enter, which runs the prompt the user's toggle said to stage.
-    `promptDelivery` and `proceedsWithLaunch` are `static` so both rules are testable without a
-    `ghostty_app_t`.
+    The staged case (`submit` off) goes through `stagedText` + **`sendText`**, the one staging rule,
+    shared with `sendToActiveMainTab(asCommand: false)` — the Prompts aside's play button. Neither
+    uses `sendPaste`, which appends Enter and would run the prompt staging exists to leave unrun.
+    The trim `stagedText` does is load-bearing, not cosmetic: outside bracketed paste libghostty
+    rewrites every `\n` to `\r` (`ghostty/src/input/paste.zig`), so an untrimmed trailing newline is
+    itself an Enter. `sendPaste` survives only for `TerminalManager+Panels.swift`'s hook command,
+    where Enter is wanted; no prompt-delivery path names it.
+    `promptDelivery`, `stagedText` and `proceedsWithLaunch` are `static` so all three rules are
+    testable without a `ghostty_app_t`.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the
     `RunCommandMenu` view: the view resolves no worktree and awaits nothing, so the shell-readiness
     wait and the shell-vs-agent branch live on the coordinator with the rest of the tab logic.

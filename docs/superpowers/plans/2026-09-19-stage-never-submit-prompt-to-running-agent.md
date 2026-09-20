@@ -313,3 +313,37 @@ None. The alert wording is the planned shape: `messageText` "Couldn't start \<co
 and neither is in a file this task touched.
 
 `git status --porcelain` before the commit: the three files above, modified, nothing untracked.
+
+### T3: Record the two rules in CLAUDE.md
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` (`AgentLaunch.swift` bullet) | the `buildAgentPromptCommand` paragraph gains the `nil`-on-failed-write contract, and that `startAgentTab`'s `.argv` case ends its claim when it owns it, runs an `NSAlert` naming the command and the temp directory, and opens no tab — with the no-fallback-to-a-bare-tab rule stated |
+| `CLAUDE.md` (`startAgentTab` bullet, staged case) | the "`sendText`, never `sendPaste`" sentence becomes the one staging rule: `stagedText` + `sendText` at both call sites, `sendToActiveMainTab(asCommand: false)` named as the second; why the trim is load-bearing (`paste.zig` rewriting `\n` to `\r`); `sendPaste` surviving only for `TerminalManager+Panels.swift`'s hook command; `stagedText` added to the list of `static` rules testable without a `ghostty_app_t` |
+
+The wording was written against the two shipped diffs (`git show 5ace77e`, `git show 2d29ebd`), not
+against the plan, so it records `buildAgentPromptCommand`'s optional return and the alert raised from
+`startAgentTab` as they actually landed.
+
+**Evidence**
+
+A documentation task has no test that can watch anything fail; the acceptance criteria are the
+diff's shape, and both hold:
+
+- `git diff CLAUDE.md` → two hunks, at the `AgentLaunch.swift` bullet and at the staged-case
+  paragraph. `15 insertions(+), 5 deletions(-)` in one file; no other section touched, and the five
+  deleted lines are the four-line staged-case sentence plus the one line the new `nil` paragraph
+  extends.
+- `git status --porcelain` before the commit → `M CLAUDE.md` alone. No `default.profraw`, nothing
+  untracked.
+
+**Deviations**
+
+None.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, "==> CI passed.", exit 0. 561 tests, 0 failures. The two SwiftLint
+warnings are the pre-existing pair (`WorktreeConfigStore.swift:406`, `WorktreeDraft.swift:17`).
