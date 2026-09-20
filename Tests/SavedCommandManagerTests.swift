@@ -32,24 +32,25 @@ final class SavedCommandManagerTests: TempRootTestCase {
 
     /// Mutations persist through a fire-and-forget `Task`, so read the file back until it settles
     /// rather than assuming a fixed delay is enough.
-    private func persistedCommands(matching expected: [SavedCommand]) async -> [SavedCommand] {
+    private func persisted<Value: Equatable>(
+        _ field: KeyPath<SavedCommandsPayload, Value>,
+        matching expected: Value
+    ) async -> Value {
         let deadline = Date().addingTimeInterval(2)
-        var loaded = await store.load().commands
+        var loaded = await store.load()[keyPath: field]
         while loaded != expected, Date() < deadline {
             try? await Task.sleep(nanoseconds: 20_000_000)
-            loaded = await store.load().commands
+            loaded = await store.load()[keyPath: field]
         }
         return loaded
     }
 
+    private func persistedCommands(matching expected: [SavedCommand]) async -> [SavedCommand] {
+        await persisted(\.commands, matching: expected)
+    }
+
     private func persistedLastRunId(matching expected: UUID?) async -> UUID? {
-        let deadline = Date().addingTimeInterval(2)
-        var loaded = await store.load().lastRunId
-        while loaded != expected, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            loaded = await store.load().lastRunId
-        }
-        return loaded
+        await persisted(\.lastRunId, matching: expected)
     }
 
     // MARK: - load

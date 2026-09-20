@@ -30,23 +30,23 @@ struct OpenInMenu<Label: View>: View {
     /// the entry point rather than on state, so neither declaration replaces the other at runtime.
     @ViewBuilder var body: some View {
         if remembersLastUsed {
-            Menu { items } label: { label } primaryAction: {
+            Menu { items(settings.menuOpenInApps) } label: { label } primaryAction: {
                 if let app = settings.primaryOpenInApp { open(app) }
             }
         } else {
-            Menu { items } label: { label }
+            Menu { items(settings.openInApps) } label: { label }
         }
     }
 
-    private var items: some View {
-        ForEach(remembersLastUsed ? settings.menuOpenInApps : settings.openInApps) { app in
+    private func items(_ apps: [OpenInApp]) -> some View {
+        ForEach(apps) { app in
             Button(app.label) { open(app) }
         }
     }
 
     private func open(_ app: OpenInApp) {
         if remembersLastUsed {
-            settings.lastUsedOpenInAppId = app.id
+            settings.recordOpenInUse(app)
         }
         Task {
             let outcome = await OpenInAppLauncher.launch(command: app.command, path: path)

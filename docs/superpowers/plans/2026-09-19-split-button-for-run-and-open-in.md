@@ -580,6 +580,19 @@ Executed 570 tests, with 10 failures (0 unexpected) in 87.129 (87.347) seconds
 Restoring the real bodies turned all ten green. The two "empty list gives an empty menu list" cases
 pass either way — they pin the empty case, not the filter.
 
+### Simplify
+
+`recordLastRun` and the new `SettingsManager.recordOpenInUse` each return early when the item is
+already the remembered one, so the label half's repeat click no longer rewrites `commands.json` or
+fires `objectWillChange` on the app-wide `SettingsManager`; `OpenInMenu` now calls that method
+instead of assigning `lastUsedOpenInAppId` from its body, takes its item list as a parameter rather
+than re-reading `remembersLastUsed` a third time, and `RunCommandMenu`'s `.disabled` gate asks
+`primaryCommand == nil` — the same thing its `primaryAction` unwraps. `persistedCommands` and
+`persistedLastRunId` became forwarders to one generic `persisted(_:matching:)` key-path helper.
+Not done: the shared generic resolution helper the reuse and altitude passes both proposed (spec
+Decision 9 rules it out), dropping `SavedCommandsPayload`'s no-defaults init (Decision 6's whole
+point), and moving `lastRunId` to `UserDefaults` (Decision 3, operator's).
+
 **Deviations.** One. The operator's note left open whether Open in should also get an "add" item.
 It does not: the sibling's door is the app's own command editor, where Open in's list is edited in
 Settings, so the equivalent would be a Settings deep link rather than the same shape. The cost is

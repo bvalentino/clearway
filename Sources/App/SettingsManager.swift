@@ -135,6 +135,15 @@ class SettingsManager: ObservableObject {
         return openInApps.filter { $0.id != primaryId }
     }
 
+    /// Records the app as the last one opened from the toolbar, the way `recordLastRun` does for
+    /// Run, so the view never writes the id itself. Re-opening the app already recorded writes
+    /// nothing — that is the label half's every click, and `objectWillChange` on an app-wide
+    /// `EnvironmentObject` would re-evaluate every view observing settings for no change.
+    func recordOpenInUse(_ app: OpenInApp) {
+        guard lastUsedOpenInAppId != app.id else { return }
+        lastUsedOpenInAppId = app.id
+    }
+
     @Published var lastUsedOpenInAppId: UUID? {
         didSet {
             if let lastUsedOpenInAppId {

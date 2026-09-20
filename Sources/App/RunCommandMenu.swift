@@ -22,7 +22,7 @@ struct RunCommandMenu: View {
         } primaryAction: {
             if let command = savedCommandManager.primaryCommand { run(command) }
         }
-        .disabled(savedCommandManager.commands.isEmpty || ghosttyApp.app == nil)
+        .disabled(savedCommandManager.primaryCommand == nil || ghosttyApp.app == nil)
         // Outside `.disabled`, so the sheet's own controls never inherit a disabled environment.
         .sheet(isPresented: $showCommandEditor) {
             CommandEditorSheet(command: nil)

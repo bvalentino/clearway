@@ -83,8 +83,11 @@ final class SavedCommandManager: ObservableObject {
     }
 
     /// Records the command as the last one used, on pick rather than on a successful launch: a
-    /// command that failed to start is still the last one the user reached for.
+    /// command that failed to start is still the last one the user reached for. Re-running the
+    /// command already recorded writes nothing — that is the label half's every click, and the
+    /// bytes would be identical.
     func recordLastRun(_ command: SavedCommand) {
+        guard lastRunId != command.id else { return }
         lastRunId = command.id
         save()
     }

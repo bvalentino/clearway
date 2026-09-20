@@ -182,6 +182,17 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertNil(SettingsManager(defaults: defaults).lastUsedOpenInAppId)
     }
 
+    func test_recordOpenInUse_remembersTheApp() {
+        let zed = OpenInApp(kind: .builtIn(.zed), command: "zed")
+        let manager = SettingsManager(defaults: defaults)
+        manager.openInApps = [OpenInApp(kind: .builtIn(.finder), command: "open"), zed]
+
+        manager.recordOpenInUse(zed)
+
+        XCTAssertEqual(manager.lastUsedOpenInAppId, zed.id)
+        XCTAssertEqual(manager.lastUsedOpenInApp, zed)
+    }
+
     // MARK: - Primary Open In app
 
     func test_primaryOpenInApp_isNilWhenTheListIsEmpty() {
