@@ -212,3 +212,64 @@ not touched.
 
 `./scripts/ci.sh` — green. `Executed 535 tests, with 0 failures (0 unexpected)`; the script runs
 under `set -euo pipefail` and reached its final `==> CI passed.` line, so exit status 0.
+
+### T2: Keep `WorktreeDraft.init()` behind a one-line suppression
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeDraft.swift` | `init() {}` at `:17` now carries a trailing `// swiftlint:disable:this unneeded_synthesized_initializer`. Internal access kept; the three stored properties keep `private(set) var`; the doc comment at `:14-16` is unchanged and still attached to the declaration. |
+| `.swiftlint.yml`, `scripts/ci.sh` | Untouched. |
+| `Tests/WorktreeDraftTests.swift` | Unmodified; passes. |
+
+**Evidence**
+
+The warning T2 owns, observed before the change via `swiftlint lint --quiet`:
+
+```
+Sources/App/WorktreeDraft.swift:17:5: warning: Unneeded Synthesized Initializer Violation: This default initializer would be synthesized automatically - you do not need to define it (unneeded_synthesized_initializer)
+```
+
+After the change `swiftlint lint --quiet --no-cache` prints nothing at all, which is the plan's
+exit condition now that T1 has landed.
+
+That the directive is load-bearing rather than decorative was checked directly, not assumed. The
+plan's third acceptance criterion rests on `superfluous_disable_command` staying silent, so that
+rule was first confirmed to be live in this configuration: appending a second, non-violated rule to
+the same directive produced
+
+```
+Sources/App/WorktreeDraft.swift:17:1: warning: Superfluous Disable Command Violation: SwiftLint rule 'todo' did not trigger a violation in the disabled region; remove the disable command (superfluous_disable_command)
+```
+
+and removing it returned the file to clean. So the absence of that warning for
+`unneeded_synthesized_initializer` is evidence the directive suppresses a real violation.
+
+No new test. Spec decision 8 stands: the change adds no reachable behaviour — it is a linter
+directive — so there is no failure to watch go red, and no regression test is claimed. The lint
+output above is the whole of the evidence.
+
+**Deviations from the plan**
+
+One, forced by the linter. T2 specified `// swiftlint:disable:next unneeded_synthesized_initializer`
+on its own line *between* the doc comment and `init()` (spec decision 7). That placement clears the
+target warning but introduces a new one, because a `//` line between a `///` block and its
+declaration detaches the two:
+
+```
+Sources/App/WorktreeDraft.swift:14:5: warning: Orphaned Doc Comment Violation: A doc comment should be attached to a declaration (orphaned_doc_comment)
+```
+
+Trading one warning for another fails the objective, so the directive moved onto the declaration
+line itself as `disable:this`. This keeps every constraint the plan and spec actually argue for:
+the suppression still covers exactly one declaration and no region, the doc comment is unchanged
+and stays attached — decision 7's point in preferring that placement — and the diff is still a
+single line. `disable:next` above the doc comment was rejected as well: it would cover the comment
+line rather than the declaration, leaving the rule to fire and adding a superfluous command.
+
+**Gate**
+
+`./scripts/ci.sh` — green, run after the final edit. `Executed 535 tests, with 0 failures
+(0 unexpected)`; the script runs under `set -euo pipefail` and reached its final `==> CI passed.`
+line, so exit status 0.
