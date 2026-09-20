@@ -242,10 +242,11 @@ final class WorktreeGroupManager: ObservableObject {
         guard statuses[wt.id] != status else { return }
         statuses[wt.id] = status
         enqueueWrite { configStore in
-            await configStore.set(
+            await Self.write(
                 status?.rawValue,
                 forKey: WorktreeConfigStore.statusKey,
-                worktreeAt: path
+                worktreeAt: path,
+                in: configStore
             )
         }
     }
@@ -271,7 +272,7 @@ final class WorktreeGroupManager: ObservableObject {
             names.removeValue(forKey: wt.id)
         }
         enqueueWrite { configStore in
-            await configStore.set(stored, forKey: WorktreeConfigStore.nameKey, worktreeAt: path)
+            await Self.write(stored, forKey: WorktreeConfigStore.nameKey, worktreeAt: path, in: configStore)
         }
     }
 
