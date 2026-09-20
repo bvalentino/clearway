@@ -57,7 +57,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
 - `DispatchSourceFileSystemObject` is `Sendable`, so a nonisolated `deinit` can cancel one directly.
   `DispatchWorkItem` is not — hold it in a `ScheduledWork` (`Sources/App/ScheduledWork.swift`) whose own
   `deinit` cancels it. `@preconcurrency import Dispatch` also silences the diagnostic, but file-wide;
-  the only one left (`ClaudeSessionFiles.swift:1`) predates the RAII holder.
+  the only one left (`FileWatchers.swift:1`) predates the RAII holder.
 - `MainActor.assumeIsolated` asserts, it does not dispatch. Use it only where arrival on main is
   already guaranteed — never on a `DispatchSource` callback path. Even where arrival *is* guaranteed
   (a `NotificationCenter` observer registered with `queue: .main`), prefer `Task { @MainActor in }`
@@ -66,8 +66,9 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   reading it. So an RAII holder whose own `deinit` does the cleanup needs no suppression at all —
   `NotificationObservation` deregisters a `NotificationCenter` token, `ScheduledWork` cancels a
   `DispatchWorkItem`, and `Ghostty`'s `AppHandle` / `SurfaceHandle` reach `ghostty_app_free` /
-  `ghostty_surface_free`. It scales to collections: `ClaudeActivityMonitor.WatcherState` is a class
-  for this reason, so releasing the dictionary cancels every watcher. Reach for this before a lock.
+  `ghostty_surface_free`, and `AgentActivityMonitor`'s `HookSocketListener` cancels a
+  `DispatchSourceRead` whose cancel handler closes the listening descriptor — so turning the agent
+  hooks off is `listener = nil` and no teardown call of its own. Reach for this before a lock.
 - **The load-bearing `[weak self]` is the outer one.** On a closure that `NotificationCenter` retains
   — or a `DispatchWorkItem` the object itself owns — the *outer* capture list is what breaks the
   cycle. An inner `Task { @MainActor [weak self] }` nested inside it is redundant: a nested closure
@@ -92,9 +93,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
   method traps in `dispatch_assert_queue` the moment libdispatch runs it on the source's queue —
   the cancel handler included, which fires on teardown rather than on any file event. Swift 5.10
   converted these silently; `SWIFT_VERSION: "6.0"` turns them into hard traps. So **every**
-  `DispatchSource` goes through `ClaudeSessionFiles.makeWatcher`, which is `nonisolated static` and
-  takes the handler as a plain `() -> Void`. Never call `setEventHandler`/`setCancelHandler` from an
-  isolated method.
+  file-system `DispatchSource` goes through `FileWatchers.makeWatcher`, which is `nonisolated static`
+  and takes the handler as a plain `() -> Void`. Never call `setEventHandler`/`setCancelHandler` from
+  an isolated method. The one source that is not a file watcher — `HookSocketListener`'s read source
+  over the hook socket — keeps the rule rather than the door: its whole socket path is a
+  `nonisolated static` factory, because an `AF_UNIX` listener shares nothing with `O_EVTONLY` on a
+  path but the trap.
 - A minimal probe of that shape does not reproduce the trap; it runs the body off-main silently.
   Verify by disassembling the built binary (`lldb -b -o "disassemble -a <addr>"`) and looking for
   `MainActor.shared` / `swift_task_isCurrentExecutor` in the closure's prologue.
@@ -122,6 +126,18 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `ContentView.onAppear`. A SwiftUI `.keyboardShortcut` declared without a matching entry is
     unreachable whenever a terminal has focus, which is why the table and the declarations live in
     the same layer.
+    `SurfaceView.agentEnvironment` is the second such provider, wired in the same two lines of
+    `ClearwayApp.init` to `AgentHookIdentity.environment`. It returns the env vars to stamp on a
+    surface's child process from its `surfaceId` and `worktreeId`, and it exists so this layer never
+    learns the names: `Sources/Ghostty` wraps libghostty and must not import the hook feature, and a
+    provider makes the names testable without a `ghostty_app_t`. Its default is `{ _, _ in [] }`, so
+    a missing wiring line compiles, launches and silently ships a dead feature —
+    `AgentHookIdentityTests.testTheSurfaceProviderIsWiredAtLaunch` is the pin, and it works because
+    the unit-test bundle is hosted by the app, so `ClearwayApp.init` has already run.
+    The pairs are `strdup`ed into a `[ghostty_env_var_s]` and freed in a `defer` after
+    `ghostty_surface_new`: `Surface.init` `dupeZ`s both key and value into the surface config's arena
+    synchronously (`ghostty/src/apprt/embedded.zig`), so the Swift copies need to outlive that one
+    call and nothing more.
   - `TerminalSurface.swift` — SwiftUI `NSViewRepresentable` wrapper
 - **Sources/App/** — SwiftUI app entry point + task/worktree logic
   - `AppKeyboardShortcuts.swift` — the combos the app claims from focused terminal surfaces, plus the
@@ -407,6 +423,73 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     revert, merge and `git am`, which record no branch, so those rows keep the "(detached)" name and
     are hidden by nothing. Only rendering paths go through that method, and only they should:
     this is a display rule, not a change to what the app tracks.
+  - `AgentHookEvent.swift` / `AgentHookScript.swift` / `AgentHookSettings.swift` /
+    `AgentHookInstaller.swift` / `AgentActivityStore.swift` / `AgentActivityMonitor.swift` — the
+    agent-activity pipeline: the wire model, the forwarder text and `AgentHookPaths`, the pure
+    settings merge, the disk half, the state machine, and the one process-wide owner. The first five
+    are `import Foundation` only, which is what makes every rule below reachable from XCTest; the
+    monitor does socket plumbing and publishing and decides nothing.
+    **The transport is a `SOCK_STREAM` Unix socket at `~/.clearway/hook.sock`**, one connection per
+    hook invocation, read to EOF. Not a port: the app would need no entitlement either way, but a
+    port can collide, can be reached from off the machine, and has no `0700` directory standing in
+    for access control — which is the whole of it here, since the app is unsandboxed and binds under
+    `$HOME`. `bind` unlinks a stale path first, or one crash leaves an inode that makes every later
+    launch fail `EADDRINUSE` and no dot ever lights again.
+    **The forwarder is `/usr/bin/nc -U -w 1`, absolute, and never carries `-N`.** macOS reads `-N` as
+    a probe count, not OpenBSD's shutdown flag, so a script using it fails on every hook with no
+    diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to
+    EOF. `curl` would need a URL and an HTTP server for a payload that is already framed. A shadowed
+    `nc` on `PATH` is why the path is absolute.
+    **Framing is two preamble lines — surface id, worktree id — then the agent's raw JSON to EOF.**
+    `AgentHookEnvelope.parse` takes the first two newlines off the byte buffer and hands the
+    untouched remainder to `JSONDecoder`. Never split the payload on every newline: agents send the
+    body pretty-printed, so that truncates it to `{` and the event vanishes with no trace. The
+    script's three guards — surface id, worktree id, a socket that exists — are what make a `claude`
+    started in Terminal.app, the hook sheet and the debug terminal cost nothing, and it always
+    `exit 0`s, because a non-zero hook can block or deny a tool call and Clearway decides nothing.
+    **Two ids, not one.** The surface id does not survive a relaunch; the worktree id is the path and
+    does. An agent still running after Clearway restarts arrives with a surface id this process never
+    minted and still lights its worktree's dot and draws its subagent rows.
+    **The managed block is reconciled by content, not versioned.** Recognition is `type == "command"`
+    plus containment of `/.clearway/hooks/clearway-hook.sh` — never equality with the command string,
+    or a user's hand-edit and an older spelling of the same path both leave a live hook forwarding to
+    a socket nobody listens on. There is no marker key to go stale. The entry carries **no**
+    `matcher`: omitted matches everything, and `"*"` is not a valid regex. Writing is gated on the
+    re-serialised document differing, not on the bytes: the merge re-emits the file `.prettyPrinted`
+    and `.sortedKeys`, so a byte comparison rewrites every user's `settings.json` on a toggle that
+    changed nothing. `uninstall` collapses only the containers it emptied, so it is an identity on a
+    file that never carried the block, and it leaves the script on disk — with nothing listening its
+    own first guard makes it inert.
+    **One backup, `settings.json.clearway-backup`, taken before the first modification and never
+    refreshed** — it is the user's only copy of the file as they wrote it, so a second modification
+    that overwrote it would destroy exactly what it exists to keep. A backup that cannot be taken
+    cancels the write: the merge is acceptable *because* of the backup. An unparseable file is logged
+    and left alone, never quarantined or renamed.
+    **Both agents are gated on their config directory already existing.** Clearway writes
+    `~/.claude/settings.json` and `~/.codex/hooks.json` and creates neither directory: an absent one
+    means that agent was never run here. Codex additionally does nothing until the user runs `/hooks`
+    to trust the entries, which no API can pre-empt, so the Settings toggle carries one line naming
+    that step — the deliberate exception to the no-helper-text rule above.
+    **Nothing in the pipeline has a clock.** No timer, no expiry, no mtime heuristic: a surface
+    leaves a state only because an event said so. A `SIGKILL`ed session therefore pins a dot until
+    its next `SessionStart`, which is accepted — the expiring heuristic this replaced guessed wrong
+    in both directions. `publish()` is change-gated because `PreToolUse`/`PostToolUse` fire around
+    every tool call and assigning an unchanged value to a `@Published` still re-renders every
+    observer.
+    **One owner**: a `@StateObject` on `ClearwayApp`, injected on the project `WindowGroup` only, so
+    a standalone Task or Prompt window reaching for it would fault. Surface retirement is
+    `TerminalManager.retireSurface`, the same process-scoped static provider shape as
+    `claimsShortcut`, reported from every door that drops a surface — never reconciled against a list
+    of live ones. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
+    feature, forwarder and socket included, under a temp root; every call site outside the tests
+    takes the default.
+    **The dot is `waiting > working > idle`** over every surface carrying the worktree id, where
+    working also means holding a live subagent — a lead between turns while subagents run must not go
+    dark. Waiting on a permission prompt is a static 7 pt purple dot: orange is working, blue the
+    plain-shell notification, red failure, green success and yellow a status badge, so purple is the
+    only hue left, and not pulsing separates it by shape as well. `isMain` no longer suppresses the
+    dot; `isOpen` still gates it, and the subagent rows with it, since a closed worktree's surfaces
+    are already retired.
   - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
     `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
     launcher, the one menu view both entry points render, and the Settings section that edits the
@@ -582,6 +665,11 @@ One command serves both — `./scripts/ci.sh` is the only runner of the test sui
 | --- | --- | --- |
 | Every `build` task, and `simplify` | `./scripts/ci.sh` | Regression check |
 | `sign-off`, once | `./scripts/ci.sh` | Full gate |
+
+The test host launches the app, so on a developer machine **every** `ci.sh` run installs the agent
+hook block into the real `~/.claude/settings.json` — the toggle defaults on — and takes the one-time
+`settings.json.clearway-backup` beside it. That is the feature, not a test artefact. GitHub's runner
+has no `~/.claude`, and the installer's directory gate makes it a no-op there.
 
 ### Merge model
 

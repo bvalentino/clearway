@@ -1468,3 +1468,49 @@ remaining concern.
 (0 unexpected) in 106.947 seconds`, then `==> CI passed.` The count is unchanged from T11, as a
 rename should leave it. `git status --porcelain` before the commit showed the five files above and
 nothing else — no untracked files and no `default.profraw`.
+
+### T13: Document the pipeline in CLAUDE.md
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` — Concurrency | `ClaudeSessionFiles.swift:1` → `FileWatchers.swift:1`; the RAII-holder bullet's `ClaudeActivityMonitor.WatcherState` example replaced by `HookSocketListener`; the single-`DispatchSource`-door rule renamed to `FileWatchers.makeWatcher`, narrowed to **file-system** sources, and given the hook socket's read source as the one source that keeps the rule (`nonisolated static` factory) rather than the door. |
+| `CLAUDE.md` — `Ghostty.SurfaceView` bullet | `agentEnvironment` beside `claimsShortcut`: why the provider exists (this layer must not learn the hook feature's names), that its `{ _, _ in [] }` default makes a missing wiring line silent, the test that pins it and why an app-hosted bundle can see it, and the `strdup`/`defer` lifetime against libghostty's `dupeZ`. |
+| `CLAUDE.md` — new `Sources/App/` bullet | The six files, the socket and why not a port, `nc -U -w 1` and the `-N` trap, the two-line framing and the pretty-printed-body truncation, the three guards and the unconditional `exit 0`, the two ids, content recognition with no marker key and no `matcher`, the document-not-bytes write gate, the one-time backup and the backup-failure refusal, both directory gates, Codex's `/hooks` trust step and the copy exception, no clock anywhere, change-gated publishing, one owner and the injection scope, `retireSurface`, `AgentHookPaths(home:)`, and the `waiting > working > idle` dot with the purple rationale and the `isMain`/`isOpen` change. |
+| `CLAUDE.md` — Pipeline | A paragraph under the regression/gate table: on a developer machine every `ci.sh` run installs the block into the real `~/.claude/settings.json` and takes the one-time backup, because the test host launches the app and the toggle defaults on; GitHub's runner has no `~/.claude`. |
+
+**Evidence.** A documentation task has no failing test to watch. Its acceptance criterion is a grep,
+which now exits 1:
+
+```
+$ grep -n "ClaudeSessionFiles\|ClaudeActivityMonitor" CLAUDE.md; echo "exit: $?"
+exit: 1
+```
+
+Every claim was written from the build logs above rather than from the plan's original intent, so
+the deviations are what the file now records: the third forwarder guard (T3), both agents gated on
+their config directory rather than only Codex (T4), the document comparison and the
+backup-cancels-the-write rule (T4), `AgentHookPaths(home:)` and the dedicated serial queue (T6), the
+toggle's subtitle shape (T7), the injection scope and the `ci.sh` side effect (T8), and the
+subagent rows sharing the dot's `isOpen` gate (T9).
+
+**Deviations from the plan.**
+
+- **The `ci.sh` paragraph is a fifth edit the task does not list.** T8's log asks for it in as many
+  words, and it is the one thing in this feature that changes what a later stage sees on the
+  operator's own machine.
+- **The "it scales to collections" sentence went with its example.** `ClaudeActivityMonitor` was the
+  only collection of RAII holders in the app; `WorkTaskManager`'s watcher dictionaries hold
+  `DispatchSourceFileSystemObject` directly, which the bullet above already covers as `Sendable`. The
+  rule is restated on the live single holder instead of kept alive by a type that no longer exists.
+- **The single-`DispatchSource`-door rule was narrowed, not just renamed.** The plan asks only for
+  the rename, but T6 added a second source outside `makeWatcher`, so "**every** `DispatchSource` goes
+  through" had become false and would have sent the next reader to force an `AF_UNIX` listener
+  through a file-watcher factory.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 739 tests, with 0 failures
+(0 unexpected) in 110.033 seconds`, then `==> CI passed.` The count is unchanged from T12, as a
+documentation-only change should leave it. `git status --porcelain` before the commit showed
+`M CLAUDE.md` and the plan document and nothing else — no untracked files and no `default.profraw`:
+the test host's launch does not drop one.
