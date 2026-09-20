@@ -60,12 +60,7 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         XCTAssertEqual(manager.statuses[main.id], .done, "the seed landed under main's id")
         XCTAssertNil(manager.status(for: main))
         XCTAssertEqual(
-            manager.sidebarOrderedWorktrees(
-                [main, alpha],
-                showingDetached: false,
-                openIds: [],
-                matches: { _ in true }
-            ).map(\.id),
+            renderedOrder([main, alpha]),
             [main.id, alpha.id],
             "main stays first; honouring its stored `.done` would sort it behind alpha's `.todo`"
         )

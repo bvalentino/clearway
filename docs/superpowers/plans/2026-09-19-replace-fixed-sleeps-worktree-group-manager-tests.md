@@ -691,3 +691,31 @@ right.
 | Combined | 54.36s (67 cases) | 49.81s (73 cases) |
 
 Below the baseline with six more cases in it.
+
+### Simplify
+
+Three cleanups over the branch's changes; no behaviour and no assertion changed.
+
+- `settle` lost its optional target parameter. It had one caller, and the local it forced
+  (`let manager: WorktreeGroupManager? = target ?? self.manager`) shadowed the property and needed
+  the annotation only to dodge an IUO force-unwrap — which supersedes the paragraph on that under
+  T1. `WorktreeGroupPersistenceTests.swift:301` now awaits `first.writeChain?.value` inline, beside
+  the `first.loadTask?.value` already there.
+- `testAStatusStoredAgainstMainsIdIsIgnoredOnTheReadPath` calls `renderedOrder` instead of spelling
+  out `sidebarOrderedWorktrees(_:showingDetached:openIds:matches:).map(\.id)` with the helper's own
+  defaults.
+- `testReconcileRereadsBothRepoLevelKeys` reconciles an empty list. `reloadConfig` issues both
+  repo-level reads independently of its targets, so the real `git worktree add` it made fed no
+  assertion — the plan named the empty list as the alternative.
+
+Considered and left alone: folding the eleven pre-existing `reconcile` + `waitFor` pairs onto the
+new awaitable `Task` (a follow-up, outside this branch's diff); merging
+`testRemoveWorktreeFromGroupAppendsItToTheUngroupedSection` with its `deleteGroup` sibling behind a
+gesture closure (each case pins a different production method and reads better standalone);
+reordering the two waits in `testReconcileRightAfterSetNameDoesNotRaceTheWrite` (~40ms, against the
+order T3 prescribed).
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 562 tests, 0 failures, 102.5s.
+`git status --porcelain` shows only `Tests/TestHelpers.swift`,
+`Tests/WorktreeGroupManagerStatusTests.swift`, `Tests/WorktreeGroupPersistenceTests.swift` and this
+plan. `git diff Sources/` is empty. No `default.profraw`: the app was never launched.

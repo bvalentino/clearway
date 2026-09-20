@@ -145,14 +145,13 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
     /// mode and the registry alongside each worktree's own config — so a group or a grouping mode
     /// another checkout of the repo wrote reaches the sidebar without one.
     func testReconcileRereadsBothRepoLevelKeys() async throws {
-        let path = try repo.addWorktree(branch: "alpha")
-        let alpha = makeWorktree(branch: "alpha", path: path)
         try repo.enableWorktreeConfig()
         await restartManager()
         try repo.setLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
         try repo.addLocalValue("Seeded", ofKey: WorktreeConfigStore.groupOrderKey)
 
-        await manager.reconcile([alpha], openIds: []).value
+        // Both reads are repo-level and independent of the worktree list, so the list is empty.
+        await manager.reconcile([], openIds: []).value
 
         XCTAssertEqual(manager.grouping, .status, "the grouping mode, with no relaunch")
         XCTAssertEqual(manager.groups.map(\.name), ["Seeded"], "the registry, with no relaunch")
@@ -298,7 +297,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         await first.loadTask?.value
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
-        await settle(first)
+        await first.writeChain?.value
 
         let second = WorktreeGroupManager(projectPath: plainRoot)
         await second.loadTask?.value

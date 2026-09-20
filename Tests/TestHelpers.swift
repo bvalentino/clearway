@@ -218,10 +218,7 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
     /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
     /// `waitFor` returns the moment the expected value is already there.
-    ///
-    /// The parameter is for the suites that build their own managers rather than using `manager`.
-    func settle(_ target: WorktreeGroupManager? = nil) async {
-        let manager: WorktreeGroupManager? = target ?? self.manager
+    func settle() async {
         await manager?.loadTask?.value
         await manager?.writeChain?.value
     }
