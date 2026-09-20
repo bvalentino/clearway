@@ -1,7 +1,24 @@
 import Foundation
 
-/// The agents Clearway can launch, in picker order — the rows Settings → Main Terminal offers.
-let agentAllowlist = ["claude", "grok", "codex"]
+/// The agents Clearway can launch, in display order — the rows Settings → Main Terminal offers
+/// and the agent rows of the tab strip's `+` menu. One list, so the two cannot disagree.
+let agentAllowlist = ["claude", "codex", "grok"]
+
+/// One agent row of the tab strip's `+` menu. The New Terminal row above them is fixed and is not
+/// modelled here.
+struct AgentMenuRow: Equatable {
+    let command: String
+    /// Whether this row carries ⌥⌘T, the Settings → Main Terminal shortcut.
+    let carriesMainTerminalShortcut: Bool
+
+    var title: String { command.capitalized }
+}
+
+/// The `+` menu's agent rows. The row matching the configured Main Terminal command carries ⌥⌘T;
+/// a nil or unlisted command leaves every row without one, and ⌥⌘T still runs the setting.
+func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
+    agents.map { AgentMenuRow(command: $0, carriesMainTerminalShortcut: $0 == mainCommand) }
+}
 
 /// Writes `prompt` to a mode-`0o600` temp file and builds a `/bin/sh -c` command that
 /// launches `agentCommand` with the file contents as a **single positional argument**
@@ -14,7 +31,7 @@ let agentAllowlist = ["claude", "grok", "codex"]
 ///
 /// Practical ceiling: the full prompt becomes one argv element for the agent process.
 /// Prompts near the OS `ARG_MAX` (~1 MB on recent macOS) can fail with "Argument list too
-/// long". Typical prompt-launcher prompts are well under that.
+/// long". Typical agent prompts are well under that.
 ///
 /// - Returns: The shell command string and the prompt file path (callers that tear down
 ///   surfaces early can delete the file if the agent never ran).
@@ -31,8 +48,8 @@ func buildAgentPromptCommand(
     return (command, promptFile)
 }
 
-/// The same launch as one line for a user to read and press Enter on, for a surface that has no
-/// launcher to stage a draft in. The prompt stays in the same `0o600` temp file, so a multi-line
+/// The same launch as one line for a user to read and press Enter on, for a surface that has to
+/// show the invocation instead. The prompt stays in the same `0o600` temp file, so a multi-line
 /// prompt stages as one short line and still reaches the agent as one argv element.
 ///
 /// Clearway runs nothing here: `sendText` stages the line on an interactive prompt, visible and

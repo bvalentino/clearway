@@ -113,6 +113,15 @@ struct GitRepoFixture {
         try Self.git(["-C", path, "config", "--worktree", key, value], in: root)
     }
 
+    func setLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", key, value], in: root)
+    }
+
+    /// Appends one more value to a repo-level multivar, the way the registry is written.
+    func addLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", "--add", key, value], in: root)
+    }
+
     func unsetValue(ofKey key: String, atWorktree path: String) throws {
         try Self.git(["-C", path, "config", "--worktree", "--unset", key], in: root)
     }
@@ -121,6 +130,14 @@ struct GitRepoFixture {
         let result = try Self.capture(["config", "--local", "--get", key], in: root)
         guard result.status == 0 else { return nil }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Every value of the repo-level multivar `key`, in file order, and `[]` when it is absent —
+    /// `--get-all` exits 1 for a missing key.
+    func localValues(ofKey key: String) throws -> [String] {
+        let result = try Self.capture(["config", "--local", "--get-all", "--null", key], in: root)
+        guard result.status == 0 else { return [] }
+        return WorktreeConfigStore.parseNullSeparated(result.stdout)
     }
 
     func mainWorktreeConfigContents() throws -> String {
@@ -171,73 +188,56 @@ struct GitRepoFixture {
     }
 }
 
-/// `<root>/.clearway/groups.json`, for the suites that seed or inspect the file directly.
-enum GroupsFile {
-
-    static func path(inProjectRoot root: String) -> String {
-        (root as NSString).appendingPathComponent(".clearway/groups.json")
-    }
-
-    static func write(_ contents: Data, inProjectRoot root: String) throws {
-        let file = path(inProjectRoot: root)
-        try FileManager.default.createDirectory(
-            atPath: (file as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try contents.write(to: URL(fileURLWithPath: file), options: .atomic)
-    }
-}
-
-/// Base for the `WorktreeGroupManager` suites: a manager over the scratch root, plus the
-/// `groups.json` probe the "writes nothing" cases assert on.
-class WorktreeGroupManagerTestCase: TempRootTestCase {
+/// Base for the `WorktreeGroupManager` suites. Every value the manager owns is kept in git
+/// config, so the scratch root is a repository before the manager is built over it.
+class WorktreeGroupManagerGitTestCase: TempRootTestCase {
 
     override class var tempRootPrefix: String { "clearway-manager-tests" }
 
+    var repo: GitRepoFixture!
     var manager: WorktreeGroupManager!
-
-    var groupsFilePath: String {
-        GroupsFile.path(inProjectRoot: tempRoot)
-    }
-
-    var groupsFileExists: Bool {
-        FileManager.default.fileExists(atPath: groupsFilePath)
-    }
 
     override func setUp() async throws {
         try await super.setUp()
-        try prepareProjectRoot()
-        manager = WorktreeGroupManager(projectPath: tempRoot)
-        // Allow the manager's init Task (store.load + startWatching) to complete before
-        // each test body runs. Without this, the background load() can race with early
-        // createGroup() calls and overwrite the in-memory groups with [].
-        try await Task.sleep(nanoseconds: 100_000_000)
-    }
-
-    override func tearDown() async throws {
-        manager = nil
-        try await super.tearDown()
-    }
-
-    /// Runs after the scratch root exists and before the manager is built over it.
-    func prepareProjectRoot() throws {}
-}
-
-/// Base for the suites whose manager must write real worktree config: the scratch root is a git
-/// repository before the manager is built over it.
-class WorktreeGroupManagerGitTestCase: WorktreeGroupManagerTestCase {
-
-    override class var tempRootPrefix: String { "clearway-manager-git-tests" }
-
-    var repo: GitRepoFixture!
-
-    override func prepareProjectRoot() throws {
         repo = try GitRepoFixture.make(at: tempRoot)
+        manager = WorktreeGroupManager(projectPath: tempRoot)
+        // The manager's `init` load runs on its own Task and republishes everything it reads from
+        // git config, so a mutation a test body makes before it lands is overwritten.
+        await manager.loadTask?.value
     }
 
     override func tearDown() async throws {
+        // A sleep-free body can end with `git config` subprocesses still queued, and they must not
+        // run against a scratch root being removed.
+        await settle()
+        manager = nil
         repo = nil
         try await super.tearDown()
+    }
+
+    /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
+    /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
+    /// `waitFor` returns the moment the expected value is already there.
+    ///
+    /// The chain is sampled once, so a `reconcile` `Task` the body discarded is covered only
+    /// because `seedPositions` enqueues its write in the same continuation as the reload's publish,
+    /// with no suspension between them: a body that observed the publish has already let that
+    /// enqueue run. Put an `await` in `reconcile` between the two and this stops holding — await
+    /// the `Task` it returns instead, the way `testReconcileRereadsBothRepoLevelKeys` does.
+    func settle() async {
+        await manager?.loadTask?.value
+        await manager?.writeChain?.value
+    }
+
+    /// Replaces `manager` with a fresh one over the same root and waits for its load — the
+    /// relaunch every persistence assertion is really about.
+    ///
+    /// Also the only way a test that enables `extensions.worktreeConfig` behind the manager's back
+    /// is seen: `WorktreeConfigStore` memoises a probe that found the extension off, and the load
+    /// runs one before any test body does.
+    func restartManager() async {
+        manager = WorktreeGroupManager(projectPath: tempRoot)
+        await manager.loadTask?.value
     }
 
     /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the
@@ -270,5 +270,15 @@ class WorktreeGroupManagerGitTestCase: WorktreeGroupManagerTestCase {
         try await waitFor(expected, describing: "\(key) at \(path)", file: file, line: line) {
             try self.repo.value(ofKey: key, atWorktree: path)
         }
+    }
+
+    /// The IDs the sidebar would render, in order, with no search filter.
+    func renderedOrder(_ worktrees: [Worktree], showingDetached: Bool = false) -> [String] {
+        manager.sidebarOrderedWorktrees(
+            worktrees,
+            showingDetached: showingDetached,
+            openIds: [],
+            matches: { _ in true }
+        ).map(\.id)
     }
 }

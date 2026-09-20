@@ -5,14 +5,31 @@ import SwiftUI
 
 /// Manages the in-memory state of worktree groups for a single project.
 ///
-/// All mutations go through this class; persistence is delegated to `WorktreeGroupStore`.
-/// The `groups` array is always sorted ascending by `createdAt`.
+/// All mutations go through this class; every value it owns lives in git config, reached through
+/// `WorktreeConfigStore`. The registry — the repo-level `clearway.groupOrder` — is the only source
+/// of which groups exist, and `groups` holds it in registry order.
 @MainActor
 final class WorktreeGroupManager: ObservableObject {
     @Published private(set) var groups: [WorktreeGroup] = []
-    /// User-defined order of non-main worktrees in the ungrouped "default" section.
-    /// Main is always pinned to the top and is not tracked here.
-    @Published private(set) var defaultOrder: [String] = []
+
+    /// Where each non-main worktree sits in the sidebar. A drop changes both halves at once, and
+    /// `mutatePlacement` is the only way either changes, so one gesture publishes one value.
+    private struct Placement: Equatable {
+        /// Group membership, keyed by `Worktree.id`, backed by each worktree's own
+        /// `clearway.group`. A worktree naming a group the registry does not list is absent here,
+        /// so it renders ungrouped. Main is never a key.
+        var groupNames: [String: String] = [:]
+        /// Position within a section, keyed by `Worktree.id` and backed by each worktree's own
+        /// `clearway.position`. A worktree without one sorts after those that have one. Main is
+        /// never a key.
+        var positions: [String: Int] = [:]
+    }
+
+    @Published private var placement = Placement()
+
+    var groupNames: [String: String] { placement.groupNames }
+    var positions: [String: Int] { placement.positions }
+
     /// Per-worktree status, keyed by `Worktree.id`, backed by each worktree's own git config.
     /// Main is never a key.
     @Published private(set) var statuses: [String: WorktreeStatus] = [:]
@@ -22,166 +39,189 @@ final class WorktreeGroupManager: ObservableObject {
     /// The axis the sidebar sections its worktrees by.
     @Published private(set) var grouping: WorktreeGrouping = .group
 
-    private let store: WorktreeGroupStore
     private let configStore: WorktreeConfigStore
 
     /// Config writes run one after another, and every config read awaits the chain first.
     /// Creating a worktree writes a name and also changes the live worktree list, which fires the
     /// reload in the same turn; without the chain that reload can read the worktree's config
-    /// before the write lands and publish an empty name over the one just typed.
-    private var writeChain: Task<Void, Never>?
+    /// before the write lands and publish an empty name over the one just typed. Also awaited by
+    /// the test base, which needs something to wait on where a case asserts a gesture wrote
+    /// nothing — absence cannot be polled.
+    private(set) var writeChain: Task<Void, Never>?
 
-    /// The initial load, awaited by every config read. `groups.json`'s statuses are migrated into
-    /// worktree config from inside it, so a reload that started first would otherwise find an
-    /// empty chain, read the not-yet-migrated worktrees and publish `[:]` over them — the whole
-    /// upgrade, invisible until the next relaunch.
-    private var loadTask: Task<Void, Never>?
+    /// The initial load, awaited by every config read — and by the test base, which must not
+    /// mutate state the load would then republish over.
+    private(set) var loadTask: Task<Void, Never>?
 
     init(projectPath: String) {
-        self.store = WorktreeGroupStore(projectPath: projectPath)
         self.configStore = WorktreeConfigStore(projectPath: projectPath)
 
         loadTask = Task { [weak self] in
             guard let self else { return }
-            let loaded = await self.store.load()
-            self.groups = WorktreeGroup.sortedByCreation(loaded.groups)
-            self.defaultOrder = loaded.defaultOrder
-            self.grouping = loaded.grouping
-            self.migrateLegacyStatuses(loaded.legacyStatuses)
-
-            self.store.startWatching { [weak self] in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let reloaded = await self.store.load()
-                    let sortedGroups = WorktreeGroup.sortedByCreation(reloaded.groups)
-                    if sortedGroups != self.groups { self.groups = sortedGroups }
-                    if reloaded.defaultOrder != self.defaultOrder {
-                        self.defaultOrder = reloaded.defaultOrder
-                    }
-                    if reloaded.grouping != self.grouping { self.grouping = reloaded.grouping }
-                }
+            let configStore = self.configStore
+            async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
+            async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
+            let mode = await modeRead
+            let registry = await registryRead
+            // A gesture made while the two reads were in flight has already published and queued
+            // its write, and publishing what git held before it would drop it for the session —
+            // the guard `reloadConfig` makes against the same race.
+            guard self.writeChain == nil else { return }
+            if let mode, let grouping = WorktreeGrouping(rawValue: mode) {
+                self.grouping = grouping
             }
+            if let registry { self.groups = Self.registered(registry) }
         }
-    }
-
-    deinit {
-        store.stopWatching()
     }
 
     // MARK: - Public API
 
-    /// Creates a new group with the given name and appends it to the sorted list.
-    func createGroup(named name: String) {
-        let group = WorktreeGroup(id: UUID(), name: name, worktreeIds: [], createdAt: Date())
-        groups.append(group)
-        groups = WorktreeGroup.sortedByCreation(groups)
-        save()
-    }
-
-    /// Renames the group with the given ID. No-ops if the ID is not found.
-    func renameGroup(id: UUID, to name: String) {
-        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
-        groups[index].name = name
-        save()
-    }
-
-    /// Deletes the group with the given ID. No-ops if the ID is not found.
-    func deleteGroup(id: UUID) {
-        groups.removeAll { $0.id == id }
-        save()
-    }
-
-    /// Adds a worktree to the specified group.
+    /// Creates a new group with the given name, trimmed, and appends it to the registry.
     ///
-    /// The main worktree is silently ignored — it can never be placed in a group.
-    /// The worktree is removed from any existing group before being added to the target.
-    func addWorktree(_ wt: Worktree, toGroup groupId: UUID) {
-        guard !wt.isMain else { return }
-        let worktreeId = wt.id
+    /// A group is identified by its name, so a name `WorktreeGroup.available` rejects creates
+    /// nothing: the name-keyed lookups below would otherwise be ambiguous whenever a call site
+    /// forgot to check.
+    func createGroup(named name: String) {
+        guard let trimmed = WorktreeGroup.available(name, in: groups.map(\.name)) else { return }
+        groups.append(WorktreeGroup(name: trimmed))
+        writeRegistry()
+    }
+
+    /// Renames the group with the given name. No-ops if no group carries it, or if the new name
+    /// is one `createGroup` would have refused.
+    func renameGroup(named name: String, to newName: String) {
+        guard let index = groups.firstIndex(where: { $0.name == name }),
+              let trimmed = WorktreeGroup.available(newName, in: groups.map(\.name), renaming: name)
+        else { return }
+        let members = members(ofGroupNamed: name)
+        groups[index].name = trimmed
+        mutatePlacement { placement in
+            for id in members { placement.groupNames[id] = trimmed }
+        }
+        writeRegistry(settingGroup: trimmed, on: members)
+    }
+
+    /// Deletes the group with the given name. No-ops if no group carries it.
+    ///
+    /// Its members are appended to the ungrouped section, keeping their order, the way
+    /// `removeWorktreeFromGroup` appends one: every section numbers its positions from zero, so
+    /// members carrying their in-group values into the ungrouped one would share slots with the
+    /// rows already there and be interleaved among them on every launch.
+    func deleteGroup(named name: String) {
+        guard groups.contains(where: { $0.name == name }) else { return }
+        let members = members(ofGroupNamed: name)
+        var next = (maxPosition(inSectionNamed: nil) ?? -1) + 1
+        var appended: [String: Int] = [:]
+        for id in members {
+            appended[id] = next
+            next += 1
+        }
+        groups.removeAll { $0.name == name }
+        mutatePlacement { placement in
+            for id in members { placement.groupNames.removeValue(forKey: id) }
+            for (id, position) in appended { placement.positions[id] = position }
+        }
+        writePositions(appended)
+        writeRegistry(settingGroup: nil, on: members)
+    }
+
+    /// Adds a worktree to the specified group, at the end of it.
+    ///
+    /// The main worktree is silently ignored — it can never be placed in a group. So is a group
+    /// the registry does not list, which would otherwise render its member ungrouped.
+    func addWorktree(_ wt: Worktree, toGroupNamed name: String) {
+        guard !wt.isMain, let path = wt.path, groups.contains(where: { $0.name == name }) else { return }
         // No-op when the worktree is already in the target group. Without this guard,
         // SwiftUI's List animates a remove+insert round-trip that can crash the backing
         // NSTableView mid-drag when the drop lands on the worktree's own group header.
-        if groups.first(where: { $0.id == groupId })?.worktreeIds.contains(worktreeId) == true { return }
-        // Mutate a local copy and publish a single `groups` assignment. Per-index writes
-        // against the @Published array would fire objectWillChange N times during a drop,
-        // which can re-enter the sidebar's NSTableView mid-animation and crash.
-        var updated = groups
-        for index in updated.indices {
-            updated[index].worktreeIds.removeAll { $0 == worktreeId }
+        guard groupNames[wt.id] != name else { return }
+        let position = (maxPosition(inSectionNamed: name) ?? -1) + 1
+        mutatePlacement { placement in
+            placement.groupNames[wt.id] = name
+            placement.positions[wt.id] = position
         }
-        guard let targetIndex = updated.firstIndex(where: { $0.id == groupId }) else { return }
-        updated[targetIndex].worktreeIds.append(worktreeId)
-        groups = updated
-        // Moving into a group removes the worktree from the default section's order.
-        if defaultOrder.contains(worktreeId) {
-            defaultOrder.removeAll { $0 == worktreeId }
+        enqueueWrite { configStore in
+            await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+            await configStore.set(
+                String(position),
+                forKey: WorktreeConfigStore.positionKey,
+                worktreeAt: path
+            )
         }
-        save()
     }
 
-    /// Removes a worktree ID from every group it appears in. Does not add it to
-    /// `defaultOrder` — the view treats any non-main worktree missing from
-    /// `defaultOrder` as a new arrival and appends it at render time.
-    func removeWorktreeFromAllGroups(_ worktreeId: String) {
-        var updated = groups
-        var changed = false
-        for index in updated.indices where updated[index].worktreeIds.contains(worktreeId) {
-            updated[index].worktreeIds.removeAll { $0 == worktreeId }
-            changed = true
+    /// Removes the worktree from its group and appends it to the ungrouped section.
+    func removeWorktreeFromGroup(_ wt: Worktree) {
+        guard let path = wt.path, groupNames[wt.id] != nil else { return }
+        let position = (maxPosition(inSectionNamed: nil) ?? -1) + 1
+        mutatePlacement { placement in
+            placement.groupNames.removeValue(forKey: wt.id)
+            placement.positions[wt.id] = position
         }
-        guard changed else { return }
-        groups = updated
-        save()
+        enqueueWrite { configStore in
+            await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+            await configStore.set(
+                String(position),
+                forKey: WorktreeConfigStore.positionKey,
+                worktreeAt: path
+            )
+        }
     }
 
     /// Repositions the given non-main worktree IDs within the ungrouped section's order.
     /// Callers pass the rows the sidebar rendered, which is a subset whenever the detached
-    /// filter hides one, so stored IDs the caller omits keep their slot.
-    func setDefaultOrder(_ ids: [String]) {
-        let reordered = Self.repositioned(defaultOrder, with: ids)
-        guard reordered != defaultOrder else { return }
-        defaultOrder = reordered
-        save()
+    /// filter or the search field hides one, so IDs the caller omits keep their slot.
+    ///
+    /// `worktrees` is the whole live list, not the rendered subset: the slots being reassigned are
+    /// the ones the section occupies on screen, and a row the caller omitted has to be in it to
+    /// keep the slot it had.
+    func setUngroupedOrder(_ ids: [String], in worktrees: [Worktree], openIds: [String]) {
+        applyPositions(
+            Self.reassignedPositions(
+                section: section(named: nil, in: worktrees, openIds: openIds),
+                newOrder: ids
+            )
+        )
     }
 
-    /// Appends newly-discovered non-main, ungrouped worktrees to `defaultOrder` so
-    /// click-to-open never re-sorts the sidebar. Idempotent: IDs already recorded
-    /// in `defaultOrder` or in any group are left in place. New IDs are appended in
-    /// `Worktree.sorted` order — the same rule `sidebarOrderedWorktrees` used to
-    /// render them before they were persisted.
-    func seedDefaultOrder(with worktrees: [Worktree], openIds: [String]) {
-        let missing = worktrees.filter { wt in
-            !wt.isMain
-                && groupId(for: wt.id) == nil
-                && !defaultOrder.contains(wt.id)
-        }
+    /// Repositions the given worktree IDs within a group, on the same terms as `setUngroupedOrder`.
+    func setGroupOrder(named name: String, ids: [String], in worktrees: [Worktree], openIds: [String]) {
+        guard groups.contains(where: { $0.name == name }) else { return }
+        applyPositions(
+            Self.reassignedPositions(
+                section: section(named: name, in: worktrees, openIds: openIds),
+                newOrder: ids
+            )
+        )
+    }
+
+    /// Gives every non-main worktree that has no position one, so click-to-open never re-sorts the
+    /// sidebar. The second half of `reconcile`, which is the only caller that is not a test.
+    /// Idempotent: a worktree that already carries one is left alone. New IDs are
+    /// appended to their own section in `Worktree.sorted` order — the same rule
+    /// `sidebarOrderedWorktrees` renders them by while they are unpositioned.
+    func seedPositions(for worktrees: [Worktree], openIds: [String]) {
+        let missing = worktrees.filter { !$0.isMain && $0.path != nil && positions[$0.id] == nil }
         guard !missing.isEmpty else { return }
-        let ordered = Worktree.sorted(missing, openIds: openIds).map(\.id)
-        defaultOrder += ordered
-        save()
+        var next: [String?: Int] = [:]
+        var seeded: [String: Int] = [:]
+        for wt in Worktree.sorted(missing, openIds: openIds) {
+            let section = groupNames[wt.id]
+            let position = next[section] ?? (maxPosition(inSectionNamed: section) ?? -1) + 1
+            seeded[wt.id] = position
+            next[section] = position + 1
+        }
+        applyPositions(seeded)
     }
 
-    /// Repositions the given worktree IDs within a group, on the same terms as `setDefaultOrder`.
-    func setGroupOrder(id groupId: UUID, ids: [String]) {
-        guard let index = groups.firstIndex(where: { $0.id == groupId }) else { return }
-        let reordered = Self.repositioned(groups[index].worktreeIds, with: ids)
-        guard reordered != groups[index].worktreeIds else { return }
-        var updated = groups
-        updated[index].worktreeIds = reordered
-        groups = updated
-        save()
-    }
-
-    /// Returns the ID of the group that contains the given worktree ID, or `nil` if ungrouped.
-    func groupId(for worktreeId: String) -> UUID? {
-        groups.first(where: { $0.worktreeIds.contains(worktreeId) })?.id
+    func groupName(for worktreeId: String) -> String? {
+        groupNames[worktreeId]
     }
 
     /// Takes a `Worktree` rather than an ID so main's "no status" rule is enforced on the read
-    /// path too: `setStatus` refuses main, but a hand-edited or merged `groups.json` can still
-    /// carry its path into `migrateLegacyStatuses`, which deliberately does not filter it out,
-    /// and no gesture in the app could then clear it. Honouring it would drop main out of the
-    /// top of the by-status order and move `⌘1` with it.
+    /// path too: `setStatus` refuses main, and so does the read path, but honouring a status
+    /// hand-written into main's own config would drop it out of the top of the by-status order
+    /// and move `⌘1` with it.
     func status(for wt: Worktree) -> WorktreeStatus? {
         wt.isMain ? nil : statuses[wt.id]
     }
@@ -230,33 +270,25 @@ final class WorktreeGroupManager: ObservableObject {
     func setGrouping(_ grouping: WorktreeGrouping) {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
-        save()
+        enqueueWrite { configStore in
+            await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
+        }
     }
 
-    /// Strips any grouped or ordered worktree ID that is no longer present in the live list, and
-    /// re-reads the live worktrees' own git config. Saves only if any IDs were removed; the
-    /// config reload runs either way, because it is what publishes a name or status written
-    /// outside this manager's lifetime. Names and statuses are never pruned here — `git worktree
-    /// remove` deletes the worktree's `config.worktree` with it.
-    func reconcile(_ worktrees: [Worktree]) {
-        Task { await self.reloadConfig(for: worktrees) }
-        let knownWorktreeIds = Set(worktrees.map(\.id))
-        var updated = groups
-        var changed = false
-        for index in updated.indices {
-            let before = updated[index].worktreeIds
-            let after = before.filter { knownWorktreeIds.contains($0) }
-            if after != before {
-                updated[index].worktreeIds = after
-                changed = true
-            }
+    /// Re-reads what git holds for the live worktrees and then gives any worktree still without a
+    /// position one. Nothing is pruned: a worktree that has gone simply stops being read, and
+    /// `git worktree remove` deletes its `config.worktree` with it.
+    ///
+    /// The seed runs **after** the reload, which is why the two are one entry point rather than two
+    /// calls a view makes in a row: on a relaunch `positions` is empty until the reload publishes
+    /// it, so a seed racing ahead of it renumbers every worktree in `Worktree.sorted` order and the
+    /// reload reads the values it just wrote back over the user's order.
+    @discardableResult
+    func reconcile(_ worktrees: [Worktree], openIds: [String]) -> Task<Void, Never> {
+        Task {
+            await self.reloadConfig(for: worktrees)
+            self.seedPositions(for: worktrees, openIds: openIds)
         }
-        let prunedDefault = defaultOrder.filter { knownWorktreeIds.contains($0) }
-        let defaultChanged = prunedDefault != defaultOrder
-        guard changed || defaultChanged else { return }
-        groups = updated
-        defaultOrder = prunedDefault
-        save()
     }
 
     /// True when the worktree should survive the sidebar's search field.
@@ -270,8 +302,8 @@ final class WorktreeGroupManager: ObservableObject {
         if wt.displayName.localizedCaseInsensitiveContains(query) { return true }
         if let name = name(for: wt), name.localizedCaseInsensitiveContains(query) { return true }
         if let taskTitle, taskTitle.localizedCaseInsensitiveContains(query) { return true }
-        if let group = groups.first(where: { $0.worktreeIds.contains(wt.id) }),
-           group.name.localizedCaseInsensitiveContains(query) { return true }
+        if let group = groupName(for: wt.id),
+           group.localizedCaseInsensitiveContains(query) { return true }
         if let status = status(for: wt),
            status.displayName.localizedCaseInsensitiveContains(query) { return true }
         return false
@@ -279,17 +311,15 @@ final class WorktreeGroupManager: ObservableObject {
 
     /// Returns worktrees in the order used by both the sidebar and keyboard shortcuts.
     ///
-    /// Default-section worktrees (ungrouped, including main) come first, followed by each
-    /// group's worktrees in `createdAt` ascending order. Within the default section the
-    /// main worktree is pinned first, then entries follow `defaultOrder`; any ungrouped
-    /// worktree not yet recorded in `defaultOrder` (newly created) is appended in
-    /// `Worktree.sorted` order. Within a group, `worktreeIds` is the canonical order.
-    /// The `matches` closure acts as the search predicate.
+    /// Ungrouped worktrees (including main) come first, followed by each group's worktrees in
+    /// registry order. Within a section the main worktree is pinned first, then entries follow
+    /// `positions` ascending; a worktree without a position follows those that have one, in
+    /// `Worktree.sorted` order, which is also the tie-break. The `matches` closure acts as the
+    /// search predicate.
     ///
     /// The view mode is this manager's own `grouping` rather than a parameter, for the same
     /// reason `Worktree.visible` is applied here: the rows, the ⌘N badge and the ⌘1…9 buttons
-    /// must not be able to disagree about which worktrees exist or in what order. For the same
-    /// reason no worktree is emitted twice, whatever a stored order records.
+    /// must not be able to disagree about which worktrees exist or in what order.
     /// `.group` and `.none` both return that order — they differ only in how the sidebar
     /// sections it. `.status` stably partitions it into no-status first then the five
     /// statuses in `allCases` order, so each bucket keeps its members' relative order and
@@ -302,50 +332,19 @@ final class WorktreeGroupManager: ObservableObject {
     ) -> [Worktree] {
         let worktrees = Worktree.visible(worktrees, showingDetached: showingDetached, openIds: openIds)
 
-        // Default section: worktrees not in any group (includes main).
-        let defaultSlice = worktrees.filter { groupId(for: $0.id) == nil }
-        let defaultById = Dictionary(uniqueKeysWithValues: defaultSlice.map { ($0.id, $0) })
-        let main = defaultSlice.first(where: { $0.isMain })
-        let orderedNonMain = defaultOrder.compactMap { id -> Worktree? in
-            guard let wt = defaultById[id], !wt.isMain else { return nil }
-            return wt
-        }
-        let knownDefaultIds = Set(defaultOrder).union(main.map { [$0.id] } ?? [])
-        let newDefault = defaultSlice.filter { !knownDefaultIds.contains($0.id) && !$0.isMain }
-        let sortedNew = Worktree.sorted(newDefault, openIds: openIds)
+        let ungrouped = worktrees.filter { groupNames[$0.id] == nil }
         var result: [Worktree] = []
-        if let main { result.append(main) }
-        result.append(contentsOf: orderedNonMain)
-        result.append(contentsOf: sortedNew)
+        if let main = ungrouped.first(where: { $0.isMain }) { result.append(main) }
+        result.append(contentsOf: ordered(ungrouped.filter { !$0.isMain }, openIds: openIds))
         result = result.filter(matches)
 
-        // Group sections in createdAt ascending order (groups is already sorted).
         for group in groups {
-            let groupById = Dictionary(
-                uniqueKeysWithValues: worktrees
-                    .filter { group.worktreeIds.contains($0.id) }
-                    .map { ($0.id, $0) }
-            )
-            let ordered = group.worktreeIds.compactMap { groupById[$0] }
-            let unknown = worktrees.filter { wt in
-                group.worktreeIds.contains(wt.id) == false &&
-                groupId(for: wt.id) == group.id
-            }
-            let sortedUnknown = Worktree.sorted(unknown, openIds: openIds)
-            result.append(contentsOf: (ordered + sortedUnknown).filter(matches))
+            let members = worktrees.filter { groupNames[$0.id] == group.name }
+            result.append(contentsOf: ordered(members, openIds: openIds).filter(matches))
         }
 
-        let ordered = Self.deduplicated(result)
-        guard grouping == .status else { return ordered }
-        return partitionedByStatus(ordered)
-    }
-
-    /// Emits each worktree once, keeping its first position. A `groups.json` can record the
-    /// same id twice in `defaultOrder` or in a group's `worktreeIds` (see `repositioned`), and a
-    /// row emitted twice traps `SidebarView.shortcutIndexes` on its uniquely-keyed dictionary.
-    private static func deduplicated(_ worktrees: [Worktree]) -> [Worktree] {
-        var seen = Set<String>()
-        return worktrees.filter { seen.insert($0.id).inserted }
+        guard grouping == .status else { return result }
+        return partitionedByStatus(result)
     }
 
     /// `Dictionary(grouping:)` keeps each bucket in input order, so the partition is stable.
@@ -356,37 +355,63 @@ final class WorktreeGroupManager: ObservableObject {
 
     // MARK: - Worktree config
 
-    /// Re-reads every non-main worktree's `clearway.*` config, one process per worktree and all of
-    /// them concurrently, and publishes the result.
+    /// Re-reads the repo-level registry and every non-main worktree's `clearway.*` config, one
+    /// process per worktree and all of them concurrently — the two repo-level reads included, since
+    /// neither depends on the other — and publishes the result.
     ///
     /// The reads are bracketed by the write chain rather than merely preceded by it: awaiting it
     /// first is what stops a freshly created worktree's reload from reading before the name lands,
     /// and re-checking it afterwards is what stops a rename made *during* the reads from being
-    /// published over by the older values. Nothing re-reads until the worktree list changes again
-    /// (decision 2 installs no watcher), so a lost gesture would stay lost for the session.
+    /// published over by the older values. Nothing re-reads until the worktree list changes again,
+    /// so a lost gesture would stay lost for the session.
     private func reloadConfig(for worktrees: [Worktree]) async {
         let targets = worktrees.compactMap { wt -> (id: String, path: String)? in
             guard !wt.isMain, let path = wt.path else { return nil }
             return (wt.id, path)
         }
+        let configStore = configStore
         while true {
             await loadTask?.value
             let chain = writeChain
             await chain?.value
-            let (reloadedNames, reloadedStatuses) = await readConfig(for: targets)
+            async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
+            async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
+            let reloaded = await readConfig(for: targets)
+            let mode = await modeRead
+            let registry = await registryRead
             guard writeChain == chain else { continue }
-            if reloadedNames != names { names = reloadedNames }
-            if reloadedStatuses != statuses { statuses = reloadedStatuses }
+
+            if let mode, let grouping = WorktreeGrouping(rawValue: mode), grouping != self.grouping {
+                self.grouping = grouping
+            }
+            let reloadedGroups = registry.map(Self.registered) ?? groups
+            if reloadedGroups != groups { groups = reloadedGroups }
+            // The registry is the only source of which groups exist, so a membership naming one it
+            // does not list is dropped rather than rendering a phantom section.
+            let listed = Set(reloadedGroups.map(\.name))
+            let reloadedNames = reloaded.groupNames.filter { listed.contains($0.value) }
+            mutatePlacement { placement in
+                placement.groupNames = reloadedNames
+                placement.positions = reloaded.positions
+            }
+            if reloaded.names != names { names = reloaded.names }
+            if reloaded.statuses != statuses { statuses = reloaded.statuses }
             return
         }
+    }
+
+    /// What one `--worktree --list` read per worktree yields, split by key.
+    private struct WorktreeConfig {
+        var names: [String: String] = [:]
+        var statuses: [String: WorktreeStatus] = [:]
+        var groupNames: [String: String] = [:]
+        var positions: [String: Int] = [:]
     }
 
     /// A worktree whose read failed keeps what is published: `values(forWorktreeAt:)` answers
     /// `nil` only when git could not say what is stored, and treating that as "stores nothing"
     /// would clear a name from the sidebar that git still holds.
-    private func readConfig(
-        for targets: [(id: String, path: String)]
-    ) async -> ([String: String], [String: WorktreeStatus]) {
+    private func readConfig(for targets: [(id: String, path: String)]) async -> WorktreeConfig {
         let configStore = configStore
         var read: [(id: String, values: [String: String]?)] = []
         await withTaskGroup(of: (String, [String: String]?).self) { group in
@@ -396,61 +421,36 @@ final class WorktreeGroupManager: ObservableObject {
             for await (id, values) in group { read.append((id, values)) }
         }
 
-        var reloadedNames: [String: String] = [:]
-        var reloadedStatuses: [String: WorktreeStatus] = [:]
+        var reloaded = WorktreeConfig()
         for (id, values) in read {
             guard let values else {
-                reloadedNames[id] = names[id]
-                reloadedStatuses[id] = statuses[id]
+                reloaded.names[id] = names[id]
+                reloaded.statuses[id] = statuses[id]
+                reloaded.groupNames[id] = groupNames[id]
+                reloaded.positions[id] = positions[id]
                 continue
             }
             // Trimmed here because this is where a hand-written config value enters the map,
             // and `name(for:)` and the sidebar both rely on what it holds already being clean.
             let name = values[WorktreeConfigStore.nameKey]?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !name.isEmpty { reloadedNames[id] = name }
-            // An unrecognised slug is dropped rather than published, the same rule the payload's
-            // decoder applied while `groups.json` held these.
+            if !name.isEmpty { reloaded.names[id] = name }
+            // An unrecognised slug is dropped rather than published: `config.worktree` is
+            // hand-editable and a slug rename is a format change.
             if let slug = values[WorktreeConfigStore.statusKey],
                let status = WorktreeStatus(rawValue: slug) {
-                reloadedStatuses[id] = status
+                reloaded.statuses[id] = status
+            }
+            // Compared against the registry exactly, so a stored name is either one of the groups
+            // or nothing — there is no normalisation that could make a near-miss match.
+            if let group = values[WorktreeConfigStore.groupKey], !group.isEmpty {
+                reloaded.groupNames[id] = group
+            }
+            if let raw = values[WorktreeConfigStore.positionKey], let position = Int(raw) {
+                reloaded.positions[id] = position
             }
         }
-        return (reloadedNames, reloadedStatuses)
-    }
-
-    /// The one-shot migration of statuses out of `groups.json`. They are published before any
-    /// subprocess runs, so a launch is never briefly unstatused, and are enqueued on the write
-    /// chain that every reload awaits.
-    ///
-    /// The file is rewritten without the key only once git holds every status it carried — the
-    /// rewrite is what deletes the old copy, and a repository whose `.git/config` cannot be
-    /// written would otherwise lose the whole map with nothing but a log line to show for it.
-    /// A key that is no longer a directory is dropped before the writes rather than left to fail
-    /// inside `git`, so the one failure with nothing to recover cannot hold the rewrite back.
-    ///
-    /// The one enqueued write in this class that captures `self` strongly, because the rewrite is
-    /// the half of the job that deletes the old copy: a manager released while the subprocesses
-    /// run must not take it with it and leave `groups.json` claiming to own statuses git already
-    /// holds. The retain ends with this one-shot task, so it is a bounded lifetime rather than a
-    /// cycle — every other write must stay `[weak self]`, having a correction the next reload makes.
-    private func migrateLegacyStatuses(_ legacy: [String: WorktreeStatus]) {
-        guard !legacy.isEmpty else { return }
-        let live = legacy.filter { FileManager.default.fileExists(atPath: $0.key) }
-        statuses = live
-        enqueueWrite { configStore in
-            var migrated = true
-            for (path, status) in live {
-                let stored = await configStore.set(
-                    status.rawValue,
-                    forKey: WorktreeConfigStore.statusKey,
-                    worktreeAt: path
-                )
-                migrated = migrated && stored
-            }
-            guard migrated else { return }
-            await self.save()
-        }
+        return reloaded
     }
 
     /// Serialises config writes: each one awaits the previous, so two gestures on the same key
@@ -466,18 +466,33 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
-    // MARK: - Private Helpers
+    /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
+    /// registry, and only if every member write landed: a worktree naming an unlisted group renders
+    /// ungrouped, so a half-applied rename that published the registry first would empty the group
+    /// on the next launch.
+    private func writeRegistry(settingGroup name: String? = nil, on members: [String] = []) {
+        let registry = groups.map(\.name)
+        enqueueWrite { configStore in
+            for path in members {
+                guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
+                else { return }
+            }
+            await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
+        }
+    }
+
+    // MARK: - Ordering
 
     /// Places `ids` into the slots `stored` gives them, in the new order, leaving every other
     /// stored ID where it was. IDs `stored` does not hold yet are appended.
-    private static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
+    static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
         let moving = Set(ids)
         var incoming = ids[...]
         var result: [String] = []
         for id in stored {
             if moving.contains(id) {
                 // A slot with no id left to take it is a duplicate of one already placed; dropping
-                // it heals a `groups.json` that recorded the same id twice.
+                // it heals a stored order that recorded the same id twice.
                 if let next = incoming.popFirst() { result.append(next) }
             } else {
                 result.append(id)
@@ -487,19 +502,111 @@ final class WorktreeGroupManager: ObservableObject {
         return result
     }
 
-    /// Fire-and-forget save. Logs errors; does not crash or revert in-memory state.
-    private func save() {
-        let payload = WorktreeGroupsPayload(
-            groups: groups,
-            defaultOrder: defaultOrder,
-            grouping: grouping
-        )
-        Task {
-            do {
-                try await store.save(payload)
-            } catch {
-                Ghostty.logger.error("WorktreeGroupManager: failed to save groups: \(error)")
+    /// The position each member of `section` should carry once the rendered rows have been moved
+    /// into `newOrder`, limited to the ones that changed.
+    ///
+    /// A drag reassigns exactly the values the section already occupied: the permuted IDs take
+    /// them in ascending order, so a row the caller omitted — hidden by the detached filter or the
+    /// search field — keeps the slot it had. A member without a value, and any ID the section did
+    /// not hold, takes the next integer above the section's maximum. A value two members share
+    /// counts once, so a section that came to hold a duplicate is healed by the first drag rather
+    /// than handed the same collision back.
+    static func reassignedPositions(
+        section: [(id: String, position: Int?)],
+        newOrder: [String]
+    ) -> [String: Int] {
+        let permuted = repositioned(section.map(\.id), with: newOrder)
+        var pool = Set(section.compactMap(\.position)).sorted()
+        var next = (pool.last ?? -1) + 1
+        while pool.count < permuted.count {
+            pool.append(next)
+            next += 1
+        }
+        let current = Dictionary(section.map { ($0.id, $0.position) }, uniquingKeysWith: { lhs, _ in lhs })
+        var changed: [String: Int] = [:]
+        for (id, position) in zip(permuted, pool) where (current[id] ?? nil) != position {
+            changed[id] = position
+        }
+        return changed
+    }
+
+    // MARK: - Private Helpers
+
+    /// The registry as groups, in file order, without a repeat or a blank — a hand-edited
+    /// `.git/config` can hold either. Two sections with the same `id` trap the sidebar's `ForEach`,
+    /// and a blank one renders a nameless section whose drops `set` discards as a clear.
+    private static func registered(_ names: [String]) -> [WorktreeGroup] {
+        var seen = Set<String>()
+        return names.filter { !$0.isEmpty && seen.insert($0).inserted }.map(WorktreeGroup.init(name:))
+    }
+
+    /// A member's ID is its path: `Worktree.id` is the path for every worktree that has one, and
+    /// both writers of `groupNames` skip a worktree that has none. Ordered by position so a delete
+    /// renumbers them into the ungrouped section in the order the group showed them.
+    private func members(ofGroupNamed name: String) -> [String] {
+        groupNames.compactMap { $0.value == name ? $0.key : nil }
+            .sorted { (positions[$0] ?? Int.max, $0) < (positions[$1] ?? Int.max, $1) }
+    }
+
+    /// `nil` names the ungrouped section.
+    private func maxPosition(inSectionNamed name: String?) -> Int? {
+        positions.compactMap { groupNames[$0.key] == name ? $0.value : nil }.max()
+    }
+
+    /// The section's members in the order the sidebar renders them, for `reassignedPositions`.
+    /// `nil` names the ungrouped section; main is never a member, since it is pinned first and
+    /// carries no position.
+    ///
+    /// Ordered by `ordered` rather than by ID: the slots a drag reassigns are the ones the rows
+    /// occupy on screen, and an unpositioned row sits where `Worktree.sorted` puts it. Sourced from
+    /// the live worktrees rather than from `positions`, so an unpositioned ungrouped row is in its
+    /// section on the same terms as an unpositioned member of a group.
+    private func section(
+        named name: String?,
+        in worktrees: [Worktree],
+        openIds: [String]
+    ) -> [(id: String, position: Int?)] {
+        let members = worktrees.filter { !$0.isMain && $0.path != nil && groupNames[$0.id] == name }
+        return ordered(members, openIds: openIds).map { (id: $0.id, position: positions[$0.id]) }
+    }
+
+    private func mutatePlacement(_ change: (inout Placement) -> Void) {
+        var next = placement
+        change(&next)
+        guard next != placement else { return }
+        placement = next
+    }
+
+    private func applyPositions(_ changed: [String: Int]) {
+        mutatePlacement { placement in
+            for (id, position) in changed { placement.positions[id] = position }
+        }
+        writePositions(changed)
+    }
+
+    private func writePositions(_ changed: [String: Int]) {
+        guard !changed.isEmpty else { return }
+        enqueueWrite { configStore in
+            for (path, position) in changed {
+                await configStore.set(
+                    String(position),
+                    forKey: WorktreeConfigStore.positionKey,
+                    worktreeAt: path
+                )
             }
         }
+    }
+
+    /// Positions ascending, then the unpositioned; `Worktree.sorted` is both the fallback order
+    /// and the tie-break, so `enumerated()` supplies a stable secondary key.
+    private func ordered(_ worktrees: [Worktree], openIds: [String]) -> [Worktree] {
+        Worktree.sorted(worktrees, openIds: openIds)
+            .enumerated()
+            .sorted { lhs, rhs in
+                let left = positions[lhs.element.id] ?? Int.max
+                let right = positions[rhs.element.id] ?? Int.max
+                return left == right ? lhs.offset < rhs.offset : left < right
+            }
+            .map(\.element)
     }
 }

@@ -84,6 +84,71 @@ final class TerminalManagerTests: XCTestCase {
                       "the hook reveal must win over the open-on-start-off default")
     }
 
+    // MARK: - First tab command
+
+    func test_takeFirstTabCommand_justCreatedWorktree_runsMainTerminalCommand() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt)
+        XCTAssertEqual(manager.takeFirstTabCommand(for: wt.id), "claude")
+    }
+
+    func test_takeFirstTabCommand_existingWorktree_opensLoginShell() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
+                     "a worktree Clearway did not create opens a login shell, whatever Main Terminal holds")
+    }
+
+    func test_takeFirstTabCommand_justCreatedWorktree_mainTerminalNone_opensLoginShell() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { nil }
+
+        manager.markWorktreeCreated(wt)
+        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id))
+    }
+
+    func test_takeFirstTabCommand_markIsOneShot() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt)
+        XCTAssertEqual(manager.takeFirstTabCommand(for: wt.id), "claude")
+        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
+                     "closing a created worktree's terminals and reopening it is opening one that already exists")
+    }
+
+    func test_takeFirstTabCommand_marksOneWorktreeOnly() {
+        let manager = TerminalManager()
+        let created = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        let other = makeWorktree(branch: "other", path: "/tmp/other", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(created)
+        XCTAssertNil(manager.takeFirstTabCommand(for: other.id))
+        XCTAssertEqual(manager.takeFirstTabCommand(for: created.id), "claude")
+    }
+
+    /// Tearing a worktree's terminals down drops every other per-worktree entry, so the creation
+    /// mark has to go with them: a worktree whose terminals were closed and then reopened is one
+    /// that already exists, and must come back on a login shell rather than on a second agent.
+    func test_removeSurface_clearsTheCreationMark() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt)
+        manager.removeSurface(for: wt.id)
+        XCTAssertNil(manager.takeFirstTabCommand(for: wt.id),
+                     "the creation mark must not survive the worktree's terminals")
+    }
+
     // MARK: - buildAgentPromptCommand
 
     func test_buildAgentPromptCommand_usesPositionalPrompt_notStdinPipe() {
@@ -172,11 +237,11 @@ final class TerminalManagerTests: XCTestCase {
             agentCommand: "grok",
             prompt: "p",
             path: testPath,
-            filePrefix: "clearway-launcher"
+            filePrefix: "clearway-agent-tab"
         )
         defer { try? FileManager.default.removeItem(atPath: launch.promptFile) }
         XCTAssertTrue(
-            (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-launcher-"),
+            (launch.promptFile as NSString).lastPathComponent.hasPrefix("clearway-agent-tab-"),
             "prompt file name should use the prefix; got: \(launch.promptFile)"
         )
     }
@@ -258,8 +323,8 @@ final class TerminalManagerTests: XCTestCase {
         let out = manager.buildBareCommand(agentCommand: "claude", path: testPath)
         XCTAssertFalse(out.contains("cat "),
                        "buildBareCommand must not read a prompt file; got: \(out)")
-        XCTAssertFalse(out.contains("clearway-launcher-"),
-                       "buildBareCommand must not allocate a launcher temp file; got: \(out)")
+        XCTAssertFalse(out.contains("clearway-agent-tab-"),
+                       "buildBareCommand must not allocate a prompt temp file; got: \(out)")
     }
 
     /// Security: shell metacharacters in the user-configured main command
@@ -303,41 +368,6 @@ final class TerminalManagerTests: XCTestCase {
                       "must pass `--` before positional args so dashed agent names aren't parsed as options; got: \(out)")
     }
 
-    // MARK: - launcherAgents
-
-    /// A per-tab agent override outlives nothing: tab ids are recycled, so every site that
-    /// drops a launcher draft must drop the override too, or a new tab inherits the agent of
-    /// a dead one. `closeAllSurfaces` is the one such site reachable without a live
-    /// `ghostty_app_t`; the other four are pinned by the grep parity check in the build log.
-    func test_closeAllSurfaces_clearsLauncherAgents() {
-        let manager = TerminalManager()
-        let tabId = UUID()
-        manager.launcherAgents[tabId] = "grok"
-        manager.launcherDrafts[tabId] = "draft"
-
-        manager.closeAllSurfaces()
-
-        XCTAssertNil(manager.launcherAgents[tabId],
-                     "a stale agent override would address the next tab with this id to the wrong agent")
-        XCTAssertNil(manager.launcherDrafts[tabId])
-    }
-
-    // MARK: - startsAsLoginShell
-
-    /// The conjunction that lets an agent command work with Settings → Main Terminal at "None".
-    /// Drop the `agentOverride` half and the tab is promoted to a bare login shell, so the
-    /// prompt is handed to nobody and the agent never launches.
-    func test_startsAsLoginShell_onlyWhenNeitherSourceNamesAnAgent() {
-        XCTAssertTrue(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: nil))
-
-        XCTAssertFalse(
-            TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: nil),
-            "An agent command must keep its tab a launcher even when Main Terminal is None"
-        )
-        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: nil, mainCommand: "claude"))
-        XCTAssertFalse(TerminalManager.startsAsLoginShell(agentOverride: "codex", mainCommand: "claude"))
-    }
-
     // MARK: - beginTaskLaunch
 
     /// A task-terminal launch awaits the resolved PATH before it has a surface, so nothing else
@@ -362,5 +392,68 @@ final class TerminalManagerTests: XCTestCase {
 
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
         XCTAssertTrue(manager.beginTaskLaunch(for: UUID()))
+    }
+
+    // MARK: - beginAgentLaunch
+
+    /// An agent tab awaits the resolved PATH before it has a surface, so the worktree's pane has no
+    /// tab for that window. A second Opt+Cmd+T must lose the claim rather than open a second agent.
+    func test_beginAgentLaunch_secondClaimIsRefusedUntilTheFirstEnds() {
+        let manager = TerminalManager()
+        let worktreeId = "feature"
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId))
+        XCTAssertFalse(manager.beginAgentLaunch(for: worktreeId),
+                       "a launch already in flight must refuse the second press")
+
+        manager.endAgentLaunch(for: worktreeId)
+        XCTAssertTrue(manager.beginAgentLaunch(for: worktreeId),
+                      "the claim must be released once the launch has its tab")
+    }
+
+    /// The claim is per worktree: a launch in one must not block a launch in another.
+    func test_beginAgentLaunch_claimsAreIndependentPerWorktree() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.beginAgentLaunch(for: "main"))
+    }
+
+    /// The empty-state gate in `detailView` reads this set, so a claim has to be visible there —
+    /// it is what keeps a worktree whose first tab is an agent from flashing the placeholder.
+    func test_agentLaunchesInFlight_tracksTheClaimedWorktrees() {
+        let manager = TerminalManager()
+
+        XCTAssertTrue(manager.beginAgentLaunch(for: "feature"))
+        XCTAssertTrue(manager.agentLaunchesInFlight.contains("feature"))
+
+        manager.endAgentLaunch(for: "feature")
+        XCTAssertFalse(manager.agentLaunchesInFlight.contains("feature"))
+    }
+
+    // MARK: - proceedsWithLaunch
+
+    /// The four doors, as Decision 20 draws them. Row three is the one that already regressed: a
+    /// saved agent command started during another launch's PATH wait opened nothing.
+    func test_proceedsWithLaunch_onlyARefusingDoorLosesToAnotherLaunch() {
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: true),
+                      "Opt+Cmd+T with no launch in flight")
+        XCTAssertFalse(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: true),
+                       "a second Opt+Cmd+T during the wait is a repeat of the first")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: false, refuseWhenInFlight: false),
+                      "a door that does not refuse opens its tab even when another launch holds the marker")
+        XCTAssertTrue(TerminalManager.proceedsWithLaunch(ownsMarker: true, refuseWhenInFlight: false))
+    }
+
+    // MARK: - promptDelivery
+
+    /// Which builder an agent tab uses, and whether it stages afterwards. `submit` is the user's
+    /// "Append Enter to run immediately" toggle, so reading it backwards runs a prompt they staged.
+    func test_promptDelivery_submitOnlyMattersWithAPrompt() {
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: true), .bare,
+                       "Opt+Cmd+T passes no prompt and must not build an empty argv element")
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "", submit: false), .bare)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: true), .argv)
+        XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: false), .staged)
     }
 }

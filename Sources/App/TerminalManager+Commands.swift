@@ -4,15 +4,15 @@ import GhosttyKit
 /// Running a `SavedCommand`, in a worktree's main terminal or in a task's bottom terminal.
 ///
 /// On the manager rather than in the Run dropdown because a view resolves no worktree and awaits
-/// nothing: this opens the tab, waits for the shell's first prompt, and picks between staging the
-/// prompt and promoting the tab.
+/// nothing: this opens the tab and either waits for the shell's first prompt before sending the
+/// command, or hands the prompt to an agent tab.
 extension TerminalManager {
 
     /// Open a new main-terminal tab in `worktree` and hand it `command`.
     func run(_ command: SavedCommand, in worktree: Worktree, app: ghostty_app_t) {
         switch CommandLaunch.launch(for: command) {
         case .shell(let send):
-            guard let surface = appendShellTab(for: worktree, app: app) else { return }
+            let surface = appendTab(for: worktree, app: app)
             Task { @MainActor in
                 await Self.awaitShellPrompt(on: surface)
                 for step in send.steps {
@@ -24,22 +24,15 @@ extension TerminalManager {
             }
 
         case .agent(let agent, let prompt, let submit):
-            let worktreeId = worktree.id
-            let tabId = appendLauncherTab(for: worktree, app: app, agentOverride: agent)
-            guard submit else {
-                objectWillChange.send()
-                launcherDrafts[tabId] = prompt
-                return
-            }
-            Task { @MainActor in
-                await promoteLauncherToAgent(
-                    tabId: tabId,
-                    in: worktreeId,
-                    app: app,
-                    command: agent,
-                    prompt: prompt
-                )
-            }
+            // Never refused: this tab is the command the user picked, not a repeat of ⌥⌘T.
+            startAgentTab(
+                for: worktree,
+                app: app,
+                command: agent,
+                prompt: prompt,
+                submit: submit,
+                refuseWhenInFlight: false
+            )
         }
     }
 
@@ -47,7 +40,7 @@ extension TerminalManager {
     /// of `run(_:in:app:)`, for the Tasks destination, which renders no main-terminal pane at all.
     ///
     /// `autoRun` picks submit-or-stage the same way. Submitting opens the surface straight onto the
-    /// agent; staging has no launcher to hold a draft here, so it opens a login shell and leaves the
+    /// agent; staging has nothing to hold a draft here, so it opens a login shell and leaves the
     /// invocation on its prompt line for the operator to send.
     func run(
         _ command: SavedCommand,
@@ -84,8 +77,13 @@ extension TerminalManager {
     /// `shellReadinessFallback` is for shells Ghostty injects no integration into, where `pwd` never
     /// arrives — `/bin/dash -i` never reported one, and the wait timed out at 763 ms, after which
     /// both the run and the stage landed cleanly on dash's prompt. 750 ms is ~3.5x the observed
-    /// 200 ms prompt latency, and only a shell that reports nothing ever pays it.
-    private static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
+    /// 200 ms prompt latency, and only a shell that reports nothing ever pays it. An agent tab is
+    /// the same case — it `exec`s over the shell and reports no `pwd` — so `startAgentTab`'s staged
+    /// paste always pays the full fallback window.
+    ///
+    /// Internal (not `private`) so `startAgentTab` can reach it: `private` does not cross a file
+    /// even within a type.
+    static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
         let deadline = ContinuousClock.now + shellReadinessFallback
         while surface.pwd == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: shellReadinessPoll)
