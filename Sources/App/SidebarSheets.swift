@@ -62,13 +62,16 @@ struct CreateWorktreeSheet: View {
             }
 
             LabeledField("Status") {
-                Picker("Status", selection: $status) {
-                    ForEach(WorktreeStatus.allCases) { option in
-                        WorktreeStatusLabel(status: option)
-                            .tag(option)
-                    }
-                }
-                .labelsHidden()
+                FullWidthPicker(label: "Status", selection: $status, rows: statusRows)
+                    .disabled(isCreating)
+            }
+
+            LabeledField(Self.afterCreateLabel) {
+                FullWidthPicker(
+                    label: Self.afterCreateLabel,
+                    selection: $afterCreateCommandId,
+                    rows: afterCreateRows
+                )
                 .disabled(isCreating)
             }
 
@@ -99,17 +102,6 @@ struct CreateWorktreeSheet: View {
 
                     Toggle("Fetch before creating", isOn: $fetchBeforeCreate)
                         .disabled(isCreating)
-
-                    LabeledField("Run after create") {
-                        Picker("Run after create", selection: $afterCreateCommandId) {
-                            Text("None").tag(UUID?.none)
-                            ForEach(savedCommandManager.agentCommands) { command in
-                                Text(command.name).tag(UUID?.some(command.id))
-                            }
-                        }
-                        .labelsHidden()
-                        .disabled(isCreating)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -170,6 +162,20 @@ struct CreateWorktreeSheet: View {
         .frame(width: 320)
         .onAppear {
             afterCreateCommandId = savedCommandManager.afterCreateCommand?.id
+        }
+    }
+
+    static let afterCreateLabel = "Run agent command after create"
+
+    private var statusRows: [FullWidthPicker<WorktreeStatus>.Row] {
+        WorktreeStatus.allCases.map {
+            .init(value: $0, title: $0.displayName, symbol: $0.symbol, tint: $0.color)
+        }
+    }
+
+    private var afterCreateRows: [FullWidthPicker<UUID?>.Row] {
+        [.init(value: UUID?.none, title: "None")] + savedCommandManager.agentCommands.map {
+            .init(value: UUID?.some($0.id), title: $0.name)
         }
     }
 }

@@ -232,3 +232,47 @@ target, so no availability guard is needed.
 `./scripts/ci.sh` — passed. `xcodegen generate`, `swiftlint lint --quiet` (0 errors, no finding in
 the new file), build, then `Executed 676 tests, with 0 failures (0 unexpected)`, `==> CI passed.`
 `git status --porcelain` before committing showed only this task's two files.
+
+### T2: Move, rename and adopt the field in the create sheet
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | `CreateWorktreeSheet.body`: the command field moved out of the `showingAdvanced` block to directly below Status; its `LabeledField` label is now "Run agent command after create"; both it and Status are `FullWidthPicker`s, each keeping `.disabled(isCreating)`. Two private computed row properties and one `static let afterCreateLabel` added below `body`. |
+
+Advanced now holds Base branch and Fetch before creating alone. No `Picker` remains in the file.
+`WorktreeStatusLabel` is still defined and still rendered at `SidebarView.swift:464`. Nothing else
+changed: `git diff` shows the `onAppear` seeding, the `CommandDefaults.resolve` call, the
+`setAfterCreateDefault` line on the `.apply` branch, `Self.outcome`, `Self.prefill` and
+`NameEntrySheet` outside every hunk, so the behavioural code is byte-identical to `b4369a5` and not
+even re-indented.
+
+**Evidence**
+
+No test was written, and there is therefore no watched failure to quote. Plan decision 8 and spec
+decision 8 settle it: this task moves and re-skins two controls, adds no decision rule to pin, and
+nothing in `CreateWorktreeSheet.body` is reachable from XCTest. The rules the change sits on are
+already pinned elsewhere and were re-run green as the regression check —
+`CreateWorktreeOutcomeTests` (the outcome switch), `SavedCommandManagerTests` (`agentCommands`,
+which feeds the new rows) and `SavedCommandStoreTests` (the `CommandDefaults` round-trip behind
+seeding and write-back). The acceptance criteria that are not behavioural were checked by reading
+the diff, listed above; the 280pt rendering and the tinted status symbol are the operator's to
+confirm, since build agents do not launch the app.
+
+**Deviations from the plan**
+
+- The plan mapped both row arrays inline in `body`. They are two `private var` computed properties
+  instead, and the label is a `static let afterCreateLabel`. `FullWidthPicker` takes the label
+  twice over — `LabeledField`'s visible text and the control's accessibility label — so an inline
+  literal would have been written twice and could drift; and two inline `map`s inside a
+  `@ViewBuilder` add type-checking work for no gain. The rows and the label are otherwise exactly
+  what the plan specifies: None first, then `savedCommandManager.agentCommands` in order, and
+  `WorktreeStatus.allCases` carrying `displayName` / `symbol` / `color`.
+
+**Gate**
+
+`./scripts/ci.sh` — passed. `xcodegen generate`, `swiftlint lint --quiet` (zero output, so zero
+errors and no new warning), build, then `Executed 676 tests, with 0 failures (0 unexpected)`,
+`==> CI passed.` `git status --porcelain` before committing showed `M Sources/App/SidebarSheets.swift`
+and nothing else — no `default.profraw`, since no Debug launch happened.
