@@ -33,9 +33,9 @@ func agentMenuRows(agents: [String], mainCommand: String?) -> [AgentMenuRow] {
 /// Prompts near the OS `ARG_MAX` (~1 MB on recent macOS) can fail with "Argument list too
 /// long". Typical agent prompts are well under that.
 ///
-/// - Returns: The shell command string and the prompt file path (callers that tear down
-///   surfaces early can delete the file if the agent never ran), or `nil` when the prompt file
-///   could not be written.
+/// - Returns: The shell command string and the path of the prompt file it will read, or `nil`
+///   when that file could not be written. The recipe removes the file itself; the path is
+///   returned so the tests can clean up after a command they never run.
 func buildAgentPromptCommand(
     agentCommand: String,
     prompt: String,

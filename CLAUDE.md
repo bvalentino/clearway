@@ -228,12 +228,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     The staged case (`submit` off) goes through `stagedText` + **`sendText`**, the one staging rule,
     shared with `sendToActiveMainTab(asCommand: false)` — the Prompts aside's play button, which
     often targets a plain shell, so the rule lives beside it in `TerminalManager.swift` rather than
-    in this agent-only extension. Neither
-    uses `sendPaste`, which appends Enter and would run the prompt staging exists to leave unrun.
+    in this agent-only extension. Neither uses `sendPaste`, which appends Enter and would run the
+    prompt staging exists to leave unrun.
     The trim `stagedText` does is load-bearing, not cosmetic: outside bracketed paste libghostty
     rewrites every `\n` to `\r` (`ghostty/src/input/paste.zig`), so an untrimmed trailing newline is
-    itself an Enter. `sendPaste` survives only for `TerminalManager+Panels.swift`'s hook command,
-    where Enter is wanted; no prompt-delivery path names it.
+    itself an Enter. Trimming the ends is the **whole** guarantee — an interior newline still
+    arrives as an Enter on a target without bracketed paste, as it did under `sendPaste`, and
+    closing that needs a bracketed-paste query the C API does not expose. `sendPaste` survives only
+    for `TerminalManager+Panels.swift`'s hook command, where Enter is wanted; no prompt-delivery
+    path names it.
     `promptDelivery`, `stagedText` and `proceedsWithLaunch` are `static` so all three rules are
     testable without a `ghostty_app_t`.
   - Running a saved command is `TerminalManager.run` (`TerminalManager+Commands.swift`), not the

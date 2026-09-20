@@ -445,7 +445,8 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertEqual(TerminalManager.stagedText("  review the diff \n\n"), "review the diff")
     }
 
-    /// A multi-line prompt is still one prompt: only the ends are trimmed.
+    /// Only the ends are trimmed. An interior newline still reaches a target without bracketed
+    /// paste as an Enter — unchanged from `sendPaste`, and not something a trim can fix.
     func test_stagedText_keepsInteriorNewlines() {
         XCTAssertEqual(TerminalManager.stagedText("\nfirst\n\nsecond\n"), "first\n\nsecond")
     }

@@ -227,6 +227,10 @@ class TerminalManager: ObservableObject {
     /// The trim is load-bearing, not cosmetic. Outside bracketed paste libghostty rewrites every
     /// `\n` to `\r` (`ghostty/src/input/paste.zig`), which is an Enter — so an untrimmed trailing
     /// newline submits the text this rule exists to leave unsubmitted.
+    ///
+    /// Trimming the ends is the whole guarantee. An interior newline still arrives as an Enter on
+    /// a target without bracketed paste, exactly as `sendPaste` delivered it before; closing that
+    /// needs a bracketed-paste query libghostty's C API does not expose.
     static func stagedText(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }

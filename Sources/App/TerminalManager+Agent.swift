@@ -1,5 +1,4 @@
 import AppKit
-import Foundation
 import GhosttyKit
 
 /// Opening a main tab that runs an agent.
@@ -90,8 +89,8 @@ extension TerminalManager {
                 launchCommand = buildBareCommand(agentCommand: command, path: path)
             case .argv:
                 // No prompt file, no launch: the recipe's `$(cat)` would hand the agent an empty
-                // prompt, and falling back to a bare tab would silently downgrade "run this prompt"
-                // to "type it in for me". The claim has to end here too — nothing cancels this Task.
+                // prompt, and a bare tab is not the tab that was asked for. The claim ends here
+                // too — nothing cancels this Task.
                 guard let launch = buildAgentPromptCommand(
                     agentCommand: command,
                     prompt: prompt,
@@ -114,8 +113,6 @@ extension TerminalManager {
         }
     }
 
-    /// `NSAlert().runModal()` is the app's pattern for a fire-and-forget message, the same one
-    /// `OpenInMenu.presentFailure` uses.
     private func presentPromptFileFailure(command: String) {
         let alert = NSAlert()
         alert.messageText = "Couldn't start \(command)"
