@@ -402,5 +402,7 @@ failable.
 
 **Gate**
 
-`./scripts/ci.sh` — see the run recorded below. `swiftlint lint --quiet --no-cache` prints nothing,
-exit status 0.
+`./scripts/ci.sh` — green on the merge commit, exit status 0. `Executed 556 tests, with 0 failures
+(0 unexpected)`, `==> CI passed.`. `swiftlint lint --quiet --no-cache` prints nothing, exit status
+0. `git status --porcelain` is empty — no `default.profraw`, since the gate builds and tests without
+launching the app.
