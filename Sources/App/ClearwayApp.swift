@@ -128,6 +128,7 @@ struct ClearwayApp: App {
     @StateObject private var settings: SettingsManager
     @StateObject private var caffeine = CaffeineManager()
     @StateObject private var portMonitor = PortMonitor()
+    @StateObject private var agentActivity: AgentActivityMonitor
     @AppStorage("showFrontmatter") private var showFrontmatter: Bool = false
     private let updaterController: SPUStandardUpdaterController
 
@@ -140,6 +141,16 @@ struct ClearwayApp: App {
         // window-independent — capturing a window's state here would let the last window opened
         // answer for every window's surfaces.
         Ghostty.SurfaceView.claimsShortcut = AppKeyboardShortcuts.claims
+        // The same process-scoped shape for the agent hooks: one socket and one roster for the
+        // whole app, so the surface identity provider and the retirement callback are wired beside
+        // the line above rather than per window. The monitor is captured weakly — a static that
+        // held it strongly would outlive every window and keep the socket bound through teardown.
+        Ghostty.SurfaceView.agentEnvironment = AgentHookIdentity.environment
+        let agentActivity = AgentActivityMonitor()
+        TerminalManager.retireSurface = { [weak agentActivity] surfaceId in
+            agentActivity?.retire(surfaceId: surfaceId)
+        }
+        _agentActivity = StateObject(wrappedValue: agentActivity)
         // SettingsManager.init applies the stored color scheme to NSApp, so Ghostty.App
         // picks up the correct effective appearance when it reads it during its own init.
         _settings = StateObject(wrappedValue: SettingsManager())
@@ -161,7 +172,12 @@ struct ClearwayApp: App {
                 .environmentObject(projectList)
                 .environmentObject(caffeine)
                 .environmentObject(portMonitor)
+                .environmentObject(agentActivity)
                 .clearwayChrome(settings)
+                .onAppear { agentActivity.setEnabled(settings.agentHooksEnabled) }
+                .onChange(of: settings.agentHooksEnabled) { enabled in
+                    agentActivity.setEnabled(enabled)
+                }
         }
         .defaultSize(width: 1100, height: 700)
         .commands {

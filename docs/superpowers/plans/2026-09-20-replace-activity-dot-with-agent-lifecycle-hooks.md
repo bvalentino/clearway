@@ -1232,3 +1232,78 @@ Settings, and a missing `didSet` turns the toggle back on at every relaunch.
 (0 unexpected) in 106.727 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
 showed three modified files and nothing else — no new Swift file, so `xcodegen` left
 `project.pbxproj` untouched, and no `default.profraw`: nothing here launched the app.
+
+---
+
+### T8: App-level wiring
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/ClearwayApp.swift` | `@StateObject private var agentActivity: AgentActivityMonitor`, built in `init()` beside the `claimsShortcut` line, where both process-scoped statics are now wired: `Ghostty.SurfaceView.agentEnvironment = AgentHookIdentity.environment` and `TerminalManager.retireSurface`, whose closure captures the monitor weakly. The project `WindowGroup`'s content gains `.environmentObject(agentActivity)`, an `.onAppear` calling `setEnabled(settings.agentHooksEnabled)` and an `.onChange` of the same value. |
+| `Sources/App/ContentView.swift` | `@EnvironmentObject claudeActivityMonitor` and both `updateWorktrees(…)` calls removed. The file shrank from 1014 to 1011 lines; nothing was added to it. |
+| `Tests/AgentHookIdentityTests.swift` | `testTheSurfaceProviderIsWiredAtLaunch` — the app-hosted pin on the one line that cannot fail loudly. |
+
+**Evidence.** The provider defaults to `{ _, _ in [] }`, so a missing wiring line compiles, lints,
+launches and ships a feature that does nothing: every surface hands its shell no
+`CLEARWAY_SURFACE_ID`, the forwarder exits on its first guard, and no hook ever reaches the socket.
+Nothing else in the suite touches it. So T8 was first built with every other line in place and that
+one absent, and `./scripts/ci.sh` run against it:
+
+```
+    ✖ testTheSurfaceProviderIsWiredAtLaunch, XCTAssertEqual failed: ("[]") is not equal to ("["CLEARWAY_SURFACE_ID", "CLEARWAY_WORKTREE_ID", "CLEARWAY_HOOK_SOCKET"]")
+    ✖ testTheSurfaceProviderIsWiredAtLaunch, XCTAssertEqual failed: ("nil") is not equal to ("Optional("E42B50F7-7B9C-4175-B206-6512BC92EDD9")")
+Executed 740 tests, with 2 failures (0 unexpected) in 108.292 (108.431) seconds
+```
+
+The `[]` **is** the silent defect. That the same test is green after the one-line addition is also
+what proves the test can see the wiring at all: the unit-test bundle is hosted by the app, so
+`ClearwayApp.init` has already run when the bundle loads, and the static carries what it left there.
+
+**The `setEnabled` half verified itself on that same run.** The hosted app opened its window, which
+is what `.onAppear` hangs off, and the machine's real agent config shows the whole install path ran
+end to end from the wiring alone:
+
+```
+$ ls -la ~/.claude/settings.json.clearway-backup ~/.clearway/hooks/clearway-hook.sh
+-rw-r--r--@ 1 bvalentino  staff  47925 Sep 20 17:54 /Users/bvalentino/.claude/settings.json.clearway-backup
+-rwxr-xr-x@ 1 bvalentino  staff    276 Sep 20 20:06 /Users/bvalentino/.clearway/hooks/clearway-hook.sh
+$ python3 -c '…count entries containing clearway-hook.sh…'
+clearway entries: 9
+```
+
+The backup is byte-for-byte the 47,925-byte file as it stood before (`17:54`, the pre-run mtime),
+the nine events of D4 each carry one entry, and the user's own thirteen hook events — including four
+Clearway does not install — are still there. Worth stating plainly for the sign-off stage: **any**
+`./scripts/ci.sh` run from here on installs the block into the developer's real
+`~/.claude/settings.json`, because the test host launches the app and the toggle defaults on. That
+is the feature, not a test artefact; GitHub's runner has no `~/.claude`, and T4's directory gate
+makes it a no-op there.
+
+**Deviations from the plan.**
+
+- **`ProjectWindow` keeps its `ClaudeActivityMonitor` until T9.** The task says to delete the
+  `@StateObject` and the `.environmentObject` now, and its acceptance criterion names the three
+  files that may still reference the type afterwards — `SidebarView.swift` among them. But
+  `SidebarView` reads it as an `@EnvironmentObject`, and an `@EnvironmentObject` nothing injects is
+  a `fatalError` the first time the view body runs: T8 as written makes the app unlaunchable until
+  T9 lands, which costs the operator the by-hand check at the end of this task and breaks the rule
+  that each layer leaves a working product. The two lines stay until T9 removes the reader. They are
+  inert — `ContentView` no longer calls `updateWorktrees`, so the monitor starts no watcher and its
+  `workingWorktreeIds` is permanently empty, which is the old dot going dark one task early rather
+  than any behaviour change. **T9 must delete them**; T11's repo-wide grep catches it otherwise.
+- **The toggle is driven from the scene, not from `init`.** As the plan suggests, but worth stating
+  why it is not a one-shot: `setEnabled` has to re-run when the setting changes, and the App struct
+  has no lifecycle hook between `init` and the scene. Both calls are idempotent and a second window
+  simply repeats them.
+
+One detail the plan left open, recorded for T9 and T10: `agentActivity` is injected on the project
+`WindowGroup` only, not on the task or prompt window groups — the two readers T9 and T10 add are
+`SidebarView` and `MainTerminalTabStrip`, both inside `ContentView`. A standalone window that
+reached for it would fault, the same way the `ClaudeActivityMonitor` note above describes.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 740 tests, with 0 failures
+(0 unexpected) in 107.656 seconds`, then `==> CI passed.` `git status --porcelain` before the commit
+showed three modified files and nothing else: no new Swift file, so `xcodegen` left
+`project.pbxproj` untouched, and no `default.profraw` — the test host's launch does not drop one.

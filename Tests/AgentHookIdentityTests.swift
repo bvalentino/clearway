@@ -56,6 +56,29 @@ final class AgentHookIdentityTests: XCTestCase {
         XCTAssertNil(AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8)))
     }
 
+    // MARK: - The wiring
+
+    /// `ClearwayApp.init` is the only writer of the provider, and unwired it hands every surface an
+    /// empty environment with no diagnostic anywhere: the forwarder then exits on its first guard,
+    /// every hook is a no-op and the whole feature is dead in a way nothing else here would catch.
+    /// The test host launches the app, so the static carries whatever that `init` left on it.
+    @MainActor
+    func testTheSurfaceProviderIsWiredAtLaunch() {
+        let surfaceId = UUID()
+        let worktreeId = "/Users/x/clearway"
+
+        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, worktreeId)
+
+        XCTAssertEqual(
+            wired.map(\.key),
+            AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: worktreeId).map(\.key)
+        )
+        XCTAssertEqual(
+            wired.first(where: { $0.key == AgentHookIdentity.surfaceIdKey })?.value,
+            surfaceId.uuidString
+        )
+    }
+
     // MARK: - The socket
 
     func testEverySurfaceIsToldWhereToSend() {

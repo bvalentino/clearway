@@ -61,7 +61,6 @@ struct ContentView: View {
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
-    @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var sidebarSelection: DetailSelection? = .tasks
@@ -337,7 +336,6 @@ struct ContentView: View {
             }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
-            claudeActivityMonitor.updateWorktrees(newWorktrees)
             // Re-merge the task pool: a created/removed worktree adds/drops its TASK.md, and a
             // just-appeared worktree path may newly enable a watcher for an opened worktree.
             syncWatchedWorktrees()
@@ -400,7 +398,6 @@ struct ContentView: View {
             terminalManager.mainCommandProvider = { [settings] in settings.configuredMainTerminalCommand }
             terminalManager.openSecondaryOnStartProvider = { [settings] in settings.openSecondaryOnStart }
 
-            claudeActivityMonitor.updateWorktrees(worktreeManager.worktrees)
             todoManager.setWorktreePath(selectedWorktree?.path)
             syncWatchedWorktrees()
 
