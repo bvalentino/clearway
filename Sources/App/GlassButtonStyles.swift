@@ -12,13 +12,4 @@ extension View {
                 .tint(tint)
         }
     }
-
-    @ViewBuilder
-    func applyGlassButtonStyle() -> some View {
-        if #available(macOS 26.0, *) {
-            self.buttonStyle(.glass)
-        } else {
-            self.buttonStyle(.bordered)
-        }
-    }
 }

@@ -252,6 +252,35 @@ This supersedes spec decisions 11, 12 and 13 and is recorded as spec decisions 1
 the aside no longer uses `SidebarHeaderButton`, that type has only sidebar callers again and the
 spec's follow-up about renaming it is moot; the Out of scope entry says so.
 
+### C2: The bar becomes a full-width glass button (operator, after the second hands-on check)
+
+Operator feedback, verbatim: "That button is not glass. It should not have a divider on top. It
+should be full width."
+
+Root cause of the first symptom: `.buttonStyle(.glass)` needs content behind it, and C1's
+`.background(.bar)` was opaque, so the glass had nothing to sample and rendered like `.bordered`.
+Removing the bar is therefore the fix for all three complaints at once.
+
+`AsideBottomBar` is renamed `AsideAddButton` (`Sources/App/AsideAddButton.swift`) — it is a button
+now, not a bar. The `Divider`, the `.bar` background and the `HStack`/`Spacer` are gone; what
+remains is one `Button` whose `Label(title, systemImage: "plus")` is `.frame(maxWidth: .infinity)`,
+inset 12 horizontal, 12 bottom and 8 top so the aside's bottom mirrors the tab strip's top.
+
+The glass is built the way the app's working precedents build theirs — `ContentView.sidePanelTabStrip`
+and `MainTerminalTabStrip.tabsCapsule` — rather than by a button style: on macOS 26 and later,
+`.buttonStyle(.plain)` with the label padded 6 vertical, `.glassEffect(.regular.interactive(), in: Capsule())`
+and a `Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)` overlay. `.interactive()`
+is the one addition over those two, so hover and press give feedback on a control that is a button
+rather than a container. Below macOS 26 it is `.buttonStyle(.bordered)` at `.controlSize(.large)`
+with the same full-width frame.
+
+`applyGlassButtonStyle()` had exactly one caller and goes with it; `applyPrimaryActionStyle(tint:)`
+stays where C1 put it, in `GlassButtonStyles.swift`.
+
+This supersedes spec decision 1's bar chrome, decision 14 entirely and decision 19's divider, `.bar`
+background and leading alignment, and is recorded as spec decision 21. Decision 19's titled label,
+absent tooltip and absent `.accessibilityLabel` are unchanged.
+
 ## Build log
 
 ### T1: Add AsideBottomBar and move the Todos `+` onto it
@@ -406,3 +435,52 @@ window.
 **Gate**
 
 `./scripts/ci.sh` — exit 0. `xcodegen generate`, SwiftLint, build, and 535 tests with 0 failures.
+
+### C2: The bar becomes a full-width glass button
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AsideAddButton.swift` | Renamed from `AsideBottomBar.swift` (`git mv`, so the history follows). 42 lines. `struct AsideAddButton` taking `title` and `action`; one `Button` whose `Label(title, systemImage: "plus").labelStyle(.titleAndIcon)` is `.frame(maxWidth: .infinity)`, inset 12 horizontal / 8 top / 12 bottom. macOS 26 and later: `.buttonStyle(.plain)`, label padded 6 vertical, `.glassEffect(.regular.interactive(), in: Capsule())` and a `Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)` overlay. Below: `.buttonStyle(.bordered)` at `.controlSize(.large)`. The `Divider`, the `.bar` background, the `HStack` and the `Spacer` are gone. |
+| `Sources/App/GlassButtonStyles.swift` | `applyGlassButtonStyle()` deleted — `AsideBottomBar` was its only caller. `applyPrimaryActionStyle(tint:)` stays, with its two callers (`WorkTaskWindow.swift:284`, `WorkTaskListView.swift:65`) untouched. |
+| `Sources/App/TodosPanelView.swift` | Call site becomes `AsideAddButton(title: "Add Todo", action: startCreating)`; still the last child of the root `VStack`. |
+| `Sources/App/PromptsView.swift` | Call site becomes `AsideAddButton(title: "Add Prompt") { … }`; closure body unchanged, still the last child of the root `VStack`. |
+| `docs/superpowers/specs/2026-09-19-aside-bottom-bar-plus.md` | Decision 21 added; the summary paragraph and success criteria 1, 2, 3, 5, 6 and 7 restated for a button with no bar; the two `Files touched` rows updated. |
+| `docs/superpowers/plans/2026-09-19-aside-bottom-bar-plus.md` | C2 added to `## Changelog`, plus this entry. |
+
+**Evidence**
+
+No regression test. Spec decision 18 still holds: this is view chrome, and the two facts that could
+regress — the button staying pinned at the bottom and surviving the empty list — are SwiftUI layout,
+not a rule that can be lifted into a pure helper. Both were confirmed by reading: in each view the
+call is the last child of the root `VStack(spacing: 0)` after the `if isEmpty / else`, and both
+empty-state branches carry `.frame(maxWidth: .infinity, maxHeight: .infinity)`
+(`PromptsView.swift:24`, `TodosPanelView.swift:54`), so the list's branch takes the slack either way.
+
+The root cause of "that button is not glass" was confirmed against the SDK rather than guessed:
+`SwiftUICore.Glass` declares `public func interactive(_ isEnabled: Bool = true) -> Glass` and
+`glassEffect(_ glass: Glass = .regular, in shape: some Shape = DefaultGlassEffectShape())`
+(`MacOSX27.0.sdk/.../SwiftUICore.swiftinterface:7245, :3064`), which is the shape the two working
+precedents already use. An opaque `.background(.bar)` behind `.buttonStyle(.glass)` leaves the
+material nothing to sample, which is why C1's button read as `.bordered`.
+
+Checked directly:
+
+- `grep -rn "AsideBottomBar\|applyGlassButtonStyle" Sources Tests CLAUDE.md` → nothing.
+- `swiftlint lint --quiet` → exit 0, the same three pre-existing warnings (`WorktreeDraft.swift:17`,
+  `WorktreeConfigStore.swift:99, :266`); none in a file this task touched.
+- `git status --porcelain` → the six files above plus `Clearway.xcodeproj/project.pbxproj`, which
+  `xcodegen generate` rewrote for the renamed source file. No `default.profraw`: the app was not
+  launched.
+
+**Deviations from the plan**
+
+None from C2's brief. The brief left one choice open — `.buttonStyle(.glass)` full-width once the
+bar background was gone, or the label-plus-`glassEffect` shape the app already proves — and the
+proven shape was taken, with `.interactive()` added so a control, unlike the tab strip container it
+copies, answers hover and press.
+
+**Gate**
+
+`./scripts/ci.sh` → `==> CI passed.`, exit 0. 535 tests, 0 failures.

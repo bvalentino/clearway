@@ -7,8 +7,8 @@ The aside panel's Todos and Prompts tabs each declare a `+` in the **window** to
 side of the window from the list it adds to and in the same row as the four worktree buttons.
 Because the declaring view only exists while its tab is showing, that `+` appears and disappears as the aside
 tab changes or the aside hides, and the worktree buttons slide sideways each time. This change
-moves the `+` onto a bottom bar drawn inside the aside column — a divider along the top, the `+` on
-the leading edge — so it sits against the list it acts on and the window toolbar stops moving. The
+moves the `+` to the bottom of the aside column, as a full-width titled button drawn on the panel
+itself, so it sits against the list it acts on and the window toolbar stops moving. The
 create actions themselves, the File menu's New Prompt item and every keyboard shortcut are
 unchanged.
 
@@ -35,6 +35,7 @@ unchanged.
 | 17 | Does the bar show when the list is empty? | Yes, both tabs, pinned to the bottom. Each view's empty state already carries `.frame(maxWidth: .infinity, maxHeight: .infinity)` (`PromptsView.swift:24`, `TodosPanelView.swift:54`) inside a `VStack(spacing: 0)`, so appending the bar to that stack puts it at the bottom in the empty case exactly as in the populated one. Creating the first todo or prompt is precisely when the `+` is most needed. | Spec author |
 | 18 | Any new tests? | No. The change is view chrome with no decision rule to lift out: which tab renders is settled by the existing `switch effectiveSidePanelTab` (`ContentView.swift:904-918`), which `SidePanelTabTests` already covers, and the bar is unconditional within its two branches. There is nothing here of the shape CLAUDE.md asks to be lifted into a pure helper. The criteria are confirmed by hand in the running app, with `./scripts/ci.sh` as the regression check. | Spec author |
 | 19 | What does the bar's control look like after the hands-on check? | A real push button, not the borderless glyph decision 11 chose: `Label("Add Todo", systemImage: "plus")` / `Label("Add Prompt", systemImage: "plus")` with `.labelStyle(.titleAndIcon)`, leading-aligned, styled `.glass` on macOS 26 and later and `.bordered` below. The glyph read as unfinished chrome rather than an action. This supersedes decisions 11, 12 and 13: no `.help` tooltip (a text-labelled button needs none) and no `.accessibilityLabel` (the `Label`'s title is one). The divider, the `.bar` background and the leading alignment stay; the bar's padding becomes 8 horizontal / 6 vertical, since 8 leading / 4 vertical was sized for a 24-pt borderless glyph. `SidebarHeaderButton` therefore has only sidebar callers again, so the follow-up about renaming it is moot. | Operator |
+| 21 | What does the control look like after the second hands-on check? | A single full-width glass button on the panel itself, no bar: no `Divider`, no `.bar` background, no `HStack`/`Spacer`. The glass is built the way the aside tab strip builds its capsule (`ContentView.sidePanelTabStrip`, `MainTerminalTabStrip.tabsCapsule`) — on macOS 26 and later a `.buttonStyle(.plain)` `Button` whose label is padded 6 vertical and `.frame(maxWidth: .infinity)`, with `.glassEffect(.regular.interactive(), in: Capsule())` and a `Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)` overlay; below macOS 26, `.buttonStyle(.bordered)` at `.controlSize(.large)` with the same full-width frame. Insets are 12 horizontal, 12 bottom and 8 top, mirroring the tab strip's 12 so the aside's top and bottom match. `.buttonStyle(.glass)` on an opaque bar rendered like `.bordered`: Liquid Glass needs content behind it, and the `.bar` background was that content. The type is renamed `AsideAddButton` (`Sources/App/AsideAddButton.swift`) because it is no longer a bar, and `applyGlassButtonStyle()` is deleted with its only caller, leaving `applyPrimaryActionStyle(tint:)` alone in `GlassButtonStyles.swift`. This supersedes decision 1's bar chrome, decision 14 entirely and decision 19's divider, `.bar` background and leading alignment; decision 19's titled `Label` with `.labelStyle(.titleAndIcon)`, no tooltip and no `.accessibilityLabel` all stand. | Operator |
 | 20 | Where does the macOS 26 style split live? | `Sources/App/GlassButtonStyles.swift`, a new file holding `applyGlassButtonStyle()` beside the existing `applyPrimaryActionStyle(tint:)`, which moves there out of `WorkTaskWindow.swift`'s `// MARK: - Glass Styling` extension unchanged. One file owns the `#available(macOS 26.0, *)` check rather than a second copy appearing in `AsideBottomBar`, and a shared button-style helper does not belong in a file named for one window. | Spec author |
 
 ## Assumptions
@@ -75,19 +76,20 @@ toolbar's worktree buttons hold still whichever aside tab is showing.
 
 ### Success criteria
 
-1. With the aside open on **Todos**, a bar spans the bottom of the 380-wide aside column with a
-   divider along its top edge and an **Add Todo** push button, plus glyph and title both showing, on
-   its leading edge. Clicking it starts a new todo row, exactly as the toolbar `+` did.
-2. With the aside open on **Prompts**, the same bar appears with an **Add Prompt** button that
-   creates a prompt and opens its window, exactly as the toolbar `+` did.
-3. On the **Task** tab the aside shows no bottom bar, and the Create Task CTA is unchanged.
+1. With the aside open on **Todos**, a full-width **Add Todo** button, plus glyph and title both
+   showing, sits below the list inside the 380-wide aside column, with no divider and no bar behind
+   it. Clicking it starts a new todo row, exactly as the toolbar `+` did.
+2. With the aside open on **Prompts**, the same button appears, titled **Add Prompt**, creating a
+   prompt and opening its window, exactly as the toolbar `+` did.
+3. On the **Task** tab the aside shows no add button, and the Create Task CTA is unchanged.
 4. The window toolbar shows only the worktree items — Run, Open in, Remove worktree, Show/Hide
    aside. Switching between Task, Todos and Prompts, and hiding and showing the aside, does not move
    or change them.
-5. Both bars show when their list is empty, pinned to the bottom of the panel.
-6. The button wears Liquid Glass on macOS 26 and later and `.bordered` below, shows no tooltip, and
-   VoiceOver reads "Add Todo" / "Add Prompt" rather than "plus" (decision 19).
-7. The bar is inset to the aside column and stacks above the full-width worktree status bar; it is
+5. Both buttons show when their list is empty, pinned to the bottom of the panel.
+6. The button wears real Liquid Glass on macOS 26 and later — the same capsule the aside tab strip
+   above it wears, reacting to hover and press — and `.bordered` below. It shows no tooltip, and
+   VoiceOver reads "Add Todo" / "Add Prompt" rather than "plus" (decisions 19, 21).
+7. The button is inset to the aside column and sits above the full-width worktree status bar; it is
    not drawn over the terminal.
 8. The File menu's New Prompt item behaves exactly as before: enabled on the sidebar's Prompts
    destination, greyed out elsewhere, no key equivalent. No shortcut anywhere in the app changes.
@@ -120,11 +122,11 @@ sign-off and never `git add -A`.
 
 | File | Change |
 | --- | --- |
-| `Sources/App/AsideBottomBar.swift` | New. The shared bar: top divider, `.bar` background, and a leading `Button` whose `Label(title, systemImage: "plus")` shows title and icon, styled by `applyGlassButtonStyle()` (decisions 9, 14, 19). |
-| `Sources/App/GlassButtonStyles.swift` | New. `applyGlassButtonStyle()` plus `applyPrimaryActionStyle(tint:)`, moved unchanged out of `WorkTaskWindow.swift` (decision 20). |
+| `Sources/App/AsideAddButton.swift` | New. The shared full-width add button: a `Label(title, systemImage: "plus")` in a capsule of real glass on macOS 26 and later, `.bordered` below, drawn on the panel with no bar behind it (decisions 9, 19, 21). |
+| `Sources/App/GlassButtonStyles.swift` | New. `applyPrimaryActionStyle(tint:)`, moved unchanged out of `WorkTaskWindow.swift` (decision 20). `applyGlassButtonStyle()` lived here briefly and went with its only caller (decision 21). |
 | `Sources/App/WorkTaskWindow.swift` | The `// MARK: - Glass Styling` extension moves out to `GlassButtonStyles.swift`; nothing else changes (decision 20). |
-| `Sources/App/TodosPanelView.swift` | The `.toolbar` block and its `ToolbarGroupBreak` and comment header are removed; an `AsideBottomBar` calling `startCreating()` is appended to the root `VStack` (decisions 3, 7). |
-| `Sources/App/PromptsView.swift` | Same removal; an `AsideBottomBar` calling the existing create-and-open action is appended to the root `VStack`. The stale doc comment on line 4 is corrected (decisions 3, 7, 8). |
+| `Sources/App/TodosPanelView.swift` | The `.toolbar` block and its `ToolbarGroupBreak` and comment header are removed; an `AsideAddButton` calling `startCreating()` is appended to the root `VStack` (decisions 3, 7). |
+| `Sources/App/PromptsView.swift` | Same removal; an `AsideAddButton` calling the existing create-and-open action is appended to the root `VStack`. The stale doc comment on line 4 is corrected (decisions 3, 7, 8). |
 | `CLAUDE.md` | The merge-order paragraph at 161-163 is rewritten to drop `PromptsView` / `TodosPanelView`, which no longer declare toolbar content (decision 6). |
 | `docs/superpowers/specs/2026-09-19-aside-bottom-bar-plus.md` | This document. |
 | `docs/superpowers/plans/2026-09-19-aside-bottom-bar-plus.md` | The plan, written by the next stage. |
