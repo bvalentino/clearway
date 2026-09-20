@@ -10,6 +10,9 @@ create", and makes it — and the Status picker above it — span the sheet's co
 the Name and Branch name fields already do. Nothing about what the picker lists, how the pick is
 stored, or how it becomes the new worktree's first tab changes.
 
+The hands-on check then narrowed it to the Start Task variant: the New Worktree sheet shows no such
+field and neither reads nor writes the remembered default (Decisions 11–13, Changelog C1).
+
 ## Decisions
 
 | # | Question | Decision | Why the alternatives lose |
@@ -21,9 +24,12 @@ stored, or how it becomes the new worktree's first tab changes.
 | 5 | Where does that wrapper live? | One new file, `Sources/App/FullWidthPicker.swift`, generic over a `Hashable` selection with rows carrying a title and an optional SF Symbol + tint. | Two call sites in one sheet need it; a second copy inside `SidebarSheets.swift` would let the two pickers drift. Keeping it generic avoids a status-specific and a command-specific variant. |
 | 6 | Do the Status rows keep their tinted symbols? | Yes — `NSMenuItem.image` from `NSImage(systemSymbolName:)` tinted with `NSImage.SymbolConfiguration(paletteColors:)`. | Dropping to text-only would be a visible regression against `WorktreeStatusLabel`. Verified rendering in the probe (Assumption 5). |
 | 7 | Does the sidebar's Status picker change? | No. | `SidebarView`'s Status picker is `.pickerStyle(.inline)` inside an `NSMenu`, where rows already span the menu. Out of scope per the task brief. |
-| 8 | Any new tests? | No. | The change adds no decision rule to pin; nothing in `Ghostty.SurfaceView`-style view code is reachable from XCTest. `CreateWorktreeOutcomeTests`, `SavedCommandManagerTests` and `SavedCommandStoreTests` continue to pin the behaviour around the field. `./scripts/ci.sh` is the gate; the operator confirms the layout by hand. |
+| 8 | Any new tests? | None for T1/T2; C1 adds three to `CreateWorktreeOutcomeTests`, because it does add a decision rule. | The move and re-skin add no rule to pin; nothing in `Ghostty.SurfaceView`-style view code is reachable from XCTest. `CreateWorktreeOutcomeTests`, `SavedCommandManagerTests` and `SavedCommandStoreTests` continue to pin the behaviour around the field. `./scripts/ci.sh` is the gate; the operator confirms the layout by hand. |
 | 9 | What stays in Advanced? | Base branch and Fetch before creating, nothing else. | Task brief. |
 | 10 | Does anything about the pick's behaviour change? | No: same `onAppear` seeding from `afterCreateCommand`, same `CommandDefaults.resolve` on Create, same `setAfterCreateDefault` on the `.apply` branch only, same first-tab rule. | Task brief marks all of it out of scope. |
+| 11 | Does the New Worktree variant show the field? | No — hidden, not disabled. The sheet shows Name, Branch name, Status, Advanced. The Start Task variant keeps it. | Operator change from the hands-on check (Changelog C1). Few agent commands are worth running without a task definition, so on that variant the field is not an unavailable action but one that does not exist; a disabled control would still claim the space and imply it applies here. |
+| 12 | What does that variant do with the remembered default? | Neither reads nor writes it: no after-create command is resolved and `setAfterCreateDefault` is not called. Its first tab is the Main Terminal tab, as before PR #234. | Operator change (Changelog C1). A hidden picker sits at None, so writing it back would clear the default on every hand-made worktree and wreck the pre-selection Start Now is seeded from. The slot stays reserved for Start Now. |
+| 13 | How is the variant decided? | From the task link the sheet already carries: `CreateWorktreeSheet.afterCreateSlot(taskId:pickedId:commands:)`, a pure static returning `offersField` plus the resolved command, keyed on `startPrefill?.taskId`. | No new flag — `startPrefill` is what already distinguishes the two doors. One value drives all three readers (the field's visibility, the command passed to `confirmCreate`, the write-back guard), so they cannot disagree, and the rule is pinned by `CreateWorktreeOutcomeTests` without a SwiftUI body. |
 
 ## Assumptions
 
@@ -77,16 +83,19 @@ named for what it does, and sized like the fields around it.
 
 ### Success criteria
 
-- Opening either the New Worktree or the Start Task sheet shows a field labelled
-  "Run agent command after create" with no click on Advanced.
+- Opening the Start Task sheet shows a field labelled "Run agent command after create" with no
+  click on Advanced. The New Worktree sheet does not show it at all (Decisions 11–12).
 - That field sits below Status and above the Advanced row.
 - Its control spans the sheet's 280pt content column, left edge flush with the text fields above;
   so does the Status control, with its tinted status symbol still drawn.
 - Advanced expands to Base branch and Fetch before creating, and nothing else.
-- With no agent-kind saved commands the field still renders, offering only None.
-- Behaviour is unchanged: the picker is seeded from the remembered default, the pick is written
-  back only on a successful create, and the picked command opens as the new worktree's first tab in
-  place of the Main Terminal tab.
+- With no agent-kind saved commands the field still renders on the Start Task sheet, offering only
+  None.
+- On the Start Task sheet behaviour is unchanged: the picker is seeded from the remembered default,
+  the pick is written back only on a successful create, and the picked command opens as the new
+  worktree's first tab in place of the Main Terminal tab.
+- A worktree created from the New Worktree sheet opens the Main Terminal tab, runs no after-create
+  command, and leaves the remembered default in `command-defaults.json` untouched.
 - `./scripts/ci.sh` passes with a clean `git status --porcelain` (allowing for the un-gitignored
   `default.profraw` a Debug launch drops).
 
@@ -106,7 +115,8 @@ sheets; build agents do not launch the app.
 | File | Change |
 | --- | --- |
 | `Sources/App/FullWidthPicker.swift` | New. `NSViewRepresentable` over `NSPopUpButton`, generic over a `Hashable` selection, rows carrying a title and an optional symbol + tint; `sizeThatFits` returns the proposed width. |
-| `Sources/App/SidebarSheets.swift` | Move the command field out of the `showingAdvanced` block to just below Status; rename its label; switch both it and the Status field to `FullWidthPicker`. |
+| `Sources/App/SidebarSheets.swift` | Move the command field out of the `showingAdvanced` block to just below Status; rename its label; switch both it and the Status field to `FullWidthPicker`. Then (C1) add `AfterCreateSlot` + `afterCreateSlot(taskId:pickedId:commands:)` and gate the field, the resolved command and the write-back on it. |
+| `Tests/CreateWorktreeOutcomeTests.swift` | C1 only. Three cases pinning `afterCreateSlot`: the New Worktree variant offers no field and resolves no command even with an id picked; the Start Task variant resolves a picked agent command; None on that variant is a real pick. |
 
 ## Out of scope
 

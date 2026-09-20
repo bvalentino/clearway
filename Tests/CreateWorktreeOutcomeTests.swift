@@ -39,6 +39,46 @@ final class CreateWorktreeOutcomeTests: XCTestCase {
         XCTAssertEqual(CreateWorktreeSheet.outcome(created: nil, error: nil), .silentFailure)
     }
 
+    // MARK: - Run agent command after create
+
+    private func makeAgentCommand(name: String = "Plan") -> SavedCommand {
+        SavedCommand(id: UUID(), name: name, kind: .agent, text: "brief", agent: "claude", autoRun: true)
+    }
+
+    /// The regression: the New Worktree sheet showed the picker and wrote its pick back, so a
+    /// hand-made worktree both ran an agent command with no task to act on and cleared the default
+    /// Start Now seeds its picker from.
+    func testTheNewWorktreeVariantOffersNoFieldAndRunsNothing() {
+        let agent = makeAgentCommand()
+
+        let slot = CreateWorktreeSheet.afterCreateSlot(
+            taskId: nil, pickedId: agent.id, commands: [agent]
+        )
+
+        XCTAssertEqual(slot, CreateWorktreeSheet.AfterCreateSlot(offersField: false, command: nil))
+    }
+
+    func testTheStartTaskVariantResolvesThePickedAgentCommand() {
+        let agent = makeAgentCommand()
+
+        let slot = CreateWorktreeSheet.afterCreateSlot(
+            taskId: UUID(), pickedId: agent.id, commands: [agent]
+        )
+
+        XCTAssertEqual(
+            slot, CreateWorktreeSheet.AfterCreateSlot(offersField: true, command: agent)
+        )
+    }
+
+    /// None is a real pick on this variant, so it both runs nothing and is written back.
+    func testTheStartTaskVariantTreatsNoPickAsAFieldThatResolvesToNothing() {
+        let slot = CreateWorktreeSheet.afterCreateSlot(
+            taskId: UUID(), pickedId: nil, commands: [makeAgentCommand()]
+        )
+
+        XCTAssertEqual(slot, CreateWorktreeSheet.AfterCreateSlot(offersField: true, command: nil))
+    }
+
     // MARK: - Start Task prefill
 
     func testPrefillCarriesTheGivenNameAndBranch() {

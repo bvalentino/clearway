@@ -66,13 +66,15 @@ struct CreateWorktreeSheet: View {
                     .disabled(isCreating)
             }
 
-            LabeledField(Self.afterCreateLabel) {
-                FullWidthPicker(
-                    label: Self.afterCreateLabel,
-                    selection: $afterCreateCommandId,
-                    rows: afterCreateRows
-                )
-                .disabled(isCreating)
+            if afterCreateSlot.offersField {
+                LabeledField(Self.afterCreateLabel) {
+                    FullWidthPicker(
+                        label: Self.afterCreateLabel,
+                        selection: $afterCreateCommandId,
+                        rows: afterCreateRows
+                    )
+                    .disabled(isCreating)
+                }
             }
 
             // A `DisclosureGroup` in a plain VStack only toggles on the triangle itself —
@@ -113,11 +115,9 @@ struct CreateWorktreeSheet: View {
                 Spacer()
                 Button {
                     isCreating = true
-                    let command = CommandDefaults.resolve(
-                        afterCreateCommandId, in: savedCommandManager.commands
-                    )
+                    let slot = afterCreateSlot
                     workTaskCoordinator.confirmCreate(
-                        taskId: startPrefill?.taskId, branch: draft.branch, command: command
+                        taskId: startPrefill?.taskId, branch: draft.branch, command: slot.command
                     )
                     Task {
                         let created = await worktreeManager.createWorktree(
@@ -132,7 +132,9 @@ struct CreateWorktreeSheet: View {
                             if let targetGroupName {
                                 groupManager.addWorktree(worktree, toGroupNamed: targetGroupName)
                             }
-                            savedCommandManager.setAfterCreateDefault(command?.id)
+                            if slot.offersField {
+                                savedCommandManager.setAfterCreateDefault(slot.command?.id)
+                            }
                             dismiss()
                         case .reportedFailure:
                             workTaskCoordinator.abandonPendingCreate()
@@ -167,6 +169,14 @@ struct CreateWorktreeSheet: View {
 
     static let afterCreateLabel = "Run agent command after create"
 
+    private var afterCreateSlot: AfterCreateSlot {
+        Self.afterCreateSlot(
+            taskId: startPrefill?.taskId,
+            pickedId: afterCreateCommandId,
+            commands: savedCommandManager.commands
+        )
+    }
+
     private var statusRows: [FullWidthPicker<WorktreeStatus>.Row] {
         WorktreeStatus.allCases.map {
             .init(value: $0, title: $0.displayName, symbol: $0.symbol, tint: $0.color)
@@ -189,6 +199,25 @@ extension CreateWorktreeSheet {
         draft.setName(name)
         draft.setBranch(branch)
         return draft
+    }
+
+    /// The sheet's "Run agent command after create" slot for the variant in front of the operator.
+    struct AfterCreateSlot: Equatable {
+        let offersField: Bool
+        let command: SavedCommand?
+    }
+
+    /// Only the Start Task variant carries the slot. A worktree created from the sidebar links no
+    /// task, so there is no brief for a saved agent command to act on; and a sheet that never drew
+    /// the picker must not write its own empty pick back, or every hand-made worktree would clear
+    /// the default Start Now seeds its picker from.
+    static func afterCreateSlot(
+        taskId: UUID?, pickedId: UUID?, commands: [SavedCommand]
+    ) -> AfterCreateSlot {
+        guard taskId != nil else { return AfterCreateSlot(offersField: false, command: nil) }
+        return AfterCreateSlot(
+            offersField: true, command: CommandDefaults.resolve(pickedId, in: commands)
+        )
     }
 
     enum Outcome: Equatable {

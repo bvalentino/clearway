@@ -276,3 +276,67 @@ confirm, since build agents do not launch the app.
 errors and no new warning), build, then `Executed 676 tests, with 0 failures (0 unexpected)`,
 `==> CI passed.` `git status --porcelain` before committing showed `M Sources/App/SidebarSheets.swift`
 and nothing else — no `default.profraw`, since no Debug launch happened.
+
+## Changelog
+
+Operator changes from the hands-on check. Each is settled; no later step may revert one.
+
+### C1: Show the field only on the Start Task variant
+
+**Operator, verbatim:** "We should not show 'Run agent command after create' when creating a new
+worktree from outside the task scope. There are not many agent commands worth running without
+context (a task definition). And setting it to None for manual worktrees messes up the
+pre-selection for Start Now from a task."
+
+Recorded in the spec as Decisions 11–13.
+
+- The **New Worktree** variant (sidebar `+`, no prefill) hides the field — hidden, not disabled.
+  That sheet shows Name, Branch name, Status, Advanced. The **Start Task** variant keeps the field
+  exactly as T2 left it.
+- A worktree created from the New Worktree variant opens the Main Terminal tab as its first tab,
+  as before PR #234: no after-create command is resolved, and `command-defaults.json` is neither
+  read nor written by that variant. The slot stays reserved for Start Now.
+- The variant is decided from the task link the sheet already carries, not a new flag.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarSheets.swift` | Adds `CreateWorktreeSheet.AfterCreateSlot` (`offersField` + `command`) and the pure static `afterCreateSlot(taskId:pickedId:commands:)` beside `outcome`, plus a `private var afterCreateSlot` reading `startPrefill?.taskId`. The field's `LabeledField` is wrapped in `if afterCreateSlot.offersField`; the Create action takes `let slot = afterCreateSlot` and passes `slot.command` to `confirmCreate`; the `.apply` branch calls `setAfterCreateDefault` only `if slot.offersField`. |
+| `Tests/CreateWorktreeOutcomeTests.swift` | Three cases under a `Run agent command after create` mark, over a local `makeAgentCommand` helper. |
+
+One value drives all three readers — the field's visibility, the command handed to `confirmCreate`,
+and the write-back guard — so they cannot disagree about which variant is on screen. `offersField`
+and "records the default" are the same fact, so they are one property rather than two.
+
+The `onAppear` seeding is untouched. On the hidden variant it sets a `@State` nothing reads;
+`afterCreateSlot` is the single gate, so no value can leak past it.
+
+**Evidence**
+
+`testTheNewWorktreeVariantOffersNoFieldAndRunsNothing` watched red against the unfixed rule
+(the `taskId` guard replaced by `_ = taskId`, everything else identical), run with
+`-only-testing:ClearwayTests/CreateWorktreeOutcomeTests`:
+
+```
+Test Case '-[ClearwayTests.CreateWorktreeOutcomeTests testTheNewWorktreeVariantOffersNoFieldAndRunsNothing]' started.
+Tests/CreateWorktreeOutcomeTests.swift:58: error: -[ClearwayTests.CreateWorktreeOutcomeTests testTheNewWorktreeVariantOffersNoFieldAndRunsNothing] : XCTAssertEqual failed: ("AfterCreateSlot(offersField: true, command: Optional(Clearway.SavedCommand(id: 0625DCE8-4B85-40AD-9F89-53472C2BDF88, name: "Plan", kind: Clearway.SavedCommand.Kind.agent, text: "brief", agent: "claude", autoRun: true)))") is not equal to ("AfterCreateSlot(offersField: false, command: nil)")
+Test Case '-[ClearwayTests.CreateWorktreeOutcomeTests testTheNewWorktreeVariantOffersNoFieldAndRunsNothing]' failed (0.082 seconds).
+	 Executed 9 tests, with 1 failure (0 unexpected)
+```
+
+The guard was then restored and the case passes. The other two cases pin the Start Task variant
+and passed both before and after, as they must: nothing about that variant changed.
+
+**Deviations**
+
+None. The constraint to decide the variant from the existing prefix/task link rather than a new
+flag is what `startPrefill?.taskId` satisfies.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, run after the last edit. `xcodegen generate`, `swiftlint lint --quiet`
+(zero output, so zero errors and no new warning), build, then
+`Executed 679 tests, with 0 failures (0 unexpected)`, `==> CI passed.` `git status --porcelain`
+before committing showed this change's four files and nothing else — no `default.profraw`, since
+no Debug launch happened.
