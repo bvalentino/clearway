@@ -426,3 +426,65 @@ the more specific of the two and keeps it beside the other reconcile-and-positio
 
 `./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 109.953
 seconds`, `Test Succeeded`, `==> CI passed.` (676 before this task; the new case is the 677th.)
+
+### T3: Convert the three sites in WorktreeGroupManagerStatusTests
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Tests/WorktreeGroupManagerStatusTests.swift` | Three sites now `await manager.reconcile([alive], openIds: []).value` and assert once: `:84` `XCTAssertEqual(manager.statuses, [alive.id: .inReview], "published statuses")`, `:99` `XCTAssertEqual(manager.name(for: alive), "Stored name", "published name for \(alive.id)")` with the existing `XCTAssertTrue(manager.statuses.isEmpty)` on the line after, `:117` `XCTAssertEqual(manager.statuses, [alive.id: .todo], "published statuses")`. `waitForPublishedStatuses` deleted; `waitForStoredStatus` untouched. |
+| `Sources/` | Unchanged. `git diff --stat Sources/` is empty. |
+
+`XCTAssert` count 25 → 28: each of the three polls moved its assertion out of `waitFor`'s body into
+the file. Nothing weakened, dropped or reordered. No bare `manager.reconcile` remains in the file,
+and `grep -rn "waitForPublishedStatuses" Tests/` returns nothing.
+
+**Evidence** — three watched failures, run with
+`xcodebuild … -only-testing:ClearwayTests/WorktreeGroupManagerStatusTests/<case> test`, each revert
+made with `Edit` and restored with `Edit`, `git diff --stat Sources/` empty after each restore.
+
+1 and 3. `if reloaded.statuses != statuses { statuses = reloaded.statuses }`
+(`WorktreeGroupManager.swift:414`) deleted — both cases run in one invocation, each failing on its
+own converted line:
+
+```
+WorktreeGroupManagerStatusTests.swift:84: error: testReconcilePopulatesStatusesFromWorktreeConfig :
+XCTAssertEqual failed: ("[:]") is not equal to ("[…/alive": Clearway.WorktreeStatus.inReview]") - published statuses
+WorktreeGroupManagerStatusTests.swift:117: error: testReconcileDropsAnAbsentWorktree :
+XCTAssertEqual failed: ("[…/alive": …todo, "…/dead": …onHold]") is not equal to ("[…/alive": …todo]") - published statuses
+```
+
+2. `testReconcileDropsAnUnrecognisedStatusSlugAndKeepsTheName`, `readConfig`'s slug guard replaced
+with `reloaded.statuses[id] = WorktreeStatus(rawValue: slug) ?? .todo`:
+
+```
+WorktreeGroupManagerStatusTests.swift:100: error:
+testReconcileDropsAnUnrecognisedStatusSlugAndKeepsTheName : XCTAssertTrue failed
+```
+
+**Deviations**
+
+Two, both additions.
+
+Proofs 1 and 3 were run in one `xcodebuild` invocation rather than one each. The plan says "each run
+alone"; the two cases are independent, share the one revert, and each failed on its own converted
+assertion, so the proof is unaffected. No other case was in the run.
+
+Proof 2's named revert turns the case red at `:100` only, which the plan states and which leaves the
+**converted** assertion at `:99` green — the slug guard is not the rule that line pins. As in T2's
+proof 4, a fourth run was made to prove the converted line discriminates, reverting
+`if reloaded.names != names { names = reloaded.names }` (`WorktreeGroupManager.swift:413`, T4's
+revert, restored immediately):
+
+```
+WorktreeGroupManagerStatusTests.swift:99: error:
+testReconcileDropsAnUnrecognisedStatusSlugAndKeepsTheName : XCTAssertEqual failed:
+("nil") is not equal to ("Optional("Stored name")") - published name for …/alive
+```
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 110.434
+seconds`, `Test Succeeded`, `==> CI passed.` `git status --porcelain` shows only this task's two
+files.
