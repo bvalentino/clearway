@@ -35,7 +35,12 @@ func buildAgentPromptCommand(
 /// launcher to stage a draft in. The prompt stays in the same `0o600` temp file, so a multi-line
 /// prompt stages as one short line and still reaches the agent as one argv element.
 ///
-/// `agentCommand` is unquoted and the file is, for the reasons `buildAgentPromptCommand` gives.
+/// Clearway runs nothing here: `sendText` stages the line on an interactive prompt, visible and
+/// editable, and it is the operator's own shell that reads it as source if they press Enter. So
+/// `agentCommand` is concatenated in as typed — the command is the user's, the same contract as
+/// `buildOpenInScript`, and a command carrying flags or shell operators is the point. Only the
+/// file path is escaped, because Clearway chose that one.
+///
 /// Nothing deletes the file here: the line is the user's to edit, re-run or abandon, and a `rm`
 /// welded onto it would take the prompt away the first time they interrupt the agent.
 func buildAgentPromptLine(

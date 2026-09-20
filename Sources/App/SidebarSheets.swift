@@ -143,9 +143,11 @@ struct CreateWorktreeSheet: View {
                             savedCommandManager.setAfterCreateDefault(command?.id)
                             dismiss()
                         case .reportedFailure:
+                            workTaskCoordinator.abandonPendingCreate()
                             isCreating = false
                         case .silentFailure:
                             Ghostty.logger.warning("CreateWorktreeSheet: creation returned no worktree and no error; the sheet stays open")
+                            workTaskCoordinator.abandonPendingCreate()
                             isCreating = false
                         }
                     }

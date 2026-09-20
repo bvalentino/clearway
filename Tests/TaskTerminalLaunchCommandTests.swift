@@ -35,4 +35,14 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
 
         XCTAssertNil(coordinator.taskTerminalLaunchCommand())
     }
+
+    // MARK: - Confirming a plan
+
+    /// `planTask` closes whatever surface the task terminal already holds and opens a fresh one, so
+    /// a plan started over a running agent would take its session away with no warning. A live
+    /// foreground process is the whole of the rule; nothing else about the task matters.
+    func testPlanNeedsConfirmationOnlyWhenAProcessIsRunning() {
+        XCTAssertTrue(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: true))
+        XCTAssertFalse(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: false))
+    }
 }

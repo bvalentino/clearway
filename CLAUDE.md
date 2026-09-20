@@ -236,8 +236,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     one argv element, so a prompt near the OS `ARG_MAX` (~1 MB on recent macOS) fails with "Argument
     list too long" — the launcher's prompts sit well under that.
     `buildAgentPromptLine` is the same launch staged rather than run, for a surface with no launcher
-    to hold a draft: same temp file, same unquoted `$1` contract, but the line is `agent "$(cat
-    'file')"` for the operator to press Enter on. It welds no `rm` onto that line — the file is the
+    to hold a draft: same temp file, but the line is `agent "$(cat 'file')"`, which `sendText` puts
+    on an interactive prompt for the operator to press Enter on. There is no `$1` and no parameter
+    expansion on this path — the command text is concatenated in as typed and the operator's own
+    shell parses it as source, the same contract as `buildOpenInScript`; only the file path is
+    escaped, because Clearway chose that one. It welds no `rm` onto that line — the file is the
     prompt the operator may re-run or edit, and removing it on first exit would take it away.
     `CommandPlaceholders.substituted` resolves `{{ task_path }}` in a saved command's text **raw**,
     and that is a consequence of the above: the text becomes the prompt, the prompt reaches the

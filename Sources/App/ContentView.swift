@@ -304,6 +304,15 @@ struct ContentView: View {
             guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return }
             worktreeManager.lastCreatedBranch = nil
 
+            // The started task's file moves into the new worktree, so it leaves the backlog. A
+            // selection still naming it would leave the Tasks toolbar and Start Now's menu acting
+            // on a task that is no longer there. Cleared here because this handler is the single
+            // point every successful create lands on, whichever door opened the sheet.
+            if let pending = workTaskCoordinator.pendingCreate,
+               pending.branch == branch, pending.taskId == selectedTaskId {
+                selectedTaskId = nil
+            }
+
             let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
             // Give manual worktrees a hidden shadow task so state tracking works everywhere.

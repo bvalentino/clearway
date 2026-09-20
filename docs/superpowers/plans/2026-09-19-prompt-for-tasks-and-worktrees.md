@@ -604,6 +604,96 @@ by `SavedCommandTests`). Verification is the operator's hands-on check.
 
 `./scripts/ci.sh` — passed, exit 0: 584 tests, 0 failures; SwiftLint zero errors.
 
+### C5: Four review findings — a failed create unwinds, a plan asks before replacing
+
+**Reported:** the review step on `c5b68bb` raised four findings, each verified against the code.
+
+**Changes.**
+
+1. **A failed worktree create no longer leaves the task unstartable.** `CreateWorktreeSheet` calls
+   `confirmCreate` — which writes `status = in_progress` and `worktree = <branch>` — before
+   `createWorktree`, and on failure only reset `isCreating`. The task was left naming a branch with
+   no worktree, which `resolveStart` refuses, so Start Now became a no-op on it for good.
+   `PendingCreate` now carries `priorFields` (the prior `status`, `worktree` and `attempt`, captured
+   inside the `updateFields` closure, so they are the values that were actually overwritten), and
+   `abandonPendingCreate()` restores them through `updateFields` and clears the pending create. Both
+   failure branches call it; the sheet still stays open. A hand-made worktree carries no
+   `priorFields`, so its unwind clears the pending create and writes nothing.
+2. **Planning over a running process asks first.** `planTask` → `openTaskTerminal` closes the task's
+   existing surface unconditionally. `WorkTaskListView.plan` now routes through
+   `WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess:)`; when it answers yes the view
+   holds the request in `planToConfirm` and presents a destructive **Replace** `confirmationDialog`
+   shaped like `SidebarView`'s worktree-remove (title with the task name, `titleVisibility: .visible`,
+   the system Cancel, the same "processes still running" message as the force-delete dialog beside
+   it). Otherwise it plans immediately. The selection is set in `runPlan`, not in `plan`, so a
+   cancelled confirmation moves nothing. Cmd+J's own replacement is untouched — pre-existing
+   follow-up.
+3. **A successful start clears the task selection.** Added to `ContentView`'s
+   `onChange(of: worktreeManager.lastCreatedBranch)` handler, immediately before
+   `completePendingCreate` consumes the pending create (which is what makes the prior fields
+   readable there at all). That handler is the one point every successful create lands on, whichever
+   door opened the sheet, and it already owns the `detailSelection` move that follows; the sheet
+   itself cannot do it, because `selectedTaskId` is `ContentView` state and the `.apply` branch runs
+   inside `CreateWorktreeSheet`. It clears only when the pending create's branch matches this one
+   **and** its task id is the current selection, so starting task A while B is selected leaves B
+   selected.
+4. **`buildAgentPromptLine`'s doc comment corrected.** It claimed "same unquoted `$1` contract",
+   which is `buildAgentPromptCommand`'s. There is no `$1` on that path: the command text is
+   concatenated into a line `sendText` stages on an interactive prompt, and the operator's own shell
+   parses it as source. The comment and the matching `CLAUDE.md` sentence now say that — staged,
+   visible and user-owned rather than run, the same contract as `buildOpenInScript`, with only the
+   file path escaped — and say nothing about parameter expansion.
+
+**Files**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `PendingCreate.PriorFields` added and captured by `confirmCreate`; new `abandonPendingCreate()`. |
+| `Sources/App/SidebarSheets.swift` | Both create-failure branches call `abandonPendingCreate()`. |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | New `static planNeedsConfirmation(hasActiveProcess:)` beside `planTask`. |
+| `Sources/App/WorkTaskListView.swift` | `planToConfirm` state + `PlanRequest`; `plan` gates on the rule, `runPlan` does the launch; Replace confirmation dialog. |
+| `Sources/App/ContentView.swift` | The `lastCreatedBranch` handler clears `selectedTaskId` for the started task. |
+| `Sources/App/AgentLaunch.swift` | `buildAgentPromptLine`'s contract paragraph rewritten. |
+| `CLAUDE.md` | The matching `buildAgentPromptLine` sentence rewritten. |
+| `Tests/WorkTaskCoordinatorTests.swift` | Three `abandonPendingCreate` cases; existing `PendingCreate` literals carry `priorFields`. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | `testPlanNeedsConfirmationOnlyWhenAProcessIsRunning`. |
+| `docs/superpowers/specs/2026-09-19-prompt-for-tasks-and-worktrees.md` | Decisions 24–27. |
+
+**Evidence**
+
+The unwind body was stubbed out (the guard kept, the three restoring assignments removed) and
+`./scripts/ci.sh` run — 588 tests, 7 failures, all in the two new cases:
+
+```
+✖ testAbandonPendingCreateRestoresTheTaskExactlyAsItWas, XCTAssertEqual failed: ("Optional("in_progress")") is not equal to ("Optional("new")")
+✖ testAbandonPendingCreateRestoresTheTaskExactlyAsItWas, XCTAssertNil failed: "ship-it" - no branch link survives a failed create
+✖ testAbandonPendingCreateRestoresTheTaskExactlyAsItWas, failed - the task must still be startable
+✖ testAbandonPendingCreateRestoresABumpedAttempt, XCTAssertEqual failed: ("Optional(3)") is not equal to ("Optional(2)") - the unwind puts the attempt count back
+✖ testAbandonPendingCreateRestoresABumpedAttempt, XCTAssertEqual failed: ("Optional("in_progress")") is not equal to ("Optional("canceled")")
+✖ testAbandonPendingCreateRestoresABumpedAttempt, XCTAssertNil failed: "retry-me"
+```
+
+(The seventh is the same test's byte-for-byte file comparison, whose message is the whole file.)
+Restoring the three assignments turned all 588 green.
+
+Findings 2 and 3 have no watched failure of their own: the confirmation is an AppKit dialog and the
+selection lives in `ContentView`, and neither is reachable from XCTest — the same limit C4 recorded.
+What is liftable is lifted: `planNeedsConfirmation` is pure and pinned both ways. Verification of
+the dialog and the selection is the operator's hands-on check.
+
+**Deviations from the brief**
+
+None. The selection clear went where the brief's first suggestion pointed — the
+`completePendingCreate` call site — rather than an `onDismiss`-with-result, because the pending
+create still holds the task id there and no new plumbing is needed to read it.
+
+**Gate**
+
+`./scripts/ci.sh` — passed, exit 0: 588 tests, 0 failures; SwiftLint zero errors (the three
+pre-existing warnings in `WorktreeConfigStore.swift` and `WorktreeDraft.swift`, neither file
+touched). `git status --porcelain` before the commit listed only the modified files above — no
+untracked or ignored files.
+
 ## Build log
 
 ### T1: Substitute `{{ task_path }}`

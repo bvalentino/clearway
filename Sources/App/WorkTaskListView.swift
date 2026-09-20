@@ -18,6 +18,13 @@ struct WorkTaskListView: View {
     @State private var isCopied = false
     @State private var taskToForceDelete: WorkTask?
     @State private var showCommandEditor = false
+    @State private var planToConfirm: PlanRequest?
+
+    /// A plan waiting on the operator's confirmation because it would replace a running process.
+    private struct PlanRequest {
+        let task: WorkTask
+        let command: SavedCommand
+    }
 
     private var selectedTask: WorkTask? {
         guard let id = selection else { return nil }
@@ -180,6 +187,23 @@ struct WorkTaskListView: View {
         } message: {
             Text("There are processes still running in this task's terminal.")
         }
+        .confirmationDialog(
+            "Replace the terminal for \"\(planToConfirm?.task.title ?? "Untitled")\"?",
+            isPresented: Binding(
+                get: { planToConfirm != nil },
+                set: { if !$0 { planToConfirm = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                if let request = planToConfirm {
+                    runPlan(request.task, using: request.command)
+                }
+                planToConfirm = nil
+            }
+        } message: {
+            Text("There are processes still running in this task's terminal.")
+        }
     }
 
     private var emptyState: some View {
@@ -251,10 +275,20 @@ struct WorkTaskListView: View {
         Button("Add Agent Command…") { showCommandEditor = true }
     }
 
+    private func plan(_ task: WorkTask, using command: SavedCommand) {
+        if WorkTaskCoordinator.planNeedsConfirmation(
+            hasActiveProcess: terminalManager.taskHasActiveProcess(task.id)
+        ) {
+            planToConfirm = PlanRequest(task: task, command: command)
+        } else {
+            runPlan(task, using: command)
+        }
+    }
+
     /// Selecting the task is part of running it: the terminal the plan opens is the one
     /// `TaskDetailView` renders for the selection, so planning a row the user only right-clicked
     /// would otherwise run out of sight.
-    private func plan(_ task: WorkTask, using command: SavedCommand) {
+    private func runPlan(_ task: WorkTask, using command: SavedCommand) {
         guard let app = ghosttyApp.app else { return }
         selection = task.id
         workTaskCoordinator.planTask(task, using: command, app: app)

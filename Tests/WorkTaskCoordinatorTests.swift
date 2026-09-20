@@ -123,7 +123,14 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(written?.worktree, "hand-typed")
         XCTAssertEqual(
             coordinator.pendingCreate,
-            WorkTaskCoordinator.PendingCreate(taskId: seed.id, branch: "hand-typed", command: command)
+            WorkTaskCoordinator.PendingCreate(
+                taskId: seed.id,
+                branch: "hand-typed",
+                command: command,
+                priorFields: WorkTaskCoordinator.PendingCreate.PriorFields(
+                    status: WorkTask.ReservedStatus.new, worktree: nil, attempt: nil
+                )
+            )
         )
     }
 
@@ -153,11 +160,80 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
         XCTAssertEqual(
             coordinator.pendingCreate,
-            WorkTaskCoordinator.PendingCreate(taskId: nil, branch: "manual", command: nil)
+            WorkTaskCoordinator.PendingCreate(
+                taskId: nil, branch: "manual", command: nil, priorFields: nil
+            )
         )
         XCTAssertTrue(taskManager.tasks.isEmpty, "a hand-made worktree creates no task")
         let files = (try? FileManager.default.contentsOfDirectory(atPath: taskManager.tasksDirectory)) ?? []
         XCTAssertTrue(files.filter { $0.hasSuffix(".md") }.isEmpty, "no task file is written")
+    }
+
+    // MARK: - Abandoning a create
+
+    /// `git worktree add` can fail after the frontmatter is already written — a branch that exists
+    /// with no worktree is enough. Unwinding must leave the file byte-for-byte as it was, because
+    /// anything else (`in_progress` naming a branch with no worktree) is a state `resolveStart`
+    /// refuses, and the task can then never be started from the UI.
+    func testAbandonPendingCreateRestoresTheTaskExactlyAsItWas() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Ship it") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        let path = taskManager.filePath(for: seed)
+        let before = try String(contentsOfFile: path, encoding: .utf8)
+
+        coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
+        coordinator.abandonPendingCreate()
+
+        XCTAssertNil(coordinator.pendingCreate, "abandoning consumes the pending create")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), before,
+                       "a failed create leaves the task file untouched")
+        let restored = taskManager.freshTask(id: seed.id)
+        XCTAssertEqual(restored?.status, WorkTask.ReservedStatus.new)
+        XCTAssertNil(restored?.worktree, "no branch link survives a failed create")
+
+        guard case .prefill = coordinator.resolveStart(try XCTUnwrap(restored)) else {
+            XCTFail("the task must still be startable"); return
+        }
+    }
+
+    /// The restart branch bumps `attempt`, so the unwind has to put that back too — otherwise a
+    /// retry after two failed creates counts attempts the operator never made.
+    func testAbandonPendingCreateRestoresABumpedAttempt() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Retry me") else {
+            XCTFail("createTask returned nil"); return
+        }
+        taskManager.updateFields(id: seed.id) {
+            $0.status = WorkTask.ReservedStatus.canceled
+            $0.attempt = 2
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        coordinator.confirmCreate(taskId: seed.id, branch: "retry-me", command: nil)
+        XCTAssertEqual(taskManager.freshTask(id: seed.id)?.attempt, 3, "the create counts the attempt")
+
+        coordinator.abandonPendingCreate()
+
+        let restored = taskManager.freshTask(id: seed.id)
+        XCTAssertEqual(restored?.attempt, 2, "the unwind puts the attempt count back")
+        XCTAssertEqual(restored?.status, WorkTask.ReservedStatus.canceled)
+        XCTAssertNil(restored?.worktree)
+    }
+
+    /// A hand-made worktree writes no task, so its unwind clears the pending create and nothing
+    /// else — there is no file to put back.
+    func testAbandonPendingCreateWithoutATaskWritesNothing() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        let coordinator = makeCoordinator(taskManager)
+
+        coordinator.confirmCreate(taskId: nil, branch: "manual", command: nil)
+        coordinator.abandonPendingCreate()
+
+        XCTAssertNil(coordinator.pendingCreate)
+        XCTAssertTrue(taskManager.tasks.isEmpty)
     }
 
     // MARK: - Pending create
@@ -214,7 +290,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
             taskId: seed.id,
             branch: branch,
-            command: agentCommand(text: "plan {{ task_path }} now")
+            command: agentCommand(text: "plan {{ task_path }} now"),
+            priorFields: nil
         )
 
         let resolved = coordinator.completePendingCreate(
@@ -236,7 +313,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
             taskId: nil,
             branch: "manual",
-            command: agentCommand(text: "read {{ task_path }}")
+            command: agentCommand(text: "read {{ task_path }}"),
+            priorFields: nil
         )
 
         let resolved = coordinator.completePendingCreate(
@@ -264,7 +342,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-\(branch)")
         taskManager.worktreeResolver = { [(branch: branch, path: worktreePath)] }
         coordinator.pendingCreate = WorkTaskCoordinator.PendingCreate(
-            taskId: seed.id, branch: branch, command: nil
+            taskId: seed.id, branch: branch, command: nil, priorFields: nil
         )
 
         let resolved = coordinator.completePendingCreate(

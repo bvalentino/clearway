@@ -19,9 +19,19 @@ class WorkTaskCoordinator: ObservableObject {
     /// hand-made worktree carries no task, and `command` is the agent command to run once the
     /// worktree is live.
     struct PendingCreate: Equatable {
+        /// The three system-managed fields `confirmCreate` overwrites, as they read before it did.
+        /// Carried so `abandonPendingCreate` can put them back when the `git worktree add` fails.
+        struct PriorFields: Equatable {
+            let status: String
+            let worktree: String?
+            let attempt: Int?
+        }
+
         let taskId: UUID?
         let branch: String
         let command: SavedCommand?
+        /// `nil` for a hand-made worktree, which has no task to unwind.
+        let priorFields: PriorFields?
     }
 
     var pendingCreate: PendingCreate?
@@ -72,8 +82,12 @@ class WorkTaskCoordinator: ObservableObject {
     /// TASK.md and run the command once the worktree is live. A hand-made worktree passes no task id
     /// and so writes no task file.
     func confirmCreate(taskId: UUID?, branch: String, command: SavedCommand?) {
+        var priorFields: PendingCreate.PriorFields?
         if let taskId {
             workTaskManager.updateFields(id: taskId) { updated in
+                priorFields = PendingCreate.PriorFields(
+                    status: updated.status, worktree: updated.worktree, attempt: updated.attempt
+                )
                 if updated.status == WorkTask.ReservedStatus.canceled {
                     updated.attempt = (updated.attempt ?? 0) + 1
                 }
@@ -81,7 +95,24 @@ class WorkTaskCoordinator: ObservableObject {
                 updated.worktree = branch
             }
         }
-        pendingCreate = PendingCreate(taskId: taskId, branch: branch, command: command)
+        pendingCreate = PendingCreate(
+            taskId: taskId, branch: branch, command: command, priorFields: priorFields
+        )
+    }
+
+    /// Unwinds a create that never happened. `confirmCreate` writes the frontmatter before
+    /// `git worktree add` runs, so a failed create would otherwise leave the task on `in_progress`
+    /// naming a branch with no worktree — a state `resolveStart` refuses, making the task
+    /// unstartable from the UI.
+    func abandonPendingCreate() {
+        guard let pending = pendingCreate else { return }
+        pendingCreate = nil
+        guard let taskId = pending.taskId, let prior = pending.priorFields else { return }
+        workTaskManager.updateFields(id: taskId) { updated in
+            updated.status = prior.status
+            updated.worktree = prior.worktree
+            updated.attempt = prior.attempt
+        }
     }
 
     /// Consumes the pending create for this branch: relocates the task's TASK.md into the now-live
