@@ -600,3 +600,19 @@ says a move inside run-to-run variance is a pass, not a finding, and this is tha
 - Combined wall time recorded against the T1 baseline (criterion 8).
 - `git status --porcelain` shows only this change's files; `git diff Sources/` shows only
   `reconcileTask` (criterion 9).
+
+## Simplify — result
+
+Nothing simplified: every finding the four cleanup passes raised reverses a decision this plan
+already settled with reasons, changes behaviour, or targets lines outside the diff. Skipped, with
+the decision that answers each: hoisting `await settle()` into `waitFor` or onto a shared git-read
+helper (decision 8, and T2's "do not move either onto the base class"); dropping the now-vestigial
+poll loop from the three settling helpers (decision 9); `[weak self]` on `reconcile`'s `Task`
+(decision 7); moving `reconcileTask` off `WorktreeGroupManager` onto the test base (decision 4).
+Dropping the `.value` from the two `await reconcile(…).value` + `await settle()` sites was raised by
+all four passes and is also declined: `reconcileTask` is documented as a non-chaining slot for a
+`Task` a body dropped, so a case holding the `Task` awaits it directly rather than through the
+safety net, and the two sites assert on published state the reconcile produced.
+
+`./scripts/ci.sh` — green, exit 0. `Executed 677 tests, with 0 failures (0 unexpected) in 111.266
+seconds`, `Test Succeeded`, `==> CI passed.` `git status --porcelain` is empty apart from this file.
