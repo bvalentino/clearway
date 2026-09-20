@@ -562,3 +562,56 @@ throw away the merge-order fact rather than simplify it.
 **Gate**
 
 `./scripts/ci.sh` → `==> CI passed.` 535 tests, 0 failures.
+
+### Review
+
+`/pr-review-toolkit:review-pr code tests errors types` against `git diff 484482d...HEAD`, four agents
+in parallel. **No Important findings from any of the four.** One nit was fixed; the rest were
+declined with reasons.
+
+**Fixed**
+
+`CLAUDE.md:161-164`, the merge-order sentence C2 (`c4dea2d`) rewrote. Two wording defects: `them`
+had no antecedent, and the clause "where a top-level view puts it after" contrasts a shape no file
+exercises — all six surviving `ToolbarGroupBreak()` call sites (`PromptListView.swift:39`,
+`CommandsView.swift:37`, `WorkTaskListView.swift:59`, `ContentView.swift:199, 206, 217`) separate two
+groups a *single* view owns. An engineer adding a nested panel toolbar would grep, land on
+`PromptListView`, read it as the contrast case, put their break after their items and get it merged
+into `detailView`'s capsule — the bug the paragraph exists to prevent. The rule itself is unchanged
+and the paragraph still names no aside view, so spec decision 6 holds; this sharpens C2's rewrite
+rather than reversing the simplify pass's decision not to delete it.
+
+**Declined**
+
+- Rename `applyGlassButtonStyle()` to a role name matching `applyPrimaryActionStyle`'s scheme
+  (mechanism-vs-role asymmetry; below macOS 26 it is `.bordered`, not glass). Spec decisions 20 and
+  22 and the Files-touched table name the helper `applyGlassButtonStyle()`; the table wins. Follow-up.
+- Narrowing `GlassButtonStyles.swift`'s `extension View` receiver to `Button`. The reviewer raised
+  and then argued against it: the only mechanism is a per-style `PrimitiveButtonStyle` wrapper, more
+  machinery than three call sites justify. Recorded so nobody attempts it for the wrong reason.
+- `PromptsView` uses the trailing-closure form and `TodosPanelView` the `action:` label. Both
+  idiomatic, and they differ because the bodies do. Not debt.
+
+**Follow-ups raised, all pre-existing and outside this diff**
+
+- `PromptManager.createPrompt()` returns `nil` on a failed disk write with no alert and no log
+  (`PromptManager.swift:62, 66-67`), swallowed identically by the old toolbar `+` and the new button
+  (`PromptsView.swift:45-49`). Unchanged by this diff, but a dead full-width primary button reads
+  worse than a dead 16pt glyph. `OpenInAppLauncher.spawnFailureMessage` is the in-repo pattern.
+- `TodoManager.write` discards `createFile`'s `Bool` (`TodoManager.swift:86, 89`); a todo can be
+  silently lost with the input row re-arming as if it saved. File untouched here.
+- `@discardableResult` on `createPrompt` (`PromptManager.swift:56`) lets a future caller drop the
+  only failure signal.
+
+**Verified clean**
+
+No test asserts on the removed toolbar items and `AppKeyboardShortcuts` needed no edit — neither `+`
+declared a `.keyboardShortcut`, so nothing was claimed or released and no not-claimed pin is owed.
+The diff adds no `deinit`, no `@convention(c)`/`@convention(block)` literal and no `DispatchSource`,
+so none of CLAUDE.md's concurrency traps are in play. `.controlSize(.large)` sits outside
+`.applyGlassButtonStyle()`, which is correct: the style reads it from the environment.
+
+**Gate**
+
+Not run — `sign-off` owns the single full-gate run. Only `CLAUDE.md` and this plan changed in this
+stage, neither of which the build compiles.
