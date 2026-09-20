@@ -8,8 +8,9 @@ import SwiftUI
 ///
 /// With `remembersLastUsed`, it is a split button: clicking the label opens the path in the last
 /// app picked here, or in the first app in the list before anything has been picked, and clicking
-/// the chevron opens the full list. Only the toolbar asks for that; the sidebar's context menu
-/// stays a plain submenu.
+/// the chevron opens the rest of the list — the primary app is omitted, since the label half
+/// already opens it and names it. Only the toolbar asks for that; the sidebar's context menu stays
+/// a plain submenu and lists every app.
 struct OpenInMenu<Label: View>: View {
 
     @EnvironmentObject private var settings: SettingsManager
@@ -37,8 +38,8 @@ struct OpenInMenu<Label: View>: View {
         }
     }
 
-    @ViewBuilder private var items: some View {
-        ForEach(settings.openInApps) { app in
+    private var items: some View {
+        ForEach(remembersLastUsed ? settings.menuOpenInApps : settings.openInApps) { app in
             Button(app.label) { open(app) }
         }
     }

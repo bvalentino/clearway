@@ -219,6 +219,10 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     id naming a deleted command reads as nothing remembered. No delete path cleans it up, and none
     should. `primaryCommand` is that value or `commands.first` — what the Run button's label half
     runs, resolved on the manager so it is unit-tested rather than decided in the view.
+    `runButtonTitle` (`primaryCommand?.name ?? "Run"`) and `menuCommands` (`commands` minus the
+    primary) live beside it for the same reason: the label names what a click will do and the
+    dropdown omits it, and both rules are pinned by `SavedCommandManagerTests` rather than read out
+    of a SwiftUI body.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached
@@ -271,12 +275,26 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     on a non-empty list **and** a non-nil worktree path, so emptying the list in Settings hides them.
     Unlike `RunCommandMenu`, which stays visible and disabled, the toolbar item disappears: an empty
     list is a configuration the user chose, not a momentarily unavailable action. The sidebar passes
-    the right-clicked worktree's path, not the selection's. The toolbar item is the **text** label
-    `Text("Open in")` with the system chevron and no `.help()` tooltip — the sidebar submenu carries
-    that same label, lowercase preposition included, the way Reveal in Finder does. `RunCommandMenu`
-    beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()`. Both
-    are split buttons, so their label half acts on a click and has to name what that click will do;
-    the remaining toolbar items act on a click too and stay icon-only, named by their symbol.
+    the right-clicked worktree's path, not the selection's. Both toolbar items are **text** labels
+    with the system chevron and no `.help()` tooltip, and each names its own primary action rather
+    than its category: Open in reads `"Open in \(app.label)"` — "Open in Cursor" — from
+    `SettingsManager.openInButtonTitle`, and Run reads the primary command's name from
+    `SavedCommandManager.runButtonTitle`. They are split buttons, so the label half acts on a click
+    and has to say what that click will do; the remaining toolbar items act on a click too and stay
+    icon-only, named by their symbol. The generic words survive only where nothing resolves: Run
+    reads "Run" on an empty list, where it is disabled anyway. The sidebar submenu keeps the plain
+    lowercase `Text("Open in")` its call site passes, the way Reveal in Finder does — it has no
+    primary to name.
+    The chevron's list **omits the primary** on both toolbar buttons (`menuCommands`,
+    `menuOpenInApps`), since the label half already runs it; the sidebar submenu lists `openInApps`
+    whole. A one-item list therefore leaves Open in's dropdown empty, which AppKit draws as a click
+    that does nothing — accepted, because the one thing there is to open is one click away on the
+    label. Run does not have that shape: its menu ends with an unconditional "Add Command…" item,
+    separated by a `Divider()` only when there are other commands above it, and it presents the same
+    `CommandEditorSheet(command: nil)` the Commands view's `+` opens. The sheet hangs off
+    `RunCommandMenu`'s own body, **outside** the `.disabled(…)` so the editor's controls never
+    inherit a disabled environment, rather than off `ContentView`, whose `file_length` budget is
+    spent.
     A split button is `Menu(content:label:primaryAction:)`, declared **unconditionally**: both draw
     as split buttons whenever their list is non-empty, including before anything has been picked,
     because the primary action falls back to the first item in display order. That resolution is

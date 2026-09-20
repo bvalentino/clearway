@@ -258,4 +258,63 @@ final class SavedCommandManagerTests: TempRootTestCase {
 
         XCTAssertEqual(manager.primaryCommand, first)
     }
+
+    // MARK: - Run button title
+
+    func testRunButtonTitleIsRunWhenThereAreNoCommands() {
+        XCTAssertEqual(manager.runButtonTitle, "Run")
+    }
+
+    func testRunButtonTitleNamesTheFirstCommandBeforeAnythingIsRecorded() {
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(makeCommand(name: "Test", text: "bin/test"))
+
+        XCTAssertEqual(manager.runButtonTitle, "Dev")
+    }
+
+    func testRunButtonTitleNamesTheRecordedCommand() {
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(makeCommand(name: "Dev"))
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.runButtonTitle, "Test")
+    }
+
+    // MARK: - Menu commands
+
+    func testMenuCommandsIsEmptyWhenThereAreNoCommands() {
+        XCTAssertTrue(manager.menuCommands.isEmpty)
+    }
+
+    func testMenuCommandsIsEmptyForASingleCommand() {
+        manager.add(makeCommand(name: "Dev"))
+
+        XCTAssertTrue(manager.menuCommands.isEmpty)
+    }
+
+    func testMenuCommandsOmitsThePrimaryCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        let third = makeCommand(name: "Lint", text: "bin/lint")
+        manager.add(first)
+        manager.add(second)
+        manager.add(third)
+
+        XCTAssertEqual(manager.menuCommands, [second, third])
+    }
+
+    func testMenuCommandsOmitsTheRecordedCommandAndKeepsDisplayOrder() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        let third = makeCommand(name: "Lint", text: "bin/lint")
+        manager.add(first)
+        manager.add(second)
+        manager.add(third)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.menuCommands, [first, third])
+    }
 }

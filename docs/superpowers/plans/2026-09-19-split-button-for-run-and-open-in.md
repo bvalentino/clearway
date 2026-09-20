@@ -45,6 +45,8 @@ piece is verified.
 - `OpenInMenu` gains a `remembersLastUsed: Bool = false` init parameter. The sidebar's worktree
   context submenu is **not touched at all** — the default is off, so picking there changes nothing.
 - Neither label changes. `Text("Run")` and `Text("Open in")`, system chevron, no `.help()` tooltip.
+  **Superseded by C2 in the Changelog:** each label names its own primary action, the chevron's list
+  omits that item, and Run's list ends with an "Add Command…" door.
 - Neither button claims a keyboard shortcut, so `AppKeyboardShortcuts` is untouched.
 - No view test. Both menus gain no decision of their own — they render one of two declarations from
   an already-resolved optional — and XCTest cannot reach a SwiftUI body here. This is the split the
@@ -330,6 +332,25 @@ with a non-empty list there is always a primary action. The resolution lives on 
 Spec Decisions 1 and 2 are superseded in place; Decisions 14 and 15 and success criteria 1, 2 and 5
 record the shipped rules.
 
+### C2: The labels name the default, and the list drops it (operator, 2026-09-20)
+
+Requested after the hands-on check of C1. Three rules:
+
+1. **Labels name the default.** Run's label is `SavedCommandManager.primaryCommand`'s name, Open
+   in's is `"Open in <App name>"` from `SettingsManager.primaryOpenInApp`. Both keep the system
+   chevron and no tooltip. An empty list leaves Run reading "Run" (it is disabled) and Open in
+   hidden, as before.
+2. **The chevron's list omits the primary,** on both toolbar buttons. The sidebar's right-click
+   Open in submenu is unchanged — it has no primary and lists everything.
+3. **Run's menu ends with "Add Command…"** after a separator, the shape the sibling worktree's
+   Start Now menu uses for "Add Agent Command…". It opens the same `CommandEditorSheet(command: nil)`
+   the Commands view's `+` opens. Open in gets no equivalent.
+
+The label and list rules live on the non-view owners — `runButtonTitle`/`menuCommands` and
+`openInButtonTitle`/`menuOpenInApps` — so they are unit-tested rather than decided in a SwiftUI
+body, the same split C1 made for `primaryCommand`/`primaryOpenInApp`. Spec Decision 10 is superseded
+in place, Decisions 16-18 and success criterion 9 record the shipped rules.
+
 ## Build log
 
 ### T1: Store and remember Run's last-used command
@@ -512,3 +533,56 @@ itself has no test — XCTest cannot reach a SwiftUI body — so it is on the op
    for. Not copied (spec Decision 15).
 
 **Gate.** `./scripts/ci.sh` — 556 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### C2: The labels name the default, and the list drops it
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandManager.swift` | `runButtonTitle` (`primaryCommand?.name ?? "Run"`) and `menuCommands` (`commands` minus the primary id, display order kept) added beside `primaryCommand`. The primary id is bound once rather than recomputed per element. |
+| `Sources/App/SettingsManager.swift` | `openInButtonTitle` (`"Open in \(app.label)"`, falling back to the bare "Open in" that an empty list never renders, since the item is hidden) and `menuOpenInApps` added beside `primaryOpenInApp`. |
+| `Sources/App/RunCommandMenu.swift` | Label is `Text(savedCommandManager.runButtonTitle)`. The item list moved into a `@ViewBuilder items` property: `menuCommands` plus a `Divider()` when non-empty, then an unconditional `Button("Add Command…")`. `@State showCommandEditor` drives a `.sheet` presenting `CommandEditorSheet(command: nil)`, attached **after** `.disabled(…)` so the sheet's environment is the toolbar's rather than the disabled subtree's. `run(_:)` and the `.disabled` gate unchanged. |
+| `Sources/App/OpenInMenu.swift` | `items` renders `remembersLastUsed ? settings.menuOpenInApps : settings.openInApps`, so only the toolbar drops the primary. Doc comment restated. |
+| `Sources/App/ContentView.swift` | The toolbar `OpenInMenu`'s label closure is `Text(settings.openInButtonTitle)`. One expression on an existing call; no new section in a file already past `file_length`. |
+| `Tests/SavedCommandManagerTests.swift` | Run button title: "Run" on an empty list, the first command's name before anything is recorded, the recorded command's name after. Menu commands: empty on an empty list, empty for a single command, primary omitted, recorded command omitted with display order kept. |
+| `Tests/SettingsManagerTests.swift` | The same seven shapes for `openInButtonTitle` ("Open in Finder", "Open in Cursor", bare "Open in" on an empty list) and `menuOpenInApps`. |
+| `CLAUDE.md` | The `SavedCommandStore` bullet gains `runButtonTitle`/`menuCommands`. The Open In bullet's label paragraph now says both toolbar labels name their own primary action, that the chevron omits it, that a one-app Open in list draws an empty menu and why that is accepted, and that Run's menu ends with "Add Command…" opening the Commands view's own editor sheet from `RunCommandMenu`'s body outside its `.disabled(…)`. |
+| `docs/.../specs/2026-09-19-split-button-for-run-and-open-in.md` | Decision 10 superseded in place; Decisions 16 (primary omitted from the list), 17 (what "Add Command…" reaches, and why `CommandsView`'s `+` is not a usable seam) and 18 (no Open in equivalent) added; success criterion 9 restated. |
+
+**Why "Add Command…" presents the sheet itself.** `CommandsView`'s `+` calls `openEditor(nil)`,
+which sets that view's own `@State editorTarget`, and the same closure is published as
+`.focusedSceneValue(\.newCommandAction)` (`CommandsView.swift:49`) for `ClearwayApp`'s File > New
+Command item (`ClearwayApp.swift:355,364`). Both are in scope only while the Commands destination is
+on screen; the Run button lives in `detailView`'s worktree toolbar, where it never is. So the add
+flow is reached by presenting `CommandEditorSheet(command: nil)` — the same sheet, the same
+`@EnvironmentObject savedCommandManager`, no second implementation and no new seam. This is the
+sibling worktree's shape too (`WorkTaskListView.swift:155-157,275`).
+
+**Watched failure.** The four new properties were first written naively — `runButtonTitle` as the
+literal `"Run"`, `openInButtonTitle` as `"Open in"`, and both menu lists returning the whole list —
+and `./scripts/ci.sh` run with the new cases in place:
+
+```
+SavedCommandManagerTests:
+  testMenuCommandsIsEmptyForASingleCommand, XCTAssertTrue failed
+  testMenuCommandsOmitsThePrimaryCommand, XCTAssertEqual failed: ("[…"Dev"…, …"Test"…, …"Lint"…]") is not equal to ("[…"Test"…, …"Lint"…]")
+  testMenuCommandsOmitsTheRecordedCommandAndKeepsDisplayOrder, XCTAssertEqual failed: ("[…"Dev"…, …"Test"…, …"Lint"…]") is not equal to ("[…"Dev"…, …"Lint"…]")
+  testRunButtonTitleNamesTheFirstCommandBeforeAnythingIsRecorded, XCTAssertEqual failed: ("Run") is not equal to ("Dev")
+  testRunButtonTitleNamesTheRecordedCommand, XCTAssertEqual failed: ("Run") is not equal to ("Test")
+SettingsManagerTests:
+  test_menuOpenInApps_isEmptyForASingleApp, XCTAssertTrue failed
+  test_menuOpenInApps_omitsThePrimaryApp, XCTAssertEqual failed: ("[…finder…, …zed…, …custom(label: "Cursor")…]") is not equal to ("[…zed…, …custom(label: "Cursor")…]")
+  test_menuOpenInApps_omitsTheRememberedAppAndKeepsListOrder, XCTAssertEqual failed: ("[…finder…, …zed…, …"Cursor"…]") is not equal to ("[…finder…, …"Cursor"…]")
+  test_openInButtonTitle_namesTheFirstAppBeforeAnythingIsRemembered, XCTAssertEqual failed: ("Open in") is not equal to ("Open in Finder")
+  test_openInButtonTitle_namesTheRememberedApp, XCTAssertEqual failed: ("Open in") is not equal to ("Open in Cursor")
+Executed 570 tests, with 10 failures (0 unexpected) in 87.129 (87.347) seconds
+```
+
+Restoring the real bodies turned all ten green. The two "empty list gives an empty menu list" cases
+pass either way — they pin the empty case, not the filter.
+
+**Deviations.** One. The operator's note left open whether Open in should also get an "add" item.
+It does not: the sibling's door is the app's own command editor, where Open in's list is edited in
+Settings, so the equivalent would be a Settings deep link rather than the same shape. The cost is
+that a one-app Open in list draws an empty dropdown (spec Decision 18).
+
+**Gate.** `./scripts/ci.sh` — 570 tests, 0 failures, `swiftlint` clean, `==> CI passed.`

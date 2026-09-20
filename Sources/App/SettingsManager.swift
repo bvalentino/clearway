@@ -122,6 +122,19 @@ class SettingsManager: ObservableObject {
     /// empty list leaves it without an action — and an empty list hides it.
     var primaryOpenInApp: OpenInApp? { lastUsedOpenInApp ?? openInApps.first }
 
+    /// The toolbar's Open in label, which names the app a click will open. An empty list hides the
+    /// item, so the bare fallback is never rendered.
+    var openInButtonTitle: String {
+        primaryOpenInApp.map { "Open in \($0.label)" } ?? "Open in"
+    }
+
+    /// The toolbar dropdown's items: everything the label half does not already open. The sidebar's
+    /// context submenu has no primary and lists `openInApps` whole.
+    var menuOpenInApps: [OpenInApp] {
+        let primaryId = primaryOpenInApp?.id
+        return openInApps.filter { $0.id != primaryId }
+    }
+
     @Published var lastUsedOpenInAppId: UUID? {
         didSet {
             if let lastUsedOpenInAppId {

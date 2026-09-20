@@ -21,6 +21,17 @@ final class SavedCommandManager: ObservableObject {
     /// and only an empty list leaves it without an action.
     var primaryCommand: SavedCommand? { lastRunCommand ?? commands.first }
 
+    /// The Run button's label, which names what a click will do rather than reading "Run". An empty
+    /// list has no primary and leaves the button disabled, so it keeps the generic word.
+    var runButtonTitle: String { primaryCommand?.name ?? "Run" }
+
+    /// The dropdown half's items: everything the label half does not already run. A one-command
+    /// list therefore lists no commands at all.
+    var menuCommands: [SavedCommand] {
+        let primaryId = primaryCommand?.id
+        return commands.filter { $0.id != primaryId }
+    }
+
     private let store: SavedCommandStore
 
     /// The save in flight, if any. Each new save awaits it before writing.
