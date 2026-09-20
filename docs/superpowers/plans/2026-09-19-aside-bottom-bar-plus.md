@@ -281,6 +281,28 @@ This supersedes spec decision 1's bar chrome, decision 14 entirely and decision 
 background and leading alignment, and is recorded as spec decision 21. Decision 19's titled label,
 absent tooltip and absent `.accessibilityLabel` are unchanged.
 
+### C3: The button uses the system glass button style (operator, after the third hands-on check)
+
+Operator feedback, verbatim: "We should NEVER do a hand-built glass. That is a big smell."
+
+`AsideAddButton` drops C2's hand-built glass entirely. What remains is one `Button` whose
+`Label(title, systemImage: "plus")` is `.frame(maxWidth: .infinity)`, styled by
+`applyGlassButtonStyle()` at `.controlSize(.large)`. Gone: `.buttonStyle(.plain)`, the
+`.glassEffect(.regular.interactive(), in: Capsule())`, the separator-colour capsule stroke and the
+label's 6-point vertical padding. The 12 horizontal / 8 top / 12 bottom insets and the
+`.labelStyle(.titleAndIcon)` stay.
+
+`applyGlassButtonStyle()` returns to `Sources/App/GlassButtonStyles.swift` beside
+`applyPrimaryActionStyle(tint:)` — `.glass` on macOS 26 and later, `.bordered` below — so that file
+is again the one place the app splits button styling between Liquid Glass and its fallback. The
+`.controlSize(.large)` belongs at the call site, not in the helper: it is sizing, not the
+availability split.
+
+`CLAUDE.md` gains a bullet in the `Sources/App/` list recording the convention, so the next button
+does not reach for `.glassEffect` again. The rule is also spec decision 22.
+
+This supersedes C2's glass construction and restores C1's decision 20.
+
 ## Build log
 
 ### T1: Add AsideBottomBar and move the Todos `+` onto it
@@ -484,3 +506,43 @@ copies, answers hover and press.
 **Gate**
 
 `./scripts/ci.sh` → `==> CI passed.`, exit 0. 535 tests, 0 failures.
+
+### C3: The button uses the system glass button style
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AsideAddButton.swift` | 20 lines, down from 42. One `Button` whose `Label(title, systemImage: "plus").labelStyle(.titleAndIcon)` is `.frame(maxWidth: .infinity)`, then `.applyGlassButtonStyle()`, `.controlSize(.large)` and the unchanged 12 horizontal / 8 top / 12 bottom insets. The `@ViewBuilder` availability split, `.buttonStyle(.plain)`, `.glassEffect(.regular.interactive(), in: Capsule())`, the `Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)` overlay and the label's 6-point vertical padding are gone. |
+| `Sources/App/GlassButtonStyles.swift` | `applyGlassButtonStyle()` restored beside `applyPrimaryActionStyle(tint:)` — `.buttonStyle(.glass)` on macOS 26 and later, `.buttonStyle(.bordered)` below. No `.controlSize` in the helper: sizing is the call site's. |
+| `CLAUDE.md` | A bullet added to the `Sources/App/` list, after the `.navigationTitle` bullet: buttons never hand-build glass with `.glassEffect` plus a stroke, they take the system `.glass` / `.glassProminent` styles through `GlassButtonStyles.swift` with `.bordered` / `.borderedProminent` below macOS 26; `.glassEffect` is for non-button containers such as the two tab strips. |
+| `docs/superpowers/specs/2026-09-19-aside-bottom-bar-plus.md` | Decision 22 added; success criterion 6 restated for the system style; the `AsideAddButton`, `GlassButtonStyles` and `CLAUDE.md` rows in `Files touched` updated. |
+| `docs/superpowers/plans/2026-09-19-aside-bottom-bar-plus.md` | C3 added to `## Changelog`, plus this entry. |
+
+**Evidence**
+
+No regression test. Spec decision 18 still holds: this swaps one button style for another and
+deletes decoration, with no decision rule to lift into a pure helper and no reachable API to assert
+on. There is therefore no watched failure to quote. The pin on "nothing else moved" is the existing
+suite staying green unchanged — 535 tests, 0 failures, no file under `Tests/` edited.
+
+Checked directly:
+
+- `grep -rn "glassEffect" Sources/` → `ContentView.swift:977` and `MainTerminalTabStrip.swift:114`
+  only, both container capsules. No button hand-builds glass any more.
+- `grep -rn "#available(macOS 26" Sources/App/` for button styling → `GlassButtonStyles.swift` only.
+- `swiftlint lint --quiet` → exit 0, the same three pre-existing warnings (`WorktreeConfigStore.swift:99, :266`,
+  `WorktreeDraft.swift:17`); none in a file this task touched.
+- `git status --porcelain` → the five files above and nothing else.
+  `Clearway.xcodeproj/project.pbxproj` is byte-identical after `xcodegen generate`: no source file
+  was added or renamed. No `default.profraw`: the app was not launched.
+
+**Deviations from the plan**
+
+None. `.controlSize(.large)` was kept at the call site rather than folded into
+`applyGlassButtonStyle()`, as the brief directs, so the helper stays purely the availability split
+and `applyPrimaryActionStyle(tint:)`'s two callers keep their own sizing.
+
+**Gate**
+
+`./scripts/ci.sh` → `==> CI passed.` 535 tests, 0 failures.

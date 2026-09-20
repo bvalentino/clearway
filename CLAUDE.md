@@ -166,6 +166,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
     overrides anything a column sets, so a per-destination window title is resolved in its
     `navigationTitle` property, not by a `.navigationTitle` inside the detail column.
+  - **A button never hand-builds its glass.** Buttons take the system styles — `.glass` /
+    `.glassProminent`, with `.bordered` / `.borderedProminent` below macOS 26 — through
+    `GlassButtonStyles.swift`, which owns that availability split. `.glassEffect` plus a stroke is
+    for non-button containers such as the aside tab strip and the main terminal tab strip; on a
+    button it drops the system font, padding, shape and hover/press treatment, so the control reads
+    as foreign beside stock buttons like Create Task.
   - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
     and awaits nothing, it calls a coordinator method (`startTask`, `completePendingLaunch`). This is
     what lets one behavior carry several entry points without the decision being written once per
