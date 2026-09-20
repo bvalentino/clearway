@@ -328,3 +328,48 @@ stdout (spec decision 8), and that is unchanged by logging.
 **Gate**
 
 `./scripts/ci.sh` — green, run after the edit. `swiftlint lint --quiet` prints nothing.
+
+### PR review (`code tests errors types`)
+
+Four reviewers read `git diff main...HEAD` from fresh context. The code reviewer found nothing at
+or above threshold; the type reviewer agreed with every binding decision and returned "ship as-is".
+No code changed. One docs correction landed, and three follow-ups were recorded rather than taken.
+
+**Corrected**
+
+Spec decision 4's rationale claimed "all three callers already treat an empty result as 'nothing
+usable'" and that the empty case is "a condition the store cannot produce". Two reviewers
+independently showed both halves are loose: the third caller (`:205-206`) concludes *the key is not
+set* and the bootstrap then enables the extension, which is not "nothing usable"; and none of
+`trimmed(_:)`'s three inputs is a value Clearway wrote — they are git's canonicalised bool, a
+`rev-parse` path, and `core.bare`/`core.worktree` as another tool left them. The decision's outcome
+(`?? ""`, non-optional return) is unchanged and still right; only the reasoning a future editor
+would rely on was rewritten.
+
+**Follow-ups, not taken here**
+
+1. **No log beside the `continue` at `WorktreeConfigStore.swift:206`.** Raised by two reviewers. An
+   undecodable `core.worktree` now yields `""`, skips the key, and the bootstrap still enables the
+   extension — leaving `core.worktree` in `$GIT_DIR/config`, the state git-worktree(1) warns about,
+   with no log, where the sibling failure at `:222-224` does log. Both reviewers rated it low and
+   both noted the change is a strict improvement here: at base the U+FFFD-mangled path was *written*
+   into `config.worktree` and the real one unset. The branch is pre-existing — it already fires
+   un-logged for genuinely empty output — and spec decision 4 and T1 both pin `trimmed(_:)`'s three
+   callers as untouched, so the Decisions table wins. Same one-line fix would correct the
+   misattributed "git printed no path" message at `:197`.
+2. **A test pinning the non-UTF-8 read as `nil`.** An explicit disagreement with spec decision 8,
+   rated 5 of 10 by its author, who wrote they "would not hold the branch for them". Decision 8's
+   premise is right about what Clearway *writes* and loose about what the store *reads*: the
+   reviewer verified against git 2.54.0 that `git config --worktree clearway.name "$(printf
+   'caf\xe9')"` stores and echoes raw bytes at exit 0, so the branch is reachable by a hand edit or
+   a foreign-locale script. The table wins here too; the value of the test would be regression
+   cover on decision 3's `nil`/`[:]` split, not on the scenario.
+3. **`values(forWorktreeAt:)` returns `[String: String]?` where the file names the same distinction
+   as an enum twice** (`ExtensionState.unknown`, `GitOutcome.unavailable`). `?? [:]` compiles, reads
+   naturally, and silently converts "unreadable" into "genuinely empty" — the mistake decisions 3
+   and 10 exist to prevent. Worth an enum if this API ever gains a second caller; it has exactly
+   one today (`WorktreeGroupManager.swift:394`).
+
+**Gate**
+
+Not run — `sign-off` owns the single full gate run. This entry and the spec edit are docs only.
