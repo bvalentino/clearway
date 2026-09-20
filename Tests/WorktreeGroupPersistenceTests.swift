@@ -97,6 +97,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
         try await waitForStoredValue("New", ofKey: WorktreeConfigStore.groupKey, at: path)
         try await waitForRegistry(["New", "Later"])
+        XCTAssertTrue(recordedWriteAlerts.isEmpty, "a gesture that landed tells the user nothing")
     }
 
     /// The registry is written last and only if every member write landed, so a rename whose
@@ -121,8 +122,63 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
             ["Old"],
             "a rename no member accepted must not reach the registry"
         )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "New", path: path)],
+            "the abandoned registry is the one failure the user is told about"
+        )
         await restartManager()
         XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the next launch shows the old name")
+    }
+
+    /// The same abandon as the rename above, reached by the one gesture whose member value is not
+    /// the group it acts on: a delete writes `nil`, so the name the alert carries can only have
+    /// come from the gesture. The failing `clearway.position` write the delete queues ahead of the
+    /// registry stays log-only, which is what the single recorded alert pins.
+    func testADeleteWhoseMemberWritesFailLeavesTheRegistryUntouched() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.createGroup(named: "Doomed")
+        manager.addWorktree(member, toGroupNamed: "Doomed")
+        try await waitForStoredValue("Doomed", ofKey: WorktreeConfigStore.groupKey, at: path)
+        try repo.removeWorktree(at: path)
+
+        manager.deleteGroup(named: "Doomed")
+        // Queued behind the delete on the write chain, so its arrival proves the delete is done.
+        manager.setGrouping(.status)
+        try await waitForLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
+
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Doomed"],
+            "a delete no member accepted must not reach the registry"
+        )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "Doomed", path: path)],
+            "the alert names the deleted group, never the nil written to its members"
+        )
+    }
+
+    /// The registry rewrite is half-applied on its own terms: `replaceLocalValues` unsets every
+    /// value before adding each one back, so a refusal partway leaves `clearway.groupOrder`
+    /// truncated or empty and every group is gone on the next launch. Here the repository's git
+    /// directory is removed once the first group has landed, so a repo-level write can only fail.
+    func testAFailedRegistryRewriteTellsTheUser() async throws {
+        manager.createGroup(named: "Keep")
+        try await waitForRegistry(["Keep"])
+        try FileManager.default.removeItem(
+            atPath: (tempRoot as NSString).appendingPathComponent(".git")
+        )
+
+        manager.createGroup(named: "Doomed")
+
+        try await waitFor(
+            [WorktreeGroupWriteAlert(group: "Doomed", path: nil)],
+            describing: "the alert a lost registry rewrite raises"
+        ) {
+            self.recordedWriteAlerts
+        }
     }
 
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
@@ -293,13 +349,20 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try FileManager.default.createDirectory(atPath: plainRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: plainRoot) }
 
+        // Built outside the base's recording seam, in a project where every write fails, so the
+        // presenters are what keep the run off a modal nothing can dismiss. `createGroup` passes no
+        // members, so the only failure it can reach is the registry rewrite.
         let first = WorktreeGroupManager(projectPath: plainRoot)
+        first.presentWriteAlert = {
+            XCTAssertEqual($0, WorktreeGroupWriteAlert(group: "Doomed", path: nil))
+        }
         await first.loadTask?.value
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
         await first.writeChain?.value
 
         let second = WorktreeGroupManager(projectPath: plainRoot)
+        second.presentWriteAlert = { XCTFail("a manager that only reads must not alert: \($0)") }
         await second.loadTask?.value
 
         XCTAssertTrue(second.groups.isEmpty)

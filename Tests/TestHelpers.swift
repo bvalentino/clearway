@@ -197,10 +197,15 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     var repo: GitRepoFixture!
     var manager: WorktreeGroupManager!
 
+    /// Every alert the managers built here would have shown, in the order they were raised.
+    /// Not cleared by `restartManager()`: XCTest builds one instance per test method, so the list
+    /// is already per-test.
+    private(set) var recordedWriteAlerts: [WorktreeGroupWriteAlert] = []
+
     override func setUp() async throws {
         try await super.setUp()
         repo = try GitRepoFixture.make(at: tempRoot)
-        manager = WorktreeGroupManager(projectPath: tempRoot)
+        manager = makeRecordingManager()
         // The manager's `init` load runs on its own Task and republishes everything it reads from
         // git config, so a mutation a test body makes before it lands is overwritten.
         await manager.loadTask?.value
@@ -236,8 +241,18 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     /// is seen: `WorktreeConfigStore` memoises a probe that found the extension off, and the load
     /// runs one before any test body does.
     func restartManager() async {
-        manager = WorktreeGroupManager(projectPath: tempRoot)
+        manager = makeRecordingManager()
         await manager.loadTask?.value
+    }
+
+    /// The only way this base builds a manager. A manager left with the live presenter would open
+    /// a modal on the write chain, and nothing in a test run can dismiss it.
+    private func makeRecordingManager() -> WorktreeGroupManager {
+        let built = WorktreeGroupManager(projectPath: tempRoot)
+        built.presentWriteAlert = { [weak self] alert in
+            self?.recordedWriteAlerts.append(alert)
+        }
+        return built
     }
 
     /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the

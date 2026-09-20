@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftUI
 
 // MARK: - Manager
@@ -38,6 +39,11 @@ final class WorktreeGroupManager: ObservableObject {
     @Published private(set) var names: [String: String] = [:]
     /// The axis the sidebar sections its worktrees by.
     @Published private(set) var grouping: WorktreeGrouping = .group
+
+    /// Shows the user that a group gesture left the change half-applied on disk. Defaults to the real
+    /// alert, so production wires nothing; the test base replaces it, because a modal raised on the
+    /// write chain would stall the chain the rest of a test waits on.
+    var presentWriteAlert: @MainActor @Sendable (WorktreeGroupWriteAlert) -> Void = { $0.present() }
 
     private let configStore: WorktreeConfigStore
 
@@ -84,7 +90,7 @@ final class WorktreeGroupManager: ObservableObject {
     func createGroup(named name: String) {
         guard let trimmed = WorktreeGroup.available(name, in: groups.map(\.name)) else { return }
         groups.append(WorktreeGroup(name: trimmed))
-        writeRegistry()
+        writeRegistry(affecting: trimmed)
     }
 
     /// Renames the group with the given name. No-ops if no group carries it, or if the new name
@@ -98,7 +104,7 @@ final class WorktreeGroupManager: ObservableObject {
         mutatePlacement { placement in
             for id in members { placement.groupNames[id] = trimmed }
         }
-        writeRegistry(settingGroup: trimmed, on: members)
+        writeRegistry(affecting: trimmed, settingGroup: trimmed, on: members)
     }
 
     /// Deletes the group with the given name. No-ops if no group carries it.
@@ -122,7 +128,7 @@ final class WorktreeGroupManager: ObservableObject {
             for (id, position) in appended { placement.positions[id] = position }
         }
         writePositions(appended)
-        writeRegistry(settingGroup: nil, on: members)
+        writeRegistry(affecting: name, settingGroup: nil, on: members)
     }
 
     /// Adds a worktree to the specified group, at the end of it.
@@ -141,11 +147,12 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            await configStore.set(
+            await Self.write(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
+            await Self.write(
                 String(position),
                 forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path
+                worktreeAt: path,
+                in: configStore
             )
         }
     }
@@ -159,11 +166,12 @@ final class WorktreeGroupManager: ObservableObject {
             placement.positions[wt.id] = position
         }
         enqueueWrite { configStore in
-            await configStore.set(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-            await configStore.set(
+            await Self.write(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
+            await Self.write(
                 String(position),
                 forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path
+                worktreeAt: path,
+                in: configStore
             )
         }
     }
@@ -271,7 +279,8 @@ final class WorktreeGroupManager: ObservableObject {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
         enqueueWrite { configStore in
-            await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
+            let wrote = await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
+            if !wrote { Self.logFailure("clearway.grouping was not saved") }
         }
     }
 
@@ -466,18 +475,63 @@ final class WorktreeGroupManager: ObservableObject {
         }
     }
 
+    /// Names the gesture a failed config write lost. `WorktreeConfigStore` has already logged why
+    /// git refused, under its own `worktree config:` prefix, and hands back only a `Bool` — so this
+    /// line cannot repeat it. The message is public because the worktree it names is the point of
+    /// it; a release build would otherwise redact the path.
+    private nonisolated static func logFailure(_ message: String) {
+        Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")
+    }
+
+    /// Writes one worktree-scoped value, naming the gesture if git refused.
+    ///
+    /// `writeRegistry`'s member write stays bespoke: it abandons the loop and raises an alert, and
+    /// its one line names both the registry it gave up on and the member write that lost it.
+    private nonisolated static func write(
+        _ value: String?,
+        forKey key: String,
+        worktreeAt path: String,
+        in configStore: WorktreeConfigStore
+    ) async {
+        let wrote = await configStore.set(value, forKey: key, worktreeAt: path)
+        if !wrote { logFailure("\(key) for \(path) was not saved") }
+    }
+
     /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
     /// registry, and only if every member write landed: a worktree naming an unlisted group renders
     /// ungrouped, so a half-applied rename that published the registry first would empty the group
     /// on the next launch.
-    private func writeRegistry(settingGroup name: String? = nil, on members: [String] = []) {
+    ///
+    /// `group` is the group the gesture acted on, which the member value is not: a delete writes
+    /// `nil` to its members and the alert must still name what was deleted.
+    private func writeRegistry(
+        affecting group: String,
+        settingGroup name: String? = nil,
+        on members: [String] = []
+    ) {
         let registry = groups.map(\.name)
+        let presentAlert = presentWriteAlert
         enqueueWrite { configStore in
             for path in members {
                 guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
-                else { return }
+                else {
+                    Self.logFailure(
+                        "clearway.groupOrder was not rewritten: clearway.group for \(path) was not saved"
+                    )
+                    // Awaited, not fired and forgotten: nothing should keep writing behind a
+                    // message saying a write failed.
+                    await presentAlert(WorktreeGroupWriteAlert(group: group, path: path))
+                    return
+                }
             }
-            await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
+            let wrote = await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
+            if !wrote {
+                Self.logFailure("clearway.groupOrder was not saved")
+                // `replaceLocalValues` unsets every value before adding each one back, so a refusal
+                // partway leaves the registry truncated or empty and every group disappears on the
+                // next launch. Half-applied on disk, like the abandon above, so it tells the user.
+                await presentAlert(WorktreeGroupWriteAlert(group: group, path: nil))
+            }
         }
     }
 
@@ -588,10 +642,11 @@ final class WorktreeGroupManager: ObservableObject {
         guard !changed.isEmpty else { return }
         enqueueWrite { configStore in
             for (path, position) in changed {
-                await configStore.set(
+                await Self.write(
                     String(position),
                     forKey: WorktreeConfigStore.positionKey,
-                    worktreeAt: path
+                    worktreeAt: path,
+                    in: configStore
                 )
             }
         }
