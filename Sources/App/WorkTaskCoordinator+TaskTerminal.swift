@@ -3,7 +3,7 @@ import GhosttyKit
 
 extension WorkTaskCoordinator {
 
-    /// Toggles the task terminal, on the outcome `taskTerminalToggle` decides.
+    /// Toggles the task terminal, carrying out whichever outcome `taskTerminalToggle` decides on.
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
     /// toolbar button `false`, so a click never steals focus. On a launch focus lands after the
@@ -16,16 +16,23 @@ extension WorkTaskCoordinator {
 
         switch Self.taskTerminalToggle(
             isVisible: terminalManager.isTaskTerminalVisible(for: taskId),
-            hasSurface: terminalManager.existingTaskSurface(for: taskId) != nil,
+            // A surface whose `ghostty_surface_new` failed is still stored and nothing prunes it,
+            // so only a live pointer counts: revealing that one protects no process and strands the
+            // task on a blank strip no press can recover.
+            hasSurface: terminalManager.existingTaskSurface(for: taskId)?.surfacePtr != nil,
             hasLaunchCommand: makeCommand != nil
         ) {
         case .hide:
             terminalManager.toggleTaskTerminal(for: taskId, app: app, projectPath: projectPath)
+            // Returns before the post below: the notification flips a non-empty editor to preview,
+            // so posting it on a hide would take the operator out of the editor mid-edit.
             return
         case .reveal:
             terminalManager.toggleTaskTerminal(for: taskId, app: app, projectPath: projectPath)
             if focusOnReveal { focusTaskTerminal(taskId) }
         case .launch:
+            // The unwrap stays ahead of the claim: taking it first and then failing the unwrap
+            // would hold the claim for the session, killing this task's Cmd+J and Plan both.
             guard let makeCommand, terminalManager.beginTaskLaunch(for: taskId) else { return }
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }

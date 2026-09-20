@@ -20,9 +20,9 @@ decision Cmd+J routes on becomes a pure function with a unit test beside `planNe
 | D4 | Shape of that function. | `static func taskTerminalToggle(isVisible: Bool, hasSurface: Bool, hasLaunchCommand: Bool) -> TaskTerminalToggle`, with `TaskTerminalToggle` = `.hide` \| `.reveal` \| `.launch`. `.reveal` means "flip visibility, creating a plain-shell surface only if there is none" — exactly what `TerminalManager.toggleTaskTerminal(for:app:projectPath:)` already does, because it get-or-creates (`TerminalManager+TaskTerminals.swift:47-51`). | Three inputs, three outcomes, no `ghostty_app_t` needed, so the truth table is testable — the same split `firstTabSource` and `bottomPanelAction` make. |
 | D5 | Truth table. | `isVisible` → `.hide`. Otherwise `hasSurface` → `.reveal`. Otherwise `hasLaunchCommand` → `.launch`, else `.reveal`. | `hasSurface` dominating `hasLaunchCommand` is the fix. The final `.reveal` is today's plain-shell branch (`WorkTaskCoordinator+TaskTerminal.swift:31-34`) unchanged. |
 | D6 | Should a hidden surface be relaunched when the Main Terminal setting changed while it was hidden? | No. | Cmd+J is a show/hide toggle, not a launcher. Relaunching on a setting change would reintroduce the exact data loss this fixes. |
-| D7 | Does the reveal path still take focus, and still post `taskTerminalOpened`? | Yes to both, unchanged. | `focusOnReveal` is Cmd+J's contract (`WorkTaskCoordinator+TaskTerminal.swift:9-12`); reveal awaits nothing, so focus lands synchronously the way the plain-shell branch already does. The notification posts once per toggle today, including on hide, and that stays. |
+| D7 | Does the reveal path still take focus, and still post `taskTerminalOpened`? | Yes to both, unchanged. | `focusOnReveal` is Cmd+J's contract (`WorkTaskCoordinator+TaskTerminal.swift:9-12`); reveal awaits nothing, so focus lands synchronously the way the plain-shell branch already does. The notification posts on show only — the hide branch returns before the post — and that stays: `.reveal` and `.launch` post once, `.hide` posts nothing. |
 | D8 | Does the reveal path take the `beginTaskLaunch` in-flight claim? | No. | The claim exists because `await ShellEnvironment.awaitPath()` leaves the panel with no surface for a frame (`TerminalManager+TaskTerminals.swift:61-70`). A reveal awaits nothing and has a surface already, so there is nothing to claim and no frame to cover — the same reason a ⌘T login-shell tab takes no claim. |
-| D9 | Is a new `TerminalManager` accessor needed for `hasSurface`? | No. | `existingTaskSurface(for:)` already answers it (`TerminalManager+TaskTerminals.swift:6-8`) and is already the read `TaskDetailView` uses. |
+| D9 | Is a new `TerminalManager` accessor needed for `hasSurface`? | No. | `existingTaskSurface(for:)` already answers it (`TerminalManager+TaskTerminals.swift:6-8`) and is already the read `TaskDetailView` uses. Review refined the read to `?.surfacePtr != nil`: `Ghostty.SurfaceView.init` logs and returns when `ghostty_surface_new` fails, leaving a stored surface with no PTY and no child that nothing prunes, so counting it as a surface would reveal a blank strip no press could recover. Still that one accessor, no new one. |
 
 ## Assumptions
 
@@ -136,5 +136,5 @@ still the only runner.
 - Keyboard shortcut claims and declarations (A6).
 - Persisting a task terminal across app launches, and restarting a surface whose process exited
   (A4's behavior is kept as is).
-- The `taskTerminalOpened` notification's semantics, including that it posts on hide as well as on
-  show (D7). Changing that is a separate, visible behavior change.
+- The `taskTerminalOpened` notification's semantics, including that it posts on show only and not on
+  hide (D7). Changing that is a separate, visible behavior change.

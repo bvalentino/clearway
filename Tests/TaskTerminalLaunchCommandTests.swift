@@ -1,10 +1,12 @@
 import XCTest
 @testable import Clearway
 
-/// Pins `taskTerminalLaunchCommand`, the choice behind both doors onto the task terminal (the
-/// toolbar toggle and Cmd+J): the bare Main Terminal command, or a plain shell. `toggleTaskTerminal`
-/// itself is unreachable from XCTest — it takes a non-optional `ghostty_app_t` — so this helper is
-/// the whole testable surface of the launch.
+/// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
+/// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
+/// `taskTerminalToggle`, hide vs. reveal vs. launch for the toolbar toggle and Cmd+J; and
+/// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
+/// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
+/// are their whole testable surface.
 @MainActor
 final class TaskTerminalLaunchCommandTests: TempRootTestCase {
 

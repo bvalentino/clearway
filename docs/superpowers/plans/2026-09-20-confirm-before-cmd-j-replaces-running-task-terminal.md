@@ -32,14 +32,15 @@ why one case serves both "a hidden surface exists" and "nothing configured to la
 
 ## Behavior to preserve exactly
 
-The spec's D7 says the `taskTerminalOpened` notification "posts once per toggle today, including on
-hide". **That is not what the code does:** the hide branch of
+The `taskTerminalOpened` notification posts on show only: the hide branch of
 `toggleTaskTerminal(taskId:app:focusOnReveal:)` returns before the
 `NotificationCenter.default.post(...)` at the end of the method
-(`Sources/App/WorkTaskCoordinator+TaskTerminal.swift:18-21, 37`), and that post is the only one for
-this notification in the codebase. The spec's intent is "notification semantics are out of scope and
-unchanged", so **keep the shipped behavior: `.hide` returns without posting; `.reveal` and `.launch`
-post.** Do not add a post to the hide path and do not remove one from the others.
+(`Sources/App/WorkTaskCoordinator+TaskTerminal.swift:18-21, 37`). That is the only post on this
+toggle's path — `planTask`, further down the same file, posts the notification for its own launch.
+The spec's D7 first read this the other way round and has been corrected; the intent was always
+"notification semantics are out of scope and unchanged", so **keep the shipped behavior: `.hide`
+returns without posting; `.reveal` and `.launch` post.** Do not add a post to the hide path and do
+not remove one from the others.
 
 Everything else the method does today stays: the `workTaskManager.tasks.contains` guard up front,
 `projectPath` from `worktreeManager.projectPath`, `focusOnReveal` defaulting to `false`, and the
