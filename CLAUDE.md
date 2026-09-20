@@ -207,6 +207,17 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     is a `@StateObject` on `ProjectContentView`, built from `projectPath`, and reads the file once —
     an edit made outside the app, in a text editor or by `git pull`, is picked up when the window
     reopens.
+    The file is a `SavedCommandsPayload` document — `{"commands":[…],"lastRunId":"…"}` — not a bare
+    array. `load()` tries the payload first, a bare `[SavedCommand]` array second, and only then
+    moves the file aside to `commands.json.corrupt`. That legacy branch is **required**, not a
+    courtesy: `load()` treats anything it cannot decode as corruption, so without it every file
+    written before the payload would have its list renamed away and logged as corrupt. A missing
+    `lastRunId` decodes to nil through the synthesized `init(from:)`, so no custom `CodingKeys` are
+    needed, and the payload's memberwise init deliberately carries no defaults — a field added later
+    is then a compile error at `save()` rather than a silent erase.
+    `SavedCommandManager.lastRunCommand` resolves the id against the live list on every read, so an
+    id naming a deleted command reads as nothing remembered. No delete path cleans it up, and none
+    should.
   - Sidebar visibility is `Worktree.visible(_:showingDetached:openIds:)`, applied inside
     `WorktreeGroupManager.sidebarOrderedWorktrees` before it orders anything, so the rows, the ⌘N
     badge and the ⌘1…9 buttons cannot disagree about which worktrees exist. It hides a bare-detached
@@ -262,9 +273,23 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     the right-clicked worktree's path, not the selection's. The toolbar item is the **text** label
     `Text("Open in")` with the system chevron and no `.help()` tooltip — the sidebar submenu carries
     that same label, lowercase preposition included, the way Reveal in Finder does. `RunCommandMenu`
-    beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()` — because
-    both open a menu rather than acting on a click, which an icon-only button reads as. The remaining
-    toolbar items do act on a click and stay icon-only. The menu and the settings section are
+    beside it carries the same shape — `Text("Run")` with the system chevron and no `.help()`. Both
+    are split buttons, so their label half acts on a click and has to name what that click will do;
+    the remaining toolbar items act on a click too and stay icon-only, named by their symbol.
+    A split button is `Menu(content:label:primaryAction:)`, and `primaryAction:` cannot be attached
+    conditionally, so each of the two views declares the `Menu` twice and switches on whether a
+    last-used item resolved, sharing one `items` list and one label between the declarations. Before
+    anything has been picked the declaration without `primaryAction:` is used, so a click opens the
+    list rather than doing nothing. Both record the pick rather than a successful launch —
+    `RunCommandMenu.run(_:)` records before its `ghosttyApp.app` guard — or an app or command that
+    fails to launch could never become the primary action again.
+    Open in's memory is `SettingsManager.lastUsedOpenInAppId`, a `UserDefaults` string under
+    `clearway.lastUsedOpenInApp` beside the list itself, because the list it names is a global
+    preference rather than per-project the way Run's `lastRunId` is. `lastUsedOpenInApp` resolves it
+    against `openInApps` on every read, so a deleted app falls back to the plain menu with nothing
+    cleaned up. Only the toolbar remembers: `OpenInMenu` takes `remembersLastUsed`, defaulting to
+    off, and `ContentView`'s call is the one that passes true — picking from the sidebar's submenu
+    neither reads nor writes it. The menu and the settings section are
     separate files because `ContentView.swift` is past SwiftLint's 1000-line `file_length` error and
     only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
     needs a split first.

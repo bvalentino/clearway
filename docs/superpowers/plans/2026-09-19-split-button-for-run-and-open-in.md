@@ -424,3 +424,25 @@ list — so `body` itself is the `@ViewBuilder` switch and no intermediate prope
 other deviation.
 
 **Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
+
+### T5: Record the new shapes in CLAUDE.md
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | `SavedCommandStore.swift` bullet gains the `SavedCommandsPayload` shape, the three-step decode with the legacy bare-array branch and why that branch is required, the nil-decoding `lastRunId` key and no-defaults memberwise init, and the resolve-on-every-read / no-cleanup-on-delete rule. Open In bullet's label rationale rewritten: both toolbar items keep a text label because a split button's label half acts on a click and has to name it. Same bullet gains the shared split-button mechanics (the `Menu` declared twice, the no-`primaryAction` declaration before a pick, recording on pick rather than on launch) and Open in's own memory — `clearway.lastUsedOpenInApp` in `UserDefaults`, resolved against `openInApps` on every read, written only by the `remembersLastUsed: true` toolbar call site. |
+
+**Watched failure.** None — this task changes no code. Each claim was checked against the shipped
+source before it was written: `SavedCommandStore.swift:8-20,60-80`, `SavedCommandManager.swift:13,17,72,82`,
+`SettingsManager.swift:12,118-125,144`, `RunCommandMenu.swift:13-36`, `OpenInMenu.swift:19-46`,
+`ContentView.swift:202` and `SidebarView.swift:454`.
+
+**Deviations.** The plan lists three edits in two bullets, and that is what landed, with one
+placement choice: the split-button mechanics shared by both views (double declaration, the
+before-a-pick case, record-on-pick) are stated once in the Open In bullet where the label rationale
+now explains why both are split buttons, rather than repeated in the `SavedCommandStore` bullet.
+That bullet carries only the persistence and resolution rules. The T3/T4 deviations are reflected
+as shipped: the text says the two declarations share one `items` list and one label, which is
+`RunCommandMenu`'s factored `label` property, and it claims no intermediate menu property for
+`OpenInMenu`, whose `body` is the switch itself.
+
+**Gate.** `./scripts/ci.sh` — 548 tests, 0 failures, `swiftlint` clean, `==> CI passed.`
