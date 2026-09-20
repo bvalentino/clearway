@@ -255,3 +255,21 @@ the case.
 `Test Succeeded`, `==> CI passed.` `swiftlint lint --quiet` printed nothing. `git status --porcelain`
 showed only ` M Sources/App/WorkTaskCoordinator+TaskTerminal.swift` before this build log was
 appended; no `default.profraw`, since the app was not launched.
+
+### Simplify
+
+`/simplify` over `main...HEAD`: reuse, efficiency and altitude came back clean — the altitude pass
+confirmed the rule belongs on the coordinator, since `openTaskTerminal`'s replace contract is what
+the plan path (`TerminalManager+Commands.swift`) needs and already confirms through
+`planNeedsConfirmation`. Applied, behavior untouched: cut the `toggleTaskTerminal` doc's first
+paragraph, which re-enumerated the three cases and repeated the regression rationale the
+`taskTerminalToggle` doc owns; dropped the hardcoded `TerminalManager+TaskTerminals.swift:84-86`
+line reference, keeping the `openTaskTerminal` symbol name as the durable one; reworded `.reveal`'s
+case doc so it no longer reads as requiring an existing surface; flattened
+`testVisiblePanelAlwaysHides`'s nested `for` loop into its four literal rows, matching its two
+siblings. Skipped: dropping `: Equatable` from `TaskTerminalToggle` — payload-free decision enums
+declare it explicitly here (`BottomPanelAction`, `ContentView.swift:41`), so it is convention, not a
+no-op to remove. Also skipped collapsing the enum to a `needsLaunch` Bool: it would move the
+hide-vs-reveal branch back into the method XCTest cannot reach, against T2's acceptance criterion
+that the switch is the body's only decision, and `FirstTabSource` is the precedent for a named
+three-outcome rule.

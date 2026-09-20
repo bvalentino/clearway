@@ -3,10 +3,7 @@ import GhosttyKit
 
 extension WorkTaskCoordinator {
 
-    /// Toggles the task terminal, on the three outcomes `taskTerminalToggle` decides between: hide
-    /// the visible panel, reveal the surface the task already has, or launch a fresh one running the
-    /// Main Terminal command. A hidden surface is revealed rather than relaunched, so whatever is
-    /// running in it survives the round trip.
+    /// Toggles the task terminal, on the outcome `taskTerminalToggle` decides.
     ///
     /// `focusOnReveal` moves first responder into the revealed surface — Cmd+J passes `true`, the
     /// toolbar button `false`, so a click never steals focus. On a launch focus lands after the
@@ -48,19 +45,18 @@ extension WorkTaskCoordinator {
     enum TaskTerminalToggle: Equatable {
         /// Flip the visible panel closed, keeping its surface.
         case hide
-        /// Flip the panel open on the surface the task already has, creating a plain-shell one only
-        /// when there is none.
+        /// Flip the panel open — on the surface the task already has, or a plain shell when it has
+        /// none.
         case reveal
         /// Open a fresh surface running the Main Terminal command.
         case launch
     }
 
     /// The toggle's whole decision. A hidden surface is **revealed, never relaunched**: the launch
-    /// path goes through `openTaskTerminal`, which closes the surface it replaces
-    /// (`TerminalManager+TaskTerminals.swift:84-86`), so a configured Main Terminal command turned
-    /// the second Cmd+J into a silent kill of the agent running in the terminal the operator had
-    /// just hidden. `hasSurface` outranking `hasLaunchCommand` is what makes that unreachable, and
-    /// so what makes a confirmation dialog on this path unnecessary.
+    /// path goes through `openTaskTerminal`, which closes the surface it replaces, so a configured
+    /// Main Terminal command turned the second Cmd+J into a silent kill of the agent running in the
+    /// terminal the operator had just hidden. `hasSurface` outranking `hasLaunchCommand` is what
+    /// makes that unreachable, and so what makes a confirmation dialog on this path unnecessary.
     static func taskTerminalToggle(
         isVisible: Bool, hasSurface: Bool, hasLaunchCommand: Bool
     ) -> TaskTerminalToggle {

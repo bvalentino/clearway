@@ -50,16 +50,26 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
 
     /// A visible panel hides, whatever else is true: Cmd+J on an open terminal never launches.
     func testVisiblePanelAlwaysHides() {
-        for hasSurface in [true, false] {
-            for hasLaunchCommand in [true, false] {
-                XCTAssertEqual(
-                    WorkTaskCoordinator.taskTerminalToggle(
-                        isVisible: true, hasSurface: hasSurface, hasLaunchCommand: hasLaunchCommand),
-                    .hide,
-                    "isVisible with hasSurface: \(hasSurface), hasLaunchCommand: \(hasLaunchCommand)"
-                )
-            }
-        }
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: true, hasLaunchCommand: true),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: true, hasLaunchCommand: false),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: false, hasLaunchCommand: true),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: false, hasLaunchCommand: false),
+            .hide
+        )
     }
 
     /// The fix: a hidden surface is revealed even when a Main Terminal command is configured. The
