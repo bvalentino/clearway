@@ -32,6 +32,16 @@ extension Ghostty {
         /// The working directory passed at initialization, used as a fallback for respawning.
         let initialWorkingDirectory: String?
 
+        /// Identifies this surface for the lifetime of the process. Minted here rather than handed
+        /// in so no caller can mint two surfaces under one id; a respawn is a new surface and gets
+        /// a new one.
+        let surfaceId = UUID()
+
+        /// The worktree this surface belongs to, or nil for one that belongs to none. Stored so a
+        /// respawn carries the dead surface's worktree rather than deriving one from a working
+        /// directory the shell may since have changed.
+        let worktreeId: String?
+
         /// Lock-guarded so the `nonisolated` C callbacks in `Ghostty.App` can read the pointer
         /// without an unsafe opt-out or a runtime isolation assertion.
         private let surfaceHandle = OSAllocatedUnfairLock<SurfaceHandle?>(initialState: nil)
@@ -58,8 +68,19 @@ extension Ghostty {
 
         override var acceptsFirstResponder: Bool { true }
 
-        init(_ app: ghostty_app_t, workingDirectory: String? = nil, command: String? = nil) {
+        /// Set by the app layer to name the environment every surface hands its shell. Unwired it
+        /// hands over nothing, which keeps this file free of any App type: the names it returns
+        /// belong to a Clearway feature libghostty's wrapper has no business knowing about.
+        static var agentEnvironment: (UUID, String?) -> [(key: String, value: String)] = { _, _ in [] }
+
+        init(
+            _ app: ghostty_app_t,
+            workingDirectory: String? = nil,
+            command: String? = nil,
+            worktreeId: String? = nil
+        ) {
             self.initialWorkingDirectory = workingDirectory
+            self.worktreeId = worktreeId
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
 
             self.wantsLayer = true
@@ -71,6 +92,23 @@ extension Ghostty {
                 nsview: Unmanaged.passUnretained(self).toOpaque()
             ))
             config.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2.0)
+
+            // libghostty `dupeZ`s both key and value into the surface config's arena while
+            // `ghostty_surface_new` runs, so these copies need to outlive nothing but that call.
+            let pairs = Self.agentEnvironment(surfaceId, worktreeId)
+            let envVars = UnsafeMutableBufferPointer<ghostty_env_var_s>.allocate(capacity: pairs.count)
+            for (index, pair) in pairs.enumerated() {
+                envVars[index] = ghostty_env_var_s(key: strdup(pair.key), value: strdup(pair.value))
+            }
+            defer {
+                for envVar in envVars {
+                    free(UnsafeMutableRawPointer(mutating: envVar.key))
+                    free(UnsafeMutableRawPointer(mutating: envVar.value))
+                }
+                envVars.deallocate()
+            }
+            config.env_vars = envVars.baseAddress
+            config.env_var_count = pairs.count
 
             // Set working directory and command using closures to keep C strings alive
             let createSurface: (inout ghostty_surface_config_s) -> ghostty_surface_t? = { cfg in

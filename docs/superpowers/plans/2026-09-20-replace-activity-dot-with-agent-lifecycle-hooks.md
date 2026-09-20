@@ -993,3 +993,93 @@ first uninstall.
 seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
 two new files and the `xcodegen`-regenerated `project.pbxproj`; no `default.profraw`, since nothing
 here launched the app.
+
+---
+
+### T5: Surface identity
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/Ghostty/Ghostty.SurfaceView.swift` | `let surfaceId = UUID()` and `let worktreeId: String?` beside `initialWorkingDirectory`; `init` gains `worktreeId:` as its last defaulted parameter; `static var agentEnvironment` — the process-scoped provider, defaulting to `{ _, _ in [] }`; `init` builds the `[ghostty_env_var_s]` with `strdup` and frees it in a `defer` after `ghostty_surface_new`. |
+| `Sources/App/TerminalManager.swift` | `static var retireSurface: (UUID) -> Void` plus the private `retire(_ pane:)` that reports every surface a pane holds. `worktreeId:` passed at all four construction sites; `replaceSurface` copies `deadSurface.worktreeId`. Retirement called from `closeMainTab`, `removeSurface`, `closeWorktree`, and both of `replaceSurface`'s drop paths. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | `worktreeId: projectPath` at both construction sites; retirement from `closeTaskTerminal` and from `openTaskTerminal`'s replaced surface. |
+| `Tests/AgentHookIdentityTests.swift` | New. 4 cases: the round trip through the forwarder's `printf`, a worktree path carrying spaces, the no-worktree surface, and the socket pair. |
+
+**Evidence.** The rule the new file pins is D7's: a surface with no worktree carries **no**
+`CLEARWAY_WORKTREE_ID` rather than an empty one. It was implemented the careless way —
+`pairs.append((key: worktreeIdKey, value: worktreeId ?? ""))` — and `./scripts/ci.sh` run against
+that:
+
+```
+Test Suite 'AgentHookIdentityTests' started at 2026-09-20 19:31:42.006.
+    ✖ testASurfaceWithNoWorktreeSendsNothingTheParserWouldAccept, XCTAssertNil failed: "(key: "CLEARWAY_WORKTREE_ID", value: "")"
+Executed 4 tests, with 1 failure (0 unexpected) in 0.049 (0.050) seconds
+...
+Executed 730 tests, with 3 failures (0 unexpected) in 112.475 (112.611) seconds
+```
+
+Only the first of that case's two assertions went red, and the split is the point: the blanked
+variant still produces a payload `AgentHookEnvelope.parse` refuses, so the parser is the second line
+of defence and the omission is the first. The forwarder's `[ -n "$CLEARWAY_WORKTREE_ID" ]` guard sits
+between them and only fires on an absent or empty value — a variable set to `""` reaches it the same
+way an unset one does, which is why the careless version costs a `nc` fork per tool call on the hook
+sheet and the debug terminal rather than a lit dot.
+
+The other half of this task — the env vars actually reaching the child process — is not reachable
+from XCTest: nothing on `Ghostty.SurfaceView` is, and an instance needs a real `ghostty_app_t`
+(CLAUDE.md). It is verified by reading, against the C contract and libghostty's own source:
+`ghostty_env_var_s` is `{const char* key; const char* value;}` (`ghostty/include/ghostty.h:416-419`)
+and `ghostty_surface_new` → `Surface.init` copies each pair with
+`try alloc.dupeZ(u8, key)` / `try alloc.dupeZ(u8, value)` into the surface config's arena
+(`ghostty/src/apprt/embedded.zig:536-547`), synchronously, before it returns. So the `strdup`ed
+copies need to outlive that one call and nothing more, which is exactly the lifetime the `defer`
+gives them — including on the `ghostty_surface_new` failure path, where the `guard`'s early `return`
+runs it too.
+
+The construction sites were enumerated as the plan asks:
+
+```
+$ grep -rn "Ghostty.SurfaceView(" Sources/
+Sources/App/DebugTerminalSheet.swift:47:            surface = Ghostty.SurfaceView(app, workingDirectory: projectPath)
+Sources/App/TerminalManager+TaskTerminals.swift:24:        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, worktreeId: projectPath)
+Sources/App/TerminalManager+TaskTerminals.swift:91:        let surface = Ghostty.SurfaceView(
+Sources/App/TerminalManager.swift:155:        let secondary = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
+Sources/App/TerminalManager.swift:309:        let surface = Ghostty.SurfaceView(
+Sources/App/TerminalManager.swift:322:            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path, worktreeId: key)
+Sources/App/TerminalManager.swift:441:            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: deadSurface.worktreeId)
+Sources/App/ContentView.swift:710:            let surface = Ghostty.SurfaceView(app, workingDirectory: worktreePath, command: hookShellCommand(cmd))
+```
+
+All six in `TerminalManager*` pass a worktree id (the two multi-line calls on their own lines); the
+two D7 excludes — the before-remove hook sheet and the debug terminal — are untouched and compile on
+the defaulted parameter.
+
+**Deviations from the plan.**
+
+- **Neither static is `nonisolated`.** `TerminalManager` is `@MainActor` and `SurfaceView` inherits
+  `NSView`'s isolation, so a plain `static var` is main-actor-isolated on both, which is what every
+  reader and the one writer (`ClearwayApp.init`, itself `@MainActor`) already are. `nonisolated` on a
+  mutable static of non-`Sendable` function type would need `nonisolated(unsafe)` — an opt-out taken
+  for nothing. This makes both exactly `claimsShortcut`'s shape, which the plan names as the model.
+- **Retirement is reported from three doors the plan's list does not name**: `closeMainTab` (⌘W —
+  the most common way a surface is dropped), `openTaskTerminal`'s replaced surface, and
+  `replaceSurface`'s task-terminal branch. The acceptance criterion is "every path that drops a
+  surface", and the enumeration in the task body is short of it.
+- **`closeAllSurfaces` deliberately does not report.** It runs from `applicationWillTerminate` only;
+  the ids it would retire die with the process a moment later, and the monitor they would reach is
+  already going away.
+- **`retire(_ pane:)` takes the pane, not a worktree id.** `removeSurface` and `closeWorktree` both
+  already hold the removed `TerminalPane`, so the surfaces are read off the value that was just
+  taken out of `panes` — there is no window in which the two could disagree about which surfaces the
+  worktree held.
+
+One detail the plan left open, recorded for T6 and T8: `agentEnvironment` takes the id and the
+worktree positionally, `(UUID, String?)`, matching `AgentHookIdentity.environment`'s
+`(surfaceId:worktreeId:)` in order, so T8's wiring is a bare function reference.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 730 tests, with 0 failures (0 unexpected) in 115.593
+seconds`, then `==> CI passed.` `git status --porcelain` before the commit showed only this task's
+four files: the new test, the three modified sources, and the `xcodegen`-regenerated
+`project.pbxproj`. No `default.profraw` — nothing here launched the app.
