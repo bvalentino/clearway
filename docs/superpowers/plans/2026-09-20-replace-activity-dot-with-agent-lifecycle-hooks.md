@@ -733,3 +733,49 @@ then `./scripts/ci.sh`.
 | Extra rows inside a reorderable `ForEach` | T9 | Fallback is to suppress subagent rows during a drag. Report, do not redesign. |
 | A `SIGKILL`ed session pins a dot | T2 | Accepted by design — no timers. Clears on the next relaunch. |
 | A shadowed `nc` breaks forwarding silently | T3 | `/usr/bin/nc` by absolute path. |
+
+## Build log
+
+### T1: The hook wire model
+
+**What landed.**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookEvent.swift` | New. `AgentHookEvent` (`hookEventName`, `agentId`, `agentType`, `toolName`, explicit snake_case `CodingKeys`) and `AgentHookEnvelope` (`surfaceId`, `worktreeId`, `event`) with `static func parse(_ data: Data) -> AgentHookEnvelope?`. Pure: `import Foundation` only. |
+| `Tests/AgentHookEnvelopeTests.swift` | New. 14 cases covering both ids, the compact/pretty-printed equivalence, unknown-field tolerance, optional subagent fields, and the six refusals plus the two empty-id refusals. |
+
+**Evidence.** The parse rule was first implemented the careless way — decode the whole payload to a
+`String` and `split(separator: "\n")`, taking `lines[2]` as the body — and `./scripts/ci.sh` was run
+against it. The discriminating tests went red:
+
+```
+Test Suite 'AgentHookEnvelopeTests' started at 2026-09-20 18:48:43.193.
+    ✖ testPrettyPrintedBodyParsesIdenticallyToItsCompactForm, XCTAssertNotNil failed
+    ✖ testPrettyPrintedBodyParsesIdenticallyToItsCompactForm, XCTAssertEqual failed: ("nil") is not equal to ("Optional(Clearway.AgentHookEnvelope(surfaceId: "8F1D4C0A-5B2E-4A77-9C31-6E0F2A8D1B44", worktreeId: "/Users/x/my repo/.worktrees/a b", event: Clearway.AgentHookEvent(hookEventName: "PreToolUse", agentId: nil, agentType: nil, toolName: Optional("Bash"))))")
+    ✖ testUnknownFieldsAreIgnored, XCTAssertEqual failed: ("nil") is not equal to ("Optional("PostToolUse")")
+    ✖ testUnknownFieldsAreIgnored, XCTAssertEqual failed: ("nil") is not equal to ("Optional("Edit")")
+Executed 690 tests, with 4 failures (0 unexpected) in 108.445 (108.672) seconds
+```
+
+That proves the tests discriminate: a body arriving pretty-printed, which Assumption 1's probe
+observed on the wire, is truncated to `{` by any split that treats every newline as a delimiter.
+The shipped `parse` takes the first two newlines off the byte buffer with `Data.firstIndex(of:)` and
+hands the untouched remainder to `JSONDecoder`.
+
+**Deviations from the plan.** None. The plan named `AgentHookEvent.swift` and
+`AgentHookEnvelopeTests.swift`; both carry exactly the types and the acceptance criteria listed.
+
+Two details the plan left to the implementation, recorded so T2 and T6 can rely on them:
+
+- `AgentHookEvent` is `Decodable`, not `Codable` — nothing encodes an event, and the envelope is
+  never written back to the socket.
+- Both types are `Equatable`, so the compact/pretty equivalence is one assertion rather than four,
+  and T2's transition tests can compare whole values.
+- The JSON body slice is re-wrapped with `Data(body)` before decoding rather than passed as a
+  `Data.SubSequence` with a non-zero `startIndex`.
+- The empty-id refusals are two of the tests: the plan's acceptance list names the rule ("when
+  either id is empty") without listing the case.
+
+**Gate.** `./scripts/ci.sh` — green. `Executed 690 tests, with 0 failures (0 unexpected) in 108.986
+seconds`, then `==> CI passed.`
