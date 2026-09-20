@@ -140,6 +140,46 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
     // MARK: - Config the app did not write
 
+    /// Every other case that observes a repo-level key does it through a relaunch. `reconcile` is
+    /// the call `ContentView` makes when the worktree list changes, and it re-reads the grouping
+    /// mode and the registry alongside each worktree's own config — so a group or a grouping mode
+    /// another checkout of the repo wrote reaches the sidebar without one.
+    func testReconcileRereadsBothRepoLevelKeys() async throws {
+        let path = try repo.addWorktree(branch: "alpha")
+        let alpha = makeWorktree(branch: "alpha", path: path)
+        try repo.enableWorktreeConfig()
+        await restartManager()
+        try repo.setLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
+        try repo.addLocalValue("Seeded", ofKey: WorktreeConfigStore.groupOrderKey)
+
+        await manager.reconcile([alpha], openIds: []).value
+
+        XCTAssertEqual(manager.grouping, .status, "the grouping mode, with no relaunch")
+        XCTAssertEqual(manager.groups.map(\.name), ["Seeded"], "the registry, with no relaunch")
+    }
+
+    /// `config.worktree` is hand-editable, so `clearway.position` can come back as anything. Only
+    /// the unparseable value is dropped: the worktree keeps the rest of its config, and the seed
+    /// then gives it a slot above the section's maximum rather than ahead of it.
+    func testANonIntegerPositionIsDroppedAndTheWorktreeKeepsTheRest() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let bravoPath = try repo.addWorktree(branch: "bravo")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let bravo = makeWorktree(branch: "bravo", path: bravoPath)
+        try repo.enableWorktreeConfig()
+        await restartManager()
+        try repo.setValue("Alpha", ofKey: WorktreeConfigStore.nameKey, atWorktree: alphaPath)
+        try repo.setValue("seven", ofKey: WorktreeConfigStore.positionKey, atWorktree: alphaPath)
+        try repo.setValue("7", ofKey: WorktreeConfigStore.positionKey, atWorktree: bravoPath)
+
+        await manager.reconcile([alpha, bravo], openIds: []).value
+
+        XCTAssertEqual(manager.name(for: alpha), "Alpha", "only the position is dropped")
+        XCTAssertEqual(manager.positions[bravo.id], 7)
+        XCTAssertEqual(manager.positions[alpha.id], 8, "seeded above the section's maximum")
+        XCTAssertEqual(renderedOrder([alpha, bravo]), [bravo.id, alpha.id])
+    }
+
     /// The registry is the only source of which groups exist, so a hand-written membership naming
     /// one it does not list renders ungrouped instead of growing a section.
     func testAMembershipNamingAnUnlistedGroupRendersUngrouped() async throws {
@@ -167,10 +207,7 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
     func testAHandEditedRegistryDropsBlanksAndRepeats() async throws {
         try repo.enableWorktreeConfig()
         for value in ["Dup", "", "Dup", "Other"] {
-            try GitRepoFixture.git(
-                ["config", "--local", "--add", WorktreeConfigStore.groupOrderKey, value],
-                in: repo.root
-            )
+            try repo.addLocalValue(value, ofKey: WorktreeConfigStore.groupOrderKey)
         }
 
         await restartManager()
@@ -203,6 +240,22 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: repo.root))
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: repo.root))
         XCTAssertEqual(try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: stayingPath), "1")
+    }
+
+    // MARK: - Config the app must not write
+
+    /// `.group` is the manager's default, so choosing it again is a no-op gesture. It must not
+    /// reach git: the write would bootstrap the extension and relocate `core.bare` for nothing.
+    func testANoOpSetGroupingWritesNothing() async throws {
+        manager.setGrouping(.group)
+        await settle()
+
+        XCTAssertEqual(manager.grouping, .group)
+        XCTAssertNil(try repo.value(ofLocalKey: WorktreeConfigStore.groupingKey))
+        XCTAssertNil(
+            try repo.value(ofLocalKey: "extensions.worktreeConfig"),
+            "a no-op grouping must not even bootstrap the extension"
+        )
     }
 
     // MARK: - Nothing on the filesystem

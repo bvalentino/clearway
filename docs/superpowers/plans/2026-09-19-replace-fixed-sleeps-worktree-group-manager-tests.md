@@ -592,3 +592,102 @@ are failing on the read path rather than on an empty map.
 | Suite | After T3 | After T5 |
 | --- | --- | --- |
 | `WorktreeGroupManagerStatusTests` | 8.87s (13 cases) | 8.69s (14 cases) |
+
+### T6: Three new cases in WorktreeGroupPersistenceTests
+
+| File | State |
+| --- | --- |
+| `Tests/TestHelpers.swift` | `GitRepoFixture` gains `setLocalValue(_:ofKey:)` and `addLocalValue(_:ofKey:)`, beside `setValue(_:ofKey:atWorktree:)` — the repo-level setters the suite had no counterpart to. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | Three cases added. `testReconcileRereadsBothRepoLevelKeys` and `testANonIntegerPositionIsDroppedAndTheWorktreeKeepsTheRest` go under "Config the app did not write"; `testANoOpSetGroupingWritesNothing` opens a new "Config the app must not write" section before "Nothing on the filesystem". 15 cases, up from 12. `testAHandEditedRegistryDropsBlanksAndRepeats` now calls `repo.addLocalValue` instead of the inline `GitRepoFixture.git(["config", "--local", "--add", …])` the new helper replaces. No sleep introduced. |
+
+Both `reconcile` cases await the `Task` the call returns rather than polling: T1 made it
+`@discardableResult`, and awaiting it is deterministic where `waitFor` would only be eventually
+right.
+
+**Deviations from the plan.** Two, both forced by the code:
+
+1. **Case 1 needs `repo.enableWorktreeConfig()` + `restartManager()` after all.** The plan read the
+   repo-level keys as exempt from decision 9 because they are `--local`. They are not:
+   `WorktreeConfigStore.readLocal` answers `[]` outright while the extension is off
+   (`WorktreeConfigStore.swift:168-173`), so both keys are gated on the same memoised probe every
+   `--worktree` read is. Written without the bootstrap, the case failed on both assertions against
+   *correct* code. The ordering is the one decision 9 already prescribes — bootstrap, relaunch,
+   *then* seed — and seeding after the relaunch is what keeps the case honest: the fresh manager's
+   load reads both keys while they are still absent, so only `reconcile` can publish them.
+2. **Case 2 cannot assert "the worktree has no position".** `reconcile` is `reloadConfig` *then*
+   `seedPositions` (`WorktreeGroupManager.swift:288-291`), and the seed gives every worktree the
+   reload left without one a slot, so "no position" is unobservable through the only entry point the
+   read path has. What the drop actually causes is observable and stronger, so the case pins that
+   instead: a second worktree holds a valid `7`, and the one whose position is unparseable is seeded
+   to `8` — above the section's maximum — rather than taking slot `0` ahead of it. The name assertion
+   carries the "only the position is dropped" half.
+
+**Evidence.** Each case run alone with its rule reverted by `Edit` and restored the same way.
+`git diff --stat Sources/` is empty after each restore.
+
+1. `testReconcileRereadsBothRepoLevelKeys`, with the `mode`/`registry` reads and their application
+   removed from `reloadConfig` (`WorktreeGroupManager.swift:377-387`):
+
+   ```
+   WorktreeGroupPersistenceTests.swift:157: error: … testReconcileRereadsBothRepoLevelKeys : XCTAssertEqual failed: ("group") is not equal to ("status") - the grouping mode, with no relaunch
+   WorktreeGroupPersistenceTests.swift:158: error: … testReconcileRereadsBothRepoLevelKeys : XCTAssertEqual failed: ("[]") is not equal to ("["Seeded"]") - the registry, with no relaunch
+   Executed 1 test, with 2 failures (0 unexpected) in 0.950 seconds
+   ```
+
+   Both keys fail, so the case covers the pair rather than one of them.
+
+2. `testANonIntegerPositionIsDroppedAndTheWorktreeKeepsTheRest`, reverted twice — the rule has two
+   halves and one revert cannot fail both. Dropping the whole worktree when the position does not
+   parse (`if let raw = values[…positionKey], Int(raw) == nil { continue }` at the top of
+   `readConfig`'s loop):
+
+   ```
+   WorktreeGroupPersistenceTests.swift:177: error: … : XCTAssertEqual failed: ("nil") is not equal to ("Optional("Alpha")") - only the position is dropped
+   Executed 1 test, with 1 failure (0 unexpected) in 0.856 seconds
+   ```
+
+   And coercing the unparseable value instead of dropping it (`reloaded.positions[id] = Int(raw) ?? 0`,
+   `WorktreeGroupManager.swift:449`):
+
+   ```
+   WorktreeGroupPersistenceTests.swift:179: error: … : XCTAssertEqual failed: ("Optional(0)") is not equal to ("Optional(8)") - seeded above the section's maximum
+   WorktreeGroupPersistenceTests.swift:180: error: … : XCTAssertEqual failed: ("[…/alpha", "…/bravo"]") is not equal to ("[…/bravo", "…/alpha"]")
+   Executed 1 test, with 2 failures (0 unexpected) in 1.065 seconds
+   ```
+
+   The second revert is the interleaving the rule exists to prevent: a coerced `0` puts the row the
+   user never moved ahead of the one git holds a real position for. The plan's other suggestion —
+   force-unwrapping the parse — would crash the runner rather than fail an assertion, so it was not
+   used.
+
+3. `testANoOpSetGroupingWritesNothing`, with `guard grouping != self.grouping else { return }`
+   deleted from `setGrouping` (`WorktreeGroupManager.swift:269`):
+
+   ```
+   WorktreeGroupPersistenceTests.swift:254: error: … testANoOpSetGroupingWritesNothing : XCTAssertNil failed: "group"
+   WorktreeGroupPersistenceTests.swift:255: error: … testANoOpSetGroupingWritesNothing : XCTAssertNil failed: "true" - a no-op grouping must not even bootstrap the extension
+   Executed 1 test, with 2 failures (0 unexpected) in 0.402 seconds
+   ```
+
+   The second assertion is the one worth having: a no-op that reached git would relocate `core.bare`
+   into `config.worktree` for a value nothing changed.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 562 tests, 0 failures, 98.5s.
+
+**Checkpoint: after T4–T6.**
+
+- All six new cases exist and carry a watched failure in this log: two in T4, one in T5, three here.
+- `./scripts/ci.sh` green, above.
+- `git status --porcelain` shows only `Tests/TestHelpers.swift`,
+  `Tests/WorktreeGroupPersistenceTests.swift` and this plan. `git diff Sources/` is empty — no
+  reverted guard left behind. No `default.profraw`: the app was never launched.
+
+| Suite | Baseline (T1) | After T6 |
+| --- | --- | --- |
+| `WorktreeGroupManagerTests` | 19.44s (31 cases) | 17.41s (33 cases) |
+| `WorktreeGroupPersistenceTests` | 14.58s (12 cases) | 13.99s (15 cases) |
+| `WorktreeGroupManagerStatusTests` | 10.20s (13 cases) | 9.54s (14 cases) |
+| `WorktreeGroupManagerNameTests` | 10.14s (11 cases) | 8.87s (11 cases) |
+| Combined | 54.36s (67 cases) | 49.81s (73 cases) |
+
+Below the baseline with six more cases in it.

@@ -113,6 +113,15 @@ struct GitRepoFixture {
         try Self.git(["-C", path, "config", "--worktree", key, value], in: root)
     }
 
+    func setLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", key, value], in: root)
+    }
+
+    /// Appends one more value to a repo-level multivar, the way the registry is written.
+    func addLocalValue(_ value: String, ofKey key: String) throws {
+        try Self.git(["config", "--local", "--add", key, value], in: root)
+    }
+
     func unsetValue(ofKey key: String, atWorktree path: String) throws {
         try Self.git(["-C", path, "config", "--worktree", "--unset", key], in: root)
     }
