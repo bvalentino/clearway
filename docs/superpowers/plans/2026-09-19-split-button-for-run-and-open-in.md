@@ -783,3 +783,30 @@ leaves the doc comment attached and the file clean.
 `swiftlint lint --quiet` reports 3 warnings, all pre-existing and none in a file this change
 touches: `WorktreeConfigStore.swift:99` and `:266` (`optional_data_string_conversion`) and
 `WorktreeDraft.swift:17` (`unneeded_synthesized_initializer`).
+
+### Review-pr
+
+Review over `git diff main...HEAD`. Three findings accepted and fixed, plus two comments the branch
+had left stale and two `Hashable` contracts the split buttons now depend on but nothing recorded.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | `SavedCommandsPayload` gains a hand-written `init(from:)`: `commands` decodes strictly, `lastRunId` through `try?`. The synthesized one threw on a present-but-unparseable id, and `load()` treats any throw as corruption, so `"lastRunId": ""` in a hand-edited `commands.json` renamed a list of working commands to `commands.json.corrupt` over a preference whose loss costs nothing. Absence still decodes to nil. `load()`'s legacy fallback is a `do`/`catch` rather than `try?`: the swallowed error was the one that names the offending key and index, so a bare array with a bad `kind` was reported as the payload decoder's "found an array instead" — not what the comment above it promised. Both errors are now logged. |
+| `Sources/App/SettingsManager.swift` | `lastUsedOpenInAppId` is `@Published private(set)`, matching `SavedCommandManager.lastRunId`, so `recordOpenInUse`'s no-op guard cannot be stepped around. Its `didSet` collapses to one `defaults.set`: the nil branch that removed the key was reachable from no production code. |
+| `Sources/App/SavedCommandManager.swift` | `runButtonTitle`'s comment no longer claims an empty list leaves the button disabled — Decision 18 replaced that with the editor door. |
+| `Sources/App/SavedCommand.swift`, `Sources/App/OpenInApp.swift` | Each type records that its `Hashable` must stay whole-value rather than being narrowed to `id`: the split buttons are rebuilt by `.id(menuCommands)` / `.id(menuOpenInApps)`, so an `==` over ids alone would leave the toolbar showing a pre-edit command or command line with every test still green. |
+| `CLAUDE.md` | Corrects the line saying both menus branch on the resolved primary — `RunCommandMenu` does, `OpenInMenu` branches on `remembersLastUsed`. |
+
+**Evidence.** Three tests for the fixes and two for the `Hashable` contracts:
+`SavedCommandStoreTests.testAnUnparseableLastRunIdLoadsAsNothingRememberedAndKeepsTheList` (red
+before the decoder change — the list went to `.corrupt`),
+`SavedCommandManagerTests.testALegacyFileKeepsItsCommandsOnceSomethingIsRun` pinning the
+legacy-array-to-payload upgrade end to end, and `testPrimaryCommandCarriesAnEditToTheRecordedCommand`
+plus `SettingsManagerTests.test_openInButtonTitle_followsARenameOfTheRememberedApp` pinning the
+edited primary on both sides. `test_lastUsedOpenInAppId_setBackToNilRemovesTheKey` was deleted with
+the branch it covered, which `private(set)` makes unreachable.
+
+**Deviations.** None.
+
+**Gate.** Not run by this step — it stopped after committing. `sign-off` owns the full
+`./scripts/ci.sh` run and covers this same code.
