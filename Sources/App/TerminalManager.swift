@@ -222,14 +222,14 @@ class TerminalManager: ObservableObject {
     /// Whether `sendToActiveMainTab` has somewhere to dispatch: there is an active surface.
     var canSendToActiveMainTab: Bool { activeMainSurface != nil }
 
-    /// Send text to the active main tab's running process: `sendCommand` (asCommand=true,
-    /// appends a newline) or `sendPaste`.
+    /// Send text to the active main tab's running process. `asCommand: true` runs it, submitting
+    /// with Enter; `false` stages it on whatever the tab is running, leaving it unsubmitted.
     func sendToActiveMainTab(_ text: String, asCommand: Bool) {
         guard let surface = activeMainSurface else { return }
         if asCommand {
             surface.sendCommand(text)
         } else {
-            surface.sendPaste(text)
+            surface.sendText(Self.stagedText(text))
         }
         transferFirstResponder(to: surface)
     }

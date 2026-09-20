@@ -417,4 +417,28 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: true), .argv)
         XCTAssertEqual(TerminalManager.promptDelivery(prompt: "review the diff", submit: false), .staged)
     }
+
+    // MARK: - stagedText
+
+    /// Outside bracketed paste libghostty rewrites every `\n` to `\r`, which is an Enter, so a
+    /// trailing newline on "staged" text submits it. The trim is what keeps staging staged.
+    func test_stagedText_stripsTheNewlinesThatWouldSubmitIt() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff\n"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("\nreview the diff"), "review the diff")
+        XCTAssertEqual(TerminalManager.stagedText("  review the diff \n\n"), "review the diff")
+    }
+
+    /// A multi-line prompt is still one prompt: only the ends are trimmed.
+    func test_stagedText_keepsInteriorNewlines() {
+        XCTAssertEqual(TerminalManager.stagedText("\nfirst\n\nsecond\n"), "first\n\nsecond")
+    }
+
+    func test_stagedText_whitespaceOnlyReducesToEmpty() {
+        XCTAssertEqual(TerminalManager.stagedText(" \n\t "), "")
+        XCTAssertEqual(TerminalManager.stagedText(""), "")
+    }
+
+    func test_stagedText_leavesOrdinaryTextAlone() {
+        XCTAssertEqual(TerminalManager.stagedText("review the diff"), "review the diff")
+    }
 }

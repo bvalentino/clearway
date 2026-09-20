@@ -1,3 +1,4 @@
+import Foundation
 import GhosttyKit
 
 /// Opening a main tab that runs an agent.
@@ -25,6 +26,16 @@ extension TerminalManager {
     static func promptDelivery(prompt: String, submit: Bool) -> PromptDelivery {
         guard !prompt.isEmpty else { return .bare }
         return submit ? .argv : .staged
+    }
+
+    /// What staged delivery hands the surface. The one definition, used by both staged call sites:
+    /// `startAgentTab`'s `.staged` tail and `sendToActiveMainTab(asCommand: false)`.
+    ///
+    /// The trim is load-bearing, not cosmetic. Outside bracketed paste libghostty rewrites every
+    /// `\n` to `\r` (`ghostty/src/input/paste.zig`), which is an Enter — so an untrimmed trailing
+    /// newline submits the text this rule exists to leave unsubmitted.
+    static func stagedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Whether a launch proceeds after trying to claim its worktree's marker. A door that does not
@@ -100,10 +111,7 @@ extension TerminalManager {
 
             guard delivery == .staged else { return }
             await Self.awaitShellPrompt(on: surface)
-            // `sendText`, not `sendPaste`: the latter appends Enter, which would run the prompt the
-            // user's "Append Enter to run immediately" toggle says to stage. Same primitive the
-            // shell path's `ShellSend.Step.text` uses for the line it deliberately leaves unrun.
-            surface.sendText(prompt)
+            surface.sendText(Self.stagedText(prompt))
         }
     }
 
