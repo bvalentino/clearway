@@ -936,3 +936,23 @@ the after-create default is written back only on a successful create.
 `./scripts/ci.sh` — passed, exit 0: 578 tests, 0 failures; SwiftLint zero errors (three pre-existing
 warnings, none in a file this task touched). `git status --porcelain` before the commit showed only
 `M CLAUDE.md` — no untracked or ignored files.
+
+### Simplify pass
+
+`planTask`'s terminal work moved onto `TerminalManager.run(_:inTaskTerminalFor:app:directory:)`
+beside `run(_:in:app:)`, so the coordinator no longer drives a surface and `awaitShellPrompt` goes
+back to `private`. `SavedCommandManager.agentCommands` now answers "which commands may run as an
+agent" for both the Start Now menu and the Start Task picker; `load()` reads the two files
+concurrently; `setAfterCreateDefault` skips a no-op write. Dropped an unused `import GhosttyKit`,
+a stale two-slot comment on `loadDefaults`, and two narrating paragraphs on `startNowItems`.
+
+Skipped: swapping `taskMarkdownPath(inWorktree:)` for `filePath(for:)` in `completePendingCreate`
+(reviewers' top finding) — tried, and
+`testCompletePendingCreateResolvesTheTokenToTheRelocatedTaskFile` failed: the relocation moves the
+file to a path it is handed, while `filePath(for:)` re-derives one from frontmatter and the
+resolver, which is a different question.
+
+**Gate**
+
+`./scripts/ci.sh` — exit 0: 584 tests, 0 failures; SwiftLint zero errors (three pre-existing
+warnings, none in a changed file).

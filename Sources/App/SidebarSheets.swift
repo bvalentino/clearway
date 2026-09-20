@@ -103,7 +103,7 @@ struct CreateWorktreeSheet: View {
                     LabeledField("Run after create") {
                         Picker("Run after create", selection: $afterCreateCommandId) {
                             Text("None").tag(UUID?.none)
-                            ForEach(SavedCommand.filter(savedCommandManager.commands, by: .agent)) { command in
+                            ForEach(savedCommandManager.agentCommands) { command in
                                 Text(command.name).tag(UUID?.some(command.id))
                             }
                         }

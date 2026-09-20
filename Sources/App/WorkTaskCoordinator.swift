@@ -1,5 +1,4 @@
 import Foundation
-import GhosttyKit
 
 /// Coordinates starting a task: resolving or creating its worktree and relocating its `TASK.md`
 /// into it. Extracted from ContentView to keep the view focused on layout and navigation.

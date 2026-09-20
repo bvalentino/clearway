@@ -33,12 +33,19 @@ final class SavedCommandManager: ObservableObject {
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        commands = await store.load()
-        defaults = await store.loadDefaults()
+        async let loadedCommands = store.load()
+        async let loadedDefaults = store.loadDefaults()
+        (commands, defaults) = await (loadedCommands, loadedDefaults)
     }
 
     var afterCreateCommand: SavedCommand? {
         CommandDefaults.resolve(defaults.afterCreate, in: commands)
+    }
+
+    /// The one answer to "which commands may run as an agent", so the Start Now menu, the Start
+    /// Task sheet's picker and the default slot cannot disagree.
+    var agentCommands: [SavedCommand] {
+        SavedCommand.filter(commands, by: .agent)
     }
 
     // MARK: - Mutations
@@ -70,6 +77,7 @@ final class SavedCommandManager: ObservableObject {
     }
 
     func setAfterCreateDefault(_ id: UUID?) {
+        guard defaults.afterCreate != id else { return }
         defaults.afterCreate = id
         saveDefaults()
     }

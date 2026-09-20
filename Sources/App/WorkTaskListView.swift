@@ -226,14 +226,8 @@ struct WorkTaskListView: View {
 
     // MARK: - Start Now
 
-    private var agentCommands: [SavedCommand] {
-        SavedCommand.filter(savedCommandManager.commands, by: .agent)
-    }
-
     /// The dropdown half of Start Now: one item per agent command, each planning the task in its
-    /// own bottom terminal, then the editor door. The task is a parameter so the context menu
-    /// plans the right-clicked row rather than the selection; a nil task is the toolbar with
-    /// nothing selected.
+    /// own bottom terminal, then the editor door.
     ///
     /// The command items are **omitted** when there is nothing to plan, never rendered disabled:
     /// a macOS toolbar menu updates an existing `NSMenuItem`'s enabled flag unreliably, so a menu
@@ -245,14 +239,11 @@ struct WorkTaskListView: View {
     ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
-    ///
-    /// The toolbar renders this behind a split button whose primary action opens the Start Task
-    /// sheet. A context-menu item carrying a submenu cannot also be clicked, so that surface
-    /// leads with the same action instead.
     @ViewBuilder
     private func startNowItems(for task: WorkTask?) -> some View {
-        if let task, ghosttyApp.readiness == .ready, !agentCommands.isEmpty {
-            ForEach(agentCommands) { command in
+        let commands = savedCommandManager.agentCommands
+        if let task, ghosttyApp.readiness == .ready, !commands.isEmpty {
+            ForEach(commands) { command in
                 Button(command.name) { plan(task, using: command) }
             }
             Divider()

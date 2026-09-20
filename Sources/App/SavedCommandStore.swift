@@ -87,9 +87,9 @@ final class SavedCommandStore: Sendable {
         }
     }
 
-    /// The two defaults are ids the user cannot repair by hand, so a missing, unreadable or
-    /// undecodable file reads as None and is left exactly where it is: losing them costs one
-    /// re-pick, which is cheaper than a quarantined file nobody can use.
+    /// The slot is an id the user cannot repair by hand, so a missing, unreadable or undecodable
+    /// file reads as None and is left exactly where it is: losing it costs one re-pick, which is
+    /// cheaper than a quarantined file nobody can use.
     func loadDefaults() async -> CommandDefaults {
         let path = defaultsFile
         return await Task.detached(priority: .utility) {
