@@ -81,19 +81,6 @@ final class RAIICleanupTests: TempRootTestCase {
         XCTAssertNil(weakCoordinator, "WorkTaskCoordinator leaked; its exit observer never deregisters")
     }
 
-    func testClaudeActivityMonitorDeallocates() {
-        weak var weakMonitor: ClaudeActivityMonitor?
-        autoreleasepool {
-            let monitor = ClaudeActivityMonitor()
-            monitor.updateWorktrees([
-                makeWorktree(branch: "probe", path: (tempRoot as NSString).appendingPathComponent("wt")),
-            ])
-            weakMonitor = monitor
-            XCTAssertNotNil(weakMonitor)
-        }
-        XCTAssertNil(weakMonitor, "ClaudeActivityMonitor leaked; its watcher sources are never cancelled")
-    }
-
     /// The listening socket rides on `HookSocketListener`'s release, so an enabled monitor must
     /// still deallocate. The home is short and under `/tmp` because a Unix socket address has only
     /// 104 bytes for its path and `NSTemporaryDirectory()` alone spends half of it.
