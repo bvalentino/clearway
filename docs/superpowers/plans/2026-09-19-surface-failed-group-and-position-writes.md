@@ -15,13 +15,16 @@ Breaks down `docs/superpowers/specs/2026-09-19-surface-failed-group-and-position
   in `WorktreeConfigStore` changes, including its existing log lines.
 - Interpolated paths and keys carry `privacy: .public`, or a release build logs `<private>` where
   the worktree should be (decision 5).
-- Only one failure is user-visible: `writeRegistry` abandoning the registry write because a
-  member's `clearway.group` write failed, which leaves a rename or delete half-applied. That raises
-  an `NSAlert` — `.warning`, one OK button, `runModal()` — in addition to its log line. Every other
-  failure is log-only (decisions 1, 2).
-- The alert is a value type in its own file, `WorktreeGroupWriteAlert`: group name + worktree path,
-  pure `messageText` / `informativeText`, and a `@MainActor present()`. AppKit stays out of the
-  manager and the copy is unit-testable (decision 6).
+- Two failures are user-visible, both of them half-applied on disk: `writeRegistry` abandoning the
+  registry write because a member's `clearway.group` write failed, and the `clearway.groupOrder`
+  rewrite failing partway — `replaceLocalValues` unsets every value before adding each one back, so
+  a refusal mid-loop leaves the registry truncated or empty. Each raises an `NSAlert` — `.warning`,
+  one OK button, `runModal()` — in addition to its log line. Every other failure is log-only
+  (decisions 1, 2).
+- The alert is a value type in its own file, `WorktreeGroupWriteAlert`: group name + optional
+  worktree path, pure `messageText` / `informativeText`, and a `@MainActor present()`. AppKit stays
+  out of the manager and the copy is unit-testable (decision 6). The path is `nil` for the registry
+  rewrite, which is repo-level and names no worktree (decision 2).
 - The manager reaches the alert through an instance closure defaulting to the real presenter, the
   shape `TerminalManager.mainCommandProvider` uses, so tests can swap in a recorder (decisions 7,
   10). Production never touches it (`Sources/App/ProjectWindow.swift:92`).
@@ -38,7 +41,8 @@ Breaks down `docs/superpowers/specs/2026-09-19-surface-failed-group-and-position
   - `worktree groups: clearway.groupOrder was not saved`
   - `worktree groups: clearway.groupOrder was not rewritten: clearway.group for <path> was not saved`
   - Alert title: `Couldn't save the group "<group>"`
-  - Alert body: `Clearway couldn't write the group for <path>, so the sidebar will go back to how it was.`
+  - Alert body, a member write: `Clearway couldn't write the group for <path>. The sidebar will show what git holds.`
+  - Alert body, the registry rewrite: `Clearway couldn't write the group list. The sidebar will show what git holds.`
 - Out of scope: `setName` / `setStatus` failures, reverting or retrying a write, any edit to
   `WorktreeConfigStore`, and diagnosing *why* a write failed.
 
@@ -333,3 +337,57 @@ byte-identical; `writeRegistry`'s member write stays bespoke so its one compound
 become two. **Gate.** `./scripts/ci.sh` — exit 0, `Executed 559 tests, with 0 failures
 (0 unexpected)`, run after the last edit; `swiftlint lint --quiet` — exit 0, the same two
 pre-existing warnings.
+
+## Changelog
+
+### 2026-09-20 — Alert copy and the registry-rewrite alert
+
+Two operator decisions taken after the conventions review, amending spec decisions 12 and 2. Later
+steps must not revert either.
+
+1. **The alert body promises no revert** (spec decision 12). Was
+   `Clearway couldn't write the group for <path>, so the sidebar will go back to how it was.`; now
+   `Clearway couldn't write the group for <path>. The sidebar will show what git holds.` On a
+   multi-member rename where one member write lands and another fails, the landed member names a
+   group the registry does not list, so it is filtered out on the next reload and renders ungrouped
+   rather than as it was — and a reload only runs when the worktree list changes. Title unchanged.
+2. **A failed `clearway.groupOrder` rewrite now alerts too** (spec decision 2). `replaceLocalValues`
+   is unset-all-then-add-each, so a refusal mid-loop leaves the registry truncated or empty and
+   every group is gone on the next launch. It raises the same alert through the same presenter seam,
+   naming the group the gesture acted on, in addition to the existing
+   `worktree groups: clearway.groupOrder was not saved` line.
+
+**Shape chosen.** `WorktreeGroupWriteAlert.path` becomes `String?` rather than the type gaining a
+second field, a case or an invented path. `clearway.groupOrder` is repo-level and names no worktree,
+so `informativeText` says `the group list` where a member's says `the group for <path>`; the title
+is the same either way, because the group the gesture acted on is known in both cases.
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeGroupWriteAlert.swift` | Edited. `path` is `String?`; `informativeText` branches on it and neither branch promises a revert. |
+| `Sources/App/WorktreeGroupManager.swift` | Edited. The registry half of `writeRegistry` awaits `presentAlert(WorktreeGroupWriteAlert(group: group, path: nil))` after its log line. Nothing else moved; the member-write abandon is untouched. |
+| `Tests/WorktreeGroupWriteAlertTests.swift` | Edited. Both copy pins carry the new wording, and `testBodyWithoutAPathNamesTheGroupList` pins the registry variant. |
+| `Tests/WorktreeGroupPersistenceTests.swift` | Edited. New `testAFailedRegistryRewriteTellsTheUser`. `testAProjectWhereTheExtensionCannotBeEnabledShowsNoGroups`'s first presenter now asserts the alert it receives instead of failing on any alert — `createGroup` reaches the registry failure, which now alerts. |
+
+**Evidence.** `testAFailedRegistryRewriteTellsTheUser` was watched red against the unfixed code: the
+new `await presentAlert(…)` line was replaced by `_ = presentAlert` and the test run on its own. The
+store's line and the manager's existing log line both appeared; only the alert was missing.
+
+```
+[ghostty] worktree config: unset clearway.groupOrder failed: fatal: --local can only be used inside a git repository
+[ghostty] worktree groups: clearway.groupOrder was not saved
+Tests/WorktreeGroupPersistenceTests.swift:176: error: -[ClearwayTests.WorktreeGroupPersistenceTests testAFailedRegistryRewriteTellsTheUser] : XCTAssertEqual failed: ("[]") is not equal to ("[Clearway.WorktreeGroupWriteAlert(group: "Doomed", path: nil)]") - the alert a lost registry rewrite raises
+	 Executed 2 tests, with 1 failure (0 unexpected) in 6.405 (6.406) seconds
+** TEST FAILED **
+```
+
+The alert call was then restored from a scratchpad copy and the gate re-run.
+
+**Gate.** `./scripts/ci.sh` — exit 0, run after the last edit, with the suite **finishing**:
+`Test Suite 'All tests' passed`, `Executed 562 tests, with 0 failures (0 unexpected)`. No test
+opened a modal. `swiftlint lint --quiet` — exit 0, zero errors; the same two pre-existing warnings
+(`WorktreeDraft.swift:17`, `WorktreeConfigStore.swift:406`). `git status --porcelain` lists only the
+four edited source files and the two edited documents; no `default.profraw`, since the app was never
+launched.

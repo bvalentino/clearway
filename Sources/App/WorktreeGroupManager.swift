@@ -40,7 +40,7 @@ final class WorktreeGroupManager: ObservableObject {
     /// The axis the sidebar sections its worktrees by.
     @Published private(set) var grouping: WorktreeGrouping = .group
 
-    /// Shows the user that a rename or delete abandoned its registry write. Defaults to the real
+    /// Shows the user that a group gesture left the change half-applied on disk. Defaults to the real
     /// alert, so production wires nothing; the test base replaces it, because a modal raised on the
     /// write chain would stall the chain the rest of a test waits on.
     var presentWriteAlert: @MainActor @Sendable (WorktreeGroupWriteAlert) -> Void = { $0.present() }
@@ -522,7 +522,13 @@ final class WorktreeGroupManager: ObservableObject {
                 }
             }
             let wrote = await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
-            if !wrote { Self.logFailure("clearway.groupOrder was not saved") }
+            if !wrote {
+                Self.logFailure("clearway.groupOrder was not saved")
+                // `replaceLocalValues` unsets every value before adding each one back, so a refusal
+                // partway leaves the registry truncated or empty and every group disappears on the
+                // next launch. Half-applied on disk, like the abandon above, so it tells the user.
+                await presentAlert(WorktreeGroupWriteAlert(group: group, path: nil))
+            }
         }
     }
 

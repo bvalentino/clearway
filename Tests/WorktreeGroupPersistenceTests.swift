@@ -160,6 +160,27 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         )
     }
 
+    /// The registry rewrite is half-applied on its own terms: `replaceLocalValues` unsets every
+    /// value before adding each one back, so a refusal partway leaves `clearway.groupOrder`
+    /// truncated or empty and every group is gone on the next launch. Here the repository's git
+    /// directory is removed once the first group has landed, so a repo-level write can only fail.
+    func testAFailedRegistryRewriteTellsTheUser() async throws {
+        manager.createGroup(named: "Keep")
+        try await waitForRegistry(["Keep"])
+        try FileManager.default.removeItem(
+            atPath: (tempRoot as NSString).appendingPathComponent(".git")
+        )
+
+        manager.createGroup(named: "Doomed")
+
+        try await waitFor(
+            [WorktreeGroupWriteAlert(group: "Doomed", path: nil)],
+            describing: "the alert a lost registry rewrite raises"
+        ) {
+            self.recordedWriteAlerts
+        }
+    }
+
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
         let path = try repo.addWorktree(branch: "member")
         let member = makeWorktree(branch: "member", path: path)
@@ -277,11 +298,12 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         defer { try? FileManager.default.removeItem(atPath: plainRoot) }
 
         // Built outside the base's recording seam, in a project where every write fails, so the
-        // presenters are what keep the run off a modal nothing can dismiss: `createGroup` passes
-        // no members and reaches only the log-only registry failure. Should that stop holding,
-        // this fails by name instead of hanging until the timeout.
+        // presenters are what keep the run off a modal nothing can dismiss. `createGroup` passes no
+        // members, so the only failure it can reach is the registry rewrite.
         let first = WorktreeGroupManager(projectPath: plainRoot)
-        first.presentWriteAlert = { XCTFail("createGroup must not alert: \($0)") }
+        first.presentWriteAlert = {
+            XCTAssertEqual($0, WorktreeGroupWriteAlert(group: "Doomed", path: nil))
+        }
         await first.loadTask?.value
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
