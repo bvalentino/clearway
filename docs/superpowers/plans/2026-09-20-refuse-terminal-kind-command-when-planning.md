@@ -158,3 +158,15 @@ None.
 `CI passed.` (exit 0). `swiftlint lint --quiet` exits 0 with no output; the log line is one
 continuation line, matching `:109` and `:130`. `git status --porcelain` before the commit listed
 only the two changed source files — no `default.profraw`, since the app was not launched.
+
+### Simplify pass
+
+Nothing changed. Reuse and efficiency found nothing: no `isAgent` predicate exists to call (the
+codebase states this rule as an inline `kind == .agent` at `SavedCommand.swift:46`, `:63`), no
+shared cross-file terminal-command fixture exists for `terminalCommand(text:)` to reuse, and the
+kind check ahead of `freshTask` is the cheaper order because `freshTask` reads from disk. Two
+findings were raised and skipped: merging the two new tests into one would drop the intent-naming
+and contradict spec criterion 5 (their five-line setup is this file's pattern, repeated 19 times,
+so extracting it is a refactor outside this diff), and tightening the new doc comment was judged
+churn — both halves state context the code does not carry, at the length of its neighbours.
+`./scripts/ci.sh` after the pass: exit 0, `Executed 678 tests, with 0 failures (0 unexpected)`.
