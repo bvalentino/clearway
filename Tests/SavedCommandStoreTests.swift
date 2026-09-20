@@ -89,12 +89,28 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
     func testSaveThenLoadPreservesArrayOrder() async throws {
         let original = [agentCommand, terminalCommand]
-        try await store.save(original)
+        try await store.save(SavedCommandsPayload(commands: original, lastRunId: nil))
 
         let loaded = await store.load()
 
-        XCTAssertEqual(loaded, original, "Array order is display order — the store must not sort")
-        XCTAssertEqual(loaded.map(\.name), ["Review the PR", "Dev server"])
+        XCTAssertEqual(
+            loaded.commands,
+            original,
+            "Array order is display order — the store must not sort"
+        )
+        XCTAssertEqual(loaded.commands.map(\.name), ["Review the PR", "Dev server"])
+    }
+
+    func testSaveThenLoadPreservesTheLastRunId() async throws {
+        let payload = SavedCommandsPayload(
+            commands: [terminalCommand, agentCommand],
+            lastRunId: agentCommand.id
+        )
+        try await store.save(payload)
+
+        let loaded = await store.load()
+
+        XCTAssertEqual(loaded, payload)
     }
 
     func testSaveCreatesDirectoryAndFileWithRestrictivePermissions() async throws {
@@ -103,7 +119,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
             "The commands directory must not exist before the first save"
         )
 
-        try await store.save([terminalCommand])
+        try await store.save(SavedCommandsPayload(commands: [terminalCommand], lastRunId: nil))
 
         let fm = FileManager.default
         XCTAssertTrue(fm.fileExists(atPath: commandsFile))
@@ -114,7 +130,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
     }
 
     func testSaveLeavesNoTempFileBehind() async throws {
-        try await store.save([terminalCommand])
+        try await store.save(SavedCommandsPayload(commands: [terminalCommand], lastRunId: nil))
 
         XCTAssertFalse(
             FileManager.default.fileExists(
@@ -132,46 +148,123 @@ final class SavedCommandStoreTests: TempRootTestCase {
         let storeA = SavedCommandStore(projectPath: projectA)
         let storeB = SavedCommandStore(projectPath: projectB)
 
-        try await storeA.save([terminalCommand])
+        try await storeA.save(SavedCommandsPayload(commands: [terminalCommand], lastRunId: nil))
 
         let loadedB = await storeB.load()
-        XCTAssertEqual(loadedB, [], "Project B must not see project A's commands")
+        XCTAssertEqual(loadedB, .empty, "Project B must not see project A's commands")
         let loadedA = await storeA.load()
-        XCTAssertEqual(loadedA, [terminalCommand], "Project A still loads its own list")
+        XCTAssertEqual(loadedA.commands, [terminalCommand], "Project A still loads its own list")
 
-        try await storeB.save([agentCommand])
+        try await storeB.save(SavedCommandsPayload(commands: [agentCommand], lastRunId: nil))
 
         let reloadedA = await storeA.load()
-        XCTAssertEqual(reloadedA, [terminalCommand], "A save through B must not reach project A")
+        XCTAssertEqual(
+            reloadedA.commands,
+            [terminalCommand],
+            "A save through B must not reach project A"
+        )
     }
 
     func testSaveOverwritesThePreviousList() async throws {
-        try await store.save([terminalCommand, agentCommand])
-        try await store.save([agentCommand])
+        try await store.save(
+            SavedCommandsPayload(commands: [terminalCommand, agentCommand], lastRunId: nil)
+        )
+        try await store.save(SavedCommandsPayload(commands: [agentCommand], lastRunId: nil))
 
         let loaded = await store.load()
-        XCTAssertEqual(loaded, [agentCommand])
+        XCTAssertEqual(loaded.commands, [agentCommand])
+    }
+
+    // MARK: - Legacy files and wire format
+
+    /// Every `commands.json` written before the payload existed holds a bare array. `load()` moves
+    /// what it cannot decode aside, so failing to read one would rename the user's list to
+    /// `commands.json.corrupt` and log it as corruption.
+    func testLegacyBareArrayLoadsWithNothingRemembered() async throws {
+        try writeCommandsFile("""
+        [{
+          "id": "11111111-1111-1111-1111-111111111111",
+          "name": "Dev server",
+          "kind": "terminal",
+          "text": "bin/dev",
+          "agent": "claude",
+          "autoRun": true
+        }]
+        """)
+
+        let loaded = await store.load()
+
+        XCTAssertEqual(loaded.commands, [terminalCommand])
+        XCTAssertNil(loaded.lastRunId)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: corruptFile),
+            "A legacy file is not corrupt and must not be moved aside"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: commandsFile))
+    }
+
+    /// Pins the stored document shape. A round-trip test cannot catch a renamed key.
+    func testPayloadDecodesFromItsStoredBytes() throws {
+        let decoded = try JSONDecoder().decode(SavedCommandsPayload.self, from: Data("""
+        {
+          "commands": [{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Dev server",
+            "kind": "terminal",
+            "text": "bin/dev",
+            "agent": "claude",
+            "autoRun": true
+          }],
+          "lastRunId": "11111111-1111-1111-1111-111111111111"
+        }
+        """.utf8))
+
+        XCTAssertEqual(decoded.commands, [terminalCommand])
+        XCTAssertEqual(decoded.lastRunId, terminalCommand.id)
+    }
+
+    /// A document written before anything was run carries no `lastRunId` key at all.
+    func testPayloadWithoutTheLastRunIdKeyDecodesAsNothingRemembered() throws {
+        let decoded = try JSONDecoder().decode(SavedCommandsPayload.self, from: Data("""
+        {
+          "commands": [{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Dev server",
+            "kind": "terminal",
+            "text": "bin/dev",
+            "agent": "claude",
+            "autoRun": true
+          }]
+        }
+        """.utf8))
+
+        XCTAssertEqual(decoded.commands, [terminalCommand])
+        XCTAssertNil(decoded.lastRunId)
     }
 
     // MARK: - Degraded files
 
     func testLoadMissingFileReturnsEmpty() async {
         let loaded = await store.load()
-        XCTAssertEqual(loaded, [])
+        XCTAssertEqual(loaded, .empty)
     }
 
     func testLoadCorruptFileReturnsEmpty() async throws {
         try writeCommandsFile("not valid json {{{")
 
         let loaded = await store.load()
-        XCTAssertEqual(loaded, [], "Corrupt JSON loads as empty rather than throwing")
+        XCTAssertEqual(loaded, .empty, "Corrupt JSON loads as empty rather than throwing")
     }
 
     func testLoadFileWithMissingFieldReturnsEmpty() async throws {
         try writeCommandsFile(#"[{"id":"11111111-1111-1111-1111-111111111111","name":"Dev"}]"#)
 
         let loaded = await store.load()
-        XCTAssertEqual(loaded, [])
+        XCTAssertEqual(loaded, .empty)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: corruptFile),
+            "A malformed element fails the legacy decode too, so the file is genuinely corrupt"
+        )
     }
 
     /// An unrecognized kind is a decode error like any other, so the whole file is unreadable and
@@ -190,7 +283,11 @@ final class SavedCommandStoreTests: TempRootTestCase {
 
         let loaded = await store.load()
 
-        XCTAssertEqual(loaded, [], "An unknown kind takes the file down rather than losing its kind")
+        XCTAssertEqual(
+            loaded,
+            .empty,
+            "An unknown kind takes the file down rather than losing its kind"
+        )
         XCTAssertTrue(FileManager.default.fileExists(atPath: corruptFile))
         XCTAssertFalse(FileManager.default.fileExists(atPath: commandsFile))
     }
@@ -231,7 +328,7 @@ final class SavedCommandStoreTests: TempRootTestCase {
     }
 
     func testLoadValidFileLeavesNoCorruptFileBehind() async throws {
-        try await store.save([terminalCommand])
+        try await store.save(SavedCommandsPayload(commands: [terminalCommand], lastRunId: nil))
 
         _ = await store.load()
 

@@ -307,3 +307,34 @@ criteria 1-3 and 9:
 | Recording an id rewrites the whole `commands.json` on every run, so two windows on one project race | Low | Accepted in the spec — the same exposure `2026-09-18-project-specific-commands.md` accepted for command edits |
 | Switching between the two `Menu` declarations changes the view's type, so SwiftUI rebuilds the toolbar item on the first pick | Low | Accepted in the spec: once per list per session, and no state lives in the button |
 | A legacy `commands.json` whose *elements* are malformed still moves aside | Low | Intended — it fails both decode attempts and is genuinely corrupt. Pinned by the retargeted existing cases in T1 |
+
+## Build log
+
+### T1: Store and remember Run's last-used command
+
+| File | State |
+| --- | --- |
+| `Sources/App/SavedCommandStore.swift` | `SavedCommandsPayload` added (`commands`, `lastRunId`, `static let empty`, no-defaults memberwise init). `load()` returns the payload — payload first, legacy bare array second (no move-aside), move-aside third. `save(_:)` takes the payload; its temp-file/permissions/replace path is unchanged. Type doc comment restated for the document. |
+| `Sources/App/SavedCommandManager.swift` | `@Published private(set) var lastRunId: UUID?` populated by `load()`; `lastRunCommand` resolving it against `commands`; `recordLastRun(_:)`; `save()` snapshots both fields into a `SavedCommandsPayload`. `pendingSave` chaining unchanged. |
+| `Tests/SavedCommandStoreTests.swift` | Existing cases retargeted at the payload. Added: `testSaveThenLoadPreservesTheLastRunId`, `testLegacyBareArrayLoadsWithNothingRemembered`, `testPayloadDecodesFromItsStoredBytes`, `testPayloadWithoutTheLastRunIdKeyDecodesAsNothingRemembered`. `testLoadFileWithMissingFieldReturnsEmpty` now also asserts the move-aside, since a malformed element fails both decode attempts. |
+| `Tests/SavedCommandManagerTests.swift` | `persistedCommands(matching:)` reads `.commands`; added `persistedLastRunId(matching:)`. Added the four `lastRunCommand` cases. |
+
+**Watched failure.** The legacy fallback was left out of the first implementation and
+`./scripts/ci.sh` run against it, with every other retargeted case already passing:
+
+```
+Test Suite 'SavedCommandStoreTests' started at 2026-09-19 23:34:11.934.
+    ✖ testLegacyBareArrayLoadsWithNothingRemembered, XCTAssertEqual failed: ("[]") is not equal to ("[Clearway.SavedCommand(id: 11111111-1111-1111-1111-111111111111, name: "Dev server", kind: Clearway.SavedCommand.Kind.terminal, text: "bin/dev", agent: "claude", autoRun: true)]")
+    ✖ testLegacyBareArrayLoadsWithNothingRemembered, XCTAssertFalse failed - A legacy file is not corrupt and must not be moved aside
+    ✖ testLegacyBareArrayLoadsWithNothingRemembered, XCTAssertTrue failed
+Executed 543 tests, with 3 failures (0 unexpected) in 86.149 (86.347) seconds
+```
+
+Adding the `[SavedCommand].self` branch to `load()`'s `catch` turned it green.
+
+**Deviations.** The two wire-format cases decode `SavedCommandsPayload` from literal bytes with
+`JSONDecoder` directly rather than through `store.load()`, matching the file's existing
+`testEncodedShapeIsAFlatObjectPerCommand`; the legacy case goes through `writeCommandsFile(_:)` and
+`store.load()` as planned, because the move-aside is what it has to pin. No other deviation.
+
+**Gate.** `./scripts/ci.sh` — 543 tests, 0 failures, `swiftlint` clean, `==> CI passed.`

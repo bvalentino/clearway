@@ -34,10 +34,20 @@ final class SavedCommandManagerTests: TempRootTestCase {
     /// rather than assuming a fixed delay is enough.
     private func persistedCommands(matching expected: [SavedCommand]) async -> [SavedCommand] {
         let deadline = Date().addingTimeInterval(2)
-        var loaded = await store.load()
+        var loaded = await store.load().commands
         while loaded != expected, Date() < deadline {
             try? await Task.sleep(nanoseconds: 20_000_000)
-            loaded = await store.load()
+            loaded = await store.load().commands
+        }
+        return loaded
+    }
+
+    private func persistedLastRunId(matching expected: UUID?) async -> UUID? {
+        let deadline = Date().addingTimeInterval(2)
+        var loaded = await store.load().lastRunId
+        while loaded != expected, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            loaded = await store.load().lastRunId
         }
         return loaded
     }
@@ -47,7 +57,7 @@ final class SavedCommandManagerTests: TempRootTestCase {
     func testLoadPopulatesTheListInFileOrder() async throws {
         let first = makeCommand(name: "Dev")
         let second = makeCommand(name: "Review", kind: .agent, text: "Review the diff.")
-        try await store.save([first, second])
+        try await store.save(SavedCommandsPayload(commands: [first, second], lastRunId: nil))
 
         await manager.load()
 
@@ -63,10 +73,10 @@ final class SavedCommandManagerTests: TempRootTestCase {
     /// revert the live list.
     func testASecondLoadDoesNotRereadTheFile() async throws {
         let existing = makeCommand(name: "Dev")
-        try await store.save([existing])
+        try await store.save(SavedCommandsPayload(commands: [existing], lastRunId: nil))
         await manager.load()
 
-        try await store.save([])
+        try await store.save(.empty)
         await manager.load()
 
         XCTAssertEqual(manager.commands, [existing])
@@ -158,5 +168,57 @@ final class SavedCommandManagerTests: TempRootTestCase {
         XCTAssertEqual(manager.commands, [agent, firstTerminal, secondTerminal])
         let persisted = await persistedCommands(matching: [agent, firstTerminal, secondTerminal])
         XCTAssertEqual(persisted, [agent, firstTerminal, secondTerminal])
+    }
+
+    // MARK: - Last run
+
+    func testLastRunCommandIsNilBeforeAnythingIsRecorded() {
+        manager.add(makeCommand(name: "Dev"))
+
+        XCTAssertNil(manager.lastRunCommand)
+    }
+
+    func testRecordLastRunResolvesToTheRecordedCommand() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        XCTAssertEqual(manager.lastRunCommand, second)
+    }
+
+    /// No delete path clears the id — the resolution against the live list is what makes a deleted
+    /// command read as nothing remembered.
+    func testDeletingTheRecordedCommandLeavesNothingRemembered() {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+        manager.recordLastRun(second)
+
+        manager.delete(first)
+        XCTAssertEqual(manager.lastRunCommand, second, "Deleting a different command changes nothing")
+
+        manager.delete(second)
+        XCTAssertNil(manager.lastRunCommand)
+    }
+
+    func testRecordLastRunSurvivesAReload() async {
+        let first = makeCommand(name: "Dev")
+        let second = makeCommand(name: "Test", text: "bin/test")
+        manager.add(first)
+        manager.add(second)
+
+        manager.recordLastRun(second)
+
+        let persisted = await persistedLastRunId(matching: second.id)
+        XCTAssertEqual(persisted, second.id)
+
+        let reloaded = SavedCommandManager(projectPath: tempRoot)
+        await reloaded.load()
+
+        XCTAssertEqual(reloaded.lastRunCommand, second)
     }
 }

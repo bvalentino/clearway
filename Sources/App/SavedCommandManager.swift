@@ -10,6 +10,12 @@ import SwiftUI
 final class SavedCommandManager: ObservableObject {
     @Published private(set) var commands: [SavedCommand] = []
 
+    @Published private(set) var lastRunId: UUID?
+
+    /// Resolved against the live list on every read, so an id naming a command that has since been
+    /// deleted reads as nothing remembered. No delete path cleans it up.
+    var lastRunCommand: SavedCommand? { commands.first { $0.id == lastRunId } }
+
     private let store: SavedCommandStore
 
     /// The save in flight, if any. Each new save awaits it before writing.
@@ -27,7 +33,9 @@ final class SavedCommandManager: ObservableObject {
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        commands = await store.load()
+        let payload = await store.load()
+        commands = payload.commands
+        lastRunId = payload.lastRunId
     }
 
     // MARK: - Mutations
@@ -58,13 +66,20 @@ final class SavedCommandManager: ObservableObject {
         save()
     }
 
+    /// Records the command as the last one used, on pick rather than on a successful launch: a
+    /// command that failed to start is still the last one the user reached for.
+    func recordLastRun(_ command: SavedCommand) {
+        lastRunId = command.id
+        save()
+    }
+
     // MARK: - Persistence
 
     /// Chains each write onto the one before it. Independent `Task`s reach the store's write queue
     /// in whatever order the scheduler hands them over, so two quick mutations could otherwise land
     /// with the earlier snapshot last and drop the newer one from disk.
     private func save() {
-        let snapshot = commands
+        let snapshot = SavedCommandsPayload(commands: commands, lastRunId: lastRunId)
         let previous = pendingSave
         pendingSave = Task { @MainActor in
             await previous?.value
