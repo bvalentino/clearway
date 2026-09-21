@@ -50,12 +50,41 @@ struct AgentHookEvent: Decodable, Equatable {
     }
 }
 
-/// One hook invocation as it arrives on the socket: line 1 the surface id, line 2 the worktree id,
-/// then the agent's raw JSON body to EOF. The forwarder neither escapes nor re-encodes the body, so
-/// it arrives exactly as the agent wrote it.
+/// Who a surface's agent activity belongs to. One tagged string on the wire so exactly one owner
+/// is representable: a worktree names its path, a task names its id, and neither can be absent
+/// while the other is set.
+enum AgentActivityOwner: RawRepresentable, Equatable {
+    case worktree(String)
+    case task(UUID)
+
+    var rawValue: String {
+        switch self {
+        case .worktree(let path): return "worktree:\(path)"
+        case .task(let id): return "task:\(id.uuidString)"
+        }
+    }
+
+    /// Split on the **first** colon only, so a worktree path containing one survives.
+    init?(rawValue: String) {
+        guard let colon = rawValue.firstIndex(of: ":") else { return nil }
+        let value = String(rawValue[rawValue.index(after: colon)...])
+        guard !value.isEmpty else { return nil }
+        switch rawValue[rawValue.startIndex..<colon] {
+        case "worktree": self = .worktree(value)
+        case "task":
+            guard let id = UUID(uuidString: value) else { return nil }
+            self = .task(id)
+        default: return nil
+        }
+    }
+}
+
+/// One hook invocation as it arrives on the socket: line 1 the surface id, line 2 the activity
+/// owner, then the agent's raw JSON body to EOF. The forwarder neither escapes nor re-encodes the
+/// body, so it arrives exactly as the agent wrote it.
 struct AgentHookEnvelope: Equatable {
     let surfaceId: String
-    let worktreeId: String
+    let owner: AgentActivityOwner
     let event: AgentHookEvent
 
     /// Held rather than built per call: `parse` runs on every hook invocation, which is twice per
@@ -67,11 +96,12 @@ struct AgentHookEnvelope: Equatable {
     /// pretty-printed body is as valid as a compact one and must survive intact.
     static func parse(_ data: Data) -> AgentHookEnvelope? {
         guard let (surfaceId, afterSurface) = takeLine(data),
-              let (worktreeId, body) = takeLine(afterSurface),
-              !surfaceId.isEmpty, !worktreeId.isEmpty,
+              let (ownerLine, body) = takeLine(afterSurface),
+              !surfaceId.isEmpty,
+              let owner = AgentActivityOwner(rawValue: ownerLine),
               let event = try? decoder.decode(AgentHookEvent.self, from: Data(body))
         else { return nil }
-        return AgentHookEnvelope(surfaceId: surfaceId, worktreeId: worktreeId, event: event)
+        return AgentHookEnvelope(surfaceId: surfaceId, owner: owner, event: event)
     }
 
     private static func takeLine(_ data: Data) -> (line: String, rest: Data.SubSequence)? {

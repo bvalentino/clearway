@@ -12,8 +12,8 @@ final class AgentHookIdentityTests: XCTestCase {
     private func preamble(_ pairs: [(key: String, value: String)]) -> String {
         let values = Dictionary(uniqueKeysWithValues: pairs.map { ($0.key, $0.value) })
         let surfaceId = values[AgentHookIdentity.surfaceIdKey] ?? ""
-        let worktreeId = values[AgentHookIdentity.worktreeIdKey] ?? ""
-        return "\(surfaceId)\n\(worktreeId)\n"
+        let owner = values[AgentHookIdentity.worktreeIdKey] ?? ""
+        return "\(surfaceId)\n\(owner)\n"
     }
 
     private let body = #"{"hook_event_name":"PreToolUse","tool_name":"Bash"}"#
@@ -22,25 +22,31 @@ final class AgentHookIdentityTests: XCTestCase {
 
     func testTheEnvironmentRoundTripsThroughTheForwardersPreamble() {
         let surfaceId = UUID()
-        let worktreeId = "/Users/x/clearway/.worktrees/feature"
+        let worktreePath = "/Users/x/clearway/.worktrees/feature"
 
-        let pairs = AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: worktreeId)
+        let pairs = AgentHookIdentity.environment(
+            surfaceId: surfaceId,
+            worktreeId: AgentActivityOwner.worktree(worktreePath).rawValue
+        )
         let envelope = AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8))
 
         XCTAssertEqual(envelope?.surfaceId, surfaceId.uuidString)
-        XCTAssertEqual(envelope?.worktreeId, worktreeId)
+        XCTAssertEqual(envelope?.owner, .worktree(worktreePath))
         XCTAssertEqual(envelope?.event.hookEventName, "PreToolUse")
     }
 
     /// A worktree path carrying spaces is the case the preamble exists for: the values are never
     /// quoted or escaped on the way through, because a line break is the only delimiter.
     func testAWorktreePathWithSpacesSurvivesIntact() {
-        let worktreeId = "/Users/x/my repo/.worktrees/a b"
+        let worktreePath = "/Users/x/my repo/.worktrees/a b"
 
-        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), worktreeId: worktreeId)
+        let pairs = AgentHookIdentity.environment(
+            surfaceId: UUID(),
+            worktreeId: AgentActivityOwner.worktree(worktreePath).rawValue
+        )
         let envelope = AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8))
 
-        XCTAssertEqual(envelope?.worktreeId, worktreeId)
+        XCTAssertEqual(envelope?.owner, .worktree(worktreePath))
     }
 
     // MARK: - The surfaces that carry no worktree
@@ -65,13 +71,13 @@ final class AgentHookIdentityTests: XCTestCase {
     @MainActor
     func testTheSurfaceProviderIsWiredAtLaunch() {
         let surfaceId = UUID()
-        let worktreeId = "/Users/x/clearway"
+        let owner = AgentActivityOwner.worktree("/Users/x/clearway").rawValue
 
-        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, worktreeId)
+        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, owner)
 
         XCTAssertEqual(
             wired.map(\.key),
-            AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: worktreeId).map(\.key)
+            AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: owner).map(\.key)
         )
         XCTAssertEqual(
             wired.first(where: { $0.key == AgentHookIdentity.surfaceIdKey })?.value,

@@ -17,7 +17,7 @@ struct AgentSubagent: Identifiable, Equatable {
 }
 
 struct AgentSurfaceState {
-    var worktreeId: String
+    var owner: AgentActivityOwner
     var phase: AgentPhase = .idle
     var leadToolName: String?
     var subagents: [String: AgentSubagent] = [:]
@@ -102,7 +102,7 @@ struct AgentActivityStore {
 
         switch event.hookEventName {
         case "SessionStart":
-            surfaces[envelope.surfaceId] = AgentSurfaceState(worktreeId: envelope.worktreeId)
+            surfaces[envelope.surfaceId] = AgentSurfaceState(owner: envelope.owner)
         case "SessionEnd":
             surfaces.removeValue(forKey: envelope.surfaceId)
         case "UserPromptSubmit":
@@ -158,11 +158,21 @@ struct AgentActivityStore {
         surfaces.removeValue(forKey: surfaceId)
     }
 
-    /// The three derivations the monitor publishes whole, so the views read a dictionary rather than
+    /// The four derivations the monitor publishes whole, so the views read a dictionary rather than
     /// asking the store once per row.
     var worktreePhases: [String: AgentPhase] {
         surfaces.values.reduce(into: [:]) { phases, state in
-            phases[state.worktreeId] = Swift.max(phases[state.worktreeId] ?? .idle, state.effectivePhase)
+            guard case .worktree(let id) = state.owner else { return }
+            phases[id] = Swift.max(phases[id] ?? .idle, state.effectivePhase)
+        }
+    }
+
+    /// A task's own phase, keyed by the task id its terminal was stamped with. A task surface
+    /// contributes here and to nothing else; a worktree surface the reverse.
+    var taskPhases: [UUID: AgentPhase] {
+        surfaces.values.reduce(into: [:]) { phases, state in
+            guard case .task(let id) = state.owner else { return }
+            phases[id] = Swift.max(phases[id] ?? .idle, state.effectivePhase)
         }
     }
 
@@ -171,7 +181,8 @@ struct AgentActivityStore {
     var worktreeSubagents: [String: [AgentSubagent]] {
         var rosters: [String: [AgentSubagent]] = [:]
         for state in surfaces.values where !state.subagents.isEmpty {
-            rosters[state.worktreeId, default: []].append(contentsOf: state.subagents.values)
+            guard case .worktree(let id) = state.owner else { continue }
+            rosters[id, default: []].append(contentsOf: state.subagents.values)
         }
         return rosters.mapValues { $0.sorted { $0.id < $1.id } }
     }
@@ -184,8 +195,8 @@ struct AgentActivityStore {
         _ envelope: AgentHookEnvelope,
         _ change: (inout AgentSurfaceState) -> Void
     ) {
-        var state = surfaces[envelope.surfaceId] ?? AgentSurfaceState(worktreeId: envelope.worktreeId)
-        state.worktreeId = envelope.worktreeId
+        var state = surfaces[envelope.surfaceId] ?? AgentSurfaceState(owner: envelope.owner)
+        state.owner = envelope.owner
         change(&state)
         surfaces[envelope.surfaceId] = state
     }

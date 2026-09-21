@@ -19,9 +19,11 @@ extension TerminalManager {
         if let existing = taskSurfaces[taskId] {
             return existing
         }
-        // A task terminal's working directory is the main worktree's path, and a worktree id is
-        // its path, so the two are the same string.
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, activityOwner: projectPath)
+        let surface = Ghostty.SurfaceView(
+            app,
+            workingDirectory: projectPath,
+            activityOwner: AgentActivityOwner.task(taskId).rawValue
+        )
         taskSurfaces[taskId] = surface
         if !openTaskIds.contains(taskId) {
             openTaskIds.insert(taskId)
@@ -92,7 +94,7 @@ extension TerminalManager {
             app,
             workingDirectory: projectPath,
             command: command,
-            activityOwner: projectPath
+            activityOwner: AgentActivityOwner.task(taskId).rawValue
         )
         taskSurfaces[taskId] = surface
         openTaskIds.insert(taskId)

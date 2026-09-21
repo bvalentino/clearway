@@ -16,7 +16,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// and its `deinit` runs on teardown rather than wherever ARC chose.
     private var directListener: HookSocketListener?
 
-    private let worktreeId = "/Users/x/my repo/.worktrees/a b"
+    private let worktreePath = "/Users/x/my repo/.worktrees/a b"
     private let surfaceId = "8F1D4C0A-5B2E-4A77-9C31-6E0F2A8D1B44"
 
     override func setUp() async throws {
@@ -42,10 +42,10 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"session_id": "s", "hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         try fire(#"{"session_id": "s", "hook_event_name": "Stop", "stop_reason": "end_turn"}"#)
-        try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
     /// The discriminating case for unlinking before `bind`: a process killed without closing leaves
@@ -59,7 +59,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
     /// The discriminating case for probing before the unlink: two Clearway builds on one machine —
@@ -159,9 +159,9 @@ final class AgentActivityMonitorTests: XCTestCase {
         try fire(#"{"hook_event_name": "SubagentStart", "agent_id": "a1", "agent_type": "Explore"}"#)
 
         try await waitFor(["Explore"], describing: "the worktree's subagent roster") {
-            (self.monitor.worktreeSubagents[self.worktreeId] ?? []).compactMap(\.type)
+            (self.monitor.worktreeSubagents[self.worktreePath] ?? []).compactMap(\.type)
         }
-        XCTAssertEqual(monitor.worktreePhases[worktreeId], .working, "a live subagent is work even between the lead's turns")
+        XCTAssertEqual(monitor.worktreePhases[worktreePath], .working, "a live subagent is work even between the lead's turns")
     }
 
     /// `PreToolUse`/`PostToolUse` fire around every tool call, so the tool name changes far more
@@ -171,7 +171,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testAToolNameChangeDoesNotRepublishTheMonitor() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         let republished = expectation(description: "the monitor republished")
         republished.isInverted = true
@@ -189,7 +189,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testDisablingClosesTheSocketAndForgetsEverySurface() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         monitor.setEnabled(false)
 
@@ -302,13 +302,13 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testTheFeedSurvivesADisableAndReEnable() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         monitor.setEnabled(false)
         monitor.setEnabled(true)
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase after a re-enable") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase after a re-enable") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
     func testEnablingInstallsTheForwarderAndIsIdempotent() {
@@ -448,7 +448,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: paths.scriptPath)
         process.environment = [
             AgentHookIdentity.surfaceIdKey: surfaceId,
-            AgentHookIdentity.worktreeIdKey: worktreeId,
+            AgentHookIdentity.worktreeIdKey: AgentActivityOwner.worktree(worktreePath).rawValue,
             AgentHookIdentity.socketKey: paths.socketPath,
         ]
         let input = Pipe()

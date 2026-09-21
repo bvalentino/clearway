@@ -519,3 +519,44 @@ stamped would have turned them red.
 
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 783 tests, 0 failures. `git status --porcelain`
 lists only the four files above plus this plan.
+
+### T2: Put a tagged AgentActivityOwner on the wire and key the store on it
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookEvent.swift` | `AgentActivityOwner` added above `AgentHookEnvelope`, spelled and decoded exactly as the plan wrote it. `AgentHookEnvelope.worktreeId` is now `owner: AgentActivityOwner`; `parse` drops the `!worktreeId.isEmpty` check and refuses a second line that does not decode. The type's doc comment names the owner. |
+| `Sources/App/AgentActivityStore.swift` | `AgentSurfaceState.worktreeId` is now `owner`; both construction sites and the refresh in `update` follow. `worktreePhases` and `worktreeSubagents` guard on `.worktree`; new `taskPhases: [UUID: AgentPhase]` guards on `.task`. The derivations comment reads "four". |
+| `Sources/App/TerminalManager.swift` | The four sites (`:171`, `:329`, `:338`, `:464`) pass `AgentActivityOwner.worktree(key).rawValue`. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | Both sites pass `AgentActivityOwner.task(taskId).rawValue`; `projectPath` stays the `workingDirectory`. The path/worktree-id comment at `:22-23` is deleted — it described the bug this removes. |
+| `Tests/AgentHookEnvelopeTests.swift` | `payload` takes an `owner:` override defaulting to the tagged worktree value; assertions read `envelope?.owner`. New: a `task:<uuid>` round trip, a worktree path with spaces **and** an inner colon, and four refusals — untagged, unknown tag, `task:not-a-uuid`, `worktree:` with no value. `testEmptyWorktreeIdParsesToNil` is now `testEmptyOwnerParsesToNil`. |
+| `Tests/AgentActivityStoreTests.swift` | `apply`/`applyRaw` take `owner: AgentActivityOwner = .worktree(worktreeOne)`; existing assertions unchanged. New "Task owners" section: the two exclusivity cases, a task owner's live background subagent, retirement, and two independent tasks. |
+| `Tests/AgentActivityMonitorTests.swift` | `worktreeId` renamed `worktreePath`; the `fire` helper's value is `AgentActivityOwner.worktree(worktreePath).rawValue` under the still-old key, which T3 renames. |
+| `Tests/AgentHookIdentityTests.swift` | Not in the plan's file list, but forced by the envelope field rename: three assertions on `envelope?.worktreeId` become `envelope?.owner`, and the values handed to `environment` are now tagged. The parameter and key names stay as they are; T3 owns those. |
+
+**Evidence.** The watched failure is the exclusivity rule, the whole point of the task. With
+`worktreePhases` and `worktreeSubagents` keyed on *every* owner — a `switch` mapping `.task` to its
+`uuidString` in place of the `guard case .worktree` — the two new task cases go red and the rest of
+the suite stays green:
+
+```
+✖ testATaskOwnerContributesToTaskPhasesAndNotToWorktreePhases, XCTAssertTrue failed
+✖ testATaskOwnersLiveSubagentRaisesItsPhaseAndNoRosterKey, XCTAssertEqual failed:
+  ("Optional(Clearway.AgentPhase.idle)") is not equal to ("Optional(Clearway.AgentPhase.working)")
+Executed 27 tests, with 2 failures (0 unexpected)
+```
+
+Restoring the guards turns both green. The first assertion is criterion 5 in miniature: a task
+surface raising a worktree key is exactly the dot on main this change exists to remove.
+
+**Deviations.**
+
+- `Tests/AgentHookIdentityTests.swift` is an eighth file. Its assertions name the envelope field
+  this task renames, so the build is red without it. Only the field name and the values passed
+  change; the `worktreeId:` label, `worktreeIdKey` and the task-owner case stay for T3.
+- `testATaskOwnersLiveSubagentRaisesItsPhaseAndNoRosterKey` first drove a bare `Stop` through the
+  `apply` helper and failed on the real gate: a `Stop` naming no `background_tasks` sweeps the
+  roster, which is correct behaviour. It now uses the captured `subagentStart`/`stop(running:)`
+  payloads, which is what "a live background subagent" actually looks like on the wire.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 793 tests, 0 failures. `git status --porcelain` lists
+only the eight files above plus this plan; no untracked files, `default.profraw` included.
