@@ -90,6 +90,26 @@ struct GitRepoFixture {
         try Self.git(["worktree", "remove", "--force", path], in: root)
     }
 
+    /// The git directory backing one worktree, which is where its own `config.worktree` lives and
+    /// so where git has to create a lock file to write one.
+    func gitDir(ofWorktreeAt path: String) throws -> String {
+        try Self.git(["-C", path, "rev-parse", "--absolute-git-dir"], in: root)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Replaces a directory's permission bits and answers the mode it replaced.
+    ///
+    /// `0o555` on the directory holding a config file is the one lever that makes git refuse a
+    /// write while the matching read still succeeds: git cannot create its lock file, and nothing
+    /// about reading needs one. Removing the worktree instead fails both, and then the reconcile
+    /// keeps what is published and there is nothing to assert. The caller must put the mode back
+    /// before `tearDown` removes the scratch root.
+    static func setPermissions(_ mode: Int, of directory: String) throws -> Int {
+        let previous = try FileManager.default.attributesOfItem(atPath: directory)[.posixPermissions]
+        try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: directory)
+        return (previous as? NSNumber)?.intValue ?? 0o755
+    }
+
     /// The value stored against one worktree, or nil when the key is absent — `--get` exits 1 for
     /// a missing key and the whole command fails on a worktree with no `config.worktree` yet.
     func value(ofKey key: String, atWorktree path: String) throws -> String? {
@@ -220,15 +240,22 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         try await super.tearDown()
     }
 
-    /// Awaits the manager's in-flight work — the load, then the most recent `reconcile`, then the
-    /// write chain as it stands now — so a case asserting a gesture wrote *nothing* has something
+    /// Awaits the manager's in-flight work — the load, the reconcile, the write chain as it stands
+    /// then, and the reconcile again — so a case asserting a gesture wrote *nothing* has something
     /// to wait on. Absence cannot be polled: `waitFor` returns the moment the expected value is
-    /// already there. The reconcile is awaited before the chain is sampled, so the chain sampled
-    /// is the one the reconcile's seed write left behind.
+    /// already there.
+    ///
+    /// The reconcile is awaited twice because the two directions need opposite orders. A
+    /// `reconcile(_:openIds:)` seeds positions, so the chain has to be sampled after it to see
+    /// that write; a refused write creates its reconcile handle *inside* the chain task, so there
+    /// is nothing to await there until the chain has run. Each reconcile chains on the previous,
+    /// so the second read covers every one of them and leaves none running against a scratch root
+    /// `tearDown` is removing.
     func settle() async {
         await manager?.loadTask?.value
         await manager?.reconcileTask?.value
         await manager?.writeChain?.value
+        await manager?.reconcileTask?.value
     }
 
     /// Replaces `manager` with a fresh one over the same root and waits for its load — the
