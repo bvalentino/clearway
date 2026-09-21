@@ -345,3 +345,13 @@ targeted check is `grep -n "installed a layer up"`, which returns nothing.
 --quiet` — exit 0, no output. `git status --porcelain` before the commit listed only
 `M Sources/App/CLAUDE.md` plus this log's own file. No `default.profraw`: the Debug app was not
 launched.
+
+### Simplify
+
+`Tests/CloseConfirmationDelegateTests.swift` arrived with a private `makeWindow()` copied verbatim
+from `WindowCloseHandlerTests`, comment included; both copies were replaced by one `@MainActor`
+helper in `Tests/TestHelpers.swift`, beside the existing `makeWorktree`. Nothing else was changed —
+the two `NSViewRepresentable` installers stay separate per D10, and D8's copy constants stay.
+
+**Gate.** `./scripts/ci.sh` — exit 0, `==> CI passed.`, `Executed 783 tests, with 0 failures
+(0 unexpected)`. `swiftlint lint --quiet` — exit 0, no output.
