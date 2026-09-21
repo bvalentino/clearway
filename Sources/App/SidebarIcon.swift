@@ -29,6 +29,27 @@ struct SidebarIcon: View {
     }
 }
 
+/// The `└` a terminal draws before a child line, centred in that same slot so a child row's text
+/// keeps the title column. Drawn rather than typed: the character's shape belongs to the font, and
+/// the sidebar's is not the monospaced one it is cut for.
+struct SidebarChildConnector: View {
+    var body: some View {
+        ChildConnector()
+            .stroke(.secondary, lineWidth: 1)
+            .frame(width: SidebarRowMetrics.iconWidth, height: SidebarRowMetrics.iconWidth)
+    }
+}
+
+private struct ChildConnector: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
+    }
+}
+
 private struct ShortcutBadge: View {
     let text: String
 

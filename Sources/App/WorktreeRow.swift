@@ -88,9 +88,9 @@ struct WorktreeRow: View {
 
 // MARK: - Subagent Row
 
-/// One live subagent under its worktree. Its glyph goes in the same `SidebarIcon` column the
-/// worktree row's does, so the two share one leading edge and the child reads as a child through
-/// the symbol rather than through an indent.
+/// One live subagent under its worktree. Its text starts on the worktree row's title column,
+/// because it is laid out in the same `Label` over the same icon slot; the slot carries the `└` a
+/// terminal draws before a child line, so the row reads as a child without a second leading edge.
 ///
 /// The description sits beside the type, the way Claude Code's own status line writes the pair, and
 /// yields the width first: the type is what identifies the row, so it keeps its layout priority and
@@ -112,7 +112,7 @@ struct SubagentRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } icon: {
-            SidebarIcon(systemImage: "point.3.connected.trianglepath.dotted")
+            SidebarChildConnector()
         }
     }
 }

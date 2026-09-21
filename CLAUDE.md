@@ -483,7 +483,13 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     the description over from the row it already holds when the entry omits them: a later `Stop`
     must not blank what an earlier one named, and no other event can restore it. `SubagentRow` draws
     that summary beside the type on one line, the way Claude Code's own status line does, and that
-    is the whole row. **A subagent's in-flight tool is not recorded**: it had one reader, the second
+    is the whole row. It is the **same `Label` over the same `SidebarIcon` slot** every sidebar row
+    is built from, so its text starts on the worktree row's title column with no padding of its
+    own; the slot carries `SidebarChildConnector`, the `└` a terminal draws before a child line,
+    drawn as a `Path` because the character's shape belongs to the font. The status section headers
+    are that same `Label` over that same slot for the same reason — `SidebarRowMetrics` is down to
+    `iconWidth` and `headerLeadingInset`, the 6 pt a `Section` header is inset short of a row, and
+    no header owns an icon-to-title gap of its own. **A subagent's in-flight tool is not recorded**: it had one reader, the second
     line of that row, so it went with it rather than staying as state nothing reads. `tool_name`
     still lands on `leadToolName`, which the tab chip renders, and the rule that keeps the two apart
     is now the whole of `startTool`/`finishTool` — a subagent's tool traffic names its row and

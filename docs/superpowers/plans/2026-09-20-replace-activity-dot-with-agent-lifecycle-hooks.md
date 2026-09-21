@@ -1731,3 +1731,30 @@ no behaviour to pin that the surviving tests do not already cover. The regressio
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.` The count is unchanged: no test was deleted, only
 assertions inside three of them.
+
+### C6 — A subagent row's text starts on the worktree row's title, and its slot carries a `└`
+
+**Reported.** The C3 glyph was the wrong mark: a subagent row should read as nested inside the
+worktree row above it, with its text on that row's **title** edge — where "Replace the JSONL-mti…"
+starts, right of the `⌘N` badge column. Mid-change the operator amended it: the leading slot does
+carry a glyph after all, but the `└` a terminal draws for a child line, not a node-graph symbol.
+
+**Decision.** Nothing about the row's structure had to move: `SubagentRow` was already a `Label`
+over a `SidebarIcon`, which is why its text already sits on the title column — measured on
+screenshot 3 at 2x, the worktree title and the subagent text both ink at x = 83. So the change is
+the glyph alone. `SidebarChildConnector` (`SidebarIcon.swift`, beside the slot geometry it is sized
+from) strokes a `Path` 1 pt in `.secondary`: down the slot's centre from its top to its middle, then
+out to the slot's trailing edge, in a box the width of the icon column. It is drawn rather than
+typed because `└`'s shape belongs to the font and the sidebar's is proportional, and it is not
+`arrow.turn.down.right`, which points at the row rather than joining it.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarIcon.swift` | `SidebarChildConnector` and its private `ChildConnector` shape |
+| `Sources/App/WorktreeRow.swift` | `SubagentRow`'s icon is the connector; the `point.3.connected.trianglepath.dotted` of C3 is gone |
+| `docs/…/specs/…md` | Decision 24 |
+| `CLAUDE.md` | the row's two columns and the connector |
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.` The count is unchanged, as a glyph-only change
+should leave it.
