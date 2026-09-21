@@ -152,6 +152,26 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertTrue(monitor.worktreePhases.isEmpty, "the forwarder's socket guard makes a disabled Clearway a no-op")
     }
 
+    /// The same theft by a second door: a blocked instance never bound the path, so switching its
+    /// toggle off must not take the socket the live instance is listening on. The inode is again
+    /// what makes it observable — an unlink here leaves the first instance reading a descriptor
+    /// nothing can reach, exactly the symptom the connect probe exists to prevent.
+    func testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone() async throws {
+        monitor.setEnabled(true)
+        let second = AgentActivityMonitor(home: home)
+        second.setEnabled(true)
+        XCTAssertEqual(second.socketState, .ownedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
+        let inode = try socketInode()
+
+        second.setEnabled(false)
+
+        XCTAssertEqual(try socketInode(), inode, "a blocked instance's stop() must not unlink a socket it never bound")
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the first monitor's worktree phase after the second was disabled") {
+            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+        }
+    }
+
     /// The discriminating case for `stop()`'s ordering: the `unlink` runs after the listener is
     /// released and on the main actor both times, so a disable immediately followed by an enable
     /// cannot take away the socket the new listener has just bound. Get it wrong — unlink first, or

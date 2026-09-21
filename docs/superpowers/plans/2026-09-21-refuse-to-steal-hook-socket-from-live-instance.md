@@ -259,3 +259,41 @@ which is the point of it — it pins the behaviour the probe must not change.
 
 The `project.yml` exclusion was lifted out of the T1 commit into its own first commit on this branch
 so it could go to `main` on its own: PR #249, green on `./scripts/ci.sh` (exit 0, 779 tests).
+
+### T2: `stop()` unlinks only the socket this instance bound
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `stop()` reads `socketState == .listening` into `bound` before releasing the listener, and the `unlink` is gated on it. Ordering unchanged: the unlink still runs after the cancel and on the main actor both times. |
+| `Tests/AgentActivityMonitorTests.swift` | `testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone`, in the toggle section beside the other `stop()` cases. Every pre-existing case untouched. |
+
+**Evidence**
+
+Watched red against the unfixed `stop()` — the test was written first and the gate run before the
+gate on the unlink existed. `./scripts/ci.sh`, exit 65:
+
+```
+✖ testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone, XCTAssertEqual failed: threw error "Error Domain=NSCocoaErrorDomain Code=260 "The file “hook.sock” couldn’t be opened because there is no such file." UserInfo={NSFilePath=/tmp/clearway-hook-monitor-C8A8642E/.clearway/hook.sock, …}" - a blocked instance's stop() must not unlink a socket it never bound
+✖ testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone, XCTAssertEqual failed: ("idle") is not equal to ("working") - the first monitor's worktree phase after the second was disabled
+Executed 13 tests, with 2 failures (0 unexpected) in 11.369 (11.372) seconds
+```
+
+Worse than the inode change T1 pins: the blocked instance's `stop()` removed the path outright, so
+the inode read could not even find a file, and the live instance received nothing afterwards. The
+theft the probe refuses at `bind` was still available at `stop()`.
+
+**Deviations**
+
+None. The existing comment's disable-then-enable reason was left standing — it is still true and
+still the reason for the ordering — and the gate got its own sentence above it rather than a rewrite
+of that one.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 782 tests, 0 failures, run after the last edit.
+`grep -rn "unlink(" Sources/` shows the same two call sites, now both guarded:
+`AgentActivityMonitor.swift:101` in `stop()` and `:220` in `listeningDescriptor`.
+`git status --porcelain` before the commit: the two modified files above and nothing else — no
+`default.profraw`, no untracked files.

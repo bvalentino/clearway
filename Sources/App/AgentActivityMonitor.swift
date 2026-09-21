@@ -91,10 +91,14 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     private func stop() {
+        // The same guard the listener applies before binding: an instance that found the path owned
+        // never bound it, and unlinking it here would take the live instance's socket by the other
+        // door.
+        let bound = socketState == .listening
         listener = nil
         // After the cancel, and on the main actor both times, so a disable immediately followed by
         // an enable cannot unlink the socket the new listener just bound.
-        unlink(paths.socketPath)
+        if bound { unlink(paths.socketPath) }
         socketState = .off
         store = AgentActivityStore()
         publish()
