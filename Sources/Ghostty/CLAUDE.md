@@ -14,7 +14,7 @@
   the same layer.
   `SurfaceView.agentEnvironment` is the second such provider, wired in the same two lines of
   `ClearwayApp.init` to `AgentHookIdentity.environment`. It returns the env vars to stamp on a
-  surface's child process from its `surfaceId` and `worktreeId`, and it exists so this layer never
+  surface's child process from its `surfaceId` and `activityOwner`, and it exists so this layer never
   learns the names: `Sources/Ghostty` wraps libghostty and must not import the hook feature, and a
   provider makes the names testable without a `ghostty_app_t`. Its default is `{ _, _ in [] }`, so
   a missing wiring line compiles, launches and silently ships a dead feature —

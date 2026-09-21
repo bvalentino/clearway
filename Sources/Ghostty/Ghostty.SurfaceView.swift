@@ -72,7 +72,7 @@ extension Ghostty {
             _ app: ghostty_app_t,
             workingDirectory: String? = nil,
             command: String? = nil,
-            worktreeId: String? = nil
+            activityOwner: String? = nil
         ) {
             self.initialWorkingDirectory = workingDirectory
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
@@ -89,7 +89,7 @@ extension Ghostty {
 
             // libghostty `dupeZ`s both key and value into the surface config's arena while
             // `ghostty_surface_new` runs, so these copies need to outlive nothing but that call.
-            let pairs = Self.agentEnvironment(surfaceId, worktreeId)
+            let pairs = Self.agentEnvironment(surfaceId, activityOwner)
             let envVars = UnsafeMutableBufferPointer<ghostty_env_var_s>.allocate(capacity: pairs.count)
             for (index, pair) in pairs.enumerated() {
                 envVars[index] = ghostty_env_var_s(key: strdup(pair.key), value: strdup(pair.value))

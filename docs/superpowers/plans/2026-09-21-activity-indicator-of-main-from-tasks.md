@@ -495,3 +495,27 @@ target's sources, so this is a no-op regression check, run because the stage own
 - A `SIGKILL`ed agent in a task terminal pins the task's dot until its next `SessionStart` —
   nothing in the pipeline has a clock.
 - The aside card and the standalone Task window show no activity for a task whose list row is lit.
+
+## Build log
+
+### T1: Rename the surface's owner parameter to activityOwner
+
+| File | State |
+| --- | --- |
+| `Sources/Ghostty/Ghostty.SurfaceView.swift` | `init`'s fourth parameter is `activityOwner: String? = nil`; the one use reads `Self.agentEnvironment(surfaceId, activityOwner)`. Provider type unchanged. |
+| `Sources/App/TerminalManager.swift` | Four call sites (`:171`, `:329`, `:338`, `:464`) take `activityOwner: key`. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | Two call sites (`:24`, `:95`) take `activityOwner: projectPath`. The path/worktree-id comment at `:22-23` stays; T2 deletes it. |
+| `Sources/Ghostty/CLAUDE.md` | `:17` now reads "from its `surfaceId` and `activityOwner`". |
+
+**Evidence.** No watched failure to quote: this is a pure rename with no behavioural change, so it
+carries no regression test of its own. What pins criterion 3 is that `AgentHookIdentityTests` and
+`AgentActivityMonitorTests` are untouched and still green — they drive the installed forwarder over
+the real socket and assert `CLEARWAY_WORKTREE_ID` and its value end to end, so any change to what is
+stamped would have turned them red.
+
+**Criterion 1.** `grep -rn "worktreeId" Sources/Ghostty/` returns nothing (exit 1).
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 783 tests, 0 failures. `git status --porcelain`
+lists only the four files above plus this plan.
