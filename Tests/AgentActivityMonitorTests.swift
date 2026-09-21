@@ -118,7 +118,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         try connectToSocket(writing: Data(#"{"hook_event_name": "Stop"}"#.utf8))
 
         try await waitFor([#"{"hook_event_name": "Stop"}"#], describing: "the payloads that reached the callback") {
-            delivered.all.map { String(decoding: $0, as: UTF8.self) }
+            delivered.all.map { String(data: $0, encoding: .utf8) ?? "" }
         }
     }
 
