@@ -533,9 +533,14 @@ class TerminalManager: ObservableObject {
         }
     }
 
+    /// Whether any surface this manager owns has a running foreground process.
+    var needsConfirmClose: Bool {
+        allSurfaces.contains(where: \.needsConfirmQuit)
+    }
+
     /// Whether any surface across all managers has a running foreground process.
     static var needsConfirmQuit: Bool {
-        allInstances.allObjects.flatMap(\.allSurfaces).contains(where: \.needsConfirmQuit)
+        allInstances.allObjects.contains(where: \.needsConfirmClose)
     }
 
     /// Close all surfaces across every live manager.

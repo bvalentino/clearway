@@ -24,6 +24,10 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+        excludes:
+          # Both per-file note files are named CLAUDE.md, so bundling them as
+          # resources makes two copy commands produce one path and the build fails.
+          - "**/*.md"
     resources:
       - path: Resources
         optional: true
