@@ -77,7 +77,7 @@ struct WorkTaskListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    startNowItems(for: selectedTask)
+                    startNowItems(for: nil)
                 } label: {
                     Text("Start Now")
                 } primaryAction: {
@@ -252,14 +252,28 @@ struct WorkTaskListView: View {
     /// `@Published`, while `app` is a plain computed property with no change to publish, so a menu
     /// built before it was non-nil had nothing to re-evaluate against.
     ///
+    /// That same retention is why an item may not **capture** a `WorkTask` either: the closures
+    /// built with the menu outlive the selection they were built under, so an item carrying a task
+    /// value planned whatever was selected when the menu was first built — replacing that task's
+    /// terminal, killing the agent in it, and snapping the selection back to it. This takes the
+    /// *row* it is built for instead — `nil` from the toolbar, the row's own task from a context
+    /// menu — and every item resolves its target through
+    /// `WorkTaskCoordinator.startNowTarget(row:selection:)` **inside** its action, against the
+    /// live `selectedTask`. No test can catch a regression here; this docstring is the guard.
+    ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
     @ViewBuilder
-    private func startNowItems(for task: WorkTask?) -> some View {
+    private func startNowItems(for row: WorkTask?) -> some View {
         let commands = savedCommandManager.agentCommands
-        if let task, ghosttyApp.readiness == .ready, !commands.isEmpty {
+        if WorkTaskCoordinator.startNowTarget(row: row, selection: selectedTask) != nil,
+           ghosttyApp.readiness == .ready, !commands.isEmpty {
             ForEach(commands) { command in
-                Button(command.name) { plan(task, using: command) }
+                Button(command.name) {
+                    if let task = WorkTaskCoordinator.startNowTarget(row: row, selection: selectedTask) {
+                        plan(task, using: command)
+                    }
+                }
             }
             Divider()
         }

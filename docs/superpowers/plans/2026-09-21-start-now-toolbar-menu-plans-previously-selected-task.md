@@ -250,3 +250,31 @@ would make it the only annotated rule in the file.
 **Gate.** `./scripts/ci.sh` → `==> CI passed.`, `Executed 787 tests, with 0 failures`. The four new
 cases are confirmed `Passed` in the `.xcresult`. `swiftlint lint --quiet` → no output, exit 0.
 `git status --porcelain` → the two modified files above and nothing else.
+
+### T2: Make the Start Now items resolve their task at click time
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | `startNowItems(for row: WorkTask?)`; the gate asks `WorkTaskCoordinator.startNowTarget(row:selection: selectedTask)` instead of binding a task; each `Button(command.name)` action resolves through the same static before calling `plan`; toolbar call site (line 80) passes `nil`; row context menu (line 224) still passes its `task`; docstring extended with the stale-capture rule. |
+| Everything else in the file | Untouched. `git diff --stat` → one file, 18 insertions, 4 deletions, in exactly two hunks: the toolbar call site and `startNowItems`. `plan`, `runPlan`, `PlanRequest`, the confirmation dialog, `startableTask`, `selectedTask` and the split button's primary action do not appear in the diff. |
+
+**Evidence.** No test was written for this task and none could be. The behaviour T2 changes is *when*
+`selectedTask` is read — before the menu is built, or inside the item's action — and laziness at a
+SwiftUI call site is not observable from XCTest in this project (D5; the suite has no view-inspection
+dependency, and `Tests/TaskTerminalLaunchCommandTests.swift:7-9` already records why this menu's
+launch paths are unreachable). Reverting line 80 to `startNowItems(for: selectedTask)` would
+reintroduce the bug and still compile, and all 787 tests would still pass — that is the finding, not
+a gap to close here. The rule the fix rests on is watched-red-then-green in T1's build log; the call
+site is guarded by the `startNowItems` docstring and, in T3, by `Sources/App/CLAUDE.md`.
+
+**Deviations.** None. The gate is written as `startNowTarget(...) != nil` rather than `if let`,
+because binding the value at build time is the defect: a bound name would be in scope inside the
+`ForEach` and an item could use it. The target is resolved twice — once for the gate, once per click
+— and that is the point, not duplication: the gate answers "is there anything to plan *now*", the
+action answers "what is selected *at this click*", and the two questions are asked at different
+times.
+
+**Gate.** `./scripts/ci.sh` → `==> CI passed.`, `Executed 787 tests, with 0 failures`.
+`swiftlint lint --quiet` → no output, exit 0. `git status --porcelain` → `M
+Sources/App/WorkTaskListView.swift` and nothing else; no `default.profraw`, since no Debug launch
+happened outside the test host.
