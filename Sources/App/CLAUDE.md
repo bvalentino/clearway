@@ -69,12 +69,21 @@
   permanently disabled.
   **⌥⌘R pops the toolbar's own Run dropdown through AppKit** rather than drawing a second list that
   could drift from it. SwiftUI cannot present a `Menu` programmatically, so
-  `ToolbarSplitButtonMenu.popUp(labelled:)` walks `NSApp.keyWindow`'s view tree depth first for an
+  `ToolbarSplitButtonMenu.popUp(labelled:)` walks the view tree depth first for an
   `NSSegmentedControl` whose segment 0 label equals `SavedCommandManager.runButtonTitle` and pops
-  its `menu(forSegment: 1)` below the control. That label is the whole discriminator — it is what
-  separates the Run button from the window's other segmented controls, `CommandsView`'s filter
-  picker and the Open In split button — and `segmentCount > 1` is checked before either segment is
-  read, because `NSSegmentedControl` raises on an out-of-range index. When nothing matches it
+  its `menu(forSegment: 1)` below the control.
+  **The walk starts at `NSApp.keyWindow?.toolbar?.visibleItems`, at each item's `view`, and not at
+  `contentView`.** A toolbar item's view is no descendant of the content view: the realized chain is
+  `SwiftUISegmentedControl` ← `AppKitPlatformViewHost` ← `ToolbarItemHostingView` ←
+  `NSToolbarItemViewer` ← `NSToolbarView` ← `NSTitlebarView` ← `NSTitlebarContainerView` ←
+  `NSThemeFrame`, a branch beside `contentView` rather than below it, so a walk rooted at
+  `contentView` finds nothing and ⌥⌘R silently does nothing — which is exactly what it did when it
+  first shipped. Rooting the walk in the toolbar also puts `CommandsView`'s segmented filter picker
+  out of reach by construction; the label is left as the discriminator between the Run button and
+  the Open In split button, the only other segmented control in the toolbar. `segmentCount > 1` is
+  checked before either segment is read, because `NSSegmentedControl` raises on an out-of-range
+  index. An item scrolled into the toolbar's overflow menu is absent from `visibleItems` and has no
+  on-screen control to hang a menu under, so it is a non-match like any other. When nothing matches it
   **does nothing**: falling back to another control would open a dropdown the operator did not ask
   for. This is knowingly fragile. It holds only while SwiftUI keeps realizing a toolbar `Menu` with
   a `primaryAction:` as an `NSSegmentedControl` with a readable segment label — the split-button

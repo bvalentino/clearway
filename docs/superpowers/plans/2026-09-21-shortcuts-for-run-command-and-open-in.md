@@ -761,3 +761,57 @@ that no statement contradict the tree, so both were corrected.
 Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
 `git status --porcelain` before the commit showed only `Sources/App/CLAUDE.md` plus this plan; no
 `default.profraw` and no untracked files.
+
+## Changelog
+
+Operator-requested changes made after a hands-on check. These are not plan tasks; no later step
+may revert them.
+
+### 2026-09-21 — ⌥⌘R found no control: root the walk in the toolbar, not `contentView`
+
+**Finding.** With a worktree selected and saved commands present, neither ⌥⌘R nor the Worktree ▸
+"Run…" row did anything. The row fired; `ToolbarSplitButtonMenu.popUp(labelled:)` (T3) took its
+silent `guard … return` because it started the walk at `NSApp.keyWindow?.contentView`.
+
+**Evidence.** Measured against the running Debug build of this worktree (pid 53793) by attaching
+`lldb -b -p`, not inferred. The project window is `SwiftUI.AppKitWindow 0x8387f4600`:
+
+```
+(lldb) po (id)[(id)0x83bcd1900 labelForSegment:0]
+Build & Run
+(lldb) po (id)[(id)0x83bcd1900 menuForSegment:1]
+<NSMenu: 0x83aa1d200>  Items: ( Plan, Work, separator, "Add Command…" )
+(lldb) p (bool)[(id)0x83bcd1900 isDescendantOf:(id)[(id)0x8387f4600 contentView]]
+(bool) false
+(lldb) expr … while (v) { … v = [v superview]; }
+"SwiftUI.SwiftUISegmentedControl <- …AppKitSegmentedControlAdaptor… <- ToolbarItemHostingView
+ <- NSToolbarItemViewer <- NSToolbarView <- NSTitlebarView <- NSTitlebarContainerView
+ <- NSThemeFrame <- "
+```
+
+So T3's two premises were both right — SwiftUI does realize the toolbar `Menu` with a
+`primaryAction:` as a real `NSSegmentedControl` (`isKindOfClass: NSSegmentedControl` → true,
+`segmentCount` → 2), segment 0 does carry the primary command's name, and segment 1 does own the
+dropdown — and only the **root** of the walk was wrong. The control hangs off the titlebar, a
+sibling branch of `contentView` under `NSThemeFrame`.
+
+**Change.** `ToolbarSplitButtonMenu` gains `toolbarSegmentedControl(labelled:)`, which iterates
+`NSApp.keyWindow?.toolbar?.visibleItems` and runs the existing depth-first search from each item's
+`view`. Everything else is unchanged: the `segmentCount > 1` guard, the segment 0 label match,
+`menu(forSegment: 1)`, the `isFlipped`-aware bottom-edge positioning, and every failure path a
+silent `return`.
+
+Rooting in the toolbar also drops `CommandsView`'s `.pickerStyle(.segmented)` filter out of the
+search space, since it lives under `contentView`. The label match stays: it is what separates the
+Run button from the Open In split button, the toolbar's other `NSSegmentedControl` (confirmed
+above, `labelForSegment:0` → "Open in Fork").
+
+`Sources/App/CLAUDE.md`'s `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` entry was
+rewritten to state where the control actually lives, since the old text said "walks
+`NSApp.keyWindow`'s view tree" and that is what the bug was.
+
+**Files.** `Sources/App/ToolbarSplitButtonMenu.swift` (36 → 50 lines), `Sources/App/CLAUDE.md`.
+
+**No test.** Same reason T3 carried none: the helper needs a live realized toolbar, and a faked
+view tree would pin the fake, not the bug. The proof is the lldb session above; the confirmation is
+the operator's hand-check.
