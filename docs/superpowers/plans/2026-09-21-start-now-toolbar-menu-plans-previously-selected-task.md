@@ -213,3 +213,40 @@ absent `.disabled` intact; this is an extension of the paragraph, not a rewrite.
 **Verification.** Read the diff against criteria 1-3. `./scripts/ci.sh` need not be re-run for a
 Markdown-only change if T2's run was green and nothing else changed since; if any Swift file
 changed in the same working tree, run it.
+
+## Build log
+
+### T1: Add startNowTarget to WorkTaskCoordinator, with its unit tests
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | `static func startNowTarget(row:selection:)` added immediately after `planNeedsConfirmation`, with the docstring naming AppKit's menu retention and the read-inside-the-closure requirement. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | Four cases added under `// MARK: - Confirming a plan`, ahead of `// MARK: - Toggling the task terminal`. |
+| `Sources/App/WorkTaskListView.swift` | Untouched, as the task requires. `git diff --stat` shows two files. |
+
+**Evidence.** The four cases were written first and watched fail against the unfixed code —
+`./scripts/ci.sh` stopped at the test target's compile:
+
+```
+❌ Tests/TaskTerminalLaunchCommandTests.swift:57:33: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:58:44: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:65:44: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:70:42: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:83:44: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+❌ Tests/TaskTerminalLaunchCommandTests.swift:85:42: type 'WorkTaskCoordinator' has no member 'startNowTarget'
+```
+
+That is the whole failure this rule can be watched for: the behavioural regression it guards against
+lives at the SwiftUI call site, which no test in this project can reach (D5). The
+`testStartNowTargetCarriesNoMemoryOfAnEarlierSelection` case pins the statelessness the fix rests on,
+not the laziness.
+
+**Deviations.** None. The function is not annotated `nonisolated`: `WorkTaskCoordinator` is
+`@MainActor`, so its statics are too, and `planNeedsConfirmation` and `taskTerminalToggle` beside it
+carry no annotation either. Acceptance criterion 1 asks that the function be safe to call that way —
+a pure function of its two arguments reading no instance state — which it is; adding the keyword
+would make it the only annotated rule in the file.
+
+**Gate.** `./scripts/ci.sh` → `==> CI passed.`, `Executed 787 tests, with 0 failures`. The four new
+cases are confirmed `Passed` in the `.xcresult`. `swiftlint lint --quiet` → no output, exit 0.
+`git status --porcelain` → the two modified files above and nothing else.
