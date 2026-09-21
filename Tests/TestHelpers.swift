@@ -49,6 +49,42 @@ class TempRootTestCase: XCTestCase {
     }
 }
 
+/// `@MainActor` so a subject read inside `reading:` stays on the actor its suite runs on: these are
+/// shared by main-actor test cases, and a nonisolated helper would make every closure they pass a
+/// value sent across an actor boundary.
+@MainActor
+extension XCTestCase {
+
+    /// Polls rather than sleeping a fixed span, for every suite whose subject lands behind work the
+    /// test cannot await: a git subprocess, or a payload crossing a queue and a hop back to the
+    /// main actor.
+    func waitFor<Value: Equatable>(
+        _ expected: Value,
+        describing subject: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        reading read: () throws -> Value
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = try read()
+        while last != expected, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            last = try read()
+        }
+        XCTAssertEqual(last, expected, subject, file: file, line: line)
+    }
+
+    /// A scratch home short enough for a Unix socket address, which has 104 bytes for its path —
+    /// `NSTemporaryDirectory()` plus a UUID spends more than half of that, so `TempRootTestCase`'s
+    /// root cannot serve a suite that binds one. The caller removes it.
+    func makeShortTempHome(_ prefix: String) throws -> String {
+        let home = "/tmp/clearway-\(prefix)-\(UUID().uuidString.prefix(8))"
+        try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
+        return home
+    }
+}
+
 /// A throwaway git repository for the suites that must prove behaviour against real git.
 ///
 /// Shells out to `/usr/bin/git` directly with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` pointed
@@ -253,25 +289,6 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
             self?.recordedWriteAlerts.append(alert)
         }
         return built
-    }
-
-    /// Polls rather than sleeping a fixed span: a config write is a git subprocess, behind the
-    /// extension bootstrap on its first call.
-    func waitFor<Value: Equatable>(
-        _ expected: Value,
-        describing subject: String,
-        timeout: TimeInterval = 5,
-        file: StaticString = #filePath,
-        line: UInt = #line,
-        reading read: () throws -> Value
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = try read()
-        while last != expected, Date() < deadline {
-            try await Task.sleep(nanoseconds: 20_000_000)
-            last = try read()
-        }
-        XCTAssertEqual(last, expected, subject, file: file, line: line)
     }
 
     /// The `clearway.*` value git has on disk for one worktree, once the write lands.

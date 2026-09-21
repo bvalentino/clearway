@@ -17,20 +17,20 @@ final class AgentActivityStoreTests: XCTestCase {
 
     func testUserPromptSubmitWorksAndStopIdles() {
         apply("UserPromptSubmit")
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
 
         apply("Stop")
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
     }
 
     func testPreToolUseSetsTheLeadToolAndPostToolUseClearsIt() {
         apply("PreToolUse", tool: "Bash")
-        XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Bash")
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual(store.surfaceToolNames[surfaceA], "Bash")
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
 
         apply("PostToolUse", tool: "Bash")
-        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertNil(store.surfaceToolNames[surfaceA])
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
     /// The discriminating case for "the lead's tool is the lead's alone": a subagent's tool traffic
@@ -40,13 +40,13 @@ final class AgentActivityStoreTests: XCTestCase {
         apply("PreToolUse", tool: "Edit")
         apply("PreToolUse", tool: "Grep", agentId: "sub-1")
 
-        XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Edit")
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
+        XCTAssertEqual(store.surfaceToolNames[surfaceA], "Edit")
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), ["sub-1"])
 
         apply("PostToolUse", tool: "Grep", agentId: "sub-1")
 
-        XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Edit")
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
+        XCTAssertEqual(store.surfaceToolNames[surfaceA], "Edit")
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), ["sub-1"])
     }
 
     // MARK: - Waiting on permission
@@ -55,22 +55,22 @@ final class AgentActivityStoreTests: XCTestCase {
         apply("UserPromptSubmit")
         apply("PermissionRequest", tool: "Bash")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .waiting)
-        XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Bash")
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .waiting)
+        XCTAssertEqual(store.surfaceToolNames[surfaceA], "Bash")
     }
 
     func testPostToolUseReturnsAWaitingSurfaceToWorking() {
         apply("PermissionRequest", tool: "Bash")
         apply("PostToolUse", tool: "Bash")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
     func testUserPromptSubmitReturnsAWaitingSurfaceToWorking() {
         apply("PermissionRequest", tool: "Bash")
         apply("UserPromptSubmit")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
     // MARK: - The subagent roster
@@ -78,12 +78,12 @@ final class AgentActivityStoreTests: XCTestCase {
     func testSubagentStartAddsARowAndSubagentStopRemovesIt() {
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
 
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.type), ["Explore"])
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), ["sub-1"])
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.type), ["Explore"])
 
         apply("SubagentStop", agentId: "sub-1")
 
-        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
+        XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
     }
 
     /// A missed `SubagentStop` must not pin a row. A `Stop` that reports no background work left is
@@ -92,19 +92,19 @@ final class AgentActivityStoreTests: XCTestCase {
         apply("UserPromptSubmit")
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
         apply("SubagentStart", agentId: "sub-2", agentType: "Plan")
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).count, 2)
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).count, 2)
 
         apply("Stop")
 
-        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+        XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
     }
 
     /// A subagent is work even when the lead is between turns, so the dot stays lit.
     func testIdleSurfaceHoldingALiveSubagentReadsAsWorking() {
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
     func testSubagentOrderIsStableAcrossCalls() {
@@ -112,9 +112,9 @@ final class AgentActivityStoreTests: XCTestCase {
             apply("SubagentStart", agentId: id, agentType: "Explore")
         }
 
-        let first = store.subagents(forWorktree: worktreeOne).map(\.id)
+        let first = (store.worktreeSubagents[worktreeOne] ?? []).map(\.id)
         XCTAssertEqual(first, ["sub-1", "sub-3", "sub-5", "sub-9"])
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), first)
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), first)
     }
 
     // MARK: - Session boundaries
@@ -126,9 +126,9 @@ final class AgentActivityStoreTests: XCTestCase {
 
         apply("SessionStart")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
-        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
-        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
+        XCTAssertNil(store.surfaceToolNames[surfaceA])
+        XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
     }
 
     func testSessionEndDropsTheSurfaceEntirely() {
@@ -137,12 +137,12 @@ final class AgentActivityStoreTests: XCTestCase {
 
         apply("SessionEnd")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
-        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
+        XCTAssertNil(store.surfaceToolNames[surfaceA])
 
         apply("SessionEnd", surface: surfaceB)
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
     }
 
     // MARK: - Retirement
@@ -150,25 +150,14 @@ final class AgentActivityStoreTests: XCTestCase {
     func testEventsForARetiredSurfaceChangeNothing() {
         apply("UserPromptSubmit")
         store.retire(surfaceId: surfaceA)
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
 
         apply("PreToolUse", tool: "Bash")
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
-        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
-        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
-    }
-
-    func testRetiringAWorktreeDropsEveryOneOfItsSurfaces() {
-        apply("UserPromptSubmit")
-        apply("UserPromptSubmit", surface: surfaceB)
-        apply("UserPromptSubmit", surface: "surface-c", worktree: worktreeTwo)
-
-        store.retire(worktreeId: worktreeOne)
-
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
-        XCTAssertEqual(store.phase(forWorktree: worktreeTwo), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
+        XCTAssertNil(store.surfaceToolNames[surfaceA])
+        XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
     }
 
     // MARK: - Worktree derivation
@@ -177,16 +166,16 @@ final class AgentActivityStoreTests: XCTestCase {
         apply("UserPromptSubmit")
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeTwo), .idle)
-        XCTAssertTrue(store.subagents(forWorktree: worktreeTwo).isEmpty)
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
+        XCTAssertEqual((store.worktreePhases[worktreeTwo] ?? .idle), .idle)
+        XCTAssertTrue((store.worktreeSubagents[worktreeTwo] ?? []).isEmpty)
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), ["sub-1"])
     }
 
     func testWaitingWinsOverWorkingOnTheSameWorktree() {
         apply("UserPromptSubmit")
         apply("PermissionRequest", surface: surfaceB, tool: "Bash")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .waiting)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .waiting)
     }
 
     /// Decision 6: a surface id minted before a Clearway relaunch is unknown to this process, yet
@@ -194,7 +183,7 @@ final class AgentActivityStoreTests: XCTestCase {
     func testAnUnknownSurfaceStillLightsItsWorktree() {
         apply("PreToolUse", surface: "a-surface-from-a-previous-launch", tool: "Bash")
 
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
     // MARK: - Background subagents, from captured Claude Code payloads
@@ -213,22 +202,22 @@ final class AgentActivityStoreTests: XCTestCase {
         ]))
 
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.id),
+            (store.worktreeSubagents[worktreeOne] ?? []).map(\.id),
             ["a42b06983b46906f7", "aa713d00cbb27a6be"]
         )
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.type),
+            (store.worktreeSubagents[worktreeOne] ?? []).map(\.type),
             ["general-purpose", "general-purpose"]
         )
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
 
         applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
 
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.id),
+            (store.worktreeSubagents[worktreeOne] ?? []).map(\.id),
             ["a42b06983b46906f7", "aa713d00cbb27a6be"]
         )
-        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
+        XCTAssertNil(store.surfaceToolNames[surfaceA])
     }
 
     /// The same run's ending: each `SubagentStop` drops its own row, and the `Stop` that follows
@@ -240,12 +229,12 @@ final class AgentActivityStoreTests: XCTestCase {
 
         applyRaw(stop(running: [("aa713d00cbb27a6be", "Count test files slowly")]))
 
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["aa713d00cbb27a6be"])
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.id), ["aa713d00cbb27a6be"])
 
         applyRaw(stop(running: []))
 
-        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
-        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+        XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
     }
 
     /// A subagent whose `SubagentStart` Clearway missed — the app launched mid-run — is named by its
@@ -254,7 +243,7 @@ final class AgentActivityStoreTests: XCTestCase {
     func testASubagentFirstSeenThroughItsToolTrafficIsStillNamed() {
         applyRaw(subagentPreToolUse(agentId: "ac545fc45491c3fde"))
 
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.type), ["general-purpose"])
+        XCTAssertEqual((store.worktreeSubagents[worktreeOne] ?? []).map(\.type), ["general-purpose"])
     }
 
     /// `Stop`'s `background_tasks` is the only payload carrying the prompt's own summary, so the row
@@ -265,7 +254,7 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(stop(running: [("a42b06983b46906f7", "Count Swift files slowly")]))
 
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.description),
+            (store.worktreeSubagents[worktreeOne] ?? []).map(\.description),
             ["Count Swift files slowly"]
         )
 
@@ -273,7 +262,7 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(stop(running: [("a42b06983b46906f7", nil)]))
 
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.description),
+            (store.worktreeSubagents[worktreeOne] ?? []).map(\.description),
             ["Count Swift files slowly"]
         )
     }

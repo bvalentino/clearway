@@ -54,12 +54,13 @@ struct AgentSurfaceState {
     /// that names none clears the roster exactly as before. The type and the description carry over
     /// from the row already held when this payload omits them, for the same reason `note` keeps a
     /// known type: a later `Stop` must not blank what an earlier one named.
-    fileprivate mutating func keepOnly(_ running: [AgentHookEvent.BackgroundTask]) {
-        subagents = running.reduce(into: [:]) { roster, task in
-            roster[task.id] = AgentSubagent(
-                id: task.id,
-                type: task.agentType ?? subagents[task.id]?.type,
-                description: task.description ?? subagents[task.id]?.description
+    fileprivate mutating func keepOnly(_ running: [AgentSubagent]) {
+        subagents = running.reduce(into: [:]) { roster, subagent in
+            let known = subagents[subagent.id]
+            roster[subagent.id] = AgentSubagent(
+                id: subagent.id,
+                type: subagent.type ?? known?.type,
+                description: subagent.description ?? known?.description
             )
         }
     }
@@ -137,42 +138,26 @@ struct AgentActivityStore {
         surfaces.removeValue(forKey: surfaceId)
     }
 
-    mutating func retire(worktreeId: String) {
-        for surfaceId in surfaces.filter({ $0.value.worktreeId == worktreeId }).keys {
-            retire(surfaceId: surfaceId)
-        }
-    }
-
     /// The three derivations the monitor publishes whole, so the views read a dictionary rather than
-    /// asking the store once per row. The single-key readers below are the same rules, looked up.
+    /// asking the store once per row.
     var worktreePhases: [String: AgentPhase] {
         surfaces.values.reduce(into: [:]) { phases, state in
             phases[state.worktreeId] = Swift.max(phases[state.worktreeId] ?? .idle, state.effectivePhase)
         }
     }
 
+    /// Only a surface that has a roster contributes a key, so a worktree with no live subagent is
+    /// absent rather than mapped to `[]` — an empty entry would make every surface open republish.
     var worktreeSubagents: [String: [AgentSubagent]] {
         var rosters: [String: [AgentSubagent]] = [:]
-        for state in surfaces.values {
+        for state in surfaces.values where !state.subagents.isEmpty {
             rosters[state.worktreeId, default: []].append(contentsOf: state.subagents.values)
         }
-        return rosters.compactMapValues { $0.isEmpty ? nil : $0.sorted { $0.id < $1.id } }
+        return rosters.mapValues { $0.sorted { $0.id < $1.id } }
     }
 
     var surfaceToolNames: [String: String] {
         surfaces.compactMapValues { $0.leadToolName }
-    }
-
-    func phase(forWorktree id: String) -> AgentPhase {
-        worktreePhases[id] ?? .idle
-    }
-
-    func subagents(forWorktree id: String) -> [AgentSubagent] {
-        worktreeSubagents[id] ?? []
-    }
-
-    func leadToolName(forSurface id: String) -> String? {
-        surfaces[id]?.leadToolName
     }
 
     private mutating func update(

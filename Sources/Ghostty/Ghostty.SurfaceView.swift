@@ -37,11 +37,6 @@ extension Ghostty {
         /// a new one.
         let surfaceId = UUID()
 
-        /// The worktree this surface belongs to, or nil for one that belongs to none. Stored so a
-        /// respawn carries the dead surface's worktree rather than deriving one from a working
-        /// directory the shell may since have changed.
-        let worktreeId: String?
-
         /// Lock-guarded so the `nonisolated` C callbacks in `Ghostty.App` can read the pointer
         /// without an unsafe opt-out or a runtime isolation assertion.
         private let surfaceHandle = OSAllocatedUnfairLock<SurfaceHandle?>(initialState: nil)
@@ -80,7 +75,6 @@ extension Ghostty {
             worktreeId: String? = nil
         ) {
             self.initialWorkingDirectory = workingDirectory
-            self.worktreeId = worktreeId
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
 
             self.wantsLayer = true

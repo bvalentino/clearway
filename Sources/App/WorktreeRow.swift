@@ -50,28 +50,19 @@ struct WorktreeRow: View {
                 Group {
                     switch phase {
                     case .waiting:
-                        Circle()
-                            .fill(.purple)
-                            .frame(width: 7, height: 7)
+                        ActivityDot(color: .purple, help: "Waiting for permission")
                             .transition(.opacity)
-                            .help("Waiting for permission")
                     case .working:
-                        Circle()
-                            .fill(.orange)
-                            .frame(width: 7, height: 7)
+                        ActivityDot(color: .orange, help: "Agent is working")
                             .shadow(color: .orange, radius: glowExpanded ? 4 : 1)
                             .shadow(color: .orange.opacity(0.5), radius: glowExpanded ? 6 : 2)
                             .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: glowExpanded)
                             .onAppear { glowExpanded = true }
                             .onDisappear { glowExpanded = false }
                             .transition(.opacity)
-                            .help("Agent is working")
                     case .idle:
                         if hasNotification {
-                            Circle()
-                                .fill(.blue)
-                                .frame(width: 7, height: 7)
-                                .help("Terminal notification")
+                            ActivityDot(color: .blue, help: "Terminal notification")
                         }
                     }
                 }
@@ -83,6 +74,20 @@ struct WorktreeRow: View {
                 shortcut: shortcutIndex.map { "⌘\($0)" }
             )
         }
+    }
+}
+
+/// The dot on the trailing edge of a worktree row. One shape and one size for all four states, so
+/// the working dot's glow is the only thing a caller adds on top.
+private struct ActivityDot: View {
+    let color: Color
+    let help: String
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 7, height: 7)
+            .help(help)
     }
 }
 

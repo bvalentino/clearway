@@ -5,7 +5,8 @@ import os
 /// managed block inside each agent's own settings file. `AgentHookSettings` decides what that block
 /// is and `AgentHookScript` holds the text; everything here is I/O.
 ///
-/// Nothing is actor-isolated — the monitor calls this off the main actor and it does no UI work.
+/// Nothing is actor-isolated: it does no UI work, so the main-actor monitor calls it directly and
+/// it stays free to be moved off the main actor without touching anything here.
 enum AgentHookInstaller {
 
     /// Each agent's config directory and the file inside it that carries hooks. Clearway never
@@ -13,22 +14,20 @@ enum AgentHookInstaller {
     /// seeding a config folder for a tool the user does not have is a change nobody asked for.
     private static let agentFiles = [(directory: ".claude", name: "settings.json"), (directory: ".codex", name: "hooks.json")]
 
-    /// `home` is a parameter so the whole install can be driven against a temp root; every call site
-    /// outside the tests takes the default.
-    static func install(home: String = NSHomeDirectory()) {
+    /// `home` is a parameter, never `NSHomeDirectory()` read in here, so the whole install can be
+    /// driven against a temp root.
+    static func install(home: String) {
         installScript(AgentHookPaths(home: home))
         mergeAgentSettings(installing: true, home: home)
     }
 
     /// The forwarder stays on disk. It exits 0 on its first guard once nothing is listening, so
     /// leaving it costs nothing and re-enabling the toggle is one settings write.
-    static func uninstall(home: String = NSHomeDirectory()) {
+    static func uninstall(home: String) {
         mergeAgentSettings(installing: false, home: home)
     }
 
-    /// `home` is a parameter so the round trip can be driven against a temp directory; every call
-    /// site passes nothing.
-    static func mergeAgentSettings(installing: Bool, home: String = NSHomeDirectory()) {
+    static func mergeAgentSettings(installing: Bool, home: String) {
         for agent in agentFiles {
             merge(
                 installing: installing,

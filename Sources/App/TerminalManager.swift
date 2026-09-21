@@ -438,7 +438,7 @@ class TerminalManager: ObservableObject {
             recentRestarts[key] = timestamps
 
             let dir = deadSurface.pwd ?? deadSurface.initialWorkingDirectory
-            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: deadSurface.worktreeId)
+            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
             Self.retireSurface(deadSurface.surfaceId)
             objectWillChange.send()
             panes[key]!.secondary = newSurface

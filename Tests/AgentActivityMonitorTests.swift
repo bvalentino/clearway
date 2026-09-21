@@ -4,9 +4,6 @@ import XCTest
 /// Drives the monitor end to end through the forwarder Clearway installs: the real script, the real
 /// `nc -U` transport, the real socket. Everything runs under a temp home, so nothing here can reach
 /// the developer's `~/.clearway`, `~/.claude` or `~/.codex`.
-///
-/// The home lives under `/tmp` rather than `NSTemporaryDirectory()` because a Unix socket address
-/// has 104 bytes for its path and `/var/folders/…/T/` plus a UUID spends more than half of that.
 @MainActor
 final class AgentActivityMonitorTests: XCTestCase {
 
@@ -19,9 +16,8 @@ final class AgentActivityMonitorTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        home = "/tmp/clearway-hook-monitor-\(UUID().uuidString.prefix(8))"
+        home = try makeShortTempHome("hook-monitor")
         paths = AgentHookPaths(home: home)
-        try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
         monitor = AgentActivityMonitor(home: home)
     }
 
@@ -40,10 +36,10 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"session_id": "s", "hook_event_name": "UserPromptSubmit"}"#)
-        await waitFor(.working, "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
 
         try fire(#"{"session_id": "s", "hook_event_name": "Stop", "stop_reason": "end_turn"}"#)
-        await waitFor(.idle, "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
     }
 
     /// The discriminating case for unlinking before `bind`: a process killed without closing leaves
@@ -57,7 +53,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        await waitFor(.working, "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
     }
 
     /// The discriminating case for reading to EOF rather than once: a `PreToolUse` carries the whole
@@ -69,7 +65,7 @@ final class AgentActivityMonitorTests: XCTestCase {
 
         try fire(#"{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "\#(bulk)"}}"#)
 
-        await waitFor("Bash", "the lead's in-flight tool") { self.monitor.surfaceToolNames[self.surfaceId] }
+        try await waitFor("Bash", describing: "the lead's in-flight tool") { self.monitor.surfaceToolNames[self.surfaceId] }
     }
 
     func testASubagentRosterIsPublishedForItsWorktree() async throws {
@@ -77,7 +73,7 @@ final class AgentActivityMonitorTests: XCTestCase {
 
         try fire(#"{"hook_event_name": "SubagentStart", "agent_id": "a1", "agent_type": "Explore"}"#)
 
-        await waitFor(["Explore"], "the worktree's subagent roster") {
+        try await waitFor(["Explore"], describing: "the worktree's subagent roster") {
             (self.monitor.worktreeSubagents[self.worktreeId] ?? []).compactMap(\.type)
         }
         XCTAssertEqual(monitor.worktreePhases[worktreeId], .working, "a live subagent is work even between the lead's turns")
@@ -88,7 +84,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testDisablingClosesTheSocketAndForgetsEverySurface() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        await waitFor(.working, "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
 
         monitor.setEnabled(false)
 
@@ -110,11 +106,11 @@ final class AgentActivityMonitorTests: XCTestCase {
 
     /// Runs the installed forwarder exactly as an agent does: the three identity variables in the
     /// environment, the hook JSON on stdin, nothing else inherited.
-    private func fire(_ json: String, surfaceId: String? = nil) throws {
+    private func fire(_ json: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: paths.scriptPath)
         process.environment = [
-            AgentHookIdentity.surfaceIdKey: surfaceId ?? self.surfaceId,
+            AgentHookIdentity.surfaceIdKey: surfaceId,
             AgentHookIdentity.worktreeIdKey: worktreeId,
             AgentHookIdentity.socketKey: paths.socketPath,
         ]
@@ -125,24 +121,5 @@ final class AgentActivityMonitorTests: XCTestCase {
         try input.fileHandleForWriting.close()
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0, "a hook must never fail: a non-zero exit can block the tool call")
-    }
-
-    /// Polls rather than sleeping a fixed span: the payload crosses the listener's queue and a hop
-    /// back to the main actor before anything is published.
-    private func waitFor<Value: Equatable>(
-        _ expected: Value,
-        _ subject: String,
-        timeout: TimeInterval = 5,
-        file: StaticString = #filePath,
-        line: UInt = #line,
-        reading read: () -> Value
-    ) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = read()
-        while last != expected, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            last = read()
-        }
-        XCTAssertEqual(last, expected, subject, file: file, line: line)
     }
 }

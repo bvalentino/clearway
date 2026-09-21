@@ -1515,6 +1515,27 @@ documentation-only change should leave it. `git status --porcelain` before the c
 `M CLAUDE.md` and the plan document and nothing else — no untracked files and no `default.profraw`:
 the test host's launch does not drop one.
 
+### Simplify
+
+`/simplify` over `main...HEAD`. Quality only, no behaviour changed: dropped `AgentActivityStore`'s
+four test-only members (`retire(worktreeId:)` plus the three single-key readers, each of which
+rebuilt a whole derivation per lookup) so the tests read the same three dictionaries the views do;
+stopped `worktreeSubagents` building empty buckets only to filter them out; moved the
+`BackgroundTask` → `AgentSubagent` translation onto `runningBackgroundSubagents` so
+`AgentSurfaceState` no longer names the wire format; held one `JSONDecoder` on `AgentHookEnvelope`;
+un-stored `Ghostty.SurfaceView.worktreeId`, whose one reader had the pane's `key` in scope, so the
+libghostty wrapper carries no App concept again; made `AgentHookInstaller`'s three `home` defaults
+required and corrected the three doc comments that described call sites and isolation the code does
+not have; folded `WorktreeRow`'s three hand-written dots into one `ActivityDot`; and lifted the
+duplicated `waitFor` and short-`/tmp`-home fixtures into `TestHelpers` (`@MainActor`, or every
+closure a main-actor suite passes becomes a value sent across an actor boundary).
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 742 tests, with 0 failures
+(0 unexpected) in 111.587 seconds`, then `==> CI passed.` One fewer than C7's 743: the deleted test
+is `testRetiringAWorktreeDropsEveryOneOfItsSurfaces`, which pinned a door no shipped path reaches.
+`git status --porcelain` showed the ten modified files and nothing else — no untracked files and no
+`default.profraw`.
+
 ## Changelog
 
 Operator changes made after the hands-on check. These are decisions, not plan tasks; no later stage

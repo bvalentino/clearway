@@ -33,9 +33,12 @@ struct AgentHookEvent: Decodable, Equatable {
 
     /// The subagents a `Stop` reports as still going. An agent that carries no such field — every
     /// event but `Stop`, and any agent that has no background work — reports none, which is what
-    /// makes the absence of the field and an empty list the same answer.
-    var runningBackgroundSubagents: [BackgroundTask] {
-        (backgroundTasks ?? []).filter { $0.type == "subagent" && $0.status == "running" }
+    /// makes the absence of the field and an empty list the same answer. Translated here rather
+    /// than by the caller, so the payload's own field names stop at this type.
+    var runningBackgroundSubagents: [AgentSubagent] {
+        (backgroundTasks ?? [])
+            .filter { $0.type == "subagent" && $0.status == "running" }
+            .map { AgentSubagent(id: $0.id, type: $0.agentType, description: $0.description) }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -55,6 +58,10 @@ struct AgentHookEnvelope: Equatable {
     let worktreeId: String
     let event: AgentHookEvent
 
+    /// Held rather than built per call: `parse` runs on every hook invocation, which is twice per
+    /// tool call for the life of the app, and the decoder carries no per-call state.
+    private static let decoder = JSONDecoder()
+
     /// Takes the two preamble lines off the front and decodes everything after them as one JSON
     /// object. The split is on the **first two** newlines only, never on every newline: a
     /// pretty-printed body is as valid as a compact one and must survive intact.
@@ -62,7 +69,7 @@ struct AgentHookEnvelope: Equatable {
         guard let (surfaceId, afterSurface) = takeLine(data),
               let (worktreeId, body) = takeLine(afterSurface),
               !surfaceId.isEmpty, !worktreeId.isEmpty,
-              let event = try? JSONDecoder().decode(AgentHookEvent.self, from: Data(body))
+              let event = try? decoder.decode(AgentHookEvent.self, from: Data(body))
         else { return nil }
         return AgentHookEnvelope(surfaceId: surfaceId, worktreeId: worktreeId, event: event)
     }
