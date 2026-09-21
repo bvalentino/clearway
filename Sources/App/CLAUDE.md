@@ -326,10 +326,10 @@
   another Clearway is listening, so neither the unlink nor the bind happens, and this instance
   publishes `.ownedByAnotherInstance` and runs without hook events until that one quits. Every
   errno falls through to the unlink and the bind, which is what keeps a crash from leaving an inode
-  that fails every later launch with `EADDRINUSE` so no dot ever lights again. `stop()` gates its
-  own unlink on the same fact — it removes the socket only when this instance bound it, because the
-  two unlinks are one invariant and an ungated `stop()` takes the live instance's socket by the
-  other door.
+  that fails every later launch with `EADDRINUSE` so no dot ever lights again. **The unlink that
+  undoes the bind belongs to `HookSocketListener`'s own `deinit`**, so only the instance that bound
+  the path can remove it and turning the toggle off is `listener = nil` and nothing else — a
+  `stop()` that unlinked on its own took the live instance's socket by the other door.
   **The forwarder is `/usr/bin/nc -U -w 1`, absolute, and never carries `-N`.** macOS reads `-N` as
   a probe count, not OpenBSD's shutdown flag, so a script using it fails on every hook with no
   diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to

@@ -83,7 +83,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// it, so the unlink still runs and a crash costs no dot until the next reboot.
     func testASocketInodeLeftByADeadInstanceIsStillRebound() async throws {
         try FileManager.default.createDirectory(atPath: paths.clearwayDir, withIntermediateDirectories: true)
-        bindAndAbandon(paths.socketPath)
+        try bindAndAbandon(paths.socketPath)
 
         monitor.setEnabled(true)
 
@@ -172,11 +172,11 @@ final class AgentActivityMonitorTests: XCTestCase {
         }
     }
 
-    /// The discriminating case for `stop()`'s ordering: the `unlink` runs after the listener is
-    /// released and on the main actor both times, so a disable immediately followed by an enable
-    /// cannot take away the socket the new listener has just bound. Get it wrong — unlink first, or
-    /// from the cancel handler — and the toggle keeps reading on, the hooks stay installed, and
-    /// nothing arrives again until the app is relaunched.
+    /// The discriminating case for where the `unlink` lives: in the listener's `deinit`, after the
+    /// cancel and synchronously on the main actor at `listener = nil`, so a disable immediately
+    /// followed by an enable cannot take away the socket the new listener has just bound. Get it
+    /// wrong — unlink first, or from the cancel handler — and the toggle keeps reading on, the
+    /// hooks stay installed, and nothing arrives again until the app is relaunched.
     func testTheFeedSurvivesADisableAndReEnable() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
@@ -247,20 +247,13 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// `bind` + `listen` on a descriptor closed without unlinking: what a killed instance leaves
     /// behind. A regular file written at the path is not the same thing — it answers `ENOTSOCK`,
     /// while this answers `ECONNREFUSED`.
-    private func bindAndAbandon(_ socketPath: String) {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: Array(socketPath.utf8)) }
-
+    private func bindAndAbandon(_ socketPath: String) throws {
+        let address = try XCTUnwrap(HookSocketListener.unixAddress(for: socketPath))
         // Qualified: `XCTestCase` inherits `NSObject.bind(_:to:withKeyPath:options:)`, which wins
         // the unqualified name inside a test case.
         let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         XCTAssertGreaterThanOrEqual(descriptor, 0)
-        let bound = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
+        let bound = HookSocketListener.withUnixAddress(address) { Darwin.bind(descriptor, $0, $1) }
         XCTAssertEqual(bound, 0, "the fixture must leave a real socket inode behind")
         XCTAssertEqual(Darwin.listen(descriptor, 64), 0)
         Darwin.close(descriptor)

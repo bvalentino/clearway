@@ -325,3 +325,21 @@ the transport sentence. It is a rule of its own now, not a footnote to the trans
 `git diff --stat` before this log was appended: `Sources/App/CLAUDE.md` alone, 9 insertions,
 2 deletions. `git status --porcelain`: that one file and nothing else — no `default.profraw`, no
 untracked files.
+
+### Simplify
+
+The unlink moved from `stop()` into `HookSocketListener.deinit` beside the source cancel, so holding
+the listener *is* the "this instance bound it" invariant and the `socketState == .listening` gate,
+plus the flag it fed, are gone — the RAII shape the root `CLAUDE.md` already prescribes for every
+other resource here, and `socketState` reverts to the pure display value D7 describes. The
+empty-payload guard moved from the monitor's parse callback into `acceptPending`, where a hang-up is
+socket-layer knowledge rather than a malformed event. `sockaddr_un` construction and the
+`withMemoryRebound` dance were spelled three times (bind, connect, test fixture) and collapse into
+`unixAddress(for:)` / `withUnixAddress(_:_:)`; the test fixture had silently dropped production's
+`sun_path` length guard, so a longer temp prefix would have trapped the test process rather than
+failing it. Four comments restating the same invariant were cut to one apiece, and
+`Sources/App/CLAUDE.md`'s two-unlinks paragraph now names the single owner.
+
+Skipped: hoisting the probe out of `listeningDescriptor` into `start()` (D5 settles it there,
+adjacent to the unlink it guards) and dropping `@Published` from `socketState` (D7 settles it, and
+the companion Settings task reads it). Behavior is unchanged throughout.

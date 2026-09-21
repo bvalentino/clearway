@@ -66,8 +66,6 @@ final class AgentActivityMonitor: ObservableObject {
         // only on a difference, so a second Clearway is a no-op here rather than a fight.
         AgentHookInstaller.install(home: home)
         let outcome = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
-            // A payload of nothing is another instance's liveness probe hanging up, never an event.
-            guard !payload.isEmpty else { return }
             // The forwarder sends only once both ids are set, so a payload that does not parse is
             // always something wrong — a truncated read, or a field an agent has renamed. Nothing
             // here has a clock, so every dropped event is permanent: a surface mid-tool-call keeps
@@ -91,14 +89,10 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     private func stop() {
-        // The same guard the listener applies before binding: an instance that found the path owned
-        // never bound it, and unlinking it here would take the live instance's socket by the other
-        // door.
-        let bound = socketState == .listening
+        // The whole teardown: the listener's `deinit` cancels the source and unlinks the path it
+        // bound. An instance that found the path owned holds no listener, so nothing here can take
+        // the live instance's socket.
         listener = nil
-        // After the cancel, and on the main actor both times, so a disable immediately followed by
-        // an enable cannot unlink the socket the new listener just bound.
-        if bound { unlink(paths.socketPath) }
         socketState = .off
         store = AgentActivityStore()
         publish()
@@ -141,9 +135,9 @@ enum HookSocketOutcome {
     case unavailable
 }
 
-/// The listening socket, held so that releasing it tears the source down: the cancel handler closes
-/// the descriptor, and a nonisolated `deinit` that only releases a holder reads nothing isolated.
-/// `ScheduledWork` is the precedent.
+/// The listening socket, held so that releasing it is the whole teardown: the cancel handler closes
+/// the descriptor, the `deinit` unlinks the path, and a nonisolated `deinit` that touches only its
+/// own stored values reads nothing isolated. `ScheduledWork` is the precedent.
 ///
 /// Everything below is `nonisolated static` on purpose. `setEventHandler` and `setCancelHandler`
 /// take a `@convention(block)` closure, so a literal written inside an actor-isolated method carries
@@ -152,13 +146,21 @@ enum HookSocketOutcome {
 /// a plain function-typed parameter the compiler checks statically instead.
 final class HookSocketListener {
     private let source: DispatchSourceRead
+    private let socketPath: String
 
-    private init(source: DispatchSourceRead) {
+    private init(source: DispatchSourceRead, socketPath: String) {
         self.source = source
+        self.socketPath = socketPath
     }
 
+    /// The unlink lives here because binding is what earns it: an instance that found the path owned
+    /// builds no listener, so it cannot remove a socket it never bound. It runs synchronously
+    /// wherever the last reference is dropped — on the main actor, in `stop()` — and after the
+    /// cancel, so a disable immediately followed by an enable cannot unlink the socket the new
+    /// listener has just bound.
     deinit {
         source.cancel()
+        unlink(socketPath)
     }
 
     /// Its own serial queue, never a global one: a connection is read to EOF on it, and parking a
@@ -181,11 +183,10 @@ final class HookSocketListener {
         source.setEventHandler { acceptPending(descriptor, onPayload) }
         source.setCancelHandler { close(descriptor) }
         source.resume()
-        return .listening(HookSocketListener(source: source))
+        return .listening(HookSocketListener(source: source, socketPath: socketPath))
     }
 
-    /// The three states the path can leave this in. `HookSocketOutcome` cannot serve: there is no
-    /// listener yet, only a descriptor.
+    /// `HookSocketOutcome` cannot serve here: there is no listener yet, only a descriptor.
     private enum DescriptorOutcome {
         case open(Int32)
         case ownedByAnotherInstance
@@ -193,18 +194,13 @@ final class HookSocketListener {
     }
 
     private nonisolated static func listeningDescriptor(at socketPath: String) -> DescriptorOutcome {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(socketPath.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+        guard let address = unixAddress(for: socketPath) else {
             Ghostty.logger.error("\(socketPath, privacy: .public) does not fit a Unix socket address.")
             return .unavailable
         }
-        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: pathBytes) }
 
-        // The guard on the unlink below. A live owner's surfaces are the ones carrying the ids that
-        // match its socket, so its events are the ones that mean anything: this instance takes
-        // nothing and runs without hook events until that one quits.
+        // Refused rather than taken over: a live owner's surfaces carry the ids that match its
+        // socket, so its events are the ones that mean anything.
         guard !isAnswering(at: address) else {
             Ghostty.logger.warning("Another Clearway instance is listening at \(socketPath, privacy: .public); this one runs without hook events.")
             return .ownedByAnotherInstance
@@ -218,11 +214,7 @@ final class HookSocketListener {
         // A process that died without closing leaves the inode behind, and `bind` refuses an address
         // that already exists — so every launch after a crash would listen on nothing.
         unlink(socketPath)
-        let bound = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
+        let bound = withUnixAddress(address) { bind(descriptor, $0, $1) }
         // Non-blocking, because the accept loop below drains until there is nothing left to take.
         guard bound == 0,
               listen(descriptor, 64) == 0,
@@ -233,6 +225,31 @@ final class HookSocketListener {
             return .unavailable
         }
         return .open(descriptor)
+    }
+
+    /// The address for `socketPath`, or nil when it does not fit `sun_path` — `copyBytes` traps on
+    /// an overflow rather than truncating. Internal so the fixture standing in for a killed
+    /// instance binds through the same guard instead of a copy of it.
+    nonisolated static func unixAddress(for socketPath: String) -> sockaddr_un? {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = Array(socketPath.utf8)
+        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return nil }
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: pathBytes) }
+        return address
+    }
+
+    /// The address rebound to the `sockaddr` and length every socket call takes.
+    nonisolated static func withUnixAddress<Answer>(
+        _ address: sockaddr_un,
+        _ body: (UnsafePointer<sockaddr>, socklen_t) -> Answer
+    ) -> Answer {
+        var target = address
+        return withUnsafePointer(to: &target) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                body($0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
     }
 
     /// One `connect(2)` on a throwaway descriptor, the whole liveness test. **Only a return of 0
@@ -252,13 +269,7 @@ final class HookSocketListener {
         let probe = socket(AF_UNIX, SOCK_STREAM, 0)
         guard probe >= 0 else { return false }
         defer { close(probe) }
-        var target = address
-        let connected = withUnsafePointer(to: &target) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(probe, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        return connected == 0
+        return withUnixAddress(address) { connect(probe, $0, $1) } == 0
     }
 
     /// Drains every pending connection: a read source coalesces, so one event can stand for several
@@ -267,7 +278,11 @@ final class HookSocketListener {
         while true {
             let connection = accept(descriptor, nil, nil)
             guard connection >= 0 else { return }
-            onPayload(payload(from: connection))
+            let received = payload(from: connection)
+            // A connection that closes with nothing written is a hang-up — another instance's
+            // liveness probe, or an `nc -w 1` that gave up — and is not a message, so it never
+            // reaches the callback to be reported as a payload that did not parse.
+            if !received.isEmpty { onPayload(received) }
             close(connection)
         }
     }
