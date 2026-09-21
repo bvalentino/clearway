@@ -115,14 +115,6 @@
   enabled flag unreliably, and a menu first built with nothing selected kept its commands greyed
   out after a task was selected, while the unconditional editor door beside them stayed live.
   Changing the item set changes the content's structural identity, which rebuilds the menu.
-  The terminal half of that gate is `readiness` and not `ghosttyApp.app`: `readiness` is
-  `@Published`, while `app` is a computed property over `appHandle` with no
-  `@Published` change to re-evaluate against. `app` stays the guard inside `plan`, where the
-  launch actually needs the pointer.
-  That is also why the toolbar control carries **no `.disabled`**: it would take the chevron with
-  it and put the editor out of reach, so the unstartable case is guarded inside the primary
-  action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
-  control in the app.
   That same retention forbids an item from **capturing** a `WorkTask`: the closures built with the
   menu outlive the selection they were built under, so a captured task made the toolbar dropdown
   plan whatever had been selected when the menu was first built — replacing *that* task's terminal,
@@ -132,6 +124,14 @@
   `WorkTaskCoordinator.startNowTarget(row:selection:)`, which falls back to the live `selectedTask`.
   That rule is unit-tested; the laziness at the call site is not, and no test in this project can
   reach it, so this note and the `startNowItems` docstring are its only guards.
+  The terminal half of that gate is `readiness` and not `ghosttyApp.app`: `readiness` is
+  `@Published`, while `app` is a computed property over `appHandle` with no
+  `@Published` change to re-evaluate against. `app` stays the guard inside `plan`, where the
+  launch actually needs the pointer.
+  That is also why the toolbar control carries **no `.disabled`**: it would take the chevron with
+  it and put the editor out of reach, so the unstartable case is guarded inside the primary
+  action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
+  control in the app.
   On the toolbar it is a split button in its **own** `ToolbarGroupBreak` capsule, between the `+`
   and the copy/`…` group; in the row context menu it cannot be a split button, because
   an AppKit menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the
