@@ -888,7 +888,11 @@ struct ContentView: View {
                         if asideVisible {
                             Divider()
                             VStack(spacing: 0) {
-                                sidePanelTabStrip
+                                SidePanelTabStrip(
+                                    selection: $sidePanelTab,
+                                    tabs: availableSidePanelTabs,
+                                    effectiveTab: effectiveSidePanelTab
+                                )
 
                                 switch effectiveSidePanelTab {
                                 case .task:
@@ -948,64 +952,5 @@ struct ContentView: View {
 
     @ViewBuilder private func detailPlaceholder(_ text: String) -> some View {
         Text(text).font(.title3).foregroundStyle(.tertiary).frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Side Panel Tab Strip
-
-    @ViewBuilder
-    private var sidePanelTabStrip: some View {
-        if #available(macOS 26.0, *) {
-            HStack(spacing: 2) {
-                ForEach(availableSidePanelTabs, id: \.self) { tab in
-                    sidePanelTabButton(for: tab)
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Side panel tab")
-            .padding(4)
-            .glassEffect(in: Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-        } else {
-            Picker(selection: $sidePanelTab) {
-                ForEach(availableSidePanelTabs, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            } label: {
-                Text("Side panel tab")
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-        }
-    }
-
-    @available(macOS 26.0, *)
-    @ViewBuilder
-    private func sidePanelTabButton(for tab: SidePanelTab) -> some View {
-        let isSelected = effectiveSidePanelTab == tab
-        Button {
-            sidePanelTab = tab
-        } label: {
-            Text(tab.rawValue)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
-                .background {
-                    if isSelected {
-                        Capsule().fill(Color.accentColor)
-                    }
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 }
