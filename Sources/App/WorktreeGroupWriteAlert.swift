@@ -23,8 +23,8 @@ struct WorktreeGroupWriteAlert: Sendable, Equatable {
     }
 
     /// Promises no revert. A multi-member rename where one write lands and another fails leaves the
-    /// landed member naming a group the registry does not list, and it renders ungrouped on the next
-    /// reload — which only runs when the worktree list changes.
+    /// landed member naming a group the registry does not list, and it renders ungrouped as soon as
+    /// the refused write's reconcile publishes — no worktree-list change and no relaunch.
     var informativeText: String {
         guard let path else {
             return "Clearway couldn't write the group list. The sidebar will show what git holds."

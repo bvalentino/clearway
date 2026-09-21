@@ -17,6 +17,7 @@
 		12AD5E5827F35FCBB3875D86 /* WorkTaskManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */; };
 		151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */; };
 		16632D26B22A8BC9CE983236 /* WorkTaskRelocationSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B249C5162F943C6A161511 /* WorkTaskRelocationSafetyTests.swift */; };
+		16A7A1BAD58CE8A338C8D4C1 /* WorktreeGroupManager+Ordering.swift in Sources */ = {isa = PBXBuildFile; fileRef = B791FC3AEB1374564858A072 /* WorktreeGroupManager+Ordering.swift */; };
 		1727A54CCA2B65EC1F18B9C5 /* Todo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA925629DB815AC555414676 /* Todo.swift */; };
 		18557154406E93AAE978B5BE /* PanelCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6195C902FB10CFF3CB37D1BB /* PanelCommands.swift */; };
 		1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */; };
@@ -277,6 +278,7 @@
 		AF1D418C8459B8CD33885CCF /* WorktreeDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeDraft.swift; sourceTree = "<group>"; };
 		AF845FCB581E1B628B736556 /* MarkdownSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighter.swift; sourceTree = "<group>"; };
 		B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathValidation.swift; sourceTree = "<group>"; };
+		B791FC3AEB1374564858A072 /* WorktreeGroupManager+Ordering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeGroupManager+Ordering.swift"; sourceTree = "<group>"; };
 		B81142617650A73C69973357 /* SidebarSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarSheets.swift; sourceTree = "<group>"; };
 		B8E7C6A11E4EBE142122DE83 /* Ghostty.SurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.SurfaceView.swift; sourceTree = "<group>"; };
 		BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathResolverTests.swift; sourceTree = "<group>"; };
@@ -498,6 +500,7 @@
 				AF1D418C8459B8CD33885CCF /* WorktreeDraft.swift */,
 				42D5DF54D44C54CC6AD38D22 /* WorktreeGroup.swift */,
 				C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */,
+				B791FC3AEB1374564858A072 /* WorktreeGroupManager+Ordering.swift */,
 				CFBA6D1C018C878BAF4303D3 /* WorktreeGroupWriteAlert.swift */,
 				FB5272D378BC91AF7A25A0E9 /* WorktreeHooks.swift */,
 				391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */,
@@ -888,6 +891,7 @@
 				7FB611690EE586107D9FBB76 /* WorktreeConfigStore.swift in Sources */,
 				3AFCF67BAC9C1A2915C0578A /* WorktreeDraft.swift in Sources */,
 				4C1B01303EA21622302D3B3B /* WorktreeGroup.swift in Sources */,
+				16A7A1BAD58CE8A338C8D4C1 /* WorktreeGroupManager+Ordering.swift in Sources */,
 				151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */,
 				9623D39808FDF3DD6C2B509C /* WorktreeGroupWriteAlert.swift in Sources */,
 				DC8D4F1CE85F602F5BE3B1AC /* WorktreeHooks.swift in Sources */,
