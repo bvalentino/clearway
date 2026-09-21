@@ -406,12 +406,17 @@ struct SidebarView: View {
                     worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
                 }
             } header: {
-                HStack(spacing: SidebarRowMetrics.headerIconSpacing) {
-                    SidebarIcon(systemImage: status.symbol)
-                        .foregroundStyle(status.color)
+                // A row's own `Label` over a row's own icon slot, so the header's two columns are
+                // the rows' rather than numbers of its own. The style is stated because a header
+                // is free to resolve `Label` to another one.
+                Label {
                     Text(status.displayName)
                         .foregroundStyle(.primary)
+                } icon: {
+                    SidebarIcon(systemImage: status.symbol)
+                        .foregroundStyle(status.color)
                 }
+                .labelStyle(.titleAndIcon)
                 .padding(.leading, SidebarRowMetrics.headerLeadingInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)

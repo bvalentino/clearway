@@ -1758,3 +1758,44 @@ typed because `└`'s shape belongs to the font and the sidebar's is proportiona
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.` The count is unchanged, as a glyph-only change
 should leave it.
+
+### C7 — A status section header sits on its rows' two columns
+
+**Reported.** Under Group by → Status the five headers are misaligned against the rows: the header's
+glyph must sit on the `⌘N` badge's column and its label on the row title's column.
+
+**What was measured.** Both operator screenshots, at 2x, with the symbols' own left bearings
+measured off-app in the scratchpad (`NSImage(systemSymbolName:)` rendered to a bitmap, ink bounds
+against the image frame) so an ink position could be turned into a frame position:
+
+| Thing | Ink starts | Its bearing | So its slot/frame starts |
+| --- | --- | --- | --- |
+| Header glyph (`circle` and its four siblings, 11 pt) | 28 px | 2 px | 26 px = 13 pt |
+| Worktree row `⌘N` badge (caption2 monospaced) | 30 px | 0 px | 30 px = 15 pt |
+| Subagent row glyph (`point.3…`, 13 pt) | 33 px | 3 px | 30 px = 15 pt |
+| Header label | 74 px | — | 13 + 18 + 6 = 37 pt |
+| Worktree row title | 83 px | — | 15 + 18 + 8 = 41 pt |
+
+So **both** columns were 4 pt out, not one: the glyph slot by 2 pt and the title by 4 pt. The title
+carried the extra 2 pt because the header hand-set its icon-to-title gap to 6 while a row gets
+`Label`'s own gap. That gap is **8 pt and does not scale with the font** — measured with an
+`ImageRenderer` probe in the scratchpad, a `Label` of two rectangles at 11, 13 and 17 pt, whose
+title ran from x = 52 px against a 36 px icon in all three.
+
+**Decision.** The header is now the same `Label` over the same `SidebarIcon` the rows are built
+from, so it has no icon-to-title gap of its own and the title column follows the glyph column by
+construction; `headerIconSpacing` had no other reader and is deleted. `.labelStyle(.titleAndIcon)`
+is stated on it, since a `Section` header is free to resolve a `Label` to another style and a header
+that dropped its glyph would be a worse defect than the one being fixed. That leaves
+`headerLeadingInset` as the one number, and it goes 4 → 6 pt: the measurement above puts the
+header's raw inset at 15 − 6 = 9 pt against a row's 15 pt. Nothing else moves — the Worktrees header
+and the group headers carry no inset and no icon slot, and neither did before.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarIcon.swift` | `headerIconSpacing` removed; `headerLeadingInset` 4 → 6 with the measurement recorded |
+| `Sources/App/SidebarView.swift` | `statusSection`'s header is a `Label` over a `SidebarIcon` |
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.` Layout carries no test; the count is unchanged, as
+an alignment-only change should leave it.

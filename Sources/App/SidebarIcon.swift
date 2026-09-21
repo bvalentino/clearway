@@ -5,9 +5,11 @@ import SwiftUI
 /// three on one column.
 enum SidebarRowMetrics {
     fileprivate static let iconWidth: CGFloat = 18
-    static let headerIconSpacing: CGFloat = 6
-    /// A status `Section` header is inset less than a list row; this makes up the difference.
-    static let headerLeadingInset: CGFloat = 4
+    /// A status `Section` header is inset 6 pt less than a list row; this makes up the difference.
+    /// Measured, not tuned: on the operator's 2x screenshots a header's glyph inks 2 px inside its
+    /// own slot and a row's 0 px (the `⌘N` badge) or 3 px (a symbol), which puts the header's slot
+    /// at 13 pt and the row's at 15 pt while this constant already stood at 4.
+    static let headerLeadingInset: CGFloat = 6
 }
 
 /// One slot of that column: the `⌘N` / `⌃N` hint while there is one, else the symbol. Leading
