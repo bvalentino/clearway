@@ -123,6 +123,15 @@
   it and put the editor out of reach, so the unstartable case is guarded inside the primary
   action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
   control in the app.
+  That same retention forbids an item from **capturing** a `WorkTask`: the closures built with the
+  menu outlive the selection they were built under, so a captured task made the toolbar dropdown
+  plan whatever had been selected when the menu was first built — replacing *that* task's terminal,
+  killing the agent running in it, and snapping the selection back to it. `startNowItems(for row:)`
+  takes the row it is built for instead — `nil` from the toolbar, the row's own task from a context
+  menu — and every item resolves its target **inside** its action through
+  `WorkTaskCoordinator.startNowTarget(row:selection:)`, which falls back to the live `selectedTask`.
+  That rule is unit-tested; the laziness at the call site is not, and no test in this project can
+  reach it, so this note and the `startNowItems` docstring are its only guards.
   On the toolbar it is a split button in its **own** `ToolbarGroupBreak` capsule, between the `+`
   and the copy/`…` group; in the row context menu it cannot be a split button, because
   an AppKit menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the

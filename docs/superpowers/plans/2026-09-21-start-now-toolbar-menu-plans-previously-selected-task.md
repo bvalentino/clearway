@@ -278,3 +278,25 @@ times.
 `swiftlint lint --quiet` → no output, exit 0. `git status --porcelain` → `M
 Sources/App/WorkTaskListView.swift` and nothing else; no `default.profraw`, since no Debug launch
 happened outside the test host.
+
+### T3: Record the stale-capture rule in the per-file notes
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | Nine lines added to the Start Now passage (now lines 126-134), after the `.disabled` sentences and before the split-button/context-menu sentence. They state that the same AppKit retention forbids an item from capturing a `WorkTask`, name `startNowItems(for row:)` and `WorkTaskCoordinator.startNowTarget(row:selection:)`, record the symptom (the toolbar dropdown planned the task selected when the menu was first built, replacing its terminal, killing the agent in it, and snapping the selection back), and state that the call-site laziness is not test-covered. |
+| Everything else | Untouched. `git diff --stat` → one file, 9 insertions, 0 deletions. |
+
+**Evidence.** Documentation only; there is nothing to watch fail. Criterion 3 is checked by
+`grep -n "startNowItems" Sources/App/CLAUDE.md` → lines 108, 129, 134 and 139; the only mention
+carrying a signature is line 129's `startNowItems(for row:)`, matching T2. No existing sentence was
+deleted or reworded — the diff is a pure insertion.
+
+**Deviations.** The insertion point is the end of the `.disabled` sentences rather than immediately
+after the omission-gate sentences the plan pointed at. Splicing it there would have stranded the
+following "That is also why the toolbar control carries **no `.disabled`**", whose antecedent is the
+unreliable enabled flag two sentences above it. The passage is one paragraph either way, so the
+note sits in the place the plan asked for without breaking a referent.
+
+**Gate.** Markdown-only change, and T2's `./scripts/ci.sh` run was green with no Swift file touched
+since, so the plan's T3 verification does not call for a re-run. `git status --porcelain` →
+`M Sources/App/CLAUDE.md` and nothing else; no `default.profraw`, no untracked files.
