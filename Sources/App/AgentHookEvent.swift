@@ -1,20 +1,46 @@
 import Foundation
 
-/// The four fields Clearway reads out of an agent's hook payload. Both Claude Code and Codex spell
+/// The five fields Clearway reads out of an agent's hook payload. Both Claude Code and Codex spell
 /// them identically, so nothing downstream needs to know which agent sent an event. Every other
-/// field in the payload is ignored: the `CodingKeys` name only these four, and `Decodable` drops the
+/// field in the payload is ignored: the `CodingKeys` name only these five, and `Decodable` drops the
 /// rest.
 struct AgentHookEvent: Decodable, Equatable {
     let hookEventName: String
     let agentId: String?
     let agentType: String?
     let toolName: String?
+    let backgroundTasks: [BackgroundTask]?
+
+    /// One entry of `Stop`'s `background_tasks`: the work the agent left running when it finished
+    /// its turn. `type` is documented as `"subagent"` today and `status` as `running`, `completed`
+    /// or `failed`.
+    struct BackgroundTask: Decodable, Equatable {
+        let id: String
+        let type: String?
+        let status: String?
+        let agentType: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case id
+            case type
+            case status
+            case agentType = "agent_type"
+        }
+    }
+
+    /// The subagents a `Stop` reports as still going. An agent that carries no such field — every
+    /// event but `Stop`, and any agent that has no background work — reports none, which is what
+    /// makes the absence of the field and an empty list the same answer.
+    var runningBackgroundSubagents: [BackgroundTask] {
+        (backgroundTasks ?? []).filter { $0.type == "subagent" && $0.status == "running" }
+    }
 
     private enum CodingKeys: String, CodingKey {
         case hookEventName = "hook_event_name"
         case agentId = "agent_id"
         case agentType = "agent_type"
         case toolName = "tool_name"
+        case backgroundTasks = "background_tasks"
     }
 }
 

@@ -470,6 +470,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     means that agent was never run here. Codex additionally does nothing until the user runs `/hooks`
     to trust the entries, which no API can pre-empt, so the Settings toggle carries one line naming
     that step — the deliberate exception to the no-helper-text rule above.
+    **`Stop` reduces the subagent roster to the background subagents it names, and never empties
+    it.** A background `Agent` launch is exactly the case where the lead finishes its turn — and so
+    fires `Stop` — while its subagents are still working, so the blind `removeAll` this replaced took
+    both rows away a second after they appeared. `Stop` carries `background_tasks`, each entry an
+    `id`, a `status` and its `agent_type`; keeping the `running` ones is still the sweep a missed
+    `SubagentStop` needs, and a `Stop` that names none clears the roster as before. Every event that
+    carries an `agent_id` carries its `agent_type` beside it — `SubagentStart`/`Stop` and a
+    subagent's own `PreToolUse` alike — so a row first seen through its tool traffic is named rather
+    than left on `SubagentRow`'s fallback label.
     **Nothing in the pipeline has a clock.** No timer, no expiry, no mtime heuristic: a surface
     leaves a state only because an event said so. A `SIGKILL`ed session therefore pins a dot until
     its next `SessionStart`, which is accepted — the expiring heuristic this replaced guessed wrong

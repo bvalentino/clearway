@@ -29,12 +29,37 @@ struct AgentSurfaceState {
     }
 
     /// Upserts, because a `PreToolUse` whose `SubagentStart` was missed still names a real subagent.
-    fileprivate mutating func startTool(_ toolName: String?, agentId: String?) {
+    /// Every event carrying an `agent_id` carries its `agent_type` beside it, so such a row is named
+    /// rather than left on `SubagentRow`'s fallback label.
+    fileprivate mutating func startTool(_ toolName: String?, agentId: String?, agentType: String?) {
         guard let agentId else {
             leadToolName = toolName
             return
         }
-        subagents[agentId, default: AgentSubagent(id: agentId)].toolName = toolName
+        note(agentId: agentId, type: agentType)
+        subagents[agentId]?.toolName = toolName
+    }
+
+    /// A type the event did not carry never overwrites one already known: only `Stop`'s roster
+    /// carries every live subagent's type, and the tool events carry it only for their own.
+    fileprivate mutating func note(agentId: String, type: String?) {
+        var subagent = subagents[agentId] ?? AgentSubagent(id: agentId)
+        subagent.type = type ?? subagent.type
+        subagents[agentId] = subagent
+    }
+
+    /// `Stop` fires while background subagents are still running and names the ones that are, so the
+    /// roster is reduced to that list rather than emptied. Reducing keeps the sweep a blind
+    /// `removeAll` was there for — a missed `SubagentStop` still cannot pin a row — while a `Stop`
+    /// that names none clears the roster exactly as before.
+    fileprivate mutating func keepOnly(_ running: [AgentHookEvent.BackgroundTask]) {
+        subagents = running.reduce(into: [:]) { roster, task in
+            roster[task.id] = AgentSubagent(
+                id: task.id,
+                type: task.agentType ?? subagents[task.id]?.type,
+                toolName: subagents[task.id]?.toolName
+            )
+        }
     }
 
     /// Clears the tool the event belongs to and no other: a subagent finishing must not blank the
@@ -75,12 +100,12 @@ struct AgentActivityStore {
         case "PreToolUse":
             update(envelope) { state in
                 state.phase = .working
-                state.startTool(event.toolName, agentId: event.agentId)
+                state.startTool(event.toolName, agentId: event.agentId, agentType: event.agentType)
             }
         case "PermissionRequest":
             update(envelope) { state in
                 state.phase = .waiting
-                state.startTool(event.toolName, agentId: event.agentId)
+                state.startTool(event.toolName, agentId: event.agentId, agentType: event.agentType)
             }
         case "PostToolUse":
             update(envelope) { state in
@@ -90,7 +115,7 @@ struct AgentActivityStore {
         case "SubagentStart":
             guard let agentId = event.agentId else { return }
             update(envelope) { state in
-                state.subagents[agentId, default: AgentSubagent(id: agentId)].type = event.agentType
+                state.note(agentId: agentId, type: event.agentType)
             }
         case "SubagentStop":
             guard let agentId = event.agentId else { return }
@@ -98,11 +123,10 @@ struct AgentActivityStore {
                 state.subagents.removeValue(forKey: agentId)
             }
         case "Stop":
-            // The roster goes too: a missed `SubagentStop` would otherwise pin a row until relaunch.
             update(envelope) { state in
                 state.phase = .idle
                 state.leadToolName = nil
-                state.subagents.removeAll()
+                state.keepOnly(event.runningBackgroundSubagents)
             }
         default:
             break

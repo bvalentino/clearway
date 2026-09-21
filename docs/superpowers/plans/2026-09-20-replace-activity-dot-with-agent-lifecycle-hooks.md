@@ -1548,3 +1548,71 @@ column, stays and is now what aligns a status section with its rows.
 **Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 739 tests, with 0 failures
 (0 unexpected)`, then `==> CI passed.` Layout carries no test; the count is unchanged, as a
 padding-only change should leave it.
+
+### C2 — `Stop` no longer takes the background subagents' rows away
+
+**Reported.** A Claude Code session in a Clearway tab launched two background subagents through the
+`Agent` tool — Claude Code's own status line listed them as `general-purpose  Count Swift files
+slowly` and `general-purpose  Count test files slowly`. The sidebar showed **one** child row,
+intermittently, reading "Subagent" over the tool "Bash".
+
+**Captured, not guessed.** A scratchpad-only capture — a hook script that appends its stdin to a
+file, installed through `claude --settings <scratchpad file>`, nothing in the repo and the installed
+forwarder untouched — recorded the real payloads of a session that launches two background agents
+(Claude Code 2.1.278). The sequence, fields only:
+
+```
+SubagentStart  agent_id=a42b0698…  agent_type=general-purpose
+SubagentStart  agent_id=aa713d00…  agent_type=general-purpose
+Stop           background_tasks=[{id:a42b0698…,type:subagent,status:running,agent_type:general-purpose},
+                                 {id:aa713d00…,type:subagent,status:running,agent_type:general-purpose}]
+PreToolUse     agent_id=a42b0698…  agent_type=general-purpose  tool_name=Bash
+SubagentStop   agent_id=a42b0698…  agent_type=general-purpose
+```
+
+**Cause.** Both fields the spec assumed are there, on every event that names a subagent. What is not
+as assumed is `Stop`: it fires **while background subagents are still running** — that is what a
+background launch means — and `AgentActivityStore` answered it with `subagents.removeAll()`. Both
+rows went as soon as the lead finished its turn, a second after they appeared. What the operator
+then saw was the roster re-created by a subagent's own `PreToolUse`: one row, because only one agent
+was between `PreToolUse` and `PostToolUse` at a time, and unnamed, because `startTool` recorded the
+tool and dropped the `agent_type` beside it, leaving `SubagentRow` on its "Subagent" fallback.
+
+**Decision.** `Stop` carries `background_tasks`, documented as `id` / `type` / `status` /
+`description` / `agent_type`, so the sweep is kept and made exact: **the roster is reduced to the
+entries it reports as a running subagent**, carrying over each row's in-flight tool. A missed
+`SubagentStop` still cannot pin a row, and a `Stop` that names none — every agent with no background
+work, Codex included, and any payload without the field — clears the roster exactly as before.
+Beside it, `startTool` now records the `agent_type` its event carries, so a row first seen through
+its tool traffic is named too. `description` is on the wire and is deliberately not rendered: the
+rows name the agent type and its tool, which is what was asked for.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookEvent.swift` | `background_tasks` decoded as `BackgroundTask` values; `runningBackgroundSubagents` filters to `type == "subagent"`, `status == "running"` |
+| `Sources/App/AgentActivityStore.swift` | `Stop` calls `keepOnly(…)` instead of `removeAll()`; `startTool`/`SubagentStart` share `note(agentId:type:)` |
+| `Tests/AgentActivityStoreTests.swift` | three tests replaying the captured payloads verbatim; `testStopClearsEveryOpenSubagent` renamed for the branch it now pins |
+| `CLAUDE.md` | the `Stop` rule and the `agent_type`-on-every-event rule |
+
+**Evidence.** The three new tests, run against the unfixed store (`-only-testing:ClearwayTests/
+AgentActivityStoreTests`, sources reverted to `HEAD` from a scratchpad copy and restored after):
+
+```
+testBackgroundSubagentsSurviveTheLeadsStop: XCTAssertEqual failed:
+  ("[]") is not equal to ("["a42b06983b46906f7", "aa713d00cbb27a6be"]")
+testASubagentStopDropsOneRowAndTheNextStopKeepsTheOther: XCTAssertEqual failed:
+  ("[]") is not equal to ("["aa713d00cbb27a6be"]")
+testASubagentFirstSeenThroughItsToolTrafficIsStillNamed: XCTAssertEqual failed:
+  ("[nil]") is not equal to ("[Optional("general-purpose")]")
+Executed 20 tests, with 6 failures (0 unexpected)
+```
+
+**The `SessionStart:startup` hook error is not Clearway's.** The forwarder writes nothing to stdout:
+its `printf` goes into the pipe feeding `nc`, whose own output is `>/dev/null 2>&1`, and it
+`exit 0`s. Run by hand with a live socket it produced 0 bytes on stdout, 0 on stderr, exit 0. The
+offending hook is the `addy-agent-skills` plugin's `hooks/session-start.sh`, which concatenates a
+skill's raw Markdown into a JSON string; run with a sample `SessionStart` payload its output fails
+`json.loads` with `Invalid control character at: line 3 column 115`. Left alone.
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 742 tests, with 0 failures
+(0 unexpected)`, then `==> CI passed.`

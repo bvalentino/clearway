@@ -85,8 +85,9 @@ final class AgentActivityStoreTests: XCTestCase {
         XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
     }
 
-    /// A missed `SubagentStop` must not pin a row. `Stop` is the sweep that guarantees it.
-    func testStopClearsEveryOpenSubagent() {
+    /// A missed `SubagentStop` must not pin a row. A `Stop` that reports no background work left is
+    /// the sweep that guarantees it.
+    func testStopClearsEveryOpenSubagentItDoesNotReportAsRunning() {
         apply("UserPromptSubmit")
         apply("SubagentStart", agentId: "sub-1", agentType: "Explore")
         apply("SubagentStart", agentId: "sub-2", agentType: "Plan")
@@ -195,7 +196,106 @@ final class AgentActivityStoreTests: XCTestCase {
         XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
     }
 
+    // MARK: - Background subagents, from captured Claude Code payloads
+
+    /// Two background subagents, replayed from the payloads a Claude Code 2.1.278 session actually
+    /// sent. The lead answers — and so `Stop`s — while both are still running, which is what a
+    /// background launch means; the payload names them, so both rows survive it, and the `Bash` one
+    /// of them runs lands on its own row without taking the other's away.
+    func testBackgroundSubagentsSurviveTheLeadsStop() {
+        applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
+        applyRaw(subagentStart(agentId: "aa713d00cbb27a6be"))
+
+        applyRaw(stop(running: ["a42b06983b46906f7", "aa713d00cbb27a6be"]))
+
+        XCTAssertEqual(
+            store.subagents(forWorktree: worktreeOne).map(\.id),
+            ["a42b06983b46906f7", "aa713d00cbb27a6be"]
+        )
+        XCTAssertEqual(
+            store.subagents(forWorktree: worktreeOne).map(\.type),
+            ["general-purpose", "general-purpose"]
+        )
+        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
+
+        applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
+
+        XCTAssertEqual(
+            store.subagents(forWorktree: worktreeOne).map(\.toolName),
+            ["Bash", nil]
+        )
+        XCTAssertNil(store.leadToolName(forSurface: surfaceA))
+    }
+
+    /// The same run's ending: each `SubagentStop` drops its own row, and the `Stop` that follows
+    /// reports the survivor rather than clearing the roster under it.
+    func testASubagentStopDropsOneRowAndTheNextStopKeepsTheOther() {
+        applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
+        applyRaw(subagentStart(agentId: "aa713d00cbb27a6be"))
+        apply("SubagentStop", agentId: "a42b06983b46906f7")
+
+        applyRaw(stop(running: ["aa713d00cbb27a6be"]))
+
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["aa713d00cbb27a6be"])
+
+        applyRaw(stop(running: []))
+
+        XCTAssertTrue(store.subagents(forWorktree: worktreeOne).isEmpty)
+        XCTAssertEqual(store.phase(forWorktree: worktreeOne), .idle)
+    }
+
+    /// A subagent whose `SubagentStart` Clearway missed — the app launched mid-run — is named by its
+    /// own tool traffic, which carries `agent_type` beside `agent_id`, rather than falling back to
+    /// `SubagentRow`'s "Subagent".
+    func testASubagentFirstSeenThroughItsToolTrafficIsStillNamed() {
+        applyRaw(subagentPreToolUse(agentId: "ac545fc45491c3fde"))
+
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.type), ["general-purpose"])
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Bash"])
+    }
+
     // MARK: - Helpers
+
+    /// The captured payloads, verbatim but for the home-directory paths. Every key the agent sends
+    /// is kept, so the decode is exercised against the real field set rather than a reduction of it.
+    private func subagentStart(agentId: String) -> String {
+        """
+        {"session_id":"a31044a0-d307-4a2c-81e7-6cb3fa82d619","transcript_path":"/tmp/t.jsonl",\
+        "cwd":"/tmp/repo","prompt_id":"0a226038-5dda-43ab-8006-2204dd46ab41",\
+        "agent_id":"\(agentId)","agent_type":"general-purpose","hook_event_name":"SubagentStart"}
+        """
+    }
+
+    private func subagentPreToolUse(agentId: String) -> String {
+        """
+        {"session_id":"a31044a0-d307-4a2c-81e7-6cb3fa82d619","transcript_path":"/tmp/t.jsonl",\
+        "cwd":"/tmp/repo","prompt_id":"87ad6a86-c71a-45f0-8271-bd1c32f2beb3",\
+        "permission_mode":"bypassPermissions","agent_id":"\(agentId)",\
+        "agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Bash",\
+        "tool_input":{"command":"sleep 2 && /bin/ls -1 /tmp | wc -l","description":"Count /tmp"},\
+        "tool_use_id":"toolu_01V9GTw1Lhdm3m6aE75diPCW"}
+        """
+    }
+
+    private func stop(running: [String]) -> String {
+        let tasks = running.map {
+            #"{"id":"\#($0)","type":"subagent","status":"running","description":"Count","agent_type":"general-purpose"}"#
+        }
+        return """
+        {"session_id":"a31044a0-d307-4a2c-81e7-6cb3fa82d619","transcript_path":"/tmp/t.jsonl",\
+        "cwd":"/tmp/repo","prompt_id":"0a226038-5dda-43ab-8006-2204dd46ab41",\
+        "permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"Stop",\
+        "stop_hook_active":false,"last_assistant_message":"Both subagents are running.",\
+        "background_tasks":[\(tasks.joined(separator: ","))]}
+        """
+    }
+
+    private func applyRaw(_ body: String, surface: String = surfaceA, worktree: String = worktreeOne) {
+        guard let envelope = AgentHookEnvelope.parse(Data("\(surface)\n\(worktree)\n\(body)".utf8)) else {
+            return XCTFail("the captured payload did not parse")
+        }
+        store.apply(envelope)
+    }
 
     private func apply(
         _ event: String,
