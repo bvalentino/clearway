@@ -1,7 +1,7 @@
 # Surface agent-hook install and socket failures in Settings
 
 **Date:** 2026-09-21
-**Base:** 6afcc8d5a07022b79dc988c4716ae516460481ad
+**Base:** 15793b243e9bac308296465f2d0e86be7c624dc4 (`Refuse to steal the hook socket from a live Clearway instance (#252)`). Written against `6afcc8d`; rebased onto #252, which landed the live-owner probe independently. Decisions 11, 12 and 16 record what survived that.
 
 Settings → Appearance → Show agent activity reads on whenever the stored preference is on, whatever
 happened when the feature tried to start. A socket that could not be bound, a settings file that
@@ -10,10 +10,12 @@ each logged through `Ghostty.logger` and nowhere else, so the user sees a toggle
 that never light. This change gives `AgentActivityMonitor` one published health value, derived from
 the last enable attempt, and renders its failure line under the toggle beside the existing Codex
 `/hooks` line. The mapping from installer and listener outcomes to that line is a pure function with
-no I/O, tested on its own. One failure the brief names cannot be observed today and is fixed here so
-that it can be: a second Clearway unlinks the live socket before binding it, so it steals the feed
-from the first instance and both report success. The listener now probes for a live owner, leaves it
-alone, and reports it.
+no I/O, tested on its own. One failure the brief names could not be observed when this was
+written: a second Clearway unlinked the live socket before binding it, so it stole the feed from the
+first instance and both reported success. #252 has since shipped the `connect` probe that refuses a
+live owner and the inode-scoped unlink that undoes only this instance's own bind. This change
+reports that probe's outcome to the user, and narrows it so an errno it cannot account for is
+reported rather than authorising the unlink.
 
 ## Decisions
 
@@ -29,11 +31,12 @@ alone, and reports it.
 | 8 | How does `SettingsView` reach the monitor? | As an `@ObservedObject` init parameter beside `settings`, passed in the `Settings` scene (`ClearwayApp.swift:246-249`). Not `.environmentObject`: the `Settings` scene is outside the project `WindowGroup`, and CLAUDE.md pins the monitor as injected on that `WindowGroup` only, so anything else reaching for it in the environment faults. A parameter keeps that statement true. | Spec (CLAUDE.md, `Sources/App/CLAUDE.md:407-410`) |
 | 9 | Does a failed start change what the toggle stores? | **No**, and nothing has to change for that: `agentHooksEnabled`'s `didSet` writes to `UserDefaults` unconditionally (`SettingsManager.swift:84-88`) and `setEnabled` latches `isEnabled` before it calls `start()`, regardless of the outcome (`AgentActivityMonitor.swift:45-53`). Turning it on with a failing bind records on and the next launch retries. This is pinned by a test, not by new code. | Operator (brief) |
 | 10 | Is there a retry affordance? | Nothing new. Toggling off and on is a transition, so `setEnabled` runs `stop()` then `start()` and the health line updates in place — the user who quits the other instance and flips the toggle sees it clear. A "Retry" button would be a second door to the same action. | Spec |
-| 11 | Why does the listener probe for a live owner? | Because the failure the brief calls "another Clearway instance owning the socket" does not exist today: `listeningDescriptor` unlinks the path before binding (`AgentActivityMonitor.swift:160`), so the second instance always wins and the *first* goes deaf with no error anywhere. Both would display "listening", which is the exact lie this change exists to stop. The listener now `connect`s to the path first: connected means a live owner, so it neither unlinks nor binds and reports case (a); `ECONNREFUSED` means a stale inode, so it unlinks and binds as before; `ENOTSOCK`/anything else falls through to the same unlink-then-bind, which fails honestly as case (b). Verified in the scratchpad (Assumption 6). | Operator (confirmed) + Spec (fixes a precondition of the brief) |
-| 12 | Does disabling still unlink the socket path? | Only when this process bound it. `stop()` unlinks unconditionally today (`AgentActivityMonitor.swift:82`), which after Decision 11 would let an instance that never bound destroy the live owner's socket — the retry in Decision 10 would break the instance the user is trying to keep. The unlink is gated on having been listening; the existing ordering (unlink after the listener is released, on the main actor both times) is unchanged. | Operator (confirmed) + Spec |
+| 11 | Why does the listener probe for a live owner? | Because the failure the brief calls "another Clearway instance owning the socket" did not exist at `6afcc8d`: `listeningDescriptor` unlinked the path before binding, so the second instance always won and the *first* went deaf with no error anywhere. Both would display "listening", which is the exact lie this change exists to stop. **#252 landed that probe before this branch merged**, and its mechanism is the one kept: one `connect(2)` on a throwaway descriptor immediately before the unlink, connected meaning a live owner that is neither unlinked nor bound over. What this branch adds on top is the reporting — the outcome reaches `AgentHookHealth` as case (a) instead of only a log line — and the **narrowing** of the answer from a `Bool` to three: `ENOENT`, `ECONNREFUSED` (a stale inode) and `ENOTSOCK` (a regular file or a directory — macOS answers `ENOTSOCK` for both, verified) mean nothing is served there, so it unlinks and binds as #252 does; **any other errno, and a probe descriptor that could not be created, report case (b) without unlinking or binding**. #252 let every errno fall through to the unlink on the grounds that an unknown one would silently disable the feature; that argument stops holding once Settings displays the refusal, and `EACCES` — a socket, or a containing directory, whose mode denies this process — is the errno that otherwise took a live owner's socket away and left both instances displaying "listening". Verified in the scratchpad (Assumption 6). | Operator (confirmed) + Spec (fixes a precondition of the brief) + #252 (the probe itself) |
+| 12 | Does disabling still unlink the socket path? | Only when this process bound it, and **#252 already settled how**: the unlink moved out of `stop()` and into `HookSocketListener`'s own `deinit`, which runs synchronously at `listener = nil`, and it is scoped to the inode `bind` created rather than to the name, so a path another process has since rebound survives this instance's teardown. Building a listener only on the `.listening` outcome is what makes that gate exact. This branch changes nothing here and relies on it: the socket half of `stop()` is `listener = nil` and nothing else. | #252 (mechanism) + Operator (confirmed) + Spec |
 | 13 | What does the installer return? | `install(home:)` returns a report: whether the forwarder was written, and one outcome per agent settings file (`absent`, `installed`, `refused(path:)`). `uninstall(home:)` stays `Void` — health goes to `.off` and there is nothing to display. The existing log lines stay: the line names the file, the log carries the underlying error. | Spec |
 | 14 | What do the messages say? | One sentence each, no second line: (a) "Another Clearway instance is using the hook socket."; (b) "The hook socket at ~/.clearway/hook.sock could not be opened."; (c) "The hook script could not be written to ~/.clearway/hooks."; (d) "No ~/.claude or ~/.codex directory was found, so no hooks were installed."; (e) "~/.claude/settings.json could not be updated." — the path abbreviated with a tilde. No "see Console", no instructions: the state is the information. | Spec |
 | 15 | What happens to the zero-byte payload the probe delivers? | The owner's accept loop takes the probe connection, reads EOF, and logs "A hook payload of 0 bytes did not parse and was dropped." (`AgentActivityMonitor.swift:70-72`). An empty payload is dropped silently instead — it now has a routine source, and the warning exists to catch a *truncated* event, which is never empty. | Spec |
+| 16 | Does disabling still remove the hook block from the agents' settings files? | **Only when this process owned the socket**, gated on the same fact as the unlink (Decision 12): holding a `HookSocketListener` is what "this process bound the path" means, since one is built only on the `.listening` outcome. `stop()` ran `AgentHookInstaller.uninstall` unconditionally, so a second instance that found a live owner stripped that owner's block out of `~/.claude/settings.json` and `~/.codex/hooks.json` on disable — the owner kept a bound socket and a toggle reading on while no agent had a hook left to forward with. #252 closed the socket half of this and left the install half open; this is that half. The plan had recorded it as out of scope; the review proved it and the operator moved it onto this branch. An instance whose own socket failed now leaves the block it wrote, which the forwarder's own socket guard makes inert, the same way the script itself is left on disk (Decision 13). | Operator (review, confirmed) |
 
 ## Assumptions
 
@@ -74,7 +77,10 @@ sockets and the app's own files — so no vendor documentation was fetched.
    `testAStaleSocketFileDoesNotStopTheListenerBinding` puts a regular file there and
    `testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed` puts a directory there
    (`Tests/AgentActivityMonitorTests.swift:50-58`, `147-159`), so both keep reaching the unlink and
-   keep their current outcomes.
+   keep their current outcomes. Re-probed on review, same setup: a socket whose own mode is `000`,
+   and a socket inside a directory whose mode is `000`, both answer `EACCES` — an errno outside the
+   three above, which is why Decision 11 stops there instead of falling through. `ENOENT` is the
+   fourth accounted-for answer, from a path with nothing at it at all.
 
 7. **The backlog absorbs the probe.** The listener calls `listen(descriptor, 64)`
    (`AgentActivityMonitor.swift:168`), so a probe `connect` completes without the owner accepting,
@@ -94,7 +100,8 @@ on.
 4. With `~/.claude/settings.json` unreadable or not a JSON object, the line names that file.
 5. With neither `~/.claude` nor `~/.codex` present, the line says no hooks were installed.
 6. Turning the toggle on while any of those is true still stores `true`; the next launch retries.
-7. Turning the toggle off from an unhealthy state unlinks nothing this process did not bind.
+7. Turning the toggle off from an unhealthy state unlinks nothing this process did not bind, and
+   removes the hook block from no settings file unless this process owned the socket.
 8. Toggling off and on re-attempts and the line updates or clears in place.
 9. The whole mapping — every outcome combination to every displayed case, and each case's message —
    is covered by tests that touch no socket and no disk.
@@ -122,17 +129,19 @@ tests do the same or need no filesystem at all.
 - `Sources/App/AgentHookInstaller.swift` — `install` returns the report; each refusal branch names
   its outcome instead of only logging.
 - `Sources/App/AgentActivityMonitor.swift` — publishes `health`; `start()` resolves it from the
-  install report and the socket outcome; `stop()` resets it and gates the `unlink` on having been
-  listening; `HookSocketListener.start` reports which socket failure occurred and probes for a live
-  owner before unlinking; an empty payload is dropped without the warning.
+  install report and the socket outcome; `stop()` resets it and gates the hook uninstall on having
+  held a listener; `HookSocketListener.start` maps its outcome onto `AgentHookSocketOutcome`, and
+  its live-owner probe — #252's — answers three ways so an unaccounted-for errno reports
+  `.unopenable` instead of authorising the unlink. #252's `socketState` is removed: `health` carries
+  the same three socket answers and the install half besides.
 - `Sources/App/SettingsView.swift` — takes the monitor; renders the failure row under the toggle.
 - `Sources/App/ClearwayApp.swift` — passes the monitor into the `Settings` scene.
-- `Sources/App/CLAUDE.md` — the health value, the precedence, the live-owner probe and the gated
-  unlink, in the agent-activity notes.
+- `Sources/App/CLAUDE.md` — the health value, the precedence, the probe's third answer and the
+  gated uninstall, folded into the live-owner note #252 left there.
 - `Tests/AgentHookHealthTests.swift` — **new.** The mapping and the messages.
-- `Tests/AgentActivityMonitorTests.swift` — health after a bind that cannot succeed, health while
-  another listener owns the path, that the owner's feed survives a second monitor's start and stop,
-  and that a never-listening monitor's `stop()` leaves the path alone.
+- `Tests/AgentActivityMonitorTests.swift` — #252's socket cases restated against `health`, plus a
+  path this process may not reach reported `.unopenable` with its inode untouched, the owner's hook
+  block surviving a second instance's disable, and the health section for the install outcomes.
 - `Tests/AgentHookInstallerTests.swift` — the report's outcomes for an absent directory, an
   unreadable file and a successful install.
 

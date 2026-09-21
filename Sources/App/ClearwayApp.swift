@@ -257,7 +257,7 @@ struct ClearwayApp: App {
         .windowStyle(.titleBar)
 
         Settings {
-            SettingsView(settings: settings)
+            SettingsView(settings: settings, agentActivity: agentActivity)
                 .preferredColorScheme(settings.colorScheme.swiftUIColorScheme)
         }
     }

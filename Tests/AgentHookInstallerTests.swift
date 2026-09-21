@@ -153,7 +153,7 @@ final class AgentHookInstallerTests: TempRootTestCase {
             )
         }
 
-        AgentHookInstaller.install(home: tempRoot)
+        _ = AgentHookInstaller.install(home: tempRoot)
 
         XCTAssertEqual(try mode(paths.clearwayDir), AgentHookScript.dirMode)
         XCTAssertEqual(try mode(paths.hooksDir), AgentHookScript.dirMode)
@@ -169,20 +169,80 @@ final class AgentHookInstallerTests: TempRootTestCase {
         try write("#!/bin/sh\nexit 1\n", to: paths.scriptPath)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: paths.scriptPath)
 
-        AgentHookInstaller.install(home: tempRoot)
+        _ = AgentHookInstaller.install(home: tempRoot)
 
         XCTAssertEqual(try String(contentsOfFile: paths.scriptPath, encoding: .utf8), AgentHookScript.body)
         XCTAssertEqual(try mode(paths.scriptPath), AgentHookScript.scriptMode)
     }
 
+    // MARK: - The report
+
+    /// One outcome per agent, in the order the installer walks them, so the first `.refused` the
+    /// health resolves is `.claude`'s.
+    func testTheReportCarriesOneOutcomePerAgentInOrder() {
+        let report = AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertTrue(report.scriptWritten)
+        XCTAssertEqual(report.files, [.installed, .absent], "~/.claude exists here and ~/.codex does not")
+    }
+
+    func testAHomeWithNoAgentDirectoryReportsEveryFileAbsent() throws {
+        try FileManager.default.removeItem(atPath: claudeDir)
+
+        let report = AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertTrue(report.scriptWritten, "the forwarder lands under ~/.clearway whether or not an agent is installed")
+        XCTAssertEqual(report.files, [.absent, .absent])
+    }
+
+    /// The path in the outcome is home-relative and built from the agent's own directory name, so
+    /// the line reads the same here as it does under a real home.
+    func testAFileThatIsNotAJSONObjectIsReportedRefusedByItsHomeRelativePath() throws {
+        try write("[1, 2, 3]", to: settingsPath)
+
+        let report = AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertEqual(report.files.first, .refused(path: "~/.claude/settings.json"))
+        XCTAssertEqual(try String(contentsOfFile: settingsPath, encoding: .utf8), "[1, 2, 3]")
+    }
+
+    /// The steady state, which the first-install cases never reach: every launch after the first
+    /// finds the block already there and writes nothing, and that still has to read as installed.
+    /// Reported `.absent` instead, a user with only Claude Code would be told on every launch after
+    /// the first that no agent directory was found.
+    func testASecondInstallStillReportsTheFileInstalled() throws {
+        try write(userSettings, to: settingsPath)
+        XCTAssertEqual(AgentHookInstaller.install(home: tempRoot).files, [.installed, .absent])
+
+        XCTAssertEqual(AgentHookInstaller.install(home: tempRoot).files, [.installed, .absent])
+    }
+
+    /// A hook entry names the forwarder by path, so writing the block for a script that is not on
+    /// disk fails a hook inside the user's own agent on every tool call. Nothing is written, and
+    /// `.scriptNotWritten` is what the health displays.
+    func testAForwarderThatCannotBeWrittenInstallsNoBlockAnywhere() throws {
+        try write(userSettings, to: settingsPath)
+        let paths = AgentHookPaths(home: tempRoot)
+        try FileManager.default.createDirectory(atPath: paths.clearwayDir, withIntermediateDirectories: true)
+        try write("not a directory", to: paths.hooksDir)
+
+        let report = AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertFalse(report.scriptWritten)
+        XCTAssertEqual(report.files, [], "the walk never ran, so no agent was touched")
+        XCTAssertEqual(AgentHookHealth.resolve(install: report, socket: .listening), .scriptNotWritten)
+        XCTAssertEqual(try String(contentsOfFile: settingsPath, encoding: .utf8), userSettings)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupPath))
+    }
+
     // MARK: - Helpers
 
     private func install() {
-        AgentHookInstaller.mergeAgentSettings(installing: true, home: tempRoot)
+        _ = AgentHookInstaller.mergeAgentSettings(installing: true, home: tempRoot)
     }
 
     private func uninstall() {
-        AgentHookInstaller.mergeAgentSettings(installing: false, home: tempRoot)
+        _ = AgentHookInstaller.mergeAgentSettings(installing: false, home: tempRoot)
     }
 
     private func write(_ contents: String, to path: String) throws {

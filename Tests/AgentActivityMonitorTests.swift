@@ -74,7 +74,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         let second = AgentActivityMonitor(home: home)
         second.setEnabled(true)
 
-        XCTAssertEqual(second.socketState, .ownedByAnotherInstance, "the second instance must not take the socket")
+        XCTAssertEqual(second.health, .socketOwnedByAnotherInstance, "the second instance must not take the socket")
         XCTAssertEqual(try socketInode(), inode, "an unlink would replace the inode the live instance is listening on")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after a second instance started") {
@@ -86,16 +86,35 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// instance killed without closing leaves a socket inode that answers nothing. `connect` refuses
     /// it, so the unlink still runs and a crash costs no dot until the next reboot.
     func testASocketInodeLeftByADeadInstanceIsStillRebound() async throws {
+        try makeClaudeSettingsDirectory()
         try FileManager.default.createDirectory(atPath: paths.clearwayDir, withIntermediateDirectories: true)
         try bindAndAbandon(paths.socketPath)
 
         monitor.setEnabled(true)
 
-        XCTAssertEqual(monitor.socketState, .listening, "an inode nothing answers on is this instance's to take")
+        XCTAssertEqual(monitor.health, .listening, "an inode nothing answers on is this instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the worktree's phase over an abandoned socket inode") {
             self.monitor.worktreePhases[self.worktreeId] ?? .idle
         }
+    }
+
+    /// The discriminating case for the probe answering three ways rather than two: a mode that
+    /// denies this process answers `EACCES`, which says nothing about who is there. Read as "nobody
+    /// is there" it authorised the unlink, so a live owner whose socket this process cannot reach
+    /// lost it and both instances reported that they were listening — the exact lie the probe
+    /// exists to stop.
+    func testAPathThisProcessMayNotReachIsLeftAloneAndReportedUnopenable() throws {
+        try XCTSkipIf(getuid() == 0, "root reaches every mode, so no errno outside the three is reachable")
+        try FileManager.default.createDirectory(atPath: paths.clearwayDir, withIntermediateDirectories: true)
+        try bindAndAbandon(paths.socketPath)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: paths.socketPath)
+        let inode = try socketInode()
+
+        monitor.setEnabled(true)
+
+        XCTAssertEqual(monitor.health, .socketUnopenable, "an errno the probe cannot account for is not an empty path")
+        XCTAssertEqual(try socketInode(), inode, "and it authorises no unlink")
     }
 
     /// The discriminating case for dropping an empty read: a second instance's liveness probe
@@ -174,7 +193,7 @@ final class AgentActivityMonitorTests: XCTestCase {
 
         monitor.setEnabled(false)
 
-        XCTAssertEqual(monitor.socketState, .off, "a disabled monitor owns no socket")
+        XCTAssertEqual(monitor.health, .off, "a disabled monitor owns no socket")
         XCTAssertTrue(monitor.worktreePhases.isEmpty, "a disabled monitor publishes nothing")
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.socketPath), "the socket goes with the listener")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
@@ -189,12 +208,12 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
         let second = AgentActivityMonitor(home: home)
         second.setEnabled(true)
-        XCTAssertEqual(second.socketState, .ownedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
+        XCTAssertEqual(second.health, .socketOwnedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
         let inode = try socketInode()
 
         second.setEnabled(false)
 
-        XCTAssertEqual(second.socketState, .off, "a blocked instance whose toggle went off is off, not somebody else's fault")
+        XCTAssertEqual(second.health, .off, "a blocked instance whose toggle went off is off, not somebody else's fault")
         XCTAssertEqual(try socketInode(), inode, "a blocked instance's stop() must not unlink a socket it never bound")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after the second was disabled") {
@@ -221,21 +240,58 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// blocked instance takes the socket when its toggle is cycled after the owner quits, and never
     /// on its own. The companion Settings task's retry affordance is exactly this sequence.
     func testABlockedInstanceTakesTheSocketOnceTheOwnerHasQuit() async throws {
+        try makeClaudeSettingsDirectory()
         monitor.setEnabled(true)
         let second = AgentActivityMonitor(home: home)
         second.setEnabled(true)
-        XCTAssertEqual(second.socketState, .ownedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
+        XCTAssertEqual(second.health, .socketOwnedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
 
         monitor.setEnabled(false)
         second.setEnabled(false)
         second.setEnabled(true)
 
-        XCTAssertEqual(second.socketState, .listening, "the owner has quit, so the path is the second instance's to take")
+        XCTAssertEqual(second.health, .listening, "the owner has quit, so the path is the second instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the second monitor's worktree phase after it took the socket") {
             second.worktreePhases[self.worktreeId] ?? .idle
         }
         second.setEnabled(false)
+    }
+
+    /// The install half of that same gate: an instance that never bound must not strip the hook
+    /// block out of the agents' settings files on its way out either. The owner keeps a bound socket
+    /// and a toggle reading on while no agent has a hook left to forward with.
+    func testASecondInstancesDisableLeavesTheLiveOwnersHooksInstalled() throws {
+        let settingsPath = try makeClaudeSettingsDirectory()
+
+        monitor.setEnabled(true)
+        let installed = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+
+        let second = AgentActivityMonitor(home: home)
+        second.setEnabled(true)
+        XCTAssertEqual(second.health, .socketOwnedByAnotherInstance, "the fixture is only meaningful if the second instance was blocked")
+        second.setEnabled(false)
+
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: settingsPath)),
+            installed,
+            "the owner's hooks survive a second instance that never bound"
+        )
+    }
+
+    /// The positive side of that gate: the instance that *did* bind still takes its block back out.
+    /// `stop()` reads whether a listener was held one line before it clears it, so the order of
+    /// those two lines is the whole rule, and reversing them leaves every user's `settings.json`
+    /// carrying Clearway's hooks after the toggle is off.
+    func testAnOwnersDisableRemovesTheHooksItInstalled() throws {
+        let settingsPath = try makeClaudeSettingsDirectory()
+
+        monitor.setEnabled(true)
+        XCTAssertNotNil(try hooks(at: settingsPath), "the owner installed its block")
+
+        monitor.setEnabled(false)
+
+        XCTAssertNil(try hooks(at: settingsPath), "and took it back out")
     }
 
     /// The discriminating case for where the `unlink` lives: in the listener's `deinit`, which runs
@@ -271,7 +327,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: paths.socketPath, withIntermediateDirectories: true)
 
         monitor.setEnabled(true)
-        XCTAssertEqual(monitor.socketState, .unavailable, "a bind that fails is neither off nor another instance's doing")
+        XCTAssertEqual(monitor.health, .socketUnopenable, "a bind that fails is neither off nor another instance's doing")
         try FileManager.default.removeItem(atPath: paths.scriptPath)
 
         monitor.setEnabled(true)
@@ -286,9 +342,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// off, `.onAppear` hands the monitor `false` once per window, and an unguarded `stop()` runs a
     /// synchronous settings rewrite each time.
     func testDisablingAMonitorThatWasNeverEnabledReachesNoUninstaller() throws {
-        let claudeDir = (home as NSString).appendingPathComponent(".claude")
-        try FileManager.default.createDirectory(atPath: claudeDir, withIntermediateDirectories: true)
-        let path = (claudeDir as NSString).appendingPathComponent("settings.json")
+        let path = try makeClaudeSettingsDirectory()
         let installed = try JSONSerialization.data(
             withJSONObject: AgentHookSettings.install(into: [:]),
             options: [.prettyPrinted, .sortedKeys]
@@ -304,7 +358,55 @@ final class AgentActivityMonitorTests: XCTestCase {
         )
     }
 
+    // MARK: - The health
+
+    func testAnEnableThatListensReportsNothingAndGoesQuietOnDisable() throws {
+        try makeClaudeSettingsDirectory()
+
+        monitor.setEnabled(true)
+        XCTAssertEqual(monitor.health, .listening)
+        XCTAssertNil(monitor.health.message, "a working install has nothing to say in Settings")
+
+        monitor.setEnabled(false)
+        XCTAssertEqual(monitor.health, .off)
+    }
+
+    func testASettingsFileThatCannotBeMergedIsNamed() throws {
+        let settingsPath = try makeClaudeSettingsDirectory()
+        try Data("[1, 2, 3]".utf8).write(to: URL(fileURLWithPath: settingsPath))
+
+        monitor.setEnabled(true)
+
+        XCTAssertEqual(monitor.health, .settingsRefused(path: "~/.claude/settings.json"))
+    }
+
+    /// The temp home has neither agent, which is the one shape that earns the absence line: a user
+    /// with Claude Code and no Codex must not carry a warning about a tool they do not use.
+    func testAHomeWithNeitherAgentIsReportedAsHavingNoDirectory() {
+        monitor.setEnabled(true)
+
+        XCTAssertEqual(monitor.health, .noAgentDirectory)
+    }
+
     // MARK: - Helpers
+
+    /// The one agent directory `AgentHookInstaller` can install into, and the settings file it
+    /// writes there. A temp home has neither agent, which resolves to `.noAgentDirectory` and hides
+    /// whatever the socket did.
+    @discardableResult
+    private func makeClaudeSettingsDirectory() throws -> String {
+        let directory = (home as NSString).appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        return (directory as NSString).appendingPathComponent("settings.json")
+    }
+
+    /// The managed block as the file carries it, or `nil` once `uninstall` has collapsed the
+    /// container it emptied.
+    private func hooks(at path: String) throws -> [String: Any]? {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let settings = (try JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return settings?["hooks"] as? [String: Any]
+    }
 
     private func socketInode() throws -> UInt64 {
         let attributes = try FileManager.default.attributesOfItem(atPath: paths.socketPath)
