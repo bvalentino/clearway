@@ -698,3 +698,66 @@ passes. `claims` lowercases, so the two spellings are equivalent.
 Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
 `git status --porcelain` before the commit showed only the two files above plus this plan; no
 `default.profraw` and no untracked files.
+
+### T7: Rewrite the per-file notes this change falsifies
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | 581 → 638 lines. All edits inside existing entries: the `AppKeyboardShortcuts.swift` declaration-site list, the `PanelCommands.swift` declared-once rule, a new `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` entry placed after `PanelCommands.swift`, and six corrections spread across the Open In / Run entry and the `TerminalManager.run` entry. |
+
+What each edit says.
+
+1. **Declaration sites** (entry 1) — now reads "`ClearwayApp`'s menu commands together with the two
+   files holding their rows, `PanelCommands.swift` and `WorktreeCommands.swift`". `PanelCommands`
+   was never named there either; both are now.
+2. **The declared-once rule** (`PanelCommands.swift` entry) — generalised in place rather than
+   moved: the rule "is not local to this file", the Worktree menu's ⌘R, ⌥⌘R and ⌘O are declared on
+   its rows and not on the toolbar's Run and Open In buttons, and the tab strip's ⌘T / ⌥⌘T rows are
+   named as the one deliberate exception.
+3. **New entry, `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift`** — the five rows in
+   order; why five and not four (key-equivalent dispatch fires an item's action and a SwiftUI
+   `Menu` submenu row has none, the same no-body rule the Plan split button hits); the two focused
+   scene values, what nils each, and why two; whole lists rather than `menuCommands` /
+   `menuOpenInApps`; the per-row disable rules, including "Run \<name>" gating on `primary` while
+   "Run…" and the submenu stay live; `runner` / `opener` as the one implementation of each action;
+   `.clearwayAddCommand`'s `===` identity guard and why the closure is built in `ContentView`
+   rather than read with `@FocusedObject` (T5 deviation 1); and the ⌥⌘R AppKit reach — the
+   segment-0-label match against `runButtonTitle`, the `segmentCount > 1` guard before either
+   segment is read (T3's deviation), the do-nothing failure path, and the fragility the operator
+   accepted over a fallback.
+4. **Open In / Run entry, five corrections** — the falsified last sentence replaced with the three
+   keys, where they are declared, and that all three are claimed; `EditOpenInAppsButton` named as a
+   shared view rendered by the toolbar dropdown and the Worktree submenu (T5 deviation 2);
+   `RunCommandMenu` kept as the one presenter of `CommandEditorSheet`, reached from the menu bar by
+   the notification; the menu bar named as the third Open In entry point, the one that greys rather
+   than disappears, with the header's "the one menu view both entry points render" narrowed to the
+   toolbar and the sidebar; and the `ContentView.swift` `file_length` sentence updated with
+   `SidePanelTabStrip.swift` as the split T1 did and the file's 995 lines.
+5. **`RunCommandMenu.run(_:)`** — that private method no longer exists after T2, and two statements
+   still named it: the record-before-guard rule (now `WorktreeRunActions.runner`'s closure) and the
+   `TerminalManager.run` entry's "not the `RunCommandMenu` view" (now "neither `RunCommandMenu` nor
+   the Worktree menu … both call the one closure `WorktreeRunActions.runner` builds").
+
+Evidence. Markdown, so nothing here is executable and there is no regression test to watch fail.
+Every statement was written against the tree at `a005c68` rather than against the plan's proposal,
+which is what deviations T2 (`OpenInMenu` derives `opener` internally), T3 (`segmentCount > 1`), T5
+(closure over `@FocusedObject`; `EditOpenInAppsButton` shared) and T6 changed. Read back from
+`Sources/App/WorktreeCommands.swift`, `ToolbarSplitButtonMenu.swift`, `ClearwayApp.swift:239-245`,
+`ContentView.swift:160-194`, `RunCommandMenu.swift:29-34`, `OpenInMenu.swift:75-96` and
+`AppKeyboardShortcuts.swift:44-55`.
+
+Acceptance criteria. 1: `grep -n "claims \*\*no\*\* keyboard shortcut" Sources/App/CLAUDE.md`
+returns nothing. 2: `grep -n "WorktreeCommands.swift"` returns line 7 (the declaration-site list),
+41 and 44 (the new entry) and 620 (the cross-reference from the Open In entry). 3: the new entry at
+line 41 covers both files; `grep -n "ToolbarSplitButtonMenu"` returns lines 41 and 72. 4: the
+corrections in items 4 and 5 are every statement the T1-T6 diff falsified — nothing else in the
+file names Run's or Open In's keys, `RunCommandMenu.run(_:)`, or `editAppsButton`.
+
+Deviations from the plan. One, an addition. The plan's five items do not cover
+`RunCommandMenu.run(_:)`, which T2 deleted and which two unrelated entries still named (item 5),
+nor the Open In entry's "both entry points" count, which the menu bar makes three. Criterion 4 asks
+that no statement contradict the tree, so both were corrected.
+
+Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only `Sources/App/CLAUDE.md` plus this plan; no
+`default.profraw` and no untracked files.
