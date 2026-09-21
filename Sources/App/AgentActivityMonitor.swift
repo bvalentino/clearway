@@ -22,7 +22,10 @@ final class AgentActivityMonitor: ObservableObject {
 
     @Published private(set) var worktreePhases: [String: AgentPhase] = [:]
     @Published private(set) var worktreeSubagents: [String: [AgentSubagent]] = [:]
-    @Published private(set) var socketState: AgentHookSocketState = .off
+    /// The last enable attempt's outcome, and nothing after it: no watcher re-checks a settings file
+    /// or a socket once the attempt is over. Published costs nothing here, unlike the tool name,
+    /// because it changes only when the toggle does.
+    @Published private(set) var health: AgentHookHealth = .off
     let toolNames = ToolNames()
 
     private let paths: AgentHookPaths
@@ -64,7 +67,7 @@ final class AgentActivityMonitor: ObservableObject {
         // Unconditional, and ahead of the listener on purpose: an instance that finds the socket
         // owned still installs the identical block, which is a content reconciliation that writes
         // only on a difference, so a second Clearway is a no-op here rather than a fight.
-        AgentHookInstaller.install(home: home)
+        let install = AgentHookInstaller.install(home: home)
         let outcome = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
             // The forwarder sends only once both ids are set, so a payload that does not parse is
             // always something wrong — a truncated read, or a field an agent has renamed. Nothing
@@ -77,25 +80,32 @@ final class AgentActivityMonitor: ObservableObject {
             }
             Task { @MainActor in self?.receive(envelope) }
         }
+        let socket: AgentHookSocketOutcome
         switch outcome {
         case .listening(let opened):
             listener = opened
-            socketState = .listening
+            socket = .listening
         case .ownedByAnotherInstance:
-            listener = nil
-            socketState = .ownedByAnotherInstance
-        case .unavailable:
-            listener = nil
-            socketState = .unavailable
+            socket = .ownedByAnotherInstance
+        case .unopenable:
+            socket = .unopenable
         }
+        health = AgentHookHealth.resolve(install: install, socket: socket)
     }
 
     private func stop() {
+        // Holding a listener is what "this process owns the feed" means — one is built only on the
+        // `.listening` outcome — so it gates the uninstall exactly as it gates the unlink. An
+        // instance that found a live owner would otherwise take that owner's hook block out of
+        // every agent settings file, leaving it bound to a socket no hook forwards to any more.
+        let owned = listener != nil
+        // Releasing the listener is the whole socket teardown: its `deinit` cancels the source,
+        // whose cancel handler closes the descriptor, and unlinks the inode it bound.
         listener = nil
-        socketState = .off
+        health = .off
         store = AgentActivityStore()
         publish()
-        AgentHookInstaller.uninstall(home: home)
+        if owned { AgentHookInstaller.uninstall(home: home) }
     }
 
     private func receive(_ envelope: AgentHookEnvelope) {
@@ -115,23 +125,15 @@ final class AgentActivityMonitor: ObservableObject {
     }
 }
 
-/// What the one fixed socket path is doing for this process. `.ownedByAnotherInstance` is a second
-/// Clearway on the machine — `build.sh`'s `Clearway (<worktree>).app` beside `ci.sh`'s
-/// `Clearway.app` — that found the path answering and left it alone; `.unavailable` is a bind that
-/// failed for any other reason, which is neither off nor somebody else's doing.
-enum AgentHookSocketState {
-    case off
-    case listening
-    case ownedByAnotherInstance
-    case unavailable
-}
-
 /// What `HookSocketListener.start` answers. An optional could not tell a path another instance owns
 /// from a path nothing can bind, and the two mean opposite things to the operator.
+/// `AgentHookSocketOutcome` is the same three answers without the listener, which is what
+/// `AgentHookHealth.resolve` takes: the health model stays `import Foundation` only, so every rule
+/// it applies is reachable from XCTest with no socket.
 enum HookSocketOutcome {
     case listening(HookSocketListener)
     case ownedByAnotherInstance
-    case unavailable
+    case unopenable
 }
 
 /// The listening socket as an RAII holder: a nonisolated `deinit` touching only its own stored
@@ -183,7 +185,7 @@ final class HookSocketListener {
         switch listeningDescriptor(at: socketPath) {
         case .open(let opened): descriptor = opened
         case .ownedByAnotherInstance: return .ownedByAnotherInstance
-        case .unavailable: return .unavailable
+        case .unopenable: return .unopenable
         }
 
         let source = DispatchSource.makeReadSource(
@@ -209,33 +211,41 @@ final class HookSocketListener {
     private enum DescriptorOutcome {
         case open(Int32)
         case ownedByAnotherInstance
-        case unavailable
+        case unopenable
     }
 
     private nonisolated static func listeningDescriptor(at socketPath: String) -> DescriptorOutcome {
         guard let address = unixAddress(for: socketPath) else {
             Ghostty.logger.error("\(socketPath, privacy: .public) does not fit a Unix socket address.")
-            return .unavailable
+            return .unopenable
         }
 
-        // Refused rather than taken over: a live owner's surfaces carry the ids that match its
-        // socket, so its events are the ones that mean anything.
-        guard let answering = isAnswering(at: address) else { return .unavailable }
-        guard !answering else {
+        switch probe(at: address) {
+        case .liveOwner:
+            // Refused rather than taken over: a live owner's surfaces carry the ids that match its
+            // socket, so its events are the ones that mean anything.
             Ghostty.logger.warning(
                 "A process is already listening at \(socketPath, privacy: .public) — most likely a second Clearway; this one runs without hook events until that one quits."
             )
             return .ownedByAnotherInstance
+        case .unexplained(let code):
+            Ghostty.logger.error(
+                "The agent hook socket at \(socketPath, privacy: .public) could not be probed: \(code, privacy: .public)"
+            )
+            return .unopenable
+        case .stale:
+            break
         }
 
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
             let failure = errno
             Ghostty.logger.error("The agent hook socket could not be created: \(failure, privacy: .public)")
-            return .unavailable
+            return .unopenable
         }
-        // A process that died without closing leaves the inode behind, and `bind` refuses an address
-        // that already exists — so every launch after a crash would listen on nothing.
+        // Nothing is serving the path — the probe settled that — so anything standing there is an
+        // inode a process died without closing, and `bind` refuses an address that already exists.
+        // Without this, every launch after a crash would listen on nothing.
         unlink(socketPath)
         let bound = withUnixAddress(address) { bind(descriptor, $0, $1) }
         // Non-blocking, because the accept loop below drains until there is nothing left to take.
@@ -246,7 +256,7 @@ final class HookSocketListener {
             let failure = errno
             Ghostty.logger.error("The agent hook socket could not be bound at \(socketPath, privacy: .public): \(failure, privacy: .public)")
             close(descriptor)
-            return .unavailable
+            return .unopenable
         }
         return .open(descriptor)
     }
@@ -275,32 +285,47 @@ final class HookSocketListener {
         }
     }
 
-    /// One `connect(2)` on a throwaway descriptor, the whole liveness test. **Only a return of 0
-    /// defends the path**: every errno falls through to the unlink, which is what Clearway did
-    /// unconditionally before — `ECONNREFUSED` from an inode a killed instance left behind,
-    /// `ENOTSOCK` from a file or a directory standing there, `ENOENT` from nothing at all, and an
-    /// unforeseen one besides, since reading an unknown errno as an owner would disable the feature
-    /// until the next reboot. A local `AF_UNIX` connect completes or fails in the kernel without
-    /// waiting on the peer, so there is nothing to time out. The live owner sees one connection that
-    /// closes with nothing written, which its own accept loop drops as an empty payload.
+    /// What a `connect` to the path found. Three answers rather than a `Bool` because only a refusal
+    /// that is *accounted for* may authorise the unlink: an errno nobody checked proves nothing
+    /// about who is there, and `EACCES` — a socket, or a containing directory, whose mode denies
+    /// this process — is the one that costs. Read as "nobody is there" it unlinked a live owner's
+    /// path and left both instances reporting that they were listening.
+    private enum PathProbe {
+        /// `connect` succeeded: another process is serving the path right now.
+        case liveOwner
+
+        /// `ENOENT`, `ECONNREFUSED` or `ENOTSOCK`: nothing is served there, so whatever stands at
+        /// the path is an inode to unlink before binding.
+        case stale
+
+        case unexplained(code: Int32)
+    }
+
+    /// One `connect(2)` on a throwaway descriptor, the whole liveness test: `connect` is the only
+    /// thing that can tell a live owner from the inode a process killed without closing left
+    /// behind, since `bind` refuses both with `EADDRINUSE`. Unlinking unconditionally therefore
+    /// handed the path to whichever instance started last, and the first went deaf with no error
+    /// anywhere. A local `AF_UNIX` connect completes or fails in the kernel without waiting on the
+    /// peer, so there is nothing to time out. The live owner sees one connection that closes with
+    /// nothing written, which its own accept loop drops before any consumer.
     ///
     /// A live listener whose backlog of 64 is full also refuses, so an instance with that many
     /// unaccepted connections reads as stale. The accept loop drains to `EAGAIN` on every event and
     /// hook connections are one per lifecycle event, so reaching it means the queue is parked; it is
     /// a known limit rather than a reason for a retry.
-    /// `nil` is neither answer: the probe descriptor could not be created, so nothing was learned.
-    /// Reading that as "nobody is there" would hand the unlink an answer the probe never gave —
-    /// under `EMFILE` a descriptor freed between here and the `socket(2)` below is enough to take a
-    /// live instance's socket — so the caller leaves the path alone instead.
-    private nonisolated static func isAnswering(at address: sockaddr_un) -> Bool? {
-        let probe = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard probe >= 0 else {
-            let failure = errno
-            Ghostty.logger.error("The agent hook socket liveness probe could not be created: \(failure, privacy: .public)")
-            return nil
+    ///
+    /// A probe descriptor that cannot be created is `.unexplained` for the same reason as an
+    /// unaccounted-for errno: nothing was learned, and under `EMFILE` a descriptor freed between
+    /// here and the `socket(2)` in the caller is enough to take a live instance's socket.
+    private nonisolated static func probe(at address: sockaddr_un) -> PathProbe {
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return .unexplained(code: errno) }
+        defer { close(descriptor) }
+        guard withUnixAddress(address, { connect(descriptor, $0, $1) }) != 0 else { return .liveOwner }
+        switch errno {
+        case ENOENT, ECONNREFUSED, ENOTSOCK: return .stale
+        case let code: return .unexplained(code: code)
         }
-        defer { close(probe) }
-        return withUnixAddress(address) { connect(probe, $0, $1) } == 0
     }
 
     /// Drains every pending connection: a read source coalesces, so one event can stand for several

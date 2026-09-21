@@ -312,29 +312,52 @@
   are hidden by nothing. Only rendering paths go through that method, and only they should:
   this is a display rule, not a change to what the app tracks.
 - `AgentHookEvent.swift` / `AgentHookScript.swift` / `AgentHookSettings.swift` /
-  `AgentHookInstaller.swift` / `AgentActivityStore.swift` / `AgentActivityMonitor.swift` — the
-  agent-activity pipeline: the wire model, the forwarder text and `AgentHookPaths`, the pure
-  settings merge, the disk half, the state machine, and the one process-wide owner. The first five
-  are `import Foundation` only, which is what makes every rule below reachable from XCTest; the
-  monitor does socket plumbing and publishing and decides nothing.
+  `AgentHookInstaller.swift` / `AgentHookHealth.swift` / `AgentActivityStore.swift` /
+  `AgentActivityMonitor.swift` — the agent-activity pipeline: the wire model, the forwarder text
+  and `AgentHookPaths`, the pure settings merge, the disk half, the health rules, the state
+  machine, and the one process-wide owner. The first six are `import Foundation` only, which is
+  what makes every rule below reachable from XCTest; the monitor does socket plumbing and
+  publishing and decides nothing.
   **The transport is a `SOCK_STREAM` Unix socket at `~/.clearway/hook.sock`**, one connection per
   hook invocation, read to EOF. Not a port: the app would need no entitlement either way, but a
   port can collide, can be reached from off the machine, and has no `0700` directory standing in
   for access control — which is the whole of it here, since the app is unsandboxed and binds under
-  `$HOME`. **Binding probes the path first and refuses a live owner.** One `connect(2)` on a
-  throwaway descriptor runs immediately before the unlink, and only a return of 0 defends the path:
-  another Clearway is listening, so neither the unlink nor the bind happens, and this instance
-  publishes `.ownedByAnotherInstance` and runs without hook events until that one quits. Every
-  errno falls through to the unlink and the bind, which is what keeps a crash from leaving an inode
-  that fails every later launch with `EADDRINUSE` so no dot ever lights again. A probe descriptor
-  that cannot be created is the one case that is neither: nothing was learned, so the path is left
-  alone rather than read as free. **The unlink that undoes the bind belongs to
-  `HookSocketListener`'s own `deinit`**, so only the instance that bound the path can remove it and
-  turning the toggle off is `listener = nil` and nothing else — a `stop()` that unlinked on its own
-  took the live instance's socket by the other door. It unlinks the **inode** it bound, not the
-  name: a path replaced underneath a running instance — by an older build with no probe, or through
-  the window between this one's probe and its bind — must survive that instance's teardown, or the
-  theft happens through a third door.
+  `$HOME`. **Binding probes the path first, and the probe has three answers, not two.** One
+  `connect(2)` on a throwaway descriptor runs immediately before the unlink. A connection that
+  succeeds means another Clearway is listening, so neither the unlink nor the bind happens and this
+  instance reports `.ownedByAnotherInstance` and runs without hook events until that one quits.
+  `ENOENT`, `ECONNREFUSED` (the inode a crash leaves) and `ENOTSOCK` (a regular file, or a directory
+  — verified, macOS answers `ENOTSOCK` for both) mean nothing is served there, so the unlink stands,
+  or one crash leaves an inode that fails every later launch with `EADDRINUSE` and no dot ever
+  lights again. **Every other errno, and a probe descriptor that could not be created, reports
+  `.unopenable` and touches nothing.** `EACCES` is the one that costs — a socket, or a containing
+  directory, whose mode denies this process — because read as "nobody is there" it unlinked a live
+  owner's socket and bound over it, and both instances then reported that they were listening, which
+  is the exact failure the probe exists to stop. Reporting it rather than falling through is
+  affordable only because Settings now displays it: a refusal nothing can see is a feature that goes
+  quiet. **The unlink that undoes the bind belongs to `HookSocketListener`'s own `deinit`**, so only
+  the instance that bound the path can remove it and turning the toggle off is `listener = nil` and
+  nothing else — a `stop()` that unlinked on its own took the live instance's socket by the other
+  door, and the cancel handler cannot hold it either, since libdispatch runs that on the source's
+  own queue and a disable immediately followed by an enable would then take away the socket the new
+  listener had just bound. It unlinks the **inode** it bound, not the name: a path replaced
+  underneath a running instance — by an older build with no probe, or through the window between
+  this one's probe and its bind — must survive that instance's teardown, or the theft happens
+  through a third door. **Holding a listener gates the hook uninstall too**: `stop()` calls
+  `AgentHookInstaller.uninstall` only when one was held, because an unconditional call let a second
+  instance strip the live owner's managed block out of `~/.claude/settings.json` and
+  `~/.codex/hooks.json` — the owner left bound to a socket no hook forwards to, with the toggle
+  still reading on. An instance whose own socket failed therefore leaves the block it wrote; the
+  forwarder's own socket guard makes it inert, exactly as the script left on disk is.
+  **That inertness is why `install` walks no agent at all once the forwarder could not be
+  written**: a hook entry names the script by path, so a block written for a script that is not on
+  disk fails a hook inside the user's own agent on every tool call, and the gate above then leaves
+  it there. The report is `scriptWritten: false` over an empty file list, which
+  `AgentHookHealth.resolve` already answers `.scriptNotWritten` for — the case outranks every file
+  outcome, so the skipped walk had nothing to display.
+  `acceptPending` drops a connection that wrote nothing before any consumer sees it, because the
+  probe connects and closes without a word and is a routine source of one; a non-empty payload that
+  does not parse still warns.
   **The forwarder is `/usr/bin/nc -U -w 1`, absolute, and never carries `-N`.** macOS reads `-N` as
   a probe count, not OpenBSD's shutdown flag, so a script using it fails on every hook with no
   diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to
@@ -407,17 +430,31 @@
   in both directions. `publish()` is change-gated because `PreToolUse`/`PostToolUse` fire around
   every tool call and assigning an unchanged value to a `@Published` still re-renders every
   observer.
-  **The monitor publishes two values, not three.** `worktreePhases` and `worktreeSubagents` are
-  `@Published` on it and the sidebar observes them; the tab chip's tool label is
+  **The monitor publishes three values, not four.** `worktreePhases`, `worktreeSubagents` and
+  `health` are `@Published` on it, the sidebar observing the first two and Settings the third; the
+  tab chip's tool label is
   `AgentActivityMonitor.ToolNames`, a nested `ObservableObject` the monitor holds as a plain `let`
   and `ClearwayApp` injects beside it. Change gating is not enough on its own here: a tool name
   changes twice per tool call while the sidebar's two values change about once a turn, so on the
-  monitor it invalidated every observer of *any* of the three, in every window — including the
+  monitor it invalidated every observer of *any* of them, in every window — including the
   whole of `MainTerminalTabStrip`, which is the rebuild its chip-scoped `@ObservedObject` exists
   to prevent. Only `TerminalTabChip` observes it, and the strip itself now reads nothing off the
-  monitor at all.
+  monitor at all. `health` costs that nothing: it moves only when the toggle does.
+  **`health` is the last enable attempt's outcome and nothing else.** `start()` sets it from the
+  install report and the socket outcome together, `stop()` resets it to `.off`, and nothing
+  re-checks in between — no watcher, no poll, so a settings file edited after the enable is not
+  noticed until the next one. The mapping is pure, in `AgentHookHealth.swift`: the socket cases
+  first, because the socket is the single channel and a perfect install delivers nothing through a
+  closed one, then the script, then every agent directory absent, then the first refused settings
+  file, else `listening`. Exactly one case is displayed and `.listening` displays nothing — a
+  confirmation would only restate the toggle. **One absent agent directory is not a failure**, only
+  every one of them: a user who runs Claude Code and not Codex would otherwise carry a permanent
+  warning about a tool they do not use.
   **One owner**: a `@StateObject` on `ClearwayApp`, injected on the project `WindowGroup` only, so
-  a standalone Task or Prompt window reaching for it would fault. Surface retirement is
+  a standalone Task or Prompt window reaching for it would fault. That is why `SettingsView` takes
+  the monitor as an init parameter rather than off the environment: the `Settings` scene is outside
+  that `WindowGroup`. Its failure line is a row of its own under the toggle in Appearance, not a
+  second line inside the `Toggle` label. Surface retirement is
   `TerminalManager.retireSurface`, the same process-scoped static provider shape as
   `claimsShortcut`, reported from every door that drops a surface **and every door that learns its
   child is gone** — never reconciled against a list of live ones. `replaceSurface` reports a dead

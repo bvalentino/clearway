@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: SettingsManager
+    @ObservedObject var agentActivity: AgentActivityMonitor
 
     var body: some View {
         Form {
@@ -31,6 +32,11 @@ struct SettingsView: View {
                 Toggle(isOn: $settings.agentHooksEnabled) {
                     Text("Show agent activity")
                     Text("Codex requires running /hooks once to trust the hooks Clearway installs.")
+                }
+                if let message = agentActivity.health.message {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.red)
                 }
             }
 

@@ -16,30 +16,46 @@ enum AgentHookInstaller {
 
     /// `home` is a parameter, never `NSHomeDirectory()` read in here, so the whole install can be
     /// driven against a temp root.
-    static func install(home: String) {
-        installScript(AgentHookPaths(home: home))
-        mergeAgentSettings(installing: true, home: home)
+    static func install(home: String) -> AgentHookInstallReport {
+        // No block goes into an agent's settings file without the forwarder it names: the entry
+        // would run a command that is not on disk, so every tool call fails a hook inside the
+        // user's own agent, and Decision 16 then leaves that block there — the forwarder's socket
+        // guard cannot make a script that does not exist inert. `.scriptNotWritten` outranks every
+        // file outcome, so there is nothing the skipped walk could have displayed.
+        guard installScript(AgentHookPaths(home: home)) else {
+            return AgentHookInstallReport(scriptWritten: false, files: [])
+        }
+        return AgentHookInstallReport(scriptWritten: true, files: mergeAgentSettings(installing: true, home: home))
     }
 
     /// The forwarder stays on disk. It exits 0 on its first guard once nothing is listening, so
     /// leaving it costs nothing and re-enabling the toggle is one settings write.
+    ///
+    /// No report: health goes to `.off` on a disable, so there is nothing to display.
     static func uninstall(home: String) {
-        mergeAgentSettings(installing: false, home: home)
+        _ = mergeAgentSettings(installing: false, home: home)
     }
 
-    static func mergeAgentSettings(installing: Bool, home: String) {
-        for agent in agentFiles {
+    static func mergeAgentSettings(installing: Bool, home: String) -> [AgentHookFileOutcome] {
+        agentFiles.map { agent in
             merge(
                 installing: installing,
                 directory: (home as NSString).appendingPathComponent(agent.directory),
-                name: agent.name
+                name: agent.name,
+                // Built from the agent's own directory name rather than abbreviated from the
+                // absolute path: `abbreviatingWithTildeInPath` reads the real `NSHomeDirectory()`,
+                // so under a temp root it would abbreviate nothing and the displayed line would
+                // differ between a test and a real home. The absolute path still goes to the logs.
+                displayPath: "~/\(agent.directory)/\(agent.name)"
             )
         }
     }
 
     // MARK: - The forwarder
 
-    private static func installScript(_ paths: AgentHookPaths) {
+    /// Answers whether the forwarder is on disk and executable at the end of the call, which the
+    /// no-op branch — a body that already matched — satisfies as much as a fresh write does.
+    private static func installScript(_ paths: AgentHookPaths) -> Bool {
         let fileManager = FileManager.default
         let path = paths.scriptPath
         do {
@@ -61,17 +77,19 @@ enum AgentHookInstaller {
             // Unconditional: an atomic write lands a fresh inode with the process umask's mode, and
             // a forwarder that is not executable fails every hook with nothing to show for it.
             try fileManager.setAttributes([.posixPermissions: AgentHookScript.scriptMode], ofItemAtPath: path)
+            return true
         } catch {
             Ghostty.logger.error("The agent hook forwarder could not be installed at \(path, privacy: .public): \(error)")
+            return false
         }
     }
 
     // MARK: - The managed block
 
-    private static func merge(installing: Bool, directory: String, name: String) {
+    private static func merge(installing: Bool, directory: String, name: String, displayPath: String) -> AgentHookFileOutcome {
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: directory, isDirectory: &isDirectory), isDirectory.boolValue else { return }
+        guard fileManager.fileExists(atPath: directory, isDirectory: &isDirectory), isDirectory.boolValue else { return .absent }
 
         let path = (directory as NSString).appendingPathComponent(name)
         let onDisk = fileManager.contents(atPath: path)
@@ -83,7 +101,7 @@ enum AgentHookInstaller {
         // to do since it needs write permission on the directory rather than on the file.
         guard onDisk != nil || !fileManager.fileExists(atPath: path) else {
             Ghostty.logger.warning("\(path, privacy: .public) could not be read — leaving the agent hooks alone.")
-            return
+            return .refused(path: displayPath)
         }
         var settings: [String: Any] = [:]
         if let onDisk {
@@ -91,7 +109,7 @@ enum AgentHookInstaller {
             // user can still repair it by hand, and renaming it away would take that chance.
             guard let object = (try? JSONSerialization.jsonObject(with: onDisk)) as? [String: Any] else {
                 Ghostty.logger.warning("\(path, privacy: .public) is not a JSON object — leaving the agent hooks alone.")
-                return
+                return .refused(path: displayPath)
             }
             settings = object
         }
@@ -102,18 +120,20 @@ enum AgentHookInstaller {
 
         guard let after = serialised(merged), let before = serialised(settings) else {
             Ghostty.logger.error("\(path, privacy: .public) holds a value that cannot be re-serialised — leaving it alone.")
-            return
+            return .refused(path: displayPath)
         }
         // Documents, not bytes: an uninstall on a file that never carried the block is a no-op, and
         // must not rewrite the user's own key order and whitespace to say so.
-        guard after != before else { return }
-        guard onDisk == nil || backUp(path) else { return }
+        guard after != before else { return .installed }
+        guard onDisk == nil || backUp(path) else { return .refused(path: displayPath) }
 
         do {
             try after.write(to: URL(fileURLWithPath: path), options: .atomic)
             Ghostty.logger.info("\(installing ? "Installed" : "Removed", privacy: .public) the Clearway hooks in \(path, privacy: .public)")
+            return .installed
         } catch {
             Ghostty.logger.error("\(path, privacy: .public) could not be written: \(error)")
+            return .refused(path: displayPath)
         }
     }
 
