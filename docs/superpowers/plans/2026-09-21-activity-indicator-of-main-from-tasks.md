@@ -605,3 +605,43 @@ tab strip and `TerminalManager`'s pane keys — unrelated to the hook pipeline a
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 794 tests, 0 failures (793 after T2, plus the task
 round trip). `git status --porcelain` lists only the five files above plus this plan; no untracked
 files, no `default.profraw`.
+
+### T4: Lift AgentActivityDot out of WorktreeRow
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | The private `ActivityDot` is now internal `AgentActivityDot` with a nested `Kind` (`waiting` / `working` / `notification`) and its own `@State private var glowExpanded`. It owns the hues, the 7 pt `Circle`, the `.help(_:)` strings, the two `shadow`s, the repeating `easeInOut` glow animation, the `onAppear`/`onDisappear` toggles and the `.transition(.opacity)` on the two phase kinds; `.notification` still carries no glow and no transition. `WorktreeRow.Dot` is deleted, `WorktreeRow.dot(phase:hasNotification:isOpen:)` keeps its name, signature and rule with `AgentActivityDot.Kind?` as its return type, `WorktreeRow`'s own `glowExpanded` is gone, and the body's four-case `switch` is the plan's `if let kind` inside the `Group` that keeps `.animation(.easeOut(duration: 0.6), value: phase)`. |
+
+No test file was edited. `Tests/WorktreeRowTests.swift` never spells the enum's type name, so it
+compiling and passing unchanged is the pin for criterion 2.
+
+**Evidence.** That pin is load-bearing, not incidental. Swapping the two phase arms of
+`WorktreeRow.dot` — `case .waiting: return .working`, `case .working: return .waiting` — turns
+`WorktreeRowDotTests` red against the lifted type:
+
+```
+Tests/WorktreeRowTests.swift:68: error: -[ClearwayTests.WorktreeRowDotTests testWaitingBeatsEverythingElse] :
+  XCTAssertEqual failed: ("Optional(Clearway.AgentActivityDot.Kind.working)")
+  is not equal to ("Optional(Clearway.AgentActivityDot.Kind.waiting)")
+Tests/WorktreeRowTests.swift:72: error: -[ClearwayTests.WorktreeRowDotTests testWorkingBeatsANotification] :
+  XCTAssertEqual failed: ("Optional(Clearway.AgentActivityDot.Kind.waiting)")
+  is not equal to ("Optional(Clearway.AgentActivityDot.Kind.working)")
+Executed 6 tests, with 2 failures (0 unexpected)
+```
+
+The failure names `Clearway.AgentActivityDot.Kind`, which is the same assertion also confirming the
+rename reached the tests without a line of test edit. Restoring the two arms turns it green.
+
+**Criterion 1.** `grep -rn "ActivityDot" Sources/ Tests/` returns only the declaration and the one
+call site in `WorktreeRow.body`; the strings "Waiting for permission", "Agent is working",
+"Terminal notification", the `7` frame and both `shadow`s appear once each, inside
+`AgentActivityDot`.
+
+**Deviations.** One, in shape only. The plan sketches `var body: some View { ... }` without saying
+how the three kinds branch; the body is a `switch kind` over a private `circle(_:help:)` helper, so
+each hue and each help string is written exactly once. The rendered modifier chains are
+arm-for-arm identical to the ones deleted from `WorktreeRow.body`.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 794 tests, 0 failures, unchanged from T3 since no test
+was added. `git status --porcelain` lists only `Sources/App/WorktreeRow.swift` and this plan; no
+untracked files, no `default.profraw`.
