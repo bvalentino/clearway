@@ -1,4 +1,5 @@
 import Combine
+import Darwin
 import XCTest
 @testable import Clearway
 
@@ -55,6 +56,42 @@ final class AgentActivityMonitorTests: XCTestCase {
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+    }
+
+    /// The discriminating case for probing before the unlink: two Clearway builds on one machine —
+    /// `build.sh`'s `Clearway (<worktree>).app` beside `ci.sh`'s `Clearway.app` — resolve the same
+    /// fixed socket path. Unlinking it replaces the inode, and the live instance goes on reading a
+    /// socket nothing can reach, with no dot change and no diagnostic on either side. The inode is
+    /// what makes that observable: a file-exists check passes against a steal.
+    func testAPathALiveInstanceAnswersOnIsLeftAlone() async throws {
+        monitor.setEnabled(true)
+        let inode = try socketInode()
+
+        let second = AgentActivityMonitor(home: home)
+        second.setEnabled(true)
+
+        XCTAssertEqual(second.socketState, .ownedByAnotherInstance, "the second instance must not take the socket")
+        XCTAssertEqual(try socketInode(), inode, "an unlink would replace the inode the live instance is listening on")
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the first monitor's worktree phase after a second instance started") {
+            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+        }
+    }
+
+    /// The other half of the same rule, and why only a successful connect defends the path: an
+    /// instance killed without closing leaves a socket inode that answers nothing. `connect` refuses
+    /// it, so the unlink still runs and a crash costs no dot until the next reboot.
+    func testASocketInodeLeftByADeadInstanceIsStillRebound() async throws {
+        try FileManager.default.createDirectory(atPath: paths.clearwayDir, withIntermediateDirectories: true)
+        bindAndAbandon(paths.socketPath)
+
+        monitor.setEnabled(true)
+
+        XCTAssertEqual(monitor.socketState, .listening)
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the worktree's phase over an abandoned socket inode") {
+            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+        }
     }
 
     /// The discriminating case for reading to EOF rather than once: a `PreToolUse` carries the whole
@@ -181,6 +218,33 @@ final class AgentActivityMonitorTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func socketInode() throws -> UInt64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: paths.socketPath)
+        return try XCTUnwrap(attributes[.systemFileNumber] as? UInt64, "the socket path must exist")
+    }
+
+    /// `bind` + `listen` on a descriptor closed without unlinking: what a killed instance leaves
+    /// behind. A regular file written at the path is not the same thing — it answers `ENOTSOCK`,
+    /// while this answers `ECONNREFUSED`.
+    private func bindAndAbandon(_ socketPath: String) {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: Array(socketPath.utf8)) }
+
+        // Qualified: `XCTestCase` inherits `NSObject.bind(_:to:withKeyPath:options:)`, which wins
+        // the unqualified name inside a test case.
+        let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        XCTAssertGreaterThanOrEqual(descriptor, 0)
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        XCTAssertEqual(bound, 0, "the fixture must leave a real socket inode behind")
+        XCTAssertEqual(Darwin.listen(descriptor, 64), 0)
+        Darwin.close(descriptor)
+    }
 
     /// Runs the installed forwarder exactly as an agent does: the three identity variables in the
     /// environment, the hook JSON on stdin, nothing else inherited.

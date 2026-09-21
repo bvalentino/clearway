@@ -199,3 +199,58 @@ surrounding prose and the file's voice; change nothing else in the file.
 
 Settings UI for `socketState`, `AgentHookInstaller.uninstall`'s cross-instance collision, per-bundle
 socket paths, and the saturated-backlog window — all per the spec's "Out of scope".
+
+## Build log
+
+### T1: Refuse a socket path a live instance still answers on
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `AgentHookSocketState` and `HookSocketOutcome` added at file scope; `@Published private(set) var socketState` on the monitor; `start()` switches on the outcome, `stop()` resets to `.off`; the `onPayload` closure gains `guard !payload.isEmpty`; `HookSocketListener.start` returns `HookSocketOutcome`; `listeningDescriptor(at:)` returns a private `DescriptorOutcome` and is guarded by the new `nonisolated static isAnswering(at:)` connect probe. |
+| `Tests/AgentActivityMonitorTests.swift` | `import Darwin`; `testAPathALiveInstanceAnswersOnIsLeftAlone`, `testASocketInodeLeftByADeadInstanceIsStillRebound`, and the `socketInode()` / `bindAndAbandon(_:)` helpers. Every pre-existing case is untouched. |
+| `project.yml` | `**/CLAUDE.md` excluded from the app target's `sources`. Not part of the task — see Deviations. |
+
+**Evidence**
+
+The regression test was watched red against the unfixed rule. The probe guard was neutered in place
+(`guard !isAnswering(at: address)` → a condition that can never hold), the gate run, and the file
+restored from a scratchpad copy — no `git checkout`, no stash. `./scripts/ci.sh`, exit 65:
+
+```
+Test Suite 'AgentActivityMonitorTests' started at 2026-09-21 16:16:02.441.
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("listening") is not equal to ("ownedByAnotherInstance") - the second instance must not take the socket
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("100264965") is not equal to ("100264964") - an unlink would replace the inode the live instance is listening on
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("idle") is not equal to ("working") - the first monitor's worktree phase after a second instance started
+Executed 12 tests, with 3 failures (0 unexpected) in 10.739 (10.742) seconds
+```
+
+The three assertions are the whole bug in order: the second instance took the socket, the inode it
+bound is one past the one the first was listening on, and the first instance then received nothing.
+`testASocketInodeLeftByADeadInstanceIsStillRebound` passed in that run as well as after the fix,
+which is the point of it — it pins the behaviour the probe must not change.
+
+**Deviations**
+
+1. **The probe sits before `socket(2)`, not between it and the `unlink`.** The plan had it close a
+   listening descriptor it had just created on the owned path. Probing first means there is no
+   descriptor to close and no leak to get wrong; it is still the statement immediately before the
+   `unlink` it guards, which is what D5 asks for.
+2. **`project.yml` excludes `**/CLAUDE.md` from the app target's sources.** Not this task's work and
+   not in the spec's file list. `./scripts/ci.sh` could not build at all on the plan's base: 6afcc8d
+   added `Sources/App/CLAUDE.md` beside `Sources/Ghostty/CLAUDE.md`, xcodegen picked both up as
+   resources, and both copy to `Clearway.app/Contents/Resources/CLAUDE.md` — *"Multiple commands
+   produce …/Resources/CLAUDE.md"*, a build-graph error, so no test ran. `main`'s own CI run for
+   PR #248 (`gh run view 35613723428`) failed with the identical line, so the breakage is
+   pre-existing and is red on `main` right now. The verification the plan names is unreachable
+   without it, so it is fixed here rather than reported. Notes for humans were never app resources.
+3. **`Darwin.socket` / `Darwin.bind` / `Darwin.listen` / `Darwin.close` are qualified in the test
+   helper.** `XCTestCase` inherits `NSObject.bind(_:to:withKeyPath:options:)`, which wins the
+   unqualified name and fails to compile.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 781 tests, 0 failures, run after the last edit.
+`grep -rn "unlink" Sources/` shows the same two call sites (`AgentActivityMonitor.swift:97` in
+`stop()`, `:216` in `listeningDescriptor`); the rest of the hits are prose or a view name.

@@ -22,6 +22,7 @@ final class AgentActivityMonitor: ObservableObject {
 
     @Published private(set) var worktreePhases: [String: AgentPhase] = [:]
     @Published private(set) var worktreeSubagents: [String: [AgentSubagent]] = [:]
+    @Published private(set) var socketState: AgentHookSocketState = .off
     let toolNames = ToolNames()
 
     private let paths: AgentHookPaths
@@ -60,8 +61,13 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     private func start() {
+        // Unconditional, and ahead of the listener on purpose: an instance that finds the socket
+        // owned still installs the identical block, which is a content reconciliation that writes
+        // only on a difference, so a second Clearway is a no-op here rather than a fight.
         AgentHookInstaller.install(home: home)
-        listener = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
+        let outcome = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
+            // A payload of nothing is another instance's liveness probe hanging up, never an event.
+            guard !payload.isEmpty else { return }
             // The forwarder sends only once both ids are set, so a payload that does not parse is
             // always something wrong — a truncated read, or a field an agent has renamed. Nothing
             // here has a clock, so every dropped event is permanent: a surface mid-tool-call keeps
@@ -73,6 +79,15 @@ final class AgentActivityMonitor: ObservableObject {
             }
             Task { @MainActor in self?.receive(envelope) }
         }
+        switch outcome {
+        case .listening(let opened):
+            listener = opened
+            socketState = .listening
+        case .ownedByAnotherInstance:
+            socketState = .ownedByAnotherInstance
+        case .unavailable:
+            socketState = .unavailable
+        }
     }
 
     private func stop() {
@@ -80,6 +95,7 @@ final class AgentActivityMonitor: ObservableObject {
         // After the cancel, and on the main actor both times, so a disable immediately followed by
         // an enable cannot unlink the socket the new listener just bound.
         unlink(paths.socketPath)
+        socketState = .off
         store = AgentActivityStore()
         publish()
         AgentHookInstaller.uninstall(home: home)
@@ -100,6 +116,25 @@ final class AgentActivityMonitor: ObservableObject {
         let names = store.surfaceToolNames
         if names != toolNames.bySurface { toolNames.bySurface = names }
     }
+}
+
+/// What the one fixed socket path is doing for this process. `.ownedByAnotherInstance` is a second
+/// Clearway on the machine — `build.sh`'s `Clearway (<worktree>).app` beside `ci.sh`'s
+/// `Clearway.app` — that found the path answering and left it alone; `.unavailable` is a bind that
+/// failed for any other reason, which is neither off nor somebody else's doing.
+enum AgentHookSocketState {
+    case off
+    case listening
+    case ownedByAnotherInstance
+    case unavailable
+}
+
+/// What `HookSocketListener.start` answers. An optional could not tell a path another instance owns
+/// from a path nothing can bind, and the two mean opposite things to the operator.
+enum HookSocketOutcome {
+    case listening(HookSocketListener)
+    case ownedByAnotherInstance
+    case unavailable
 }
 
 /// The listening socket, held so that releasing it tears the source down: the cancel handler closes
@@ -127,8 +162,13 @@ final class HookSocketListener {
     nonisolated static func start(
         socketPath: String,
         onPayload: @escaping @Sendable (Data) -> Void
-    ) -> HookSocketListener? {
-        guard let descriptor = listeningDescriptor(at: socketPath) else { return nil }
+    ) -> HookSocketOutcome {
+        let descriptor: Int32
+        switch listeningDescriptor(at: socketPath) {
+        case .open(let opened): descriptor = opened
+        case .ownedByAnotherInstance: return .ownedByAnotherInstance
+        case .unavailable: return .unavailable
+        }
 
         let source = DispatchSource.makeReadSource(
             fileDescriptor: descriptor,
@@ -137,23 +177,39 @@ final class HookSocketListener {
         source.setEventHandler { acceptPending(descriptor, onPayload) }
         source.setCancelHandler { close(descriptor) }
         source.resume()
-        return HookSocketListener(source: source)
+        return .listening(HookSocketListener(source: source))
     }
 
-    private nonisolated static func listeningDescriptor(at socketPath: String) -> Int32? {
+    /// The three states the path can leave this in. `HookSocketOutcome` cannot serve: there is no
+    /// listener yet, only a descriptor.
+    private enum DescriptorOutcome {
+        case open(Int32)
+        case ownedByAnotherInstance
+        case unavailable
+    }
+
+    private nonisolated static func listeningDescriptor(at socketPath: String) -> DescriptorOutcome {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let pathBytes = Array(socketPath.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
             Ghostty.logger.error("\(socketPath, privacy: .public) does not fit a Unix socket address.")
-            return nil
+            return .unavailable
         }
         withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: pathBytes) }
+
+        // The guard on the unlink below. A live owner's surfaces are the ones carrying the ids that
+        // match its socket, so its events are the ones that mean anything: this instance takes
+        // nothing and runs without hook events until that one quits.
+        guard !isAnswering(at: address) else {
+            Ghostty.logger.warning("Another Clearway instance is listening at \(socketPath, privacy: .public); this one runs without hook events.")
+            return .ownedByAnotherInstance
+        }
 
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
             Ghostty.logger.error("The agent hook socket could not be created: \(errno)")
-            return nil
+            return .unavailable
         }
         // A process that died without closing leaves the inode behind, and `bind` refuses an address
         // that already exists — so every launch after a crash would listen on nothing.
@@ -170,9 +226,35 @@ final class HookSocketListener {
         else {
             Ghostty.logger.error("The agent hook socket could not be bound at \(socketPath, privacy: .public): \(errno)")
             close(descriptor)
-            return nil
+            return .unavailable
         }
-        return descriptor
+        return .open(descriptor)
+    }
+
+    /// One `connect(2)` on a throwaway descriptor, the whole liveness test. **Only a return of 0
+    /// defends the path**: every errno falls through to the unlink, which is what Clearway did
+    /// unconditionally before — `ECONNREFUSED` from an inode a killed instance left behind,
+    /// `ENOTSOCK` from a file or a directory standing there, `ENOENT` from nothing at all, and an
+    /// unforeseen one besides, since reading an unknown errno as an owner would disable the feature
+    /// until the next reboot. A local `AF_UNIX` connect completes or fails in the kernel without
+    /// waiting on the peer, so there is nothing to time out. The live owner sees one connection that
+    /// closes with nothing written, which its own accept loop drops as an empty payload.
+    ///
+    /// A live listener whose backlog of 64 is full also refuses, so an instance with that many
+    /// unaccepted connections reads as stale. The accept loop drains to `EAGAIN` on every event and
+    /// hook connections are one per lifecycle event, so reaching it means the queue is parked; it is
+    /// a known limit rather than a reason for a retry.
+    private nonisolated static func isAnswering(at address: sockaddr_un) -> Bool {
+        let probe = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard probe >= 0 else { return false }
+        defer { close(probe) }
+        var target = address
+        let connected = withUnsafePointer(to: &target) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(probe, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        return connected == 0
     }
 
     /// Drains every pending connection: a read source coalesces, so one event can stand for several
