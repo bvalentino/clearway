@@ -102,6 +102,46 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.socketPath))
     }
 
+    /// The toggle is driven from `ClearwayApp`'s `.onAppear`, which fires once per window, so
+    /// latching on the listener alone is not enough: a bind that fails leaves it nil and every
+    /// window opened after it rewrites both agents' settings files on the main actor. A directory
+    /// standing where the socket goes is a bind that cannot succeed.
+    func testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed() throws {
+        try FileManager.default.createDirectory(atPath: paths.socketPath, withIntermediateDirectories: true)
+
+        monitor.setEnabled(true)
+        try FileManager.default.removeItem(atPath: paths.scriptPath)
+
+        monitor.setEnabled(true)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: paths.scriptPath),
+            "the second enable must run nothing, so the forwarder it already wrote stays gone"
+        )
+    }
+
+    /// The same latch from the other side, and the case that costs every launch: with the toggle
+    /// off, `.onAppear` hands the monitor `false` once per window, and an unguarded `stop()` runs a
+    /// synchronous settings rewrite each time.
+    func testDisablingAMonitorThatWasNeverEnabledReachesNoUninstaller() throws {
+        let claudeDir = (home as NSString).appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(atPath: claudeDir, withIntermediateDirectories: true)
+        let path = (claudeDir as NSString).appendingPathComponent("settings.json")
+        let installed = try JSONSerialization.data(
+            withJSONObject: AgentHookSettings.install(into: [:]),
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try installed.write(to: URL(fileURLWithPath: path))
+
+        monitor.setEnabled(false)
+
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: path)),
+            installed,
+            "a monitor that never started has nothing to tear down"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Runs the installed forwarder exactly as an agent does: the three identity variables in the

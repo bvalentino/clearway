@@ -1820,3 +1820,43 @@ and the group headers carry no inset and no icon slot, and neither did before.
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.` Layout carries no test; the count is unchanged, as
 an alignment-only change should leave it.
+
+### Review fixes
+
+Four findings from the review of the built feature. One commit each, each through `./scripts/ci.sh`.
+No operator-verified behaviour changes in any of them.
+
+#### R1 — The hook toggle latches on the transition, not on the listener
+
+**Reported.** `setEnabled` is driven from `ClearwayApp`'s `.onAppear`, which fires once per window.
+`start()` latched only on `listener != nil`, so a bind that failed re-ran `AgentHookInstaller.install`
+for every window opened after it; `stop()` had no latch at all, so with the toggle off every window
+re-ran `uninstall`. Both are synchronous settings-file rewrites on the main actor.
+
+**What landed.** One `private var isEnabled` on the monitor, set in `setEnabled` regardless of
+whether the bind succeeded, so each transition runs the installer exactly once. `start()`'s
+`guard listener == nil` goes with it — the latch above it is now the whole rule.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `isEnabled` latch in `setEnabled`; `start()`'s listener guard removed |
+| `Tests/AgentActivityMonitorTests.swift` | the two branches of the latch |
+
+**Evidence.** Both watched red against the unfixed monitor, run under the suite's short temp home:
+
+```
+Tests/AgentActivityMonitorTests.swift:117: error: -[ClearwayTests.AgentActivityMonitorTests
+  testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed] : XCTAssertFalse failed - the
+  second enable must run nothing, so the forwarder it already wrote stays gone
+Tests/AgentActivityMonitorTests.swift:138: error: -[ClearwayTests.AgentActivityMonitorTests
+  testDisablingAMonitorThatWasNeverEnabledReachesNoUninstaller] : XCTAssertEqual failed:
+  ("4 bytes") is not equal to ("1853 bytes") - a monitor that never started has nothing to tear down
+```
+
+The enable case needs a bind that fails, or the old listener guard already covers it: a **directory**
+standing where the socket goes makes `bind` fail without stopping the install, which is the shape
+the finding names. The disable case needs no setup at all — it is the every-launch case, the toggle
+off and `.onAppear` handing the monitor `false` once per window.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 744 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.`

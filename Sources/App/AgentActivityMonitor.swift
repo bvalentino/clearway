@@ -18,6 +18,7 @@ final class AgentActivityMonitor: ObservableObject {
     private let home: String
     private var store = AgentActivityStore()
     private var listener: HookSocketListener?
+    private var isEnabled = false
 
     init(home: String = NSHomeDirectory()) {
         self.home = home
@@ -25,8 +26,15 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     /// The whole toggle: on installs the hooks and opens the listener, off closes it, forgets every
-    /// surface and removes the hooks. Idempotent in both directions.
+    /// surface and removes the hooks.
+    ///
+    /// The latch is the transition, not the listener: `ClearwayApp` drives this from an `.onAppear`
+    /// that fires once per window, and both installers are synchronous settings-file rewrites on
+    /// the main actor. Latching on `listener` instead would re-run the install for every window
+    /// once a bind had failed, and re-run the uninstall for every window while the toggle is off.
     func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
         if enabled {
             start()
         } else {
@@ -42,7 +50,6 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     private func start() {
-        guard listener == nil else { return }
         AgentHookInstaller.install(home: home)
         listener = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
             guard let envelope = AgentHookEnvelope.parse(payload) else { return }
