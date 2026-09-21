@@ -254,3 +254,8 @@ which is the point of it — it pins the behaviour the probe must not change.
 `./scripts/ci.sh` — green, exit 0, 781 tests, 0 failures, run after the last edit.
 `grep -rn "unlink" Sources/` shows the same two call sites (`AgentActivityMonitor.swift:97` in
 `stop()`, `:216` in `listeningDescriptor`); the rest of the hits are prose or a view name.
+
+**Split**
+
+The `project.yml` exclusion was lifted out of the T1 commit into its own first commit on this branch
+so it could go to `main` on its own: PR #249, green on `./scripts/ci.sh` (exit 0, 779 tests).
