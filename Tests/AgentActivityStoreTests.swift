@@ -206,7 +206,10 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
         applyRaw(subagentStart(agentId: "aa713d00cbb27a6be"))
 
-        applyRaw(stop(running: ["a42b06983b46906f7", "aa713d00cbb27a6be"]))
+        applyRaw(stop(running: [
+            ("a42b06983b46906f7", "Count Swift files slowly"),
+            ("aa713d00cbb27a6be", "Count test files slowly")
+        ]))
 
         XCTAssertEqual(
             store.subagents(forWorktree: worktreeOne).map(\.id),
@@ -234,7 +237,7 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(subagentStart(agentId: "aa713d00cbb27a6be"))
         apply("SubagentStop", agentId: "a42b06983b46906f7")
 
-        applyRaw(stop(running: ["aa713d00cbb27a6be"]))
+        applyRaw(stop(running: [("aa713d00cbb27a6be", "Count test files slowly")]))
 
         XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["aa713d00cbb27a6be"])
 
@@ -251,6 +254,28 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(subagentPreToolUse(agentId: "ac545fc45491c3fde"))
 
         XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.type), ["general-purpose"])
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Bash"])
+    }
+
+    /// `Stop`'s `background_tasks` is the only payload carrying the prompt's own summary, so the row
+    /// takes it from there and keeps it: the tool traffic that follows names no description, and
+    /// neither does a later `Stop` whose entry omits one.
+    func testAStopsDescriptionLandsOnTheRowAndIsNotBlankedByLaterEvents() {
+        applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
+        applyRaw(stop(running: [("a42b06983b46906f7", "Count Swift files slowly")]))
+
+        XCTAssertEqual(
+            store.subagents(forWorktree: worktreeOne).map(\.description),
+            ["Count Swift files slowly"]
+        )
+
+        applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
+        applyRaw(stop(running: [("a42b06983b46906f7", nil)]))
+
+        XCTAssertEqual(
+            store.subagents(forWorktree: worktreeOne).map(\.description),
+            ["Count Swift files slowly"]
+        )
         XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Bash"])
     }
 
@@ -277,9 +302,12 @@ final class AgentActivityStoreTests: XCTestCase {
         """
     }
 
-    private func stop(running: [String]) -> String {
-        let tasks = running.map {
-            #"{"id":"\#($0)","type":"subagent","status":"running","description":"Count","agent_type":"general-purpose"}"#
+    /// A `nil` description omits the key rather than sending `null`, which is how an agent with no
+    /// summary to report spells it, and what a second `Stop` must not blank the row with.
+    private func stop(running: [(id: String, description: String?)]) -> String {
+        let tasks = running.map { task in
+            let description = task.description.map { #""description":"\#($0)","# } ?? ""
+            return #"{"id":"\#(task.id)","type":"subagent","status":"running",\#(description)"agent_type":"general-purpose"}"#
         }
         return """
         {"session_id":"a31044a0-d307-4a2c-81e7-6cb3fa82d619","transcript_path":"/tmp/t.jsonl",\

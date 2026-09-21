@@ -1638,3 +1638,61 @@ deployment target, where the worktree row's own `square.on.square.intersection.d
 **Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 742 tests, with 0 failures
 (0 unexpected)`, then `==> CI passed.` The row carries no test; the count is unchanged, as an
 icon-only change should leave it.
+
+### C4 — A subagent row names the work, not only the agent type
+
+**Reported.** The brief asks for each subagent's type "and the description when the hooks provide
+one". C2 found one on the wire and left it unrendered, so the rows read `general-purpose` twice over
+where Claude Code's own status line reads `general-purpose  Count Swift files slowly` and
+`general-purpose  Count test files slowly`.
+
+**Decision.** `Stop`'s `background_tasks` entries carry `description` beside `id`, `type`, `status`
+and `agent_type` — C2's capture recorded it and its test helper already emitted it — so
+`BackgroundTask` decodes it and `AgentSubagent` holds it. Nothing else on the wire carries one:
+`SubagentStart` still does not, and correlating one out of the `Agent` tool's `PreToolUse` is still
+rejected for the reason Decision 25 gave. That makes the carry-over load-bearing rather than
+defensive: `keepOnly` takes `task.description ?? subagents[task.id]?.description`, the same shape
+the type already used, so a later `Stop` whose entry omits the summary cannot blank a row no other
+event could repair.
+
+`SubagentRow` puts it beside the type in an `HStack`, secondary, with the in-flight tool still on
+the line below. The type carries `.layoutPriority(1)`: it is what identifies the row, so the
+description is what truncates when the sidebar is narrow.
+
+Spec Decision 25 said the description is not shown; it now records that it is, what supplies it and
+what it falls back to.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookEvent.swift` | `BackgroundTask.description` decoded |
+| `Sources/App/AgentActivityStore.swift` | `AgentSubagent.description`; `keepOnly` carries it over when the entry omits it |
+| `Sources/App/WorktreeRow.swift` | `SubagentRow` draws type and description on one line |
+| `Tests/AgentActivityStoreTests.swift` | `testAStopsDescriptionLandsOnTheRowAndIsNotBlankedByLaterEvents`; `stop(running:)` takes a description per entry, and omits the key when given none |
+| `docs/…/specs/…md` | Decision 25 rewritten |
+| `CLAUDE.md` | the `background_tasks`-only source of the summary and its carry-over |
+
+**Evidence.** Two watched failures, both with the test in place and the store reverted from a
+scratchpad copy (`-only-testing:ClearwayTests/AgentActivityStoreTests`).
+
+With `keepOnly` not recording the description at all — the whole behaviour absent:
+
+```
+AgentActivityStoreTests.swift:267: XCTAssertEqual failed:
+  ("[nil]") is not equal to ("[Optional("Count Swift files slowly")]")
+AgentActivityStoreTests.swift:275: XCTAssertEqual failed:
+  ("[nil]") is not equal to ("[Optional("Count Swift files slowly")]")
+Executed 21 tests, with 2 failures (0 unexpected)
+```
+
+With `keepOnly` recording `task.description` but not carrying it over — only the second half
+missing, which is the half the brief names:
+
+```
+AgentActivityStoreTests.swift:275: XCTAssertEqual failed:
+  ("[nil]") is not equal to ("[Optional("Count Swift files slowly")]")
+Executed 21 tests, with 1 failure (0 unexpected)
+```
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.` One test more than C3's 742, as one added test
+should leave it. The row's layout carries no test, the same as C3.

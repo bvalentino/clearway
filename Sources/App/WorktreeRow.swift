@@ -91,14 +91,26 @@ struct WorktreeRow: View {
 /// One live subagent under its worktree. Its glyph goes in the same `SidebarIcon` column the
 /// worktree row's does, so the two share one leading edge and the child reads as a child through
 /// the symbol rather than through an indent.
+///
+/// The description sits beside the type, the way Claude Code's own status line writes the pair, and
+/// yields the width first: the type is what identifies the row, so it keeps its layout priority and
+/// the description truncates around it.
 struct SubagentRow: View {
     let subagent: AgentSubagent
 
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
-                Text(subagent.type ?? "Subagent")
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(subagent.type ?? "Subagent")
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if let description = subagent.description {
+                        Text(description)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
                 if let toolName = subagent.toolName {
                     Text(toolName)
                         .font(.subheadline)

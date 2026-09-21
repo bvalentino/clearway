@@ -13,18 +13,21 @@ struct AgentHookEvent: Decodable, Equatable {
 
     /// One entry of `Stop`'s `background_tasks`: the work the agent left running when it finished
     /// its turn. `type` is documented as `"subagent"` today and `status` as `running`, `completed`
-    /// or `failed`.
+    /// or `failed`. `description` is the prompt's own summary — "Count Swift files slowly" — and is
+    /// the only place any hook payload carries it; `SubagentStart` still does not.
     struct BackgroundTask: Decodable, Equatable {
         let id: String
         let type: String?
         let status: String?
         let agentType: String?
+        let description: String?
 
         private enum CodingKeys: String, CodingKey {
             case id
             case type
             case status
             case agentType = "agent_type"
+            case description
         }
     }
 

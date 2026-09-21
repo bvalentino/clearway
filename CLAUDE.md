@@ -474,11 +474,16 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     it.** A background `Agent` launch is exactly the case where the lead finishes its turn — and so
     fires `Stop` — while its subagents are still working, so the blind `removeAll` this replaced took
     both rows away a second after they appeared. `Stop` carries `background_tasks`, each entry an
-    `id`, a `status` and its `agent_type`; keeping the `running` ones is still the sweep a missed
-    `SubagentStop` needs, and a `Stop` that names none clears the roster as before. Every event that
-    carries an `agent_id` carries its `agent_type` beside it — `SubagentStart`/`Stop` and a
-    subagent's own `PreToolUse` alike — so a row first seen through its tool traffic is named rather
-    than left on `SubagentRow`'s fallback label.
+    `id`, a `status`, its `agent_type` and a `description`; keeping the `running` ones is still the
+    sweep a missed `SubagentStop` needs, and a `Stop` that names none clears the roster as before.
+    Every event that carries an `agent_id` carries its `agent_type` beside it —
+    `SubagentStart`/`Stop` and a subagent's own `PreToolUse` alike — so a row first seen through its
+    tool traffic is named rather than left on `SubagentRow`'s fallback label. **`background_tasks`
+    is the only payload carrying the prompt's own summary**, so `keepOnly` carries both the type and
+    the description over from the row it already holds when the entry omits them: a later `Stop`
+    must not blank what an earlier one named, and no other event can restore it. `SubagentRow` draws
+    that summary beside the type on one line, the way Claude Code's own status line does, with the
+    in-flight tool below.
     **Nothing in the pipeline has a clock.** No timer, no expiry, no mtime heuristic: a surface
     leaves a state only because an event said so. A `SIGKILL`ed session therefore pins a dot until
     its next `SessionStart`, which is accepted — the expiring heuristic this replaced guessed wrong

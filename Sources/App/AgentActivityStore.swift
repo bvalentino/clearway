@@ -13,6 +13,7 @@ enum AgentPhase: Int, Comparable {
 struct AgentSubagent: Identifiable, Equatable {
     let id: String
     var type: String?
+    var description: String?
     var toolName: String?
 }
 
@@ -51,12 +52,15 @@ struct AgentSurfaceState {
     /// `Stop` fires while background subagents are still running and names the ones that are, so the
     /// roster is reduced to that list rather than emptied. Reducing keeps the sweep a blind
     /// `removeAll` was there for — a missed `SubagentStop` still cannot pin a row — while a `Stop`
-    /// that names none clears the roster exactly as before.
+    /// that names none clears the roster exactly as before. The type and the description carry over
+    /// from the row already held when this payload omits them, for the same reason `note` keeps a
+    /// known type: a later `Stop` must not blank what an earlier one named.
     fileprivate mutating func keepOnly(_ running: [AgentHookEvent.BackgroundTask]) {
         subagents = running.reduce(into: [:]) { roster, task in
             roster[task.id] = AgentSubagent(
                 id: task.id,
                 type: task.agentType ?? subagents[task.id]?.type,
+                description: task.description ?? subagents[task.id]?.description,
                 toolName: subagents[task.id]?.toolName
             )
         }
