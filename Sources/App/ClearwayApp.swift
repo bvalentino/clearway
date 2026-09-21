@@ -81,15 +81,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Window delegate that confirms close when terminals have running processes.
+/// Window delegate that confirms close when the closing window's terminals have running
+/// processes. The rule arrives as a closure so the window that installs it answers for its own
+/// `TerminalManager` — Cmd+Q above keeps the process-wide aggregate.
 @MainActor
 final class CloseConfirmationDelegate: NSObject, NSWindowDelegate {
+    static let messageText = "Close terminal sessions?"
+    static let informativeText = "There are processes still running in this window's terminals."
+
+    private let needsConfirm: @MainActor () -> Bool
+
+    init(needsConfirm: @escaping @MainActor () -> Bool) {
+        self.needsConfirm = needsConfirm
+        super.init()
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard TerminalManager.needsConfirmQuit else { return true }
+        guard needsConfirm() else { return true }
 
         let alert = NSAlert()
-        alert.messageText = "Close terminal sessions?"
-        alert.informativeText = "There are processes still running in your terminals."
+        alert.messageText = Self.messageText
+        alert.informativeText = Self.informativeText
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
@@ -105,11 +117,13 @@ final class CloseConfirmationDelegate: NSObject, NSWindowDelegate {
 
 /// Installs a `CloseConfirmationDelegate` on the hosting window.
 struct CloseConfirmation: NSViewRepresentable {
+    let needsConfirm: @MainActor @Sendable () -> Bool
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
-            let delegate = CloseConfirmationDelegate()
+            let delegate = CloseConfirmationDelegate(needsConfirm: needsConfirm)
             // Keep delegate alive for the window's lifetime.
             objc_setAssociatedObject(window, "closeConfirmationDelegate", delegate, .OBJC_ASSOCIATION_RETAIN)
             window.delegate = delegate
@@ -167,7 +181,6 @@ struct ClearwayApp: App {
     var body: some Scene {
         WindowGroup(for: String.self) { $projectPath in
             ProjectWindow(projectPath: $projectPath)
-                .background(CloseConfirmation())
                 .environmentObject(ghosttyApp)
                 .environmentObject(projectList)
                 .environmentObject(caffeine)

@@ -69,9 +69,11 @@ private class WindowHiderView: NSView {
 /// Runs `perform` when the window hosting it closes.
 ///
 /// The one door a per-window teardown can hang off: closing a project window sends nothing through
-/// `closeWorktree` or `removeSurface`, and no window delegate of Clearway's own is free — the
-/// hosting window's delegate slot already holds `CloseConfirmationDelegate`, installed a layer up
-/// where the window's managers are out of reach.
+/// `closeWorktree` or `removeSurface`, and the hosting window's delegate slot already holds
+/// `CloseConfirmationDelegate`. Both installers now sit in `ProjectContentView.body` and stay
+/// separate: the delegate is installed once through `DispatchQueue.main.async` and never
+/// re-scopes, while this observer re-scopes with the view's tenancy in a window — behavior
+/// `WindowCloseHandlerTests` pins.
 struct WindowCloseHandler: NSViewRepresentable {
     let perform: @MainActor @Sendable () -> Void
 
@@ -167,6 +169,9 @@ struct ProjectContentView: View {
             }
             .background(WindowCloseHandler { [terminalManager] in
                 terminalManager.retireAllSurfaces()
+            })
+            .background(CloseConfirmation { [weak terminalManager] in
+                terminalManager?.needsConfirmClose ?? false
             })
     }
 }

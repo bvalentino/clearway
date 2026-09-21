@@ -94,6 +94,7 @@
 		7D58BA61EB470818EA0450F8 /* AgentLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A3868EDD642635D44655B0 /* AgentLaunch.swift */; };
 		7DD769DE37FAC9D25BEE8F6C /* NSAppearance+IsDark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755813494B738E5A8EB3AD43 /* NSAppearance+IsDark.swift */; };
 		7EA84D7D27FEBFD08195D87F /* TerminalManager+Agent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9797209B04B603197081D146 /* TerminalManager+Agent.swift */; };
+		7F700B378F63294D5BFF0926 /* CloseConfirmationDelegateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC7453F30464AE79C0F927E1 /* CloseConfirmationDelegateTests.swift */; };
 		7FB611690EE586107D9FBB76 /* WorktreeConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02CBA2B1687EECDFB7B460D6 /* WorktreeConfigStore.swift */; };
 		81EF1B0856D4F302835AC01A /* ShellPathResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E72B54161DD09066136784D /* ShellPathResolver.swift */; };
 		83D7F3D687ACC6A792C06F5E /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E30A2C721296DD9587040 /* CommandsView.swift */; };
@@ -292,6 +293,7 @@
 		A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearwayApp.swift; sourceTree = "<group>"; };
 		A81980298EE06DF71BF08974 /* WorkTaskCoordinator+TaskTerminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkTaskCoordinator+TaskTerminal.swift"; sourceTree = "<group>"; };
 		AA925629DB815AC555414676 /* Todo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Todo.swift; sourceTree = "<group>"; };
+		AC7453F30464AE79C0F927E1 /* CloseConfirmationDelegateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloseConfirmationDelegateTests.swift; sourceTree = "<group>"; };
 		ACB36BA43668631D7D6CC486 /* SavedCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedCommandTests.swift; sourceTree = "<group>"; };
 		ADD413DCDFE98EF635534720 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AF04318569BD95EFE4C470CA /* GitResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitResolver.swift; sourceTree = "<group>"; };
@@ -389,6 +391,7 @@
 				97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */,
 				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
 				7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */,
+				AC7453F30464AE79C0F927E1 /* CloseConfirmationDelegateTests.swift */,
 				6A0B20FA6AE5CB3278F67E10 /* CommandPlaceholdersTests.swift */,
 				7AD127323A40CFBB60CFB849 /* CreateWorktreeOutcomeTests.swift */,
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
@@ -956,6 +959,7 @@
 				35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */,
 				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,
 				DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */,
+				7F700B378F63294D5BFF0926 /* CloseConfirmationDelegateTests.swift in Sources */,
 				F935EB7FDFB8FA252925EABF /* CommandPlaceholdersTests.swift in Sources */,
 				60A44D6F22C85CFC83500AA6 /* CreateWorktreeOutcomeTests.swift in Sources */,
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
