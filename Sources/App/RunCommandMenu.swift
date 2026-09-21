@@ -26,6 +26,12 @@ struct RunCommandMenu: View {
             .sheet(isPresented: $showCommandEditor) {
                 CommandEditorSheet(command: nil)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .clearwayAddCommand)) { note in
+                // The notification is broadcast to every mounted view, so only the menu whose
+                // command manager matches the post's target presents the sheet.
+                guard (note.object as? SavedCommandManager) === savedCommandManager else { return }
+                showCommandEditor = true
+            }
     }
 
     /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice and

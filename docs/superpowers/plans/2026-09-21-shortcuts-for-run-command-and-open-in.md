@@ -577,3 +577,34 @@ closure off `ContentView` itself.
 
 Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; `swiftlint lint --quiet` silent, exit 0;
 `==> CI passed.` `git status --porcelain` before the commit showed only the four files above.
+
+### T4: Open the command editor from the menu bar
+
+| File | State |
+| --- | --- |
+| `Sources/App/AppNotifications.swift` | 5 → 6 lines. `static let clearwayAddCommand = Notification.Name("clearway.addCommand")` beside `clearwayNewGroup`. |
+| `Sources/App/RunCommandMenu.swift` | 79 → 85 lines. `body` gains one `.onReceive(NotificationCenter.default.publisher(for: .clearwayAddCommand))` below the existing `.sheet`, whose guard is `(note.object as? SavedCommandManager) === savedCommandManager` before `showCommandEditor = true`. Nothing else changed — the "Add Command…" button still sets the flag directly. |
+
+Evidence. This task adds an observer on a SwiftUI body; nothing in `RunCommandMenu` is reachable
+from XCTest (the view needs a `ghostty_app_t` and an `EnvironmentObject` graph), and T4 has no
+poster yet — T5 owns that. So there is no regression test to watch fail, and none was written. The
+bar is compile-and-lint coverage plus the identity-guard shape, which is copied from the one
+precedent in the tree rather than invented: `SidebarView.swift:175-179` guards
+`(note.object as? WorktreeGroupManager) === groupManager` against `.clearwayNewGroup`, posted at
+`ClearwayApp.swift:411`. `SavedCommandManager` is a `final class` (`SavedCommandManager.swift:11`),
+so `===` is well-formed.
+
+Acceptance criteria. 1: `.clearwayAddCommand` is in `AppNotifications.swift`. 2: the `.onReceive`
+body is the guard then `showCommandEditor = true`, and the guard compares by identity, so a second
+project window's `RunCommandMenu` ignores a post carrying another window's manager. 3: the
+`.onReceive` is chained after `.sheet`, both below `.disabled(ghosttyApp.app == nil)`, so the
+editor's controls inherit no disabled environment and a post arriving while Ghostty is not ready
+still opens the sheet. 4: `grep -rn "CommandEditorSheet" Sources/App/*.swift` returns four lines —
+the declaration, `CommandsView.swift:51` (`command: target.command`), `RunCommandMenu.swift:27` and
+`WorkTaskListView.swift:147` (`newCommandKind: .agent`). `ContentView.swift` is untouched and gains
+no sheet.
+
+Deviations from the plan. None.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the two files above plus this plan.
