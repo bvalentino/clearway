@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Clearway
 
@@ -13,6 +14,20 @@ func makeWorktree(
         isMain: isMain,
         headStatus: headStatus
     )
+}
+
+/// A window for the suites that drive window-level AppKit behaviour.
+@MainActor
+func makeWindow() -> NSWindow {
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false
+    )
+    // An NSWindow created in code releases itself on close, which ARC would then over-release.
+    window.isReleasedWhenClosed = false
+    return window
 }
 
 /// Base for tests that need a scratch project root, created per test and removed on teardown.
