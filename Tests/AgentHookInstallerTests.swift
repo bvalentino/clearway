@@ -119,6 +119,28 @@ final class AgentHookInstallerTests: TempRootTestCase {
         XCTAssertEqual((try decoded(codexHooksPath)["hooks"] as? [String: Any])?.count, 9)
     }
 
+    // MARK: - The forwarder
+
+    /// `0700` on `~/.clearway` is the whole access control on the hook socket: the app is
+    /// unsandboxed and binds under `$HOME` rather than on a port. A directory that already exists —
+    /// one that predates the feature, or one a umask left wider — must be narrowed, so the mode is
+    /// reasserted on every install rather than set only by the create that may never run.
+    func testTheClearwayDirectoriesAreNarrowedEvenWhenTheyAlreadyExist() throws {
+        let paths = AgentHookPaths(home: tempRoot)
+        for directory in [paths.clearwayDir, paths.hooksDir] {
+            try FileManager.default.createDirectory(
+                atPath: directory,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: 0o755]
+            )
+        }
+
+        AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertEqual(try mode(paths.clearwayDir), AgentHookScript.dirMode)
+        XCTAssertEqual(try mode(paths.hooksDir), AgentHookScript.dirMode)
+    }
+
     // MARK: - Helpers
 
     private func install() {
@@ -140,6 +162,10 @@ final class AgentHookInstallerTests: TempRootTestCase {
 
     private func modificationDate(_ path: String) throws -> Date? {
         try FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
+    }
+
+    private func mode(_ path: String) throws -> Int? {
+        (try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber)?.intValue
     }
 
     private let userSettings = """

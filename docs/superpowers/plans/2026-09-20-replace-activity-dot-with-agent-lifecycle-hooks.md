@@ -1927,3 +1927,34 @@ expectation on `monitor.objectWillChange` is what says so.
 
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 751 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.`
+
+#### R4 — `~/.clearway`'s `0700` is reasserted, not assumed
+
+**Reported.** `installScript` passed `dirMode` as a create attribute, so it applied only to a
+directory Clearway created. `AgentHookScript` calls that mode the socket's whole access control, and
+a `~/.clearway` that already exists — one predating the feature, or one a umask left wider — was
+left as found.
+
+**What landed.** The create drops the attribute and one `setAttributes` reasserts `0700` on both
+directories on every install, the same shape as the script mode immediately below it.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookInstaller.swift` | the mode is reasserted per directory, not set by the create |
+| `Tests/AgentHookInstallerTests.swift` | the pre-existing-directory case, and a `mode` helper |
+
+**Evidence.** Watched red against the installer as committed at R3, restored from `git show HEAD:…`
+and then restored from the scratchpad — `493` is `0o755`, `448` is `0o700`:
+
+```
+Tests/AgentHookInstallerTests.swift:140: error: -[ClearwayTests.AgentHookInstallerTests
+  testTheClearwayDirectoriesAreNarrowedEvenWhenTheyAlreadyExist] : XCTAssertEqual failed:
+  ("Optional(493)") is not equal to ("Optional(448)")
+Tests/AgentHookInstallerTests.swift:141: error: … ("Optional(493)") is not equal to ("Optional(448)")
+```
+
+It is the suite's first case to drive `installScript`, which the file's own header had left to the
+operator; it stays honest about the real `~/.clearway` because `install(home:)` takes the temp root.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 752 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.`

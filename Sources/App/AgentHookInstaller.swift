@@ -43,13 +43,14 @@ enum AgentHookInstaller {
         let fileManager = FileManager.default
         let path = paths.scriptPath
         do {
-            for directory in [paths.clearwayDir, paths.hooksDir]
-            where !fileManager.fileExists(atPath: directory) {
-                try fileManager.createDirectory(
-                    atPath: directory,
-                    withIntermediateDirectories: true,
-                    attributes: [.posixPermissions: AgentHookScript.dirMode]
-                )
+            for directory in [paths.clearwayDir, paths.hooksDir] {
+                if !fileManager.fileExists(atPath: directory) {
+                    try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
+                }
+                // Unconditional, for the same reason the script's mode below is: `0700` here is the
+                // whole access control on the socket, and a `~/.clearway` that predates Clearway —
+                // or one a umask left wider — is not narrowed by a create that never runs.
+                try fileManager.setAttributes([.posixPermissions: AgentHookScript.dirMode], ofItemAtPath: directory)
             }
 
             let body = Data(AgentHookScript.body.utf8)
