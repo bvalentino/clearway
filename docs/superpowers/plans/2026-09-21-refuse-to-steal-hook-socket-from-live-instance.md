@@ -297,3 +297,31 @@ of that one.
 `AgentActivityMonitor.swift:101` in `stop()` and `:220` in `listeningDescriptor`.
 `git status --porcelain` before the commit: the two modified files above and nothing else — no
 `default.profraw`, no untracked files.
+
+### T3: Correct the unconditional-unlink claim in `Sources/App/CLAUDE.md`
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | The transport note's closing sentence, which said `bind` unlinks a stale path first, is replaced by the shipped rule: the connect probe runs immediately before the unlink, a return of 0 means a live owner so neither the unlink nor the bind happens and the instance publishes `.ownedByAnotherInstance`, every errno falls through to the unlink and the bind, and `stop()` gates its own unlink on the same fact. Nothing else in the file changed. |
+
+**Evidence**
+
+Documentation only, so there is no watched failure to quote. The claim corrected is the one the
+code no longer makes: `AgentActivityMonitor.swift:206-210` refuses the path on
+`isAnswering(at: address)` before reaching the `unlink` at `:220`, and `stop()` at `:96-101` reads
+`socketState == .listening` into `bound` and unlinks only when it holds.
+
+**Deviations**
+
+The rewrite opens with a bolded lead sentence, matching the other rules in that entry
+(**The transport is …**, **The forwarder is …**), rather than staying an unmarked continuation of
+the transport sentence. It is a rule of its own now, not a footnote to the transport choice.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 782 tests, 0 failures, run after the last edit.
+`git diff --stat` before this log was appended: `Sources/App/CLAUDE.md` alone, 9 insertions,
+2 deletions. `git status --porcelain`: that one file and nothing else — no `default.profraw`, no
+untracked files.

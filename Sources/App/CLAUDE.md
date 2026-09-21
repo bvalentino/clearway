@@ -321,8 +321,15 @@
   hook invocation, read to EOF. Not a port: the app would need no entitlement either way, but a
   port can collide, can be reached from off the machine, and has no `0700` directory standing in
   for access control — which is the whole of it here, since the app is unsandboxed and binds under
-  `$HOME`. `bind` unlinks a stale path first, or one crash leaves an inode that makes every later
-  launch fail `EADDRINUSE` and no dot ever lights again.
+  `$HOME`. **Binding probes the path first and refuses a live owner.** One `connect(2)` on a
+  throwaway descriptor runs immediately before the unlink, and only a return of 0 defends the path:
+  another Clearway is listening, so neither the unlink nor the bind happens, and this instance
+  publishes `.ownedByAnotherInstance` and runs without hook events until that one quits. Every
+  errno falls through to the unlink and the bind, which is what keeps a crash from leaving an inode
+  that fails every later launch with `EADDRINUSE` so no dot ever lights again. `stop()` gates its
+  own unlink on the same fact — it removes the socket only when this instance bound it, because the
+  two unlinks are one invariant and an ungated `stop()` takes the live instance's socket by the
+  other door.
   **The forwarder is `/usr/bin/nc -U -w 1`, absolute, and never carries `-N`.** macOS reads `-N` as
   a probe count, not OpenBSD's shutdown flag, so a script using it fails on every hook with no
   diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to
