@@ -91,6 +91,24 @@ final class AgentHookInstallerTests: TempRootTestCase {
         }
     }
 
+    /// The destructive reading of the same `nil`: `FileManager.contents` answers it for a file that
+    /// cannot be read as well as for one that is not there, and "not there" is the branch that
+    /// takes no backup. A file left root-owned by one `sudo claude` run would have had the user's
+    /// whole settings replaced by the block alone, with no `.clearway-backup` beside it, because
+    /// the atomic write renames over the path and needs the directory rather than the file.
+    func testAnUnreadableSettingsFileIsLeftAloneAndNotBackedUp() throws {
+        try XCTSkipIf(getuid() == 0, "root reads a mode-000 file, so the case cannot be staged")
+        try write(userSettings, to: settingsPath)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: settingsPath)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsPath) }
+
+        install()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsPath)
+        XCTAssertEqual(try String(contentsOfFile: settingsPath, encoding: .utf8), userSettings)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupPath), "a file Clearway cannot read is a file it does not touch")
+    }
+
     // MARK: - The backup
 
     func testTheBackupIsTakenOnceAndNeverRefreshed() throws {
@@ -139,6 +157,22 @@ final class AgentHookInstallerTests: TempRootTestCase {
 
         XCTAssertEqual(try mode(paths.clearwayDir), AgentHookScript.dirMode)
         XCTAssertEqual(try mode(paths.hooksDir), AgentHookScript.dirMode)
+    }
+
+    /// The forwarder is compared by content, not by existence, so a fix to it reaches the users who
+    /// already have the old one. Narrowing this to "write it if it is missing" — the shape the
+    /// directory create above uses — would ship every later forwarder change to nobody, and the
+    /// only symptom is a dot that quietly stops lighting.
+    func testAStaleForwarderIsReplacedAndItsModeReasserted() throws {
+        let paths = AgentHookPaths(home: tempRoot)
+        try FileManager.default.createDirectory(atPath: paths.hooksDir, withIntermediateDirectories: true)
+        try write("#!/bin/sh\nexit 1\n", to: paths.scriptPath)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: paths.scriptPath)
+
+        AgentHookInstaller.install(home: tempRoot)
+
+        XCTAssertEqual(try String(contentsOfFile: paths.scriptPath, encoding: .utf8), AgentHookScript.body)
+        XCTAssertEqual(try mode(paths.scriptPath), AgentHookScript.scriptMode)
     }
 
     // MARK: - Helpers

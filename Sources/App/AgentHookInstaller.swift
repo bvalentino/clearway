@@ -75,6 +75,16 @@ enum AgentHookInstaller {
 
         let path = (directory as NSString).appendingPathComponent(name)
         let onDisk = fileManager.contents(atPath: path)
+        // `contents` answers `nil` for a file that exists but cannot be read — mode `000`, one left
+        // root-owned by a `sudo` run, an I/O error — as well as for one that is not there. Reading
+        // that as "no file yet" is the destructive case, not a missed install: the merge would
+        // start from an empty document, skip the backup because there is nothing to back up, and
+        // replace the user's whole settings file with Clearway's block, which `rename(2)` is free
+        // to do since it needs write permission on the directory rather than on the file.
+        guard onDisk != nil || !fileManager.fileExists(atPath: path) else {
+            Ghostty.logger.warning("\(path, privacy: .public) could not be read — leaving the agent hooks alone.")
+            return
+        }
         var settings: [String: Any] = [:]
         if let onDisk {
             // A file Clearway cannot read is a file it must not rewrite. No quarantine either: the
