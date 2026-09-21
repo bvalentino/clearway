@@ -48,6 +48,18 @@ final class AgentActivityMonitorTests: XCTestCase {
         try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
+    /// The whole point of the owner tag, end to end over the real socket: an agent in a task's
+    /// bottom terminal lights that task's row and leaves the worktree it runs in dark.
+    func testAForwardedEventFromATaskSurfaceLightsOnlyThatTask() async throws {
+        monitor.setEnabled(true)
+        let taskId = UUID()
+
+        try fire(#"{"session_id": "s", "hook_event_name": "UserPromptSubmit"}"#, owner: .task(taskId))
+
+        try await waitFor(.working, describing: "the task's phase") { self.monitor.taskPhases[taskId] ?? .idle }
+        XCTAssertTrue(monitor.worktreePhases.isEmpty, "a task surface lights no worktree, which is the dot on main this removes")
+    }
+
     /// The discriminating case for unlinking before `bind`: a process killed without closing leaves
     /// the socket's inode behind, and `bind` refuses an address that already exists. Without the
     /// unlink every launch after a crash listens on nothing, with no symptom but a dot that never
@@ -443,12 +455,12 @@ final class AgentActivityMonitorTests: XCTestCase {
 
     /// Runs the installed forwarder exactly as an agent does: the three identity variables in the
     /// environment, the hook JSON on stdin, nothing else inherited.
-    private func fire(_ json: String) throws {
+    private func fire(_ json: String, owner: AgentActivityOwner? = nil) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: paths.scriptPath)
         process.environment = [
             AgentHookIdentity.surfaceIdKey: surfaceId,
-            AgentHookIdentity.ownerKey: AgentActivityOwner.worktree(worktreePath).rawValue,
+            AgentHookIdentity.ownerKey: (owner ?? .worktree(worktreePath)).rawValue,
             AgentHookIdentity.socketKey: paths.socketPath,
         ]
         let input = Pipe()

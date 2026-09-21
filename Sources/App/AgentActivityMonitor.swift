@@ -21,6 +21,7 @@ final class AgentActivityMonitor: ObservableObject {
     }
 
     @Published private(set) var worktreePhases: [String: AgentPhase] = [:]
+    @Published private(set) var taskPhases: [UUID: AgentPhase] = [:]
     @Published private(set) var worktreeSubagents: [String: [AgentSubagent]] = [:]
     /// The last enable attempt's outcome, and nothing after it: no watcher re-checks a settings file
     /// or a socket once the attempt is over. Published costs nothing here, unlike the tool name,
@@ -118,6 +119,8 @@ final class AgentActivityMonitor: ObservableObject {
     private func publish() {
         let phases = store.worktreePhases
         if phases != worktreePhases { worktreePhases = phases }
+        let tasks = store.taskPhases
+        if tasks != taskPhases { taskPhases = tasks }
         let subagents = store.worktreeSubagents
         if subagents != worktreeSubagents { worktreeSubagents = subagents }
         let names = store.surfaceToolNames

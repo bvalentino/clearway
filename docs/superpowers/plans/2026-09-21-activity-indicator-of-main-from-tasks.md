@@ -645,3 +645,41 @@ arm-for-arm identical to the ones deleted from `WorktreeRow.body`.
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 794 tests, 0 failures, unchanged from T3 since no test
 was added. `git status --porcelain` lists only `Sources/App/WorktreeRow.swift` and this plan; no
 untracked files, no `default.profraw`.
+
+### T5: Publish taskPhases and give the task row its dot
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `@Published private(set) var taskPhases: [UUID: AgentPhase]` sits between `worktreePhases` and `worktreeSubagents`, and `publish()` gates it the same way the other two are gated. The class comment and the `ToolNames` note are unchanged. |
+| `Sources/App/WorkTaskListView.swift` | The view takes `@EnvironmentObject private var agentActivity: AgentActivityMonitor` beside the other six. `WorkTaskRow` is internal, gains `var phase: AgentPhase = .idle` and the pure static `dot(phase:)`, and its trailing `HStack` keeps the `terminal` glyph first and renders `AgentActivityDot` after it inside the plan's `Group` with `.animation(.easeOut(duration: 0.6), value: phase)`. The list's call site passes `phase: agentActivity.taskPhases[task.id] ?? .idle`. |
+| `Tests/AgentActivityMonitorTests.swift` | The `fire` helper takes `owner: AgentActivityOwner? = nil`, defaulting to the worktree value every existing case relies on. New `testAForwardedEventFromATaskSurfaceLightsOnlyThatTask` fires a `UserPromptSubmit` under `task:<uuid>` through the installed forwarder and the real socket. |
+| `Tests/WorkTaskRowTests.swift` (new) | `WorkTaskRowDotTests` pins the three arms of `WorkTaskRow.dot(phase:)`. `xcodegen generate` picked it up, so `Clearway.xcodeproj/project.pbxproj` carries the three generated entries for it. |
+
+**Evidence.** Both new pins were watched red in one gate run, against the two mistakes they exist to
+catch. Dropping the two publish lines from `publish()` — the derivation computed but never
+published, a task dot that never lights — and swapping the two phase arms of `WorkTaskRow.dot`:
+
+```
+✖ testAForwardedEventFromATaskSurfaceLightsOnlyThatTask, XCTAssertEqual failed:
+  ("idle") is not equal to ("working") - the task's phase
+✖ testAWaitingAgentCarriesTheWaitingDot, XCTAssertEqual failed:
+  ("Optional(Clearway.AgentActivityDot.Kind.working)")
+  is not equal to ("Optional(Clearway.AgentActivityDot.Kind.waiting)")
+✖ testAWorkingAgentCarriesTheWorkingDot, XCTAssertEqual failed:
+  ("Optional(Clearway.AgentActivityDot.Kind.waiting)")
+  is not equal to ("Optional(Clearway.AgentActivityDot.Kind.working)")
+Executed 798 tests, with 3 failures (0 unexpected)
+```
+
+The monitor case's second assertion — `worktreePhases` still empty — is criterion 5 of the whole
+change end to end over the real forwarder: a task's agent lights the task and leaves main dark.
+Restoring both turns all three green.
+
+**Deviations.** None. The new test file carries the same
+`call to main actor-isolated static method … in a synchronous nonisolated context` warning
+`WorktreeRowTests` already carries for the same reason — a `View`'s static reached from a
+nonisolated `XCTestCase` — and is left matching its sibling rather than annotated differently.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 798 tests, 0 failures (794 after T4, plus the monitor
+case and the three row cases). `git status --porcelain` lists only the four files above, the
+regenerated `Clearway.xcodeproj/project.pbxproj` and this plan; no `default.profraw`.
