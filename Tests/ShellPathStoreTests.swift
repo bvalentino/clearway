@@ -91,16 +91,16 @@ final class ShellPathStoreTests: XCTestCase {
     /// this exists for, where both attempts hit the limit, that is the resolver's whole budget of
     /// dead time added to every launch, forever.
     func testAFailedResolutionIsNotAwaitedASecondTime() async {
-        let resolver = FakeResolver(outcomes: [.failed, .failed], delay: 0.3)
+        let resolver = FakeResolver(outcomes: [.failed, .failed], holdingCall: 2)
+        defer { resolver.release() }
         let store = ShellPathStore(resolve: { resolver.next() })
 
         _ = await store.awaitPath()
 
-        let started = Date()
         let second = await store.awaitPath()
 
         XCTAssertEqual(second, baseline)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2, "a retry must run behind the caller")
+        XCTAssertEqual(resolver.finishedCount, 1, "a retry must run behind the caller")
     }
 
     func testTwoConcurrentCallsStartOneResolution() async {
@@ -118,17 +118,20 @@ final class ShellPathStoreTests: XCTestCase {
     // MARK: - Degraded values
 
     func testADegradedValueIsReturnedWithoutWaiting() async {
-        let resolver = FakeResolver(outcomes: [.degraded("/usr/local/bin"), .full("/opt/homebrew/bin")], delay: 0.3)
+        let resolver = FakeResolver(
+            outcomes: [.degraded("/usr/local/bin"), .full("/opt/homebrew/bin")],
+            holdingCall: 2
+        )
+        defer { resolver.release() }
         let store = ShellPathStore(resolve: { resolver.next() })
 
         let first = await store.awaitPath()
         XCTAssertEqual(first, "/usr/local/bin:\(baseline)")
 
-        let started = Date()
         let second = await store.awaitPath()
 
         XCTAssertEqual(second, "/usr/local/bin:\(baseline)")
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2, "A degraded value must never be awaited")
+        XCTAssertEqual(resolver.finishedCount, 1, "A degraded value must never be awaited")
     }
 
     func testALaterInteractiveSuccessReplacesADegradedValue() async throws {
@@ -196,27 +199,57 @@ final class ShellPathStoreTests: XCTestCase {
 
 /// Stands in for the real shell resolution: hands out a scripted outcome per call and
 /// counts the calls, so the tests can assert the single-flight guard and the retry rules.
+///
+/// Two knobs, for two different jobs. `delay` sleeps every call, widening the window for a second
+/// caller to arrive while a resolution is in flight. `holdingCall` blocks the call at that 1-based
+/// index until `release()`, so a case can prove the caller did not await that resolution: a held
+/// call cannot finish, whatever the machine is doing. A held call skips `delay`.
+///
+/// The hold's wait is bounded, and `finished` advances when it times out as much as when
+/// `release()` lets the call go. That is what makes a store that wrongly awaits the resolution fail
+/// an assertion instead of hanging the suite: the held call returns, `finishedCount` reaches 2, the
+/// case goes red. Returning early on `.timedOut` would leave it at 1 and pass both cases against
+/// the very defect they pin.
 private final class FakeResolver: @unchecked Sendable {
     private let lock = NSLock()
     private var outcomes: [ShellPathResolver.Outcome]
     private let delay: TimeInterval
+    private let holdingCall: Int?
+    private let gate = DispatchSemaphore(value: 0)
     private var calls = 0
+    private var finished = 0
 
-    init(outcomes: [ShellPathResolver.Outcome], delay: TimeInterval = 0) {
+    init(outcomes: [ShellPathResolver.Outcome], delay: TimeInterval = 0, holdingCall: Int? = nil) {
         self.outcomes = outcomes
         self.delay = delay
+        self.holdingCall = holdingCall
     }
 
+    /// Calls that have started.
     var callCount: Int {
         lock.withLock { calls }
     }
 
+    /// Calls that have returned an outcome, a held call included once its wait ends.
+    var finishedCount: Int {
+        lock.withLock { finished }
+    }
+
+    func release() {
+        gate.signal()
+    }
+
     func next() -> ShellPathResolver.Outcome {
-        let outcome: ShellPathResolver.Outcome = lock.withLock {
+        let (outcome, index) = lock.withLock {
             calls += 1
-            return outcomes.isEmpty ? .failed : outcomes.removeFirst()
+            return (outcomes.isEmpty ? .failed : outcomes.removeFirst(), calls)
         }
-        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+        if index == holdingCall {
+            _ = gate.wait(timeout: .now() + 5)
+        } else if delay > 0 {
+            Thread.sleep(forTimeInterval: delay)
+        }
+        lock.withLock { finished += 1 }
         return outcome
     }
 }

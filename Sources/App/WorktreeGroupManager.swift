@@ -59,6 +59,13 @@ final class WorktreeGroupManager: ObservableObject {
     /// mutate state the load would then republish over.
     private(set) var loadTask: Task<Void, Never>?
 
+    /// Every reconcile — the ones a worktree-list change starts and the ones a refused write
+    /// starts — awaited by the test base so a case that dropped the `Task` still settles. Each
+    /// chains on the previous, so this single handle covers all of them and stays non-`nil` once
+    /// set. Chaining is what makes that true: an unchained slot loses a reconcile still running
+    /// when the next one is fired, and it also lets two wholesale publishes land out of order.
+    private(set) var reconcileTask: Task<Void, Never>?
+
     init(projectPath: String) {
         self.configStore = WorktreeConfigStore(projectPath: projectPath)
 
@@ -146,14 +153,8 @@ final class WorktreeGroupManager: ObservableObject {
             placement.groupNames[wt.id] = name
             placement.positions[wt.id] = position
         }
-        enqueueWrite { configStore in
-            await Self.write(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
-            await Self.write(
-                String(position),
-                forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path,
-                in: configStore
-            )
+        enqueueWrite(touching: [path]) { configStore in
+            await Self.writeMembership(name, position: position, worktreeAt: path, in: configStore)
         }
     }
 
@@ -165,14 +166,8 @@ final class WorktreeGroupManager: ObservableObject {
             placement.groupNames.removeValue(forKey: wt.id)
             placement.positions[wt.id] = position
         }
-        enqueueWrite { configStore in
-            await Self.write(nil, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
-            await Self.write(
-                String(position),
-                forKey: WorktreeConfigStore.positionKey,
-                worktreeAt: path,
-                in: configStore
-            )
+        enqueueWrite(touching: [path]) { configStore in
+            await Self.writeMembership(nil, position: position, worktreeAt: path, in: configStore)
         }
     }
 
@@ -241,11 +236,12 @@ final class WorktreeGroupManager: ObservableObject {
         guard !wt.isMain, let path = wt.path else { return }
         guard statuses[wt.id] != status else { return }
         statuses[wt.id] = status
-        enqueueWrite { configStore in
-            await configStore.set(
+        enqueueWrite(touching: [path]) { configStore in
+            await Self.write(
                 status?.rawValue,
                 forKey: WorktreeConfigStore.statusKey,
-                worktreeAt: path
+                worktreeAt: path,
+                in: configStore
             )
         }
     }
@@ -270,17 +266,18 @@ final class WorktreeGroupManager: ObservableObject {
         } else {
             names.removeValue(forKey: wt.id)
         }
-        enqueueWrite { configStore in
-            await configStore.set(stored, forKey: WorktreeConfigStore.nameKey, worktreeAt: path)
+        enqueueWrite(touching: [path]) { configStore in
+            await Self.write(stored, forKey: WorktreeConfigStore.nameKey, worktreeAt: path, in: configStore)
         }
     }
 
     func setGrouping(_ grouping: WorktreeGrouping) {
         guard grouping != self.grouping else { return }
         self.grouping = grouping
-        enqueueWrite { configStore in
+        enqueueWrite(touching: []) { configStore in
             let wrote = await configStore.setLocal(grouping.rawValue, forKey: WorktreeConfigStore.groupingKey)
             if !wrote { Self.logFailure("clearway.grouping was not saved") }
+            return wrote
         }
     }
 
@@ -294,10 +291,15 @@ final class WorktreeGroupManager: ObservableObject {
     /// reload reads the values it just wrote back over the user's order.
     @discardableResult
     func reconcile(_ worktrees: [Worktree], openIds: [String]) -> Task<Void, Never> {
-        Task {
-            await self.reloadConfig(for: worktrees)
+        let targets = Set(worktrees.filter { !$0.isMain }.compactMap(\.path))
+        let previous = reconcileTask
+        let task = Task {
+            await previous?.value
+            await self.reloadConfig(for: .worktrees(targets))
             self.seedPositions(for: worktrees, openIds: openIds)
         }
+        reconcileTask = task
+        return task
     }
 
     /// True when the worktree should survive the sidebar's search field.
@@ -364,28 +366,52 @@ final class WorktreeGroupManager: ObservableObject {
 
     // MARK: - Worktree config
 
-    /// Re-reads the repo-level registry and every non-main worktree's `clearway.*` config, one
-    /// process per worktree and all of them concurrently — the two repo-level reads included, since
-    /// neither depends on the other — and publishes the result.
+    /// What one reload re-reads. A target is a worktree path, which is also its id: `Worktree.id`
+    /// is `path ?? branch ?? ""` and both cases drop a worktree with no path.
+    ///
+    /// `refusedWrite` names the worktrees the refused gesture wrote; the reload unions them with
+    /// every worktree the manager has published a `clearway.*` value for. The union is
+    /// load-bearing both ways. Without the gesture's own paths, a refused `setName(nil, …)` on a
+    /// worktree with no group and no position names an id no published map holds. And the
+    /// published keys are taken inside the retry loop rather than at the refusal, because the
+    /// publish below rewrites `names`, `statuses` and `placement` wholesale: a worktree taking its
+    /// first gesture while the reads are in flight is outside a set fixed earlier, so the value
+    /// git had just accepted for it would be erased from memory.
+    private enum ReloadTargets {
+        case worktrees(Set<String>)
+        case refusedWrite(Set<String>)
+    }
+
+    private func resolvedPaths(_ targets: ReloadTargets) -> Set<String> {
+        switch targets {
+        case .worktrees(let paths):
+            return paths
+        case .refusedWrite(let paths):
+            let published = Set(groupNames.keys).union(positions.keys).union(names.keys)
+            return published.union(statuses.keys).union(paths)
+        }
+    }
+
+    /// Re-reads the repo-level registry and each target's `clearway.*` config, one process per
+    /// worktree and all of them concurrently — the two repo-level reads included, since neither
+    /// depends on the other — and publishes the result.
     ///
     /// The reads are bracketed by the write chain rather than merely preceded by it: awaiting it
     /// first is what stops a freshly created worktree's reload from reading before the name lands,
     /// and re-checking it afterwards is what stops a rename made *during* the reads from being
-    /// published over by the older values. Nothing re-reads until the worktree list changes again,
-    /// so a lost gesture would stay lost for the session.
-    private func reloadConfig(for worktrees: [Worktree]) async {
-        let targets = worktrees.compactMap { wt -> (id: String, path: String)? in
-            guard !wt.isMain, let path = wt.path else { return nil }
-            return (wt.id, path)
-        }
+    /// published over by the older values. Two callers reach it: a worktree-list change, and a
+    /// refused write, which reconciles against git at once rather than leaving the gesture lost
+    /// until the list next changes.
+    private func reloadConfig(for targets: ReloadTargets) async {
         let configStore = configStore
         while true {
             await loadTask?.value
             let chain = writeChain
             await chain?.value
+            let targetPaths = resolvedPaths(targets)
             async let modeRead = configStore.localValue(forKey: WorktreeConfigStore.groupingKey)
             async let registryRead = configStore.localValues(forKey: WorktreeConfigStore.groupOrderKey)
-            let reloaded = await readConfig(for: targets)
+            let reloaded = await readConfig(for: targetPaths)
             let mode = await modeRead
             let registry = await registryRead
             guard writeChain == chain else { continue }
@@ -420,12 +446,12 @@ final class WorktreeGroupManager: ObservableObject {
     /// A worktree whose read failed keeps what is published: `values(forWorktreeAt:)` answers
     /// `nil` only when git could not say what is stored, and treating that as "stores nothing"
     /// would clear a name from the sidebar that git still holds.
-    private func readConfig(for targets: [(id: String, path: String)]) async -> WorktreeConfig {
+    private func readConfig(for targets: Set<String>) async -> WorktreeConfig {
         let configStore = configStore
         var read: [(id: String, values: [String: String]?)] = []
         await withTaskGroup(of: (String, [String: String]?).self) { group in
-            for target in targets {
-                group.addTask { (target.id, await configStore.values(forWorktreeAt: target.path)) }
+            for path in targets {
+                group.addTask { (path, await configStore.values(forWorktreeAt: path)) }
             }
             for await (id, values) in group { read.append((id, values)) }
         }
@@ -465,13 +491,40 @@ final class WorktreeGroupManager: ObservableObject {
     /// Serialises config writes: each one awaits the previous, so two gestures on the same key
     /// land in the order they were made and a read can await the whole chain. The store is handed
     /// to `work` rather than captured by it, so the common case reaches it without capturing the
-    /// manager at all from inside the `@Sendable` body.
-    private func enqueueWrite(_ work: @escaping @Sendable (WorktreeConfigStore) async -> Void) {
+    /// manager at all from inside the `@Sendable` body; the one `[weak self]` is the chain task's.
+    ///
+    /// `work` answers whether everything it tried landed, and a `false` starts the reconcile over
+    /// `paths` — the worktrees this gesture wrote, which the caller states because it knows them
+    /// before the write runs. A return type rather than an opt-in helper is what stops a future
+    /// write site forgetting, and the `landed` guard is what keeps a gesture whose writes all land
+    /// from costing a `git` read. A repo-level write touches no worktree and passes `[]`.
+    private func enqueueWrite(
+        touching paths: Set<String>,
+        _ work: @escaping @Sendable (WorktreeConfigStore) async -> Bool
+    ) {
         let previous = writeChain
         let configStore = configStore
-        writeChain = Task {
+        writeChain = Task { [weak self] in
             await previous?.value
-            await work(configStore)
+            let landed = await work(configStore)
+            guard !landed, let self else { return }
+            self.reconcileAfterRefusedWrite(touching: paths)
+        }
+    }
+
+    /// Re-reads what git holds for the worktrees `ReloadTargets.refusedWrite` resolves to and
+    /// publishes that.
+    ///
+    /// It runs in its own task, never on the write chain: `reloadConfig` awaits the chain and
+    /// restarts if a gesture was enqueued while its reads were in flight, so publishing from inside
+    /// the chain would put git's older value over a gesture that has already published and is still
+    /// queued. The chain task creates this handle and returns without awaiting it; awaiting in that
+    /// direction would deadlock.
+    private func reconcileAfterRefusedWrite(touching paths: Set<String>) {
+        let previous = reconcileTask
+        reconcileTask = Task { [weak self] in
+            await previous?.value
+            await self?.reloadConfig(for: .refusedWrite(paths))
         }
     }
 
@@ -483,7 +536,8 @@ final class WorktreeGroupManager: ObservableObject {
         Ghostty.logger.warning("worktree groups: \(message, privacy: .public)")
     }
 
-    /// Writes one worktree-scoped value, naming the gesture if git refused.
+    /// Writes one worktree-scoped value, naming the gesture if git refused, and answers whether it
+    /// landed so the caller can report the path.
     ///
     /// `writeRegistry`'s member write stays bespoke: it abandons the loop and raises an alert, and
     /// its one line names both the registry it gave up on and the member write that lost it.
@@ -492,9 +546,29 @@ final class WorktreeGroupManager: ObservableObject {
         forKey key: String,
         worktreeAt path: String,
         in configStore: WorktreeConfigStore
-    ) async {
+    ) async -> Bool {
         let wrote = await configStore.set(value, forKey: key, worktreeAt: path)
         if !wrote { logFailure("\(key) for \(path) was not saved") }
+        return wrote
+    }
+
+    /// Writes one worktree's group — `nil` clears it — and the slot it lands in, and answers
+    /// whether both landed. The position is attempted even when the group write was refused: the
+    /// two are one gesture, and the sidebar has already published both.
+    private nonisolated static func writeMembership(
+        _ name: String?,
+        position: Int,
+        worktreeAt path: String,
+        in configStore: WorktreeConfigStore
+    ) async -> Bool {
+        let wroteGroup = await write(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path, in: configStore)
+        let wrotePosition = await write(
+            String(position),
+            forKey: WorktreeConfigStore.positionKey,
+            worktreeAt: path,
+            in: configStore
+        )
+        return wroteGroup && wrotePosition
     }
 
     /// Writes `name` to each member's `clearway.group` — `nil` clears it — and then rewrites the
@@ -511,7 +585,7 @@ final class WorktreeGroupManager: ObservableObject {
     ) {
         let registry = groups.map(\.name)
         let presentAlert = presentWriteAlert
-        enqueueWrite { configStore in
+        enqueueWrite(touching: Set(members)) { configStore in
             for path in members {
                 guard await configStore.set(name, forKey: WorktreeConfigStore.groupKey, worktreeAt: path)
                 else {
@@ -521,7 +595,7 @@ final class WorktreeGroupManager: ObservableObject {
                     // Awaited, not fired and forgotten: nothing should keep writing behind a
                     // message saying a write failed.
                     await presentAlert(WorktreeGroupWriteAlert(group: group, path: path))
-                    return
+                    return false
                 }
             }
             let wrote = await configStore.replaceLocalValues(registry, forKey: WorktreeConfigStore.groupOrderKey)
@@ -532,56 +606,8 @@ final class WorktreeGroupManager: ObservableObject {
                 // next launch. Half-applied on disk, like the abandon above, so it tells the user.
                 await presentAlert(WorktreeGroupWriteAlert(group: group, path: nil))
             }
+            return wrote
         }
-    }
-
-    // MARK: - Ordering
-
-    /// Places `ids` into the slots `stored` gives them, in the new order, leaving every other
-    /// stored ID where it was. IDs `stored` does not hold yet are appended.
-    static func repositioned(_ stored: [String], with ids: [String]) -> [String] {
-        let moving = Set(ids)
-        var incoming = ids[...]
-        var result: [String] = []
-        for id in stored {
-            if moving.contains(id) {
-                // A slot with no id left to take it is a duplicate of one already placed; dropping
-                // it heals a stored order that recorded the same id twice.
-                if let next = incoming.popFirst() { result.append(next) }
-            } else {
-                result.append(id)
-            }
-        }
-        result.append(contentsOf: incoming)
-        return result
-    }
-
-    /// The position each member of `section` should carry once the rendered rows have been moved
-    /// into `newOrder`, limited to the ones that changed.
-    ///
-    /// A drag reassigns exactly the values the section already occupied: the permuted IDs take
-    /// them in ascending order, so a row the caller omitted — hidden by the detached filter or the
-    /// search field — keeps the slot it had. A member without a value, and any ID the section did
-    /// not hold, takes the next integer above the section's maximum. A value two members share
-    /// counts once, so a section that came to hold a duplicate is healed by the first drag rather
-    /// than handed the same collision back.
-    static func reassignedPositions(
-        section: [(id: String, position: Int?)],
-        newOrder: [String]
-    ) -> [String: Int] {
-        let permuted = repositioned(section.map(\.id), with: newOrder)
-        var pool = Set(section.compactMap(\.position)).sorted()
-        var next = (pool.last ?? -1) + 1
-        while pool.count < permuted.count {
-            pool.append(next)
-            next += 1
-        }
-        let current = Dictionary(section.map { ($0.id, $0.position) }, uniquingKeysWith: { lhs, _ in lhs })
-        var changed: [String: Int] = [:]
-        for (id, position) in zip(permuted, pool) where (current[id] ?? nil) != position {
-            changed[id] = position
-        }
-        return changed
     }
 
     // MARK: - Private Helpers
@@ -638,17 +664,22 @@ final class WorktreeGroupManager: ObservableObject {
         writePositions(changed)
     }
 
+    /// Sorted so the writes are attempted in the same order every run: a refusal does not stop the
+    /// ones after it, and a dictionary's order would pin that guarantee only by chance.
     private func writePositions(_ changed: [String: Int]) {
         guard !changed.isEmpty else { return }
-        enqueueWrite { configStore in
-            for (path, position) in changed {
-                await Self.write(
+        enqueueWrite(touching: Set(changed.keys)) { configStore in
+            var landed = true
+            for (path, position) in changed.sorted(by: { $0.key < $1.key }) {
+                let wrote = await Self.write(
                     String(position),
                     forKey: WorktreeConfigStore.positionKey,
                     worktreeAt: path,
                     in: configStore
                 )
+                if !wrote { landed = false }
             }
+            return landed
         }
     }
 

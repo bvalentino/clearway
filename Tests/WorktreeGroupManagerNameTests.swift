@@ -106,12 +106,18 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let wt = makeWorktree(branch: "feature", path: path)
         await restartManager()
 
-        manager.reconcile([wt], openIds: [])
-        try await waitForPublishedName("Stored name", for: wt)
+        await manager.reconcile([wt], openIds: []).value
 
+        XCTAssertEqual(manager.name(for: wt), "Stored name", "published name for \(wt.id)")
+
+        // The reconcile seeded a position, and that write is still queued when it returns. The
+        // unset below is a second `git config` on the same `config.worktree` lock, so it has to
+        // wait for the first rather than fail to lock the file.
+        await settle()
         try repo.unsetValue(ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt], openIds: [])
-        try await waitForPublishedName(nil, for: wt)
+        await manager.reconcile([wt], openIds: []).value
+
+        XCTAssertNil(manager.name(for: wt), "published name for \(wt.id)")
     }
 
     /// The one place a name is normalised: a hand-written config value that is whitespace only
@@ -120,16 +126,14 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
         let path = try repo.addWorktree(branch: "feature")
         let wt = makeWorktree(branch: "feature", path: path)
 
-        // Seeded first so the assertion below is a transition rather than an absence: waiting for
-        // `nil` on an empty map is satisfied before the reload has run at all. The wait is on the
-        // stored value because the external write below needs the extension the seed bootstraps.
+        // Seeded first because the external write below needs the extension the seed bootstraps.
         manager.setName("Seed", for: wt)
         try await waitForStoredName("Seed", at: path)
 
         try repo.setValue("   ", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
-        manager.reconcile([wt], openIds: [])
+        await manager.reconcile([wt], openIds: []).value
 
-        try await waitForPublishedName(nil, for: wt)
+        XCTAssertNil(manager.name(for: wt), "published name for \(wt.id)")
         XCTAssertTrue(manager.names.isEmpty)
     }
 
@@ -176,21 +180,5 @@ final class WorktreeGroupManagerNameTests: WorktreeGroupManagerGitTestCase {
             file: file,
             line: line
         )
-    }
-
-    private func waitForPublishedName(
-        _ expected: String?,
-        for wt: Worktree,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        try await waitFor(
-            expected,
-            describing: "published name for \(wt.id)",
-            file: file,
-            line: line
-        ) {
-            self.manager.name(for: wt)
-        }
     }
 }

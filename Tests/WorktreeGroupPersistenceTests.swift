@@ -31,11 +31,13 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
 
         await restartManager()
-        manager.reconcile([alpha, bravo], openIds: [])
+        await manager.reconcile([alpha, bravo], openIds: []).value
 
-        try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
-            self.renderedOrder([alpha, bravo])
-        }
+        XCTAssertEqual(
+            renderedOrder([alpha, bravo]),
+            [bravo.id, alpha.id],
+            "rendered order after a relaunch"
+        )
         XCTAssertEqual(manager.groupName(for: alpha.id), "Group")
         XCTAssertEqual(manager.groupName(for: bravo.id), "Group")
     }
@@ -55,15 +57,35 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
         await restartManager()
         // The one call `ContentView` makes when the worktree list changes.
-        manager.reconcile([alpha, bravo], openIds: [])
+        await manager.reconcile([alpha, bravo], openIds: []).value
+        await settle()
 
-        try await waitFor([bravo.id, alpha.id], describing: "rendered order after a relaunch") {
-            self.renderedOrder([alpha, bravo])
-        }
+        XCTAssertEqual(
+            renderedOrder([alpha, bravo]),
+            [bravo.id, alpha.id],
+            "rendered order after a relaunch"
+        )
         XCTAssertEqual(
             try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: bravoPath),
             "0",
             "the seed must not renumber a worktree git already holds a position for"
+        )
+    }
+
+    /// `tearDown` settles a manager whose last `reconcile` no body kept, and the seed write is
+    /// enqueued inside that `Task`. A `settle()` blind to it returns before the first `git config`
+    /// has run, so the read below is the whole case — a poll would wait the write out and hide it.
+    func testSettleCoversAReconcileNoBodyAwaited() async throws {
+        let path = try repo.addWorktree(branch: "alpha")
+        let alpha = makeWorktree(branch: "alpha", path: path)
+
+        manager.reconcile([alpha], openIds: [])
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: path),
+            "0",
+            "the reconcile's seed write must have landed by the time settle() returns"
         )
     }
 
@@ -127,6 +149,12 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
             [WorktreeGroupWriteAlert(group: "New", path: path)],
             "the abandoned registry is the one failure the user is told about"
         )
+        await settle()
+        XCTAssertEqual(
+            manager.groups.map(\.name),
+            ["Old"],
+            "the refusal reconciles against git at once, so the old name is back with no relaunch"
+        )
         await restartManager()
         XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the next launch shows the old name")
     }
@@ -158,6 +186,12 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
             [WorktreeGroupWriteAlert(group: "Doomed", path: path)],
             "the alert names the deleted group, never the nil written to its members"
         )
+        await settle()
+        XCTAssertEqual(
+            manager.groups.map(\.name),
+            ["Doomed"],
+            "the refusal reconciles against git at once, so the group is back with no relaunch"
+        )
     }
 
     /// The registry rewrite is half-applied on its own terms: `replaceLocalValues` unsets every
@@ -181,6 +215,36 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         }
     }
 
+    /// A name or status git refused is log-only, unlike the half-applied registry rewrite that owns
+    /// the alert. The log line has no test seam, so what is pinned here is what surrounds it: the
+    /// gesture publishes at once, nothing in the write path reverts it, and no alert fires.
+    /// Removing the worktree is what makes its `git config --worktree` writes fail.
+    ///
+    /// The refusal then starts the reconcile, on the same terms as every other write, and it
+    /// publishes what git holds — which for a removed worktree is nothing, because `--worktree
+    /// --list` against a gone directory is a refusal and a refusal reads as "stores nothing". So
+    /// the name and status the write lost are gone from memory too, with no relaunch, rather than
+    /// left standing until the worktree list next changes.
+    func testAFailedNameOrStatusWriteIsReconciledAgainstGitAndRaisesNoAlert() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.setName("Named", for: member)
+        try await waitForStoredValue("Named", ofKey: WorktreeConfigStore.nameKey, at: path)
+        try repo.removeWorktree(at: path)
+        XCTAssertFalse(try repo.statusSucceeds(in: path), "git can no longer run in the worktree")
+
+        manager.setName("Renamed", for: member)
+        manager.setStatus(.inReview, for: member)
+        XCTAssertEqual(manager.name(for: member), "Renamed", "the gesture publishes before its write runs")
+        XCTAssertEqual(manager.status(for: member), .inReview, "the gesture publishes before its write runs")
+
+        await settle()
+
+        XCTAssertNil(manager.name(for: member), "the reconcile publishes what git holds")
+        XCTAssertNil(manager.status(for: member), "the reconcile publishes what git holds")
+        XCTAssertTrue(recordedWriteAlerts.isEmpty, "a lost name or status is log-only")
+    }
+
     func testDeleteUnsetsEveryMemberAndDropsTheRegistryEntry() async throws {
         let path = try repo.addWorktree(branch: "member")
         let member = makeWorktree(branch: "member", path: path)
@@ -192,6 +256,229 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
 
         try await waitForStoredValue(nil, ofKey: WorktreeConfigStore.groupKey, at: path)
         try await waitForRegistry([])
+    }
+
+    // MARK: - Reconciling a refused write
+
+    /// The rename git accepts on one member and refuses on the next. The registry is abandoned, so
+    /// git ends up holding `New` for the member that took it and listing only `Old` — a state
+    /// neither the sidebar nor the user asked for, and the one the reconcile has to describe.
+    func testAHalfAppliedRenameRepublishesWhatGitHolds() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let betaPath = try repo.addWorktree(branch: "beta")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let beta = makeWorktree(branch: "beta", path: betaPath)
+        manager.createGroup(named: "Old")
+        manager.addWorktree(alpha, toGroupNamed: "Old")
+        manager.addWorktree(beta, toGroupNamed: "Old")
+        try await waitForStoredValue("0", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
+        try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: betaPath)
+        // The rename writes its members in position order, so alpha's write is attempted first and
+        // lands; beta's directory is gone by then, so the one after it can only fail.
+        try repo.removeWorktree(at: betaPath)
+
+        manager.renameGroup(named: "Old", to: "New")
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: alphaPath),
+            "New",
+            "the first member's write landed"
+        )
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Old"],
+            "the member that failed abandoned the registry"
+        )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "New", path: betaPath)],
+            "the abandon is what the user was told about"
+        )
+        XCTAssertEqual(manager.groups.map(\.name), ["Old"], "the registry git holds, with no relaunch")
+        XCTAssertNil(
+            manager.groupName(for: alpha.id),
+            "git holds New for alpha and the reloaded registry does not list it, so it renders "
+                + "ungrouped rather than as a phantom section"
+        )
+    }
+
+    /// A delete enqueues its positions and its registry as two chain entries, so the two halves can
+    /// land separately — the third defect the change closes. Beta's git directory is the lever: the
+    /// registry rewrite writes its members in position order, so alpha's `clearway.group` is cleared
+    /// and beta's refusal abandons the registry, leaving one member in a group git still lists.
+    func testAHalfAppliedDeleteRepublishesWhatGitHolds() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let betaPath = try repo.addWorktree(branch: "beta")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let beta = makeWorktree(branch: "beta", path: betaPath)
+        manager.createGroup(named: "Doomed")
+        manager.addWorktree(alpha, toGroupNamed: "Doomed")
+        manager.addWorktree(beta, toGroupNamed: "Doomed")
+        try await waitForStoredValue("0", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
+        try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: betaPath)
+        let betaGitDir = try repo.gitDir(ofWorktreeAt: betaPath)
+        let previousMode = try GitRepoFixture.setPermissions(0o555, of: betaGitDir)
+        defer { _ = try? GitRepoFixture.setPermissions(previousMode, of: betaGitDir) }
+
+        manager.deleteGroup(named: "Doomed")
+        await settle()
+
+        XCTAssertNil(
+            try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: alphaPath),
+            "the first member's clear landed"
+        )
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: betaPath),
+            "Doomed",
+            "the second member's was refused"
+        )
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Doomed"],
+            "the member that failed abandoned the registry"
+        )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "Doomed", path: betaPath)],
+            "the abandon is what the user was told about"
+        )
+        XCTAssertEqual(manager.groups.map(\.name), ["Doomed"], "the registry git holds")
+        XCTAssertNil(manager.groupName(for: alpha.id), "the half of the delete that landed")
+        XCTAssertEqual(manager.groupName(for: beta.id), "Doomed", "and the half that did not")
+    }
+
+    /// A drag whose write git refuses must not leave `positions` holding the value it published:
+    /// `reassignedPositions` diffs against memory, so the next drag assigning that same value would
+    /// read as no change at all and never be re-sent. Alpha's git directory is the lever.
+    func testARefusedPositionWriteRepublishesTheStoredPosition() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let betaPath = try repo.addWorktree(branch: "beta")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let beta = makeWorktree(branch: "beta", path: betaPath)
+        manager.setUngroupedOrder([alpha.id, beta.id], in: [alpha, beta], openIds: [])
+        try await waitForStoredValue("0", ofKey: WorktreeConfigStore.positionKey, at: alphaPath)
+        try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: betaPath)
+        let alphaGitDir = try repo.gitDir(ofWorktreeAt: alphaPath)
+        let previousMode = try GitRepoFixture.setPermissions(0o555, of: alphaGitDir)
+        defer { _ = try? GitRepoFixture.setPermissions(previousMode, of: alphaGitDir) }
+
+        manager.setUngroupedOrder([beta.id, alpha.id], in: [alpha, beta], openIds: [])
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.positionKey, atWorktree: alphaPath),
+            "0",
+            "git refused the write, so the stored slot is the one the drag tried to replace"
+        )
+        XCTAssertEqual(manager.positions[alpha.id], 0, "memory holds git's value, not the drag's")
+        XCTAssertEqual(manager.positions[beta.id], 0, "beta's half of the same drag landed")
+    }
+
+    /// The grouping mode is repo-level, so a refusal names no worktree at all: the reconcile it
+    /// starts touches nothing, and `reloadConfig` re-reads both repo-level keys regardless. The
+    /// project's own `.git` is the lever.
+    func testARefusedGroupingWriteRepublishesTheStoredMode() async throws {
+        try repo.enableWorktreeConfig()
+        try repo.setLocalValue("status", ofKey: WorktreeConfigStore.groupingKey)
+        await restartManager()
+        XCTAssertEqual(manager.grouping, .status, "memory and git agree before the refusal")
+        let gitDir = try repo.gitDir(ofWorktreeAt: repo.root)
+        let previousMode = try GitRepoFixture.setPermissions(0o555, of: gitDir)
+        defer { _ = try? GitRepoFixture.setPermissions(previousMode, of: gitDir) }
+
+        manager.setGrouping(.none)
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofLocalKey: WorktreeConfigStore.groupingKey),
+            "status",
+            "git refused the write"
+        )
+        XCTAssertEqual(manager.grouping, .status, "memory holds git's value, with no relaunch")
+    }
+
+    /// The registry rewrite's own refusal, as distinct from the abandoned member write above: no
+    /// member is involved at all, so `writeRegistry`'s `replaceLocalValues` result is the only
+    /// thing that can report it. The project's git directory is read-only once the first group has
+    /// landed, so the rewrite cannot take its lock while `--get-all` still answers.
+    func testARefusedRegistryRewriteRepublishesTheStoredRegistry() async throws {
+        manager.createGroup(named: "Keep")
+        try await waitForRegistry(["Keep"])
+        let gitDir = try repo.gitDir(ofWorktreeAt: repo.root)
+        let previousMode = try GitRepoFixture.setPermissions(0o555, of: gitDir)
+        defer { _ = try? GitRepoFixture.setPermissions(previousMode, of: gitDir) }
+
+        manager.createGroup(named: "Doomed")
+        await settle()
+
+        XCTAssertEqual(
+            try repo.localValues(ofKey: WorktreeConfigStore.groupOrderKey),
+            ["Keep"],
+            "git refused the rewrite"
+        )
+        XCTAssertEqual(
+            recordedWriteAlerts,
+            [WorktreeGroupWriteAlert(group: "Doomed", path: nil)],
+            "the half-applied registry is what the user is told about"
+        )
+        XCTAssertEqual(
+            manager.groups.map(\.name),
+            ["Keep"],
+            "the refusal reconciles against git at once, so the new group is gone with no relaunch"
+        )
+    }
+
+    /// The reconcile costs a `git config` read per worktree plus the two repo-level ones, so a
+    /// gesture that landed must start none. The handle is the only way to observe that; nothing in
+    /// production reads it.
+    func testAGestureWhoseWritesLandStartsNoReconcile() async throws {
+        let path = try repo.addWorktree(branch: "member")
+        let member = makeWorktree(branch: "member", path: path)
+        manager.createGroup(named: "Group")
+        manager.addWorktree(member, toGroupNamed: "Group")
+        try await waitForStoredValue("Group", ofKey: WorktreeConfigStore.groupKey, at: path)
+
+        await settle()
+
+        XCTAssertNil(manager.reconcileTask, "a gesture whose writes all land reconciles nothing")
+    }
+
+    /// The reconcile republishes `names`, `statuses` and `placement` wholesale, so its targets have
+    /// to include every worktree the manager holds a value for *when the reads run*, not when the
+    /// refusal was seen. Beta carries no `clearway.*` value at the refusal and takes its first
+    /// gesture once the reconcile is under way: with the targets fixed earlier it is outside them,
+    /// and the value git has just accepted for it is erased from memory.
+    ///
+    /// Which side of the reconcile's reads beta's gesture lands on is the scheduler's to decide,
+    /// and the case is a pin either way: arriving during them replaces `writeChain` and restarts
+    /// the reload, which re-resolves; arriving before them puts beta in the published maps the
+    /// resolution reads. Both fail against targets fixed at the refusal.
+    func testAFirstGestureMadeDuringTheReconcileSurvivesIt() async throws {
+        let alphaPath = try repo.addWorktree(branch: "alpha")
+        let betaPath = try repo.addWorktree(branch: "beta")
+        let alpha = makeWorktree(branch: "alpha", path: alphaPath)
+        let beta = makeWorktree(branch: "beta", path: betaPath)
+        try repo.enableWorktreeConfig()
+        await restartManager()
+        let alphaGitDir = try repo.gitDir(ofWorktreeAt: alphaPath)
+        let previousMode = try GitRepoFixture.setPermissions(0o555, of: alphaGitDir)
+        defer { _ = try? GitRepoFixture.setPermissions(previousMode, of: alphaGitDir) }
+
+        manager.setStatus(.inProgress, for: alpha)
+        try await waitFor(true, describing: "the refused write started a reconcile") {
+            self.manager.reconcileTask != nil
+        }
+        manager.setName("Beta", for: beta)
+        await settle()
+
+        XCTAssertEqual(
+            try repo.value(ofKey: WorktreeConfigStore.nameKey, atWorktree: betaPath),
+            "Beta",
+            "beta's write landed"
+        )
+        XCTAssertEqual(manager.name(for: beta), "Beta", "memory holds what git holds for beta")
+        XCTAssertNil(manager.status(for: alpha), "and git's nothing for alpha, whose write did not")
     }
 
     // MARK: - Config the app did not write
@@ -245,11 +532,9 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try repo.setValue("Ghost", ofKey: WorktreeConfigStore.groupKey, atWorktree: path)
         try repo.setValue("Ghosted", ofKey: WorktreeConfigStore.nameKey, atWorktree: path)
 
-        manager.reconcile([ghosted], openIds: [])
+        await manager.reconcile([ghosted], openIds: []).value
 
-        try await waitFor("Ghosted" as String?, describing: "published name for \(ghosted.id)") {
-            self.manager.name(for: ghosted)
-        }
+        XCTAssertEqual(manager.name(for: ghosted), "Ghosted", "published name for \(ghosted.id)")
         XCTAssertNil(manager.groupName(for: ghosted.id), "the membership names no listed group")
         XCTAssertEqual(manager.groups.map(\.name), ["Real"], "no phantom section")
         XCTAssertEqual(renderedOrder([ghosted]), [ghosted.id])
@@ -285,11 +570,10 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         try await waitForStoredValue("1", ofKey: WorktreeConfigStore.positionKey, at: stayingPath)
 
         try repo.removeWorktree(at: goingPath)
-        manager.reconcile([main, staying], openIds: [])
+        await manager.reconcile([main, staying], openIds: []).value
+        await settle()
 
-        try await waitFor([staying.id: "Group"], describing: "published memberships") {
-            self.manager.groupNames
-        }
+        XCTAssertEqual(manager.groupNames, [staying.id: "Group"], "published memberships")
         XCTAssertEqual(manager.positions, [staying.id: 1])
         XCTAssertEqual(renderedOrder([main, staying]), [main.id, staying.id])
         XCTAssertNil(try repo.value(ofKey: WorktreeConfigStore.groupKey, atWorktree: repo.root))
@@ -360,6 +644,10 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         first.createGroup(named: "Doomed")
         XCTAssertEqual(first.groups.map(\.name), ["Doomed"], "the gesture is still published")
         await first.writeChain?.value
+        // Awaited, not left running: the reconcile the refusal starts reads git in `plainRoot`,
+        // which the `defer` above removes.
+        await first.reconcileTask?.value
+        XCTAssertTrue(first.groups.isEmpty, "and is then reconciled away, since git stored nothing")
 
         let second = WorktreeGroupManager(projectPath: plainRoot)
         second.presentWriteAlert = { XCTFail("a manager that only reads must not alert: \($0)") }
@@ -381,6 +669,8 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
+        // Reads git back, so the manager's queued writes must have landed first.
+        await settle()
         try await waitFor(
             expected,
             describing: WorktreeConfigStore.groupOrderKey,
@@ -397,6 +687,8 @@ final class WorktreeGroupPersistenceTests: WorktreeGroupManagerGitTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
+        // Reads git back, so the manager's queued writes must have landed first.
+        await settle()
         try await waitFor(expected, describing: key, file: file, line: line) {
             try self.repo.value(ofLocalKey: key)
         }

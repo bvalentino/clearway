@@ -1,10 +1,12 @@
 import XCTest
 @testable import Clearway
 
-/// Pins `taskTerminalLaunchCommand`, the choice behind both doors onto the task terminal (the
-/// toolbar toggle and Cmd+J): the bare Main Terminal command, or a plain shell. `toggleTaskTerminal`
-/// itself is unreachable from XCTest — it takes a non-optional `ghostty_app_t` — so this helper is
-/// the whole testable surface of the launch.
+/// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
+/// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
+/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J; and
+/// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
+/// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
+/// are their whole testable surface.
 @MainActor
 final class TaskTerminalLaunchCommandTests: TempRootTestCase {
 
@@ -44,5 +46,61 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
     func testPlanNeedsConfirmationOnlyWhenAProcessIsRunning() {
         XCTAssertTrue(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: true))
         XCTAssertFalse(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: false))
+    }
+
+    // MARK: - Toggling the task terminal
+
+    /// A visible panel hides, whatever else is true: Cmd+J on an open terminal never launches.
+    func testVisiblePanelAlwaysHides() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: true, hasLaunchCommand: true),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: true, hasLaunchCommand: false),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: false, hasLaunchCommand: true),
+            .hide
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: true, hasSurface: false, hasLaunchCommand: false),
+            .hide
+        )
+    }
+
+    /// The fix: a hidden surface is revealed even when a Main Terminal command is configured. The
+    /// launch path would close that surface, killing the agent running in it.
+    func testHiddenSurfaceIsRevealedEvenWithALaunchCommand() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: true, hasLaunchCommand: true),
+            .reveal
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: true, hasLaunchCommand: false),
+            .reveal
+        )
+    }
+
+    /// With no surface, the configured command launches one and an unset setting reveals a plain
+    /// shell — the two branches that shipped before the fix, unchanged.
+    func testNoSurfaceLaunchesOnlyWhenACommandIsConfigured() {
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: false, hasLaunchCommand: true),
+            .launch
+        )
+        XCTAssertEqual(
+            WorkTaskCoordinator.taskTerminalToggle(
+                isVisible: false, hasSurface: false, hasLaunchCommand: false),
+            .reveal
+        )
     }
 }
