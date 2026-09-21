@@ -166,7 +166,10 @@ struct ContentView: View {
             primary: savedCommandManager.primaryCommand,
             title: savedCommandManager.runButtonTitle,
             commands: savedCommandManager.commands,
-            run: runAction(for: worktree)
+            run: runAction(for: worktree),
+            popRunMenu: { [savedCommandManager] in
+                ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle)
+            }
         )
     }
 

@@ -10,6 +10,9 @@ struct WorktreeRunActions {
     let title: String
     let commands: [SavedCommand]
     let run: (SavedCommand) -> Void
+    /// Opens the toolbar Run button's own dropdown, so ⌥⌘R shows the operator the list they would
+    /// have clicked to rather than a second menu that could drift from it.
+    let popRunMenu: () -> Void
 }
 
 extension WorktreeRunActions {

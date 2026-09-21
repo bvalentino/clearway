@@ -146,6 +146,7 @@
 		D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */; };
 		D0D9853E698401494E0E656D /* ShellPathStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */; };
 		D33FDF25047407F4E8B60584 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C4ECCB3CFD45DB93164068 /* TerminalManager.swift */; };
+		D349CAB4A7CB896A07267013 /* ToolbarSplitButtonMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39394F1CC5CE0DC4E76C6792 /* ToolbarSplitButtonMenu.swift */; };
 		D87391A64B06F9837C992E73 /* SavedCommandStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6931932ACB5CB97D6B0F7C5 /* SavedCommandStore.swift */; };
 		D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */; };
 		D9DCC27099A4387B751651C2 /* WorktreeGroupWriteAlertTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AA18DE9BC1077D0A7A4B44 /* WorktreeGroupWriteAlertTests.swift */; };
@@ -220,6 +221,7 @@
 		3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
 		391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRow.swift; sourceTree = "<group>"; };
+		39394F1CC5CE0DC4E76C6792 /* ToolbarSplitButtonMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarSplitButtonMenu.swift; sourceTree = "<group>"; };
 		3A9ECBB7F925C88A2A337C68 /* FullWidthPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullWidthPicker.swift; sourceTree = "<group>"; };
 		3D0E30A2C721296DD9587040 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		3DBAD89265A8208B8A5D83A3 /* WorktreeDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeDraftTests.swift; sourceTree = "<group>"; };
@@ -532,6 +534,7 @@
 				62E65C09069869291224DF1D /* TodosPanelView.swift */,
 				9EC9411B19B7913605A851B1 /* TodosView.swift */,
 				8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */,
+				39394F1CC5CE0DC4E76C6792 /* ToolbarSplitButtonMenu.swift */,
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
 				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
@@ -931,6 +934,7 @@
 				F0C141C306E95B91B5750C24 /* TodosPanelView.swift in Sources */,
 				3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */,
 				EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */,
+				D349CAB4A7CB896A07267013 /* ToolbarSplitButtonMenu.swift in Sources */,
 				2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */,
 				0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */,
 				89257C7D9FED4F7AA51380B3 /* WorkTaskCoordinator+TaskTerminal.swift in Sources */,
