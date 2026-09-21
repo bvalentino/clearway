@@ -1,0 +1,390 @@
+# Plan: refuse to steal the hook socket from a live Clearway instance
+
+**Date:** 2026-09-21
+**Base:** 6afcc8d5a07022b79dc988c4716ae516460481ad
+
+Breaks down `docs/superpowers/specs/2026-09-21-refuse-to-steal-hook-socket-from-live-instance.md`.
+Every design decision lives there; this file only orders the work and says how each piece is
+verified. The `(D<n>)` markers below point at that spec's Decisions table.
+
+## Architecture decisions carried from the spec
+
+1. **Liveness is one `connect(2)`** on a fresh `AF_UNIX`/`SOCK_STREAM` descriptor to the same path,
+   made immediately before the existing `unlink`. No timeout, no retry: a local `AF_UNIX` connect
+   completes or fails in the kernel. (D3, D5)
+2. **Only a successful connect defends the path.** Every errno — `ECONNREFUSED`, `ENOTSOCK`,
+   `ENOENT`, anything unforeseen — falls through to today's behaviour: unlink, then bind. (D4)
+3. **The probe lives in `HookSocketListener.listeningDescriptor(at:)`**, as another
+   `nonisolated static` step. The whole socket path stays outside any actor, because
+   `setEventHandler`/`setCancelHandler` take `@convention(block)` closures. (D5, project CLAUDE.md)
+4. **`HookSocketListener.start` returns `HookSocketOutcome`** — `.listening(HookSocketListener)`,
+   `.ownedByAnotherInstance`, `.unavailable` — replacing the optional, which could not tell the two
+   failures apart. (D6)
+5. **The monitor publishes `@Published private(set) var socketState: AgentHookSocketState`** with
+   four cases: `.off`, `.listening`, `.ownedByAnotherInstance`, `.unavailable`. Initial value
+   `.off`. (D7)
+6. **`stop()` unlinks only when this instance bound**, i.e. only when `socketState == .listening`.
+   An unconditional unlink in `stop()` is the same theft by a second door. (D8)
+7. **An empty payload is a hang-up, not a malformed event.** The probe's connection closes without
+   writing, which the live instance accepts as a zero-byte payload; the parse guard gains
+   `!payload.isEmpty` and returns silently, so a second launch writes no false warning into the
+   first instance's log. (D9)
+8. **No clock is added.** No timer, no polling, no retry. The retry is the toggle and the relaunch.
+   (D10)
+9. **A blocked instance still installs the hooks.** `start()` keeps its current order; the install
+   is a content reconciliation that writes only on a difference. (D11)
+10. **No view, no `SettingsManager` key, no `.environmentObject` wiring changes.** `socketState` has
+    no reader in this change; the companion task renders it. (D1, D14)
+11. **The saturated-backlog false negative is accepted**, not mitigated. (D12)
+
+## Dependency graph
+
+```
+T1: probe, outcome, published state, empty-payload guard, both D13 tests
+     │
+     ├── T2: stop() unlinks only what this instance bound (+ its test)
+     │
+     └── T3: correct Sources/App/CLAUDE.md lines 324-325
+```
+
+T2 needs `socketState` and `HookSocketOutcome` from T1. T3 describes the rule T1 and T2 ship and
+must land after both. T2 and T3 do not touch the same files and are otherwise independent.
+
+## Task list
+
+### T1: Refuse a socket path a live instance still answers on
+
+**Files**
+
+- `Sources/App/AgentActivityMonitor.swift`
+- `Tests/AgentActivityMonitorTests.swift`
+
+**What it does**
+
+In `HookSocketListener` (same file, below the monitor):
+
+- Add a top-level `enum HookSocketOutcome { case listening(HookSocketListener); case
+  ownedByAnotherInstance; case unavailable }` and change `start(socketPath:onPayload:)` to return
+  it instead of `HookSocketListener?`.
+- In `listeningDescriptor(at:)`, after the `sun_path` length guard and the address is filled, and
+  **before** the `unlink` at line 160, probe the path: open a second `AF_UNIX`/`SOCK_STREAM`
+  descriptor, `connect` it to the same address, close it unconditionally, and treat a return of `0`
+  — and only `0` — as a live owner. On a live owner, close the listening descriptor, log through
+  `Ghostty.logger` that another Clearway instance owns the path (path `privacy: .public`, matching
+  the two `logger.error` calls already in the function), and return the "owned" case without
+  unlinking or binding.
+- `listeningDescriptor` needs three outcomes rather than an optional. Use a private nested enum
+  (`case open(Int32)`, `case ownedByAnotherInstance`, `case unavailable`) and let `start` map it
+  onto `HookSocketOutcome`; `HookSocketOutcome` itself cannot serve, because the descriptor is not
+  a listener yet.
+- Keep the probe `nonisolated static`. Take the already-filled `sockaddr_un` by value and make the
+  mutable copy inside the probe; do not reach for `address` through an escaping pointer.
+
+In `AgentActivityMonitor`:
+
+- Add `enum AgentHookSocketState { case off, listening, ownedByAnotherInstance, unavailable }` at
+  file scope (no associated values, so `==` is free) and
+  `@Published private(set) var socketState: AgentHookSocketState = .off`.
+- In `start()`, switch on the outcome: `.listening(let listener)` stores the listener and sets
+  `socketState = .listening`; the other two store nothing and set the matching state. The
+  `AgentHookInstaller.install(home:)` call stays first and unconditional (D11).
+- In `stop()`, set `socketState = .off`. Leave the unlink alone here — T2 owns it.
+- In the `onPayload` closure, add `guard !payload.isEmpty else { return }` above the existing
+  `AgentHookEnvelope.parse` guard, with one line saying an empty payload is the liveness probe's
+  hang-up, never an event.
+
+Tests (Decision 13), both under `makeShortTempHome` via the existing `setUp`:
+
+- **Live owner.** `monitor.setEnabled(true)`; read the socket's inode
+  (`FileManager.default.attributesOfItem(atPath: paths.socketPath)[.systemFileNumber]`); build a
+  second `AgentActivityMonitor(home: home)` and `setEnabled(true)` on it; assert its `socketState`
+  is `.ownedByAnotherInstance`; assert the inode is unchanged; then `try fire(...)` a
+  `UserPromptSubmit` and `waitFor(.working, …)` on the **first** monitor's `worktreePhases`. Do not
+  call `setEnabled(false)` on the second monitor in this test — that gate is T2's.
+- **Stale inode.** Create `paths.clearwayDir`, then `socket`/`bind`/`listen` a raw `AF_UNIX`
+  descriptor at `paths.socketPath` and `close` it **without** unlinking. Then
+  `monitor.setEnabled(true)`, `fire` a `UserPromptSubmit`, and `waitFor(.working, …)`. This is the
+  case that proves a crashed instance does not cost the feature.
+
+**Acceptance criteria**
+
+- A second monitor started against a path a live listener owns reports `.ownedByAnotherInstance`,
+  leaves the inode untouched, and the first monitor keeps receiving events.
+- A socket inode left behind by a closed-without-unlink descriptor is still unlinked and rebound.
+- A monitor that binds publishes `.listening`; a bind that fails for any other reason publishes
+  `.unavailable`; a monitor whose toggle is off publishes `.off`.
+- `unlink` is still called in exactly two places in `Sources/` (the one in `stop()` and the one in
+  `listeningDescriptor`); no timer, queue or retry is added.
+- The existing cases in `AgentActivityMonitorTests` are unchanged and still pass — in particular
+  `testAStaleSocketFileDoesNotStopTheListenerBinding` (regular file → `ENOTSOCK` → replace) and
+  `testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed` (directory → `ENOTSOCK` → bind
+  fails → `.unavailable`, and the latch still holds).
+
+**Verification**
+
+- `./scripts/ci.sh` green (regenerates the project, lints, builds, runs the suite), run after the
+  last edit. Report the command and its exit status.
+- `grep -rn "unlink" Sources/` shows the same two call sites.
+
+### T2: `stop()` unlinks only the socket this instance bound
+
+**Files**
+
+- `Sources/App/AgentActivityMonitor.swift`
+- `Tests/AgentActivityMonitorTests.swift`
+
+**What it does**
+
+Gate `stop()`'s `unlink(paths.socketPath)` on `socketState == .listening`, read before
+`socketState` is reset to `.off`. Keep the existing ordering — the unlink runs after the listener is
+released and on the main actor both times, which is what
+`testTheFeedSurvivesADisableAndReEnable` pins. Replace the existing comment's claim only where it
+is now wrong; the disable-then-enable reason still stands.
+
+Add one test: first monitor enabled; second `AgentActivityMonitor(home: home)` enabled and asserted
+`.ownedByAnotherInstance`; record the socket's inode; `setEnabled(false)` on the **second** monitor;
+assert the socket still exists with the same inode, then `fire` a `UserPromptSubmit` and
+`waitFor(.working, …)` on the first monitor. `AgentHookInstaller.uninstall` leaves the forwarder
+script on disk (`AgentHookInstaller.swift:24-28`), so `fire` still runs after the second monitor's
+teardown.
+
+**Acceptance criteria**
+
+- Switching a blocked instance's toggle off leaves the live instance's socket inode in place, and
+  the live instance keeps receiving events afterwards.
+- A monitor that bound still unlinks its own socket on `stop()`; `testTheFeedSurvivesADisableAndReEnable`
+  and `testDisablingAMonitorThatWasNeverEnabledReachesNoUninstaller` still pass.
+
+**Verification**
+
+- `./scripts/ci.sh` green, run after the last edit.
+
+### T3: Correct the unconditional-unlink claim in `Sources/App/CLAUDE.md`
+
+**Files**
+
+- `Sources/App/CLAUDE.md`
+
+**What it does**
+
+Lines 324-325 currently read "`bind` unlinks a stale path first, or one crash leaves an inode that
+makes every later launch fail `EADDRINUSE` and no dot ever lights again." Rewrite that sentence so
+it states both halves of the shipped rule: the listener connects to the path first, a connect that
+succeeds means a live owner and the unlink and bind are both skipped (the instance publishes
+`.ownedByAnotherInstance` and runs without hook events until the owner quits), and only a path
+nothing answers on is unlinked and rebound — which is what keeps a crash from costing the feature.
+Name `stop()`'s matching gate in the same place, since the two unlinks are one invariant. Keep the
+surrounding prose and the file's voice; change nothing else in the file.
+
+**Acceptance criteria**
+
+- No sentence in `Sources/App/CLAUDE.md` describes the unlink as unconditional.
+- The note names the connect probe, the refusal, and the `stop()` gate.
+- The diff touches only those lines.
+
+**Verification**
+
+- `git diff --stat` shows `Sources/App/CLAUDE.md` alone.
+- `./scripts/ci.sh` green (documentation-only, but the stamp is per task).
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| The probe connection is logged as a malformed event by the live instance | Medium — a false warning on every second launch | The `!payload.isEmpty` guard is part of T1, not a follow-up (D9) |
+| `listeningDescriptor` growing a second enum reads as indirection | Low | It is three states a caller must distinguish, not an abstraction; `start` collapses it immediately |
+| A live listener with a saturated backlog is read as stale | Low, accepted | Recorded as a known limit (D12); no retry |
+
+## Out of scope
+
+Settings UI for `socketState`, `AgentHookInstaller.uninstall`'s cross-instance collision, per-bundle
+socket paths, and the saturated-backlog window — all per the spec's "Out of scope".
+
+## Build log
+
+### T1: Refuse a socket path a live instance still answers on
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `AgentHookSocketState` and `HookSocketOutcome` added at file scope; `@Published private(set) var socketState` on the monitor; `start()` switches on the outcome, `stop()` resets to `.off`; the `onPayload` closure gains `guard !payload.isEmpty`; `HookSocketListener.start` returns `HookSocketOutcome`; `listeningDescriptor(at:)` returns a private `DescriptorOutcome` and is guarded by the new `nonisolated static isAnswering(at:)` connect probe. |
+| `Tests/AgentActivityMonitorTests.swift` | `import Darwin`; `testAPathALiveInstanceAnswersOnIsLeftAlone`, `testASocketInodeLeftByADeadInstanceIsStillRebound`, and the `socketInode()` / `bindAndAbandon(_:)` helpers. Every pre-existing case is untouched. |
+| `project.yml` | `**/CLAUDE.md` excluded from the app target's `sources`. Not part of the task — see Deviations. |
+
+**Evidence**
+
+The regression test was watched red against the unfixed rule. The probe guard was neutered in place
+(`guard !isAnswering(at: address)` → a condition that can never hold), the gate run, and the file
+restored from a scratchpad copy — no `git checkout`, no stash. `./scripts/ci.sh`, exit 65:
+
+```
+Test Suite 'AgentActivityMonitorTests' started at 2026-09-21 16:16:02.441.
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("listening") is not equal to ("ownedByAnotherInstance") - the second instance must not take the socket
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("100264965") is not equal to ("100264964") - an unlink would replace the inode the live instance is listening on
+    ✖ testAPathALiveInstanceAnswersOnIsLeftAlone, XCTAssertEqual failed: ("idle") is not equal to ("working") - the first monitor's worktree phase after a second instance started
+Executed 12 tests, with 3 failures (0 unexpected) in 10.739 (10.742) seconds
+```
+
+The three assertions are the whole bug in order: the second instance took the socket, the inode it
+bound is one past the one the first was listening on, and the first instance then received nothing.
+`testASocketInodeLeftByADeadInstanceIsStillRebound` passed in that run as well as after the fix,
+which is the point of it — it pins the behaviour the probe must not change.
+
+**Deviations**
+
+1. **The probe sits before `socket(2)`, not between it and the `unlink`.** The plan had it close a
+   listening descriptor it had just created on the owned path. Probing first means there is no
+   descriptor to close and no leak to get wrong; it is still the statement immediately before the
+   `unlink` it guards, which is what D5 asks for.
+2. **`project.yml` excludes `**/CLAUDE.md` from the app target's sources.** Not this task's work and
+   not in the spec's file list. `./scripts/ci.sh` could not build at all on the plan's base: 6afcc8d
+   added `Sources/App/CLAUDE.md` beside `Sources/Ghostty/CLAUDE.md`, xcodegen picked both up as
+   resources, and both copy to `Clearway.app/Contents/Resources/CLAUDE.md` — *"Multiple commands
+   produce …/Resources/CLAUDE.md"*, a build-graph error, so no test ran. `main`'s own CI run for
+   PR #248 (`gh run view 35613723428`) failed with the identical line, so the breakage is
+   pre-existing and is red on `main` right now. The verification the plan names is unreachable
+   without it, so it is fixed here rather than reported. Notes for humans were never app resources.
+3. **`Darwin.socket` / `Darwin.bind` / `Darwin.listen` / `Darwin.close` are qualified in the test
+   helper.** `XCTestCase` inherits `NSObject.bind(_:to:withKeyPath:options:)`, which wins the
+   unqualified name and fails to compile.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 781 tests, 0 failures, run after the last edit.
+`grep -rn "unlink" Sources/` shows the same two call sites (`AgentActivityMonitor.swift:97` in
+`stop()`, `:216` in `listeningDescriptor`); the rest of the hits are prose or a view name.
+
+**Split**
+
+The `project.yml` exclusion was lifted out of the T1 commit into its own first commit on this branch
+so it could go to `main` on its own: PR #249, green on `./scripts/ci.sh` (exit 0, 779 tests).
+
+### T2: `stop()` unlinks only the socket this instance bound
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | `stop()` reads `socketState == .listening` into `bound` before releasing the listener, and the `unlink` is gated on it. Ordering unchanged: the unlink still runs after the cancel and on the main actor both times. |
+| `Tests/AgentActivityMonitorTests.swift` | `testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone`, in the toggle section beside the other `stop()` cases. Every pre-existing case untouched. |
+
+**Evidence**
+
+Watched red against the unfixed `stop()` — the test was written first and the gate run before the
+gate on the unlink existed. `./scripts/ci.sh`, exit 65:
+
+```
+✖ testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone, XCTAssertEqual failed: threw error "Error Domain=NSCocoaErrorDomain Code=260 "The file “hook.sock” couldn’t be opened because there is no such file." UserInfo={NSFilePath=/tmp/clearway-hook-monitor-C8A8642E/.clearway/hook.sock, …}" - a blocked instance's stop() must not unlink a socket it never bound
+✖ testDisablingAnInstanceThatNeverBoundLeavesTheLiveSocketAlone, XCTAssertEqual failed: ("idle") is not equal to ("working") - the first monitor's worktree phase after the second was disabled
+Executed 13 tests, with 2 failures (0 unexpected) in 11.369 (11.372) seconds
+```
+
+Worse than the inode change T1 pins: the blocked instance's `stop()` removed the path outright, so
+the inode read could not even find a file, and the live instance received nothing afterwards. The
+theft the probe refuses at `bind` was still available at `stop()`.
+
+**Deviations**
+
+None. The existing comment's disable-then-enable reason was left standing — it is still true and
+still the reason for the ordering — and the gate got its own sentence above it rather than a rewrite
+of that one.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 782 tests, 0 failures, run after the last edit.
+`grep -rn "unlink(" Sources/` shows the same two call sites, now both guarded:
+`AgentActivityMonitor.swift:101` in `stop()` and `:220` in `listeningDescriptor`.
+`git status --porcelain` before the commit: the two modified files above and nothing else — no
+`default.profraw`, no untracked files.
+
+### T3: Correct the unconditional-unlink claim in `Sources/App/CLAUDE.md`
+
+**What landed**
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | The transport note's closing sentence, which said `bind` unlinks a stale path first, is replaced by the shipped rule: the connect probe runs immediately before the unlink, a return of 0 means a live owner so neither the unlink nor the bind happens and the instance publishes `.ownedByAnotherInstance`, every errno falls through to the unlink and the bind, and `stop()` gates its own unlink on the same fact. Nothing else in the file changed. |
+
+**Evidence**
+
+Documentation only, so there is no watched failure to quote. The claim corrected is the one the
+code no longer makes: `AgentActivityMonitor.swift:206-210` refuses the path on
+`isAnswering(at: address)` before reaching the `unlink` at `:220`, and `stop()` at `:96-101` reads
+`socketState == .listening` into `bound` and unlinks only when it holds.
+
+**Deviations**
+
+The rewrite opens with a bolded lead sentence, matching the other rules in that entry
+(**The transport is …**, **The forwarder is …**), rather than staying an unmarked continuation of
+the transport sentence. It is a rule of its own now, not a footnote to the transport choice.
+
+**Gate**
+
+`./scripts/ci.sh` — green, exit 0, 782 tests, 0 failures, run after the last edit.
+`git diff --stat` before this log was appended: `Sources/App/CLAUDE.md` alone, 9 insertions,
+2 deletions. `git status --porcelain`: that one file and nothing else — no `default.profraw`, no
+untracked files.
+
+### Simplify
+
+The unlink moved from `stop()` into `HookSocketListener.deinit` beside the source cancel, so holding
+the listener *is* the "this instance bound it" invariant and the `socketState == .listening` gate,
+plus the flag it fed, are gone — the RAII shape the root `CLAUDE.md` already prescribes for every
+other resource here, and `socketState` reverts to the pure display value D7 describes. The
+empty-payload guard moved from the monitor's parse callback into `acceptPending`, where a hang-up is
+socket-layer knowledge rather than a malformed event. `sockaddr_un` construction and the
+`withMemoryRebound` dance were spelled three times (bind, connect, test fixture) and collapse into
+`unixAddress(for:)` / `withUnixAddress(_:_:)`; the test fixture had silently dropped production's
+`sun_path` length guard, so a longer temp prefix would have trapped the test process rather than
+failing it. Four comments restating the same invariant were cut to one apiece, and
+`Sources/App/CLAUDE.md`'s two-unlinks paragraph now names the single owner.
+
+Skipped: hoisting the probe out of `listeningDescriptor` into `start()` (D5 settles it there,
+adjacent to the unlink it guards) and dropping `@Published` from `socketState` (D7 settles it, and
+the companion Settings task reads it). Behavior is unchanged throughout.
+
+### Review
+
+`/pr-review-toolkit:review-pr code tests errors types` over `git diff main...HEAD`, plus the three
+items the prior review step raised and the orchestrator accepted.
+
+**Accepted items**
+
+1. `testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed` now asserts `.unavailable`.
+2. `start()` assigns `listener` in every arm, so "holding a listener" and "this instance bound"
+   cannot disagree whichever branch ran.
+3. The probe/bind race is spec Decision 15 and an Out-of-scope bullet beside the saturated backlog.
+
+**Fixed from this pass**
+
+| Finding | Change |
+| --- | --- |
+| A probe descriptor that cannot be created read as "nobody is there", and that answer authorises the unlink. Under `EMFILE` a descriptor freed between the probe and the listening `socket(2)` is enough to take a live instance's socket. | `isAnswering` returns `Bool?`; `nil` logs its errno and returns `.unavailable`, so a probe that never ran changes nothing. |
+| The `deinit` unlinked by name. A path replaced underneath a running instance — an older build with no probe, or the Decision 15 window — meant that instance's ordinary teardown deleted the live owner's socket: the same theft through a third door. | The listener stores the `st_dev`/`st_ino` `bind` created and unlinks only on a match. A `stat` that fails leaves a zeroed identity, which matches nothing, and the orphan inode is reclaimed by the next launch's probe. |
+| `\(errno)` inside an `os.Logger` interpolation is an escaping autoclosure, read after `isEnabled` and a heap allocation; and neither errno carried `privacy: .public`. | Both sites capture `let failure = errno` first and interpolate it `.public`. |
+| The blocked instance's one log line asserted "Another Clearway instance is listening", which `connect` returning 0 does not prove. | It now says a process is listening and names a second Clearway as the likely one. |
+| The teardown rule was stated three times in prose within seventy lines, and the `deinit`'s version credited the ordering to `source.cancel()`, which is asynchronous. | `stop()`'s comment and the class doc's restatement are gone; the `deinit` doc names the guarantee that holds — it runs synchronously at `listener = nil`. `withUnixAddress`'s doc, which was its signature in English, is gone too. |
+| The empty-payload drop, `.off`, the toggle as the only retry, and the inode-scoped unlink were all unpinned. | Four cases: `testAConnectionThatWritesNothingNeverReachesTheCallback` (drives the listener directly, so the guard is deletable only at the cost of a red test), `testATeardownLeavesAPathAnotherProcessHasSinceReboundAlone`, `testABlockedInstanceTakesTheSocketOnceTheOwnerHasQuit`, and `.off` assertions on both `stop()` paths. |
+
+**Spec rows corrected, not reopened**
+
+D8 said the `stop()` unlink is "gated on `socketState == .listening`" and D9 put the empty-payload
+guard in the parse callback. The simplify step moved both — into `HookSocketListener.deinit` and
+into `acceptPending` — and three reviewers flagged the rows as stale. Both now describe what
+shipped; the decisions themselves are unchanged, and D8 additionally records the inode scoping.
+
+**Declined**
+
+- `fileprivate` on `HookSocketOutcome` and `HookSocketListener.start`. It would close the seam the
+  new empty-payload case uses to drive the listener without a monitor.
+- Dropping the two `listener = nil` assignments as unreachable, which two reviewers asked for after
+  the orchestrator had accepted them. They are unreachable, and with the inode-scoped unlink they
+  can no longer do harm on the branch that concluded another instance owns the path.
+
+**Follow-ups** are listed in the report; none blocks this branch.
+
+**Gate**
+
+Not run here — `sign-off` owns the single `./scripts/ci.sh` run. `git status --porcelain` before the
+commit: the four files above and nothing else, no `default.profraw`, no untracked files.
