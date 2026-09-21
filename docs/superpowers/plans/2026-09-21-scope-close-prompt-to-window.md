@@ -311,3 +311,37 @@ output. `git status --porcelain` before the commit listed only this task's files
 `M Clearway.xcodeproj/project.pbxproj`, `M Sources/App/ClearwayApp.swift`,
 `M Sources/App/ProjectWindow.swift`, `?? Tests/CloseConfirmationDelegateTests.swift`. No
 `default.profraw`: the Debug app was not launched.
+
+### T3: Rewrite the per-file note that this change falsifies
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | The "Closing a project window is a door of its own" passage (419-433) rewritten: the "installed a layer up where the window's managers are out of reach" justification replaced with D10's, plus the per-window vs. process-wide split of the two confirmations. |
+| `docs/superpowers/plans/2026-09-21-scope-close-prompt-to-window.md` | This log. |
+
+The passage now reads: the retirement hangs off `WindowCloseHandler` and not off the window
+delegate, "whose slot holds `CloseConfirmationDelegate`. Both installers sit in
+`ProjectContentView.body` and stay separate: the delegate is installed once through
+`DispatchQueue.main.async` and never re-scopes, while `WindowCloseHandlerView` re-scopes with the
+view's tenancy in a window — behavior `WindowCloseHandlerTests` pins. That delegate's prompt is
+scoped to the closing window, off the instance `TerminalManager.needsConfirmClose` injected as a
+closure, while Cmd+Q's `applicationShouldTerminate` keeps the process-wide static
+`TerminalManager.needsConfirmQuit` — which is why the two alert bodies differ." No sentence claims
+the managers are out of reach or that the delegate is installed above `ProjectContentView`
+(criteria 1 and 2). `git diff --stat Sources/App/CLAUDE.md` is `12 insertions(+), 7 deletions(-)`,
+all inside that one passage; four of the twelve are re-wraps of unchanged text pushed across the
+file's ~100-column line width (criterion 3). Documentation only — no test, and none is possible.
+
+**Deviation: the `grep -n "out of reach"` check.** The plan's verification says that grep must
+return nothing in `Sources/App/CLAUDE.md`. It still returns two hits, at lines 123 and 549 — "put
+the editor out of reach" (the unstartable-editor guard) and "out of reach of exactly the user who
+has none" (the first-command path). Both are unrelated prose that predates this branch and neither
+concerns the window delegate, so the criterion as written (criterion 1: no sentence claims the
+window's managers are out of reach from the delegate) is met while the grep as written is not. The
+targeted check is `grep -n "installed a layer up"`, which returns nothing.
+
+**Gate.** `./scripts/ci.sh` — exit 0, `==> CI passed.`, `Executed 783 tests, with 0 failures
+(0 unexpected)`, unchanged from T2 as expected for a documentation-only task. `swiftlint lint
+--quiet` — exit 0, no output. `git status --porcelain` before the commit listed only
+`M Sources/App/CLAUDE.md` plus this log's own file. No `default.profraw`: the Debug app was not
+launched.

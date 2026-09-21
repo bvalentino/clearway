@@ -419,13 +419,18 @@
   `TerminalManager.retireAllSurfaces` — main tabs, the secondary shell and every task terminal in
   one pass — off `WindowCloseHandler` (`ProjectWindow.swift`), an `NSWindow.willCloseNotification`
   observer scoped to the view's own window, and not off an isolated `deinit` or the window
-  delegate: the delegate slot already holds `CloseConfirmationDelegate`, installed a layer up
-  where the window's managers are out of reach. The observation holds the closure rather than the
-  view, so the retirement still runs once the close has released the view hierarchy. Retirement is
-  permanent per surface id, which costs a reopened project nothing: its surfaces are new ones with
-  new ids. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
-  feature, forwarder and socket included, under a temp root; every call site outside the tests
-  takes the default.
+  delegate, whose slot holds `CloseConfirmationDelegate`. Both installers sit in
+  `ProjectContentView.body` and stay separate: the delegate is installed once through
+  `DispatchQueue.main.async` and never re-scopes, while `WindowCloseHandlerView` re-scopes with the
+  view's tenancy in a window — behavior `WindowCloseHandlerTests` pins. That delegate's prompt is
+  scoped to the closing window, off the instance `TerminalManager.needsConfirmClose` injected as a
+  closure, while Cmd+Q's `applicationShouldTerminate` keeps the process-wide static
+  `TerminalManager.needsConfirmQuit` — which is why the two alert bodies differ. The observation
+  holds the closure rather than the view, so the retirement still runs once the close has released
+  the view hierarchy. Retirement is permanent per surface id, which costs a reopened project
+  nothing: its surfaces are new ones with new ids. `AgentHookPaths(home:)` and `install(home:)`
+  exist so the suite can drive the whole feature, forwarder and socket included, under a temp root;
+  every call site outside the tests takes the default.
   **The dot is `waiting > working > idle`** over every surface carrying the worktree id, where
   working also means holding a live subagent — a lead between turns while subagents run must not go
   dark. Waiting on a permission prompt is a static 7 pt purple dot: orange is working, blue the
