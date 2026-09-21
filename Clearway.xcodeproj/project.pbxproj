@@ -36,6 +36,7 @@
 		2FC531EDD2252FCF9B20819A /* NotificationObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */; };
 		35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
+		3A6E6E61640C5BD80D41E9B9 /* FullWidthPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9ECBB7F925C88A2A337C68 /* FullWidthPicker.swift */; };
 		3AFCF67BAC9C1A2915C0578A /* WorktreeDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1D418C8459B8CD33885CCF /* WorktreeDraft.swift */; };
 		3C936F7524C192582602BA02 /* WorktreeStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94271FFA38EBBE0DCCCC1E46 /* WorktreeStatus.swift */; };
 		3D872F61D9F52EAEC3A5035D /* TodosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC9411B19B7913605A851B1 /* TodosView.swift */; };
@@ -198,6 +199,7 @@
 		3506CDE875886CD9216D9EEE /* WorktreeRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowTests.swift; sourceTree = "<group>"; };
 		37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInAppsSettingsSection.swift; sourceTree = "<group>"; };
 		391B50C7521DF3040ECDEB25 /* WorktreeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRow.swift; sourceTree = "<group>"; };
+		3A9ECBB7F925C88A2A337C68 /* FullWidthPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullWidthPicker.swift; sourceTree = "<group>"; };
 		3D0E30A2C721296DD9587040 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		3DBAD89265A8208B8A5D83A3 /* WorktreeDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeDraftTests.swift; sourceTree = "<group>"; };
 		3E00D38FF787B79BF5C000ED /* Clearway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clearway.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -423,6 +425,7 @@
 				90F058F6484B056DE5C42A4C /* ContentView.swift */,
 				17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */,
 				E63ED4D49D7021A58F8C1B10 /* DebugTerminalSheet.swift */,
+				3A9ECBB7F925C88A2A337C68 /* FullWidthPicker.swift */,
 				AF04318569BD95EFE4C470CA /* GitResolver.swift */,
 				1CD97378BE652541A9A9B29A /* GlassButtonStyles.swift */,
 				4270AB86F0A7397441CA6916 /* GroupByMenu.swift */,
@@ -807,6 +810,7 @@
 				6CB2E8C06F348EF807A2431D /* ContentView.swift in Sources */,
 				2678B9560A2D12B8CC5C1076 /* ContentViewHelpers.swift in Sources */,
 				7551EBE1429FFD9A379C730C /* DebugTerminalSheet.swift in Sources */,
+				3A6E6E61640C5BD80D41E9B9 /* FullWidthPicker.swift in Sources */,
 				C5BEC93B9ABDAD4794884644 /* Ghostty.App.swift in Sources */,
 				C120017209D6A467A66102D5 /* Ghostty.Config.swift in Sources */,
 				641841E20D13715149CA3EEF /* Ghostty.Shell.swift in Sources */,

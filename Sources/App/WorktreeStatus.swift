@@ -42,8 +42,9 @@ enum WorktreeStatus: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// One status as a picker row: the tinted symbol beside the display name. Shared by the New
-/// Worktree sheet and the sidebar's Status submenu so the two rows cannot drift apart.
+/// One status as a picker row: the tinted symbol beside the display name. The sidebar's Status
+/// submenu is its one renderer — an `NSMenu` cannot host a SwiftUI view, so the create sheet's
+/// `FullWidthPicker` draws an `NSMenuItem` from the same `displayName` / `symbol` / `color`.
 struct WorktreeStatusLabel: View {
     let status: WorktreeStatus
 
