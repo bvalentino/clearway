@@ -520,7 +520,7 @@ struct SidebarView: View {
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
-        let phase = isOpen ? agentActivity.worktreePhases[wt.id] ?? .idle : .idle
+        let phase = agentActivity.worktreePhases[wt.id] ?? .idle
         let subagents = isOpen ? agentActivity.worktreeSubagents[wt.id] ?? [] : []
         let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
         let (primaryText, subtitle) = WorktreeRow.rowTexts(
@@ -534,6 +534,7 @@ struct SidebarView: View {
             subtitle: subtitle,
             hasNotification: hasNotification,
             phase: phase,
+            isOpen: isOpen,
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )

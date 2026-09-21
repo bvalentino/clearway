@@ -8,6 +8,7 @@ struct WorktreeRow: View {
     var subtitle: String? = nil
     var hasNotification: Bool = false
     var phase: AgentPhase = .idle
+    var isOpen: Bool = true
     var shortcutIndex: Int? = nil
     var status: WorktreeStatus? = nil
     @State private var glowExpanded = false
@@ -23,6 +24,23 @@ struct WorktreeRow: View {
     ) -> (primaryText: String?, subtitle: String?) {
         guard let primaryText = name ?? taskTitle else { return (nil, nil) }
         return (primaryText, wt.displayName)
+    }
+
+    /// Which dot the trailing edge carries, or none. `isOpen` gates the agent phase alone: a closed
+    /// worktree's surfaces are already retired, so its phase is stale, while a notification it
+    /// raised before it closed is still unread and still worth a dot.
+    static func dot(phase: AgentPhase, hasNotification: Bool, isOpen: Bool) -> Dot? {
+        switch isOpen ? phase : .idle {
+        case .waiting: return .waiting
+        case .working: return .working
+        case .idle: return hasNotification ? .notification : nil
+        }
+    }
+
+    enum Dot {
+        case waiting
+        case working
+        case notification
     }
 
     var body: some View {
@@ -48,7 +66,7 @@ struct WorktreeRow: View {
                 }
                 Spacer()
                 Group {
-                    switch phase {
+                    switch Self.dot(phase: phase, hasNotification: hasNotification, isOpen: isOpen) {
                     case .waiting:
                         ActivityDot(color: .purple, help: "Waiting for permission")
                             .transition(.opacity)
@@ -60,10 +78,10 @@ struct WorktreeRow: View {
                             .onAppear { glowExpanded = true }
                             .onDisappear { glowExpanded = false }
                             .transition(.opacity)
-                    case .idle:
-                        if hasNotification {
-                            ActivityDot(color: .blue, help: "Terminal notification")
-                        }
+                    case .notification:
+                        ActivityDot(color: .blue, help: "Terminal notification")
+                    case nil:
+                        EmptyView()
                     }
                 }
                 .animation(.easeOut(duration: 0.6), value: phase)

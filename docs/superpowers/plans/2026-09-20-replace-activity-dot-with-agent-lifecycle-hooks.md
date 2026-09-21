@@ -1860,3 +1860,33 @@ off and `.onAppear` handing the monitor `false` once per window.
 
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 744 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.`
+
+#### R2 — The dot's precedence is a pure static, not a SwiftUI body
+
+**Reported.** Waiting > working > idle-with-notification > none, gated on `isOpen`, was split across
+two SwiftUI bodies: `SidebarView` pre-applied the `isOpen` gate to the phase it passed down, and
+`WorktreeRow`'s body switched on the result. Neither half is reachable from XCTest.
+
+**What landed.** `WorktreeRow.dot(phase:hasNotification:isOpen:) -> Dot?`, beside `rowTexts` and for
+the same reason, with the body switching on its result. `WorktreeRow` gained `isOpen` and
+`SidebarView` now hands it the raw phase.
+
+The lift made explicit a rule the split had hidden: **`isOpen` gates the phase alone.** `SidebarView`
+forced the phase to `.idle` for a closed worktree but passed `hasNotification` through untouched, so
+a closed worktree carrying a terminal notification has always shown the blue dot. That is the
+behaviour the operator verified, so the static reproduces it exactly and two of the six cases pin it.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `Dot` and `dot(phase:hasNotification:isOpen:)`; the body switches on it; `isOpen` property |
+| `Sources/App/SidebarView.swift` | passes the raw phase and `isOpen` |
+| `Tests/WorktreeRowTests.swift` | `WorktreeRowDotTests`, six cases |
+| `CLAUDE.md` | the precedence names the static, and says the gate is on the phase alone |
+
+**Evidence.** No watched failure, and none is claimable: this extracts an existing rule unchanged
+rather than fixing a defect, the same as `WorktreeRowTextTests` before it. The proof that it is
+unchanged is the pair of closed-worktree cases above, which encode what the two bodies did between
+them rather than what either said on its own.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 750 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.` 744 → 750 is the six new cases.

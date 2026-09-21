@@ -58,3 +58,39 @@ final class WorktreeRowTextTests: XCTestCase {
         XCTAssertEqual(texts.subtitle, "(detached)")
     }
 }
+
+/// Pins the trailing dot's precedence, lifted out of `SidebarView`'s `isOpen` gate and
+/// `WorktreeRow`'s body for the same reason the row texts were: nothing in a SwiftUI body is
+/// reachable from XCTest. `AgentActivityStoreTests` covers where the phase itself comes from.
+final class WorktreeRowDotTests: XCTestCase {
+
+    func testWaitingBeatsEverythingElse() {
+        XCTAssertEqual(WorktreeRow.dot(phase: .waiting, hasNotification: true, isOpen: true), .waiting)
+    }
+
+    func testWorkingBeatsANotification() {
+        XCTAssertEqual(WorktreeRow.dot(phase: .working, hasNotification: true, isOpen: true), .working)
+    }
+
+    func testAnIdleWorktreeShowsItsNotification() {
+        XCTAssertEqual(WorktreeRow.dot(phase: .idle, hasNotification: true, isOpen: true), .notification)
+    }
+
+    func testAnIdleWorktreeWithNoNotificationCarriesNoDot() {
+        XCTAssertNil(WorktreeRow.dot(phase: .idle, hasNotification: false, isOpen: true))
+    }
+
+    /// A closed worktree's surfaces are already retired, so whatever phase is still keyed to it is
+    /// stale — the dot goes dark whether the phase says waiting or working.
+    func testAClosedWorktreeCarriesNoPhaseDot() {
+        XCTAssertNil(WorktreeRow.dot(phase: .working, hasNotification: false, isOpen: false))
+        XCTAssertNil(WorktreeRow.dot(phase: .waiting, hasNotification: false, isOpen: false))
+    }
+
+    /// The gate is on the phase alone: a notification raised before the worktree closed is still
+    /// unread, so closing must not take the blue dot with it.
+    func testAClosedWorktreeStillShowsItsNotification() {
+        XCTAssertEqual(WorktreeRow.dot(phase: .working, hasNotification: true, isOpen: false), .notification)
+        XCTAssertEqual(WorktreeRow.dot(phase: .idle, hasNotification: true, isOpen: false), .notification)
+    }
+}

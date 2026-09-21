@@ -512,8 +512,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     dark. Waiting on a permission prompt is a static 7 pt purple dot: orange is working, blue the
     plain-shell notification, red failure, green success and yellow a status badge, so purple is the
     only hue left, and not pulsing separates it by shape as well. `isMain` no longer suppresses the
-    dot; `isOpen` still gates it, and the subagent rows with it, since a closed worktree's surfaces
-    are already retired.
+    dot. That precedence is `WorktreeRow.dot(phase:hasNotification:isOpen:)`, a pure static beside
+    `rowTexts` for the same reason — nothing in a SwiftUI body is reachable from XCTest — and
+    `isOpen` gates the **phase** alone, along with the subagent rows, since a closed worktree's
+    surfaces are already retired; the blue notification dot survives it, because a notification
+    raised before the worktree closed is still unread.
   - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
     `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
     launcher, the one menu view both entry points render, and the Settings section that edits the
