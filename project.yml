@@ -24,6 +24,10 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+        excludes:
+          # Notes for humans, not app resources: both would be copied to
+          # Resources/CLAUDE.md, and two commands producing one path is a build error.
+          - "**/CLAUDE.md"
     resources:
       - path: Resources
         optional: true
