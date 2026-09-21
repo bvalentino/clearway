@@ -11,10 +11,11 @@ import SwiftUI
 /// editor through it.
 struct RunCommandMenu: View {
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
-    @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
 
-    let worktree: Worktree
+    /// `WorktreeRunActions.runner`, handed in so the menu bar's Run rows and this button share one
+    /// implementation.
+    let run: (SavedCommand) -> Void
 
     @State private var showCommandEditor = false
 
@@ -74,11 +75,5 @@ struct RunCommandMenu: View {
             Divider()
         }
         Button("Add Command…") { showCommandEditor = true }
-    }
-
-    private func run(_ command: SavedCommand) {
-        savedCommandManager.recordLastRun(command)
-        guard let app = ghosttyApp.app else { return }
-        terminalManager.run(command, in: worktree, app: app)
     }
 }

@@ -85,26 +85,9 @@ struct OpenInMenu: View {
         }
     }
 
-    private func open(_ app: OpenInApp) {
-        if remembersLastUsed {
-            settings.recordOpenInUse(app)
-        }
-        Task {
-            let outcome = await OpenInAppLauncher.launch(command: app.command, path: path)
-            guard case .failed(let message) = outcome else { return }
-            presentFailure(app, detail: message)
-        }
-    }
-
-    /// `NSAlert().runModal()` is the app's pattern for a fire-and-forget message
-    /// (`ClearwayApp.swift:68, 90`); a `@Published` failure would have to be wired into both
-    /// entry points' view trees for one message.
-    private func presentFailure(_ app: OpenInApp, detail: String) {
-        let alert = NSAlert()
-        alert.messageText = "Couldn't open in \(app.label)"
-        alert.informativeText = OpenInAppLauncher.failureMessage(command: app.command, detail: detail)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+    /// The launch itself is `WorktreeOpenInActions.opener`, shared with the menu bar, so the failure
+    /// alert is built in one place. Only the toolbar variant records the pick.
+    private var open: (OpenInApp) -> Void {
+        WorktreeOpenInActions.opener(path: path, recordingUseIn: remembersLastUsed ? settings : nil)
     }
 }

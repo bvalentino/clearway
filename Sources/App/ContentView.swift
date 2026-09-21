@@ -62,6 +62,7 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var groupManager: WorktreeGroupManager
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var sidebarSelection: DetailSelection? = .tasks
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
@@ -156,6 +157,38 @@ struct ContentView: View {
         }
     }
 
+    /// Run and Open In, exposed via `focusedSceneValue` so the Worktree menu's rows reach this
+    /// window's state and grey out where the action doesn't apply. Each gate mirrors its toolbar
+    /// counterpart: Run needs a `ghostty_app_t`, Open In a path and a non-empty app list.
+    private var worktreeRunActions: WorktreeRunActions? {
+        guard let worktree = selectedWorktree, ghosttyApp.app != nil else { return nil }
+        return WorktreeRunActions(
+            primary: savedCommandManager.primaryCommand,
+            title: savedCommandManager.runButtonTitle,
+            commands: savedCommandManager.commands,
+            run: runAction(for: worktree)
+        )
+    }
+
+    private var worktreeOpenInActions: WorktreeOpenInActions? {
+        guard let path = currentWorktree?.path, !settings.openInApps.isEmpty else { return nil }
+        return WorktreeOpenInActions(
+            primary: settings.primaryOpenInApp,
+            title: settings.openInButtonTitle,
+            apps: settings.openInApps,
+            open: WorktreeOpenInActions.opener(path: path, recordingUseIn: settings)
+        )
+    }
+
+    private func runAction(for worktree: Worktree) -> (SavedCommand) -> Void {
+        WorktreeRunActions.runner(
+            worktree: worktree,
+            savedCommandManager: savedCommandManager,
+            terminalManager: terminalManager,
+            ghosttyApp: ghosttyApp
+        )
+    }
+
     private var sidebarSelectionBinding: Binding<DetailSelection?> {
         Binding(
             get: { sidebarSelection },
@@ -196,7 +229,7 @@ struct ContentView: View {
                 .toolbar {
                     if let runWorktree = selectedWorktree {
                         ToolbarItem(placement: .primaryAction) {
-                            RunCommandMenu(worktree: runWorktree)
+                            RunCommandMenu(run: runAction(for: runWorktree))
                         }
                         ToolbarGroupBreak()
                         if !settings.openInApps.isEmpty, let path = currentWorktree?.path {
@@ -265,6 +298,8 @@ struct ContentView: View {
         .focusedSceneValue(\.sidebarToggle, sidebarPanel)
         .focusedSceneValue(\.bottomPanelToggle, bottomPanel)
         .focusedSceneValue(\.asideToggle, asidePanel)
+        .focusedSceneValue(\.worktreeRunActions, worktreeRunActions)
+        .focusedSceneValue(\.worktreeOpenInActions, worktreeOpenInActions)
         .navigationTitle(navigationTitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
