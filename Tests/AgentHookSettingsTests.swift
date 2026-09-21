@@ -54,6 +54,16 @@ final class AgentHookSettingsTests: XCTestCase {
         XCTAssertEqual(groups?.last?["hooks"] as? NSArray, [clearwayHook] as NSArray)
     }
 
+    /// The one place `install` broke its own rule: a `hooks` value that is not an object read as
+    /// empty and was replaced wholesale by the block, while `uninstall` left the same value alone.
+    /// The backup makes that recoverable, not acceptable — the two halves must agree.
+    func testInstallLeavesAHooksValueItCannotRead() {
+        for unreadable in [["an array"] as Any, "a string" as Any, 7 as Any] {
+            let start: [String: Any] = ["hooks": unreadable, "model": "opus"]
+            XCTAssertEqual(AgentHookSettings.install(into: start) as NSDictionary, start as NSDictionary)
+        }
+    }
+
     // MARK: - Uninstall
 
     func testUninstallUndoesInstallForEveryStartingShape() {

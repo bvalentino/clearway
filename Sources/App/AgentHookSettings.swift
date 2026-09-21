@@ -13,6 +13,11 @@ enum AgentHookSettings {
     /// Idempotent by construction — an install is an uninstall followed by one group per event, so
     /// a block already on disk is replaced rather than duplicated.
     static func install(into settings: [String: Any]) -> [String: Any] {
+        // A value Clearway cannot read is a value it must not overwrite — the same rule the event
+        // loop below keeps, and the one `uninstall` keeps for this very key. Without this the
+        // `as? [String: Any] ?? [:]` beneath reads a non-object `hooks` as empty and writes the
+        // block straight over it, which is the one place in this file that broke the rule.
+        if let hooks = settings["hooks"], !(hooks is [String: Any]) { return settings }
         var result = uninstall(from: settings)
         var hooks = result["hooks"] as? [String: Any] ?? [:]
 
