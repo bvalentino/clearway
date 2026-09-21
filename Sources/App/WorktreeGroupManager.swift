@@ -59,6 +59,11 @@ final class WorktreeGroupManager: ObservableObject {
     /// mutate state the load would then republish over.
     private(set) var loadTask: Task<Void, Never>?
 
+    /// The most recent `reconcile`, awaited by the test base so a case that dropped the `Task`
+    /// still settles. Not chained: a second `reconcile` fired before the first finished replaces
+    /// this slot and leaves the first unawaited.
+    private(set) var reconcileTask: Task<Void, Never>?
+
     init(projectPath: String) {
         self.configStore = WorktreeConfigStore(projectPath: projectPath)
 
@@ -295,10 +300,12 @@ final class WorktreeGroupManager: ObservableObject {
     /// reload reads the values it just wrote back over the user's order.
     @discardableResult
     func reconcile(_ worktrees: [Worktree], openIds: [String]) -> Task<Void, Never> {
-        Task {
+        let task = Task {
             await self.reloadConfig(for: worktrees)
             self.seedPositions(for: worktrees, openIds: openIds)
         }
+        reconcileTask = task
+        return task
     }
 
     /// True when the worktree should survive the sidebar's search field.

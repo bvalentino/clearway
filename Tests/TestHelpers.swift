@@ -220,17 +220,14 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         try await super.tearDown()
     }
 
-    /// Awaits the manager's in-flight work — the load, then the write chain as it stands now — so a
-    /// case asserting a gesture wrote *nothing* has something to wait on. Absence cannot be polled:
-    /// `waitFor` returns the moment the expected value is already there.
-    ///
-    /// The chain is sampled once, so a `reconcile` `Task` the body discarded is covered only
-    /// because `seedPositions` enqueues its write in the same continuation as the reload's publish,
-    /// with no suspension between them: a body that observed the publish has already let that
-    /// enqueue run. Put an `await` in `reconcile` between the two and this stops holding — await
-    /// the `Task` it returns instead, the way `testReconcileRereadsBothRepoLevelKeys` does.
+    /// Awaits the manager's in-flight work — the load, then the most recent `reconcile`, then the
+    /// write chain as it stands now — so a case asserting a gesture wrote *nothing* has something
+    /// to wait on. Absence cannot be polled: `waitFor` returns the moment the expected value is
+    /// already there. The reconcile is awaited before the chain is sampled, so the chain sampled
+    /// is the one the reconcile's seed write left behind.
     func settle() async {
         await manager?.loadTask?.value
+        await manager?.reconcileTask?.value
         await manager?.writeChain?.value
     }
 
@@ -240,7 +237,12 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
     /// Also the only way a test that enables `extensions.worktreeConfig` behind the manager's back
     /// is seen: `WorktreeConfigStore` memoises a probe that found the extension off, and the load
     /// runs one before any test body does.
+    ///
+    /// Settles the outgoing manager first: `settle()` only ever reaches the one in `manager`, so a
+    /// relaunch is the one door that could drop a `reconcile` or a write chain where `tearDown`
+    /// can no longer await it, leaving `git config` running against a scratch root being removed.
     func restartManager() async {
+        await settle()
         manager = makeRecordingManager()
         await manager.loadTask?.value
     }
@@ -282,6 +284,8 @@ class WorktreeGroupManagerGitTestCase: TempRootTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
+        // Reads git back, so the manager's queued writes must have landed first.
+        await settle()
         try await waitFor(expected, describing: "\(key) at \(path)", file: file, line: line) {
             try self.repo.value(ofKey: key, atWorktree: path)
         }

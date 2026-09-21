@@ -79,9 +79,9 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let alive = makeWorktree(branch: "alive", path: path)
         await restartManager()
 
-        manager.reconcile([alive], openIds: [])
+        await manager.reconcile([alive], openIds: []).value
 
-        try await waitForPublishedStatuses([alive.id: .inReview])
+        XCTAssertEqual(manager.statuses, [alive.id: .inReview], "published statuses")
     }
 
     /// `config.worktree` is hand-editable and a slug rename is a format change, so an
@@ -94,11 +94,9 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         let alive = makeWorktree(branch: "alive", path: path)
         await restartManager()
 
-        manager.reconcile([alive], openIds: [])
+        await manager.reconcile([alive], openIds: []).value
 
-        try await waitFor("Stored name" as String?, describing: "published name for \(alive.id)") {
-            self.manager.name(for: alive)
-        }
+        XCTAssertEqual(manager.name(for: alive), "Stored name", "published name for \(alive.id)")
         XCTAssertTrue(manager.statuses.isEmpty)
     }
 
@@ -114,9 +112,9 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
         manager.setStatus(.onHold, for: dead)
         try await waitForStoredStatus(.onHold, at: deadPath)
 
-        manager.reconcile([alive], openIds: [])
+        await manager.reconcile([alive], openIds: []).value
 
-        try await waitForPublishedStatuses([alive.id: .todo])
+        XCTAssertEqual(manager.statuses, [alive.id: .todo], "published statuses")
     }
 
     // MARK: - sidebarOrderedWorktrees per grouping
@@ -272,15 +270,5 @@ final class WorktreeGroupManagerStatusTests: WorktreeGroupManagerGitTestCase {
             file: file,
             line: line
         )
-    }
-
-    private func waitForPublishedStatuses(
-        _ expected: [String: WorktreeStatus],
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        try await waitFor(expected, describing: "published statuses", file: file, line: line) {
-            self.manager.statuses
-        }
     }
 }
