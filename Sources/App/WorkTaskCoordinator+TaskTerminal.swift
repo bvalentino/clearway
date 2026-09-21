@@ -91,6 +91,18 @@ extension WorkTaskCoordinator {
         hasActiveProcess
     }
 
+    /// Which task a Start Now item plans. A row context menu's items plan their own row; the
+    /// toolbar's items have no row and plan whatever is selected **at the moment of the click**.
+    ///
+    /// The rule holds no state, so it can never answer with an earlier selection. AppKit keeps a
+    /// toolbar's `NSMenu` and the closures built with it alive across selection changes, so callers
+    /// must pass `selection:` from a property read **inside** the action closure (`selectedTask`),
+    /// never from a value bound when the menu was built. What capturing one cost is recorded at the
+    /// call site, `WorkTaskListView.startNowItems(for:)`.
+    static func startNowTarget(row: WorkTask?, selection: WorkTask?) -> WorkTask? {
+        row ?? selection
+    }
+
     /// Plan a backlog task: run the chosen agent command against the task's own bottom terminal,
     /// from the primary worktree. Nothing is written to the task — planning shapes the brief, it
     /// does not start the work.

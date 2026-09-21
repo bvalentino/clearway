@@ -48,6 +48,42 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         XCTAssertFalse(WorkTaskCoordinator.planNeedsConfirmation(hasActiveProcess: false))
     }
 
+    /// A row's items plan their own row, selected or not.
+    func testStartNowTargetPrefersTheRowOverTheSelection() {
+        let rowTask = WorkTask(title: "Row")
+        let selected = WorkTask(title: "Selected")
+
+        XCTAssertEqual(
+            WorkTaskCoordinator.startNowTarget(row: rowTask, selection: selected), rowTask)
+        XCTAssertEqual(WorkTaskCoordinator.startNowTarget(row: rowTask, selection: nil), rowTask)
+    }
+
+    /// The toolbar has no row, so its items plan whatever the caller read from the live selection.
+    func testStartNowTargetFallsBackToTheSelectionWithNoRow() {
+        let selected = WorkTask(title: "Selected")
+
+        XCTAssertEqual(WorkTaskCoordinator.startNowTarget(row: nil, selection: selected), selected)
+    }
+
+    /// Nothing to plan: the view's gate omits the command items on this answer.
+    func testStartNowTargetIsNilWithNeitherRowNorSelection() {
+        XCTAssertNil(WorkTaskCoordinator.startNowTarget(row: nil, selection: nil))
+    }
+
+    /// The regression: the rule keeps no state, so a second call answers with the selection it is
+    /// handed and never with the earlier one. That is what lets an item resolve its target at click
+    /// time rather than capture a task.
+    func testStartNowTargetCarriesNoMemoryOfAnEarlierSelection() {
+        let taskA = WorkTask(title: "A")
+        let taskB = WorkTask(title: "B")
+
+        XCTAssertEqual(WorkTaskCoordinator.startNowTarget(row: nil, selection: taskA), taskA)
+
+        let second = WorkTaskCoordinator.startNowTarget(row: nil, selection: taskB)
+        XCTAssertEqual(second, taskB)
+        XCTAssertNotEqual(second, taskA)
+    }
+
     // MARK: - Toggling the task terminal
 
     /// A visible panel hides, whatever else is true: Cmd+J on an open terminal never launches.
