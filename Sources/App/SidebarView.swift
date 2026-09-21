@@ -403,13 +403,7 @@ struct SidebarView: View {
         if !(isSearching && rows.isEmpty) {
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(
-                        for: wt,
-                        titles: titles,
-                        shortcuts: shortcuts,
-                        moveDisabled: true,
-                        leadingIndent: SidebarRowMetrics.statusRowIndent
-                    )
+                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
                 }
             } header: {
                 HStack(spacing: SidebarRowMetrics.headerIconSpacing) {
@@ -517,8 +511,7 @@ struct SidebarView: View {
         for wt: Worktree,
         titles: [String: String],
         shortcuts: [String: Int],
-        moveDisabled: Bool,
-        leadingIndent: CGFloat = 0
+        moveDisabled: Bool
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
@@ -539,7 +532,6 @@ struct SidebarView: View {
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
-            .padding(.leading, leadingIndent)
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }
@@ -548,7 +540,6 @@ struct SidebarView: View {
         // No `.tag`, so these carry no selection, the way the search, loading and error rows do.
         ForEach(subagents) { subagent in
             SubagentRow(subagent: subagent)
-                .padding(.leading, SidebarRowMetrics.statusRowIndent + leadingIndent)
                 .moveDisabled(true)
         }
     }

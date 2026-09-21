@@ -8,10 +8,6 @@ enum SidebarRowMetrics {
     static let headerIconSpacing: CGFloat = 6
     /// A status `Section` header is inset less than a list row; this makes up the difference.
     static let headerLeadingInset: CGFloat = 4
-    /// How far inside its own `Text` frame the header title's first glyph begins inking.
-    private static let titleLeadingBearing: CGFloat = 3
-    /// Lands a row's icon on the letter its status header's title starts with.
-    static let statusRowIndent: CGFloat = iconWidth + headerIconSpacing - titleLeadingBearing
 }
 
 /// One slot of that column: the `⌘N` / `⌃N` hint while there is one, else the symbol. Leading

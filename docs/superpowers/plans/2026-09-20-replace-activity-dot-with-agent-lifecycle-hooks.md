@@ -1514,3 +1514,37 @@ subagent rows sharing the dot's `isOpen` gate (T9).
 documentation-only change should leave it. `git status --porcelain` before the commit showed
 `M CLAUDE.md` and the plan document and nothing else — no untracked files and no `default.profraw`:
 the test host's launch does not drop one.
+
+## Changelog
+
+Operator changes made after the hands-on check. These are decisions, not plan tasks; no later stage
+may revert them.
+
+### C1 — One left edge for a worktree row and its subagent rows
+
+**Reported.** In the sidebar grouped by status, a worktree row's title sat well to the right of both
+its section header and the ungrouped `main` row, and the subagent rows under it started at a third,
+further-right edge.
+
+**Cause.** Three leading edges, all from `SidebarRowMetrics.statusRowIndent` (21pt):
+`statusSection` passed it as `leadingIndent` to every worktree row it built, and
+`worktreeRowView` gave each `SubagentRow` `statusRowIndent + leadingIndent` — 42pt inside a status
+section. The metric existed to land a row's icon on the *letter* its status header's title starts
+with, which is what pushed the row past the header and past `main`.
+
+**Decision.** Remove the padding at its source rather than compensate on the child rows. The
+`leadingIndent` parameter is gone from `worktreeRowView`, `statusSection` passes nothing, and the
+`SubagentRow` `.padding(.leading, …)` is gone, so a worktree row and its subagent rows share the
+list's own leading edge and every worktree row — grouped, status-sectioned or ungrouped — starts
+where `main` does. `statusRowIndent` and its `titleLeadingBearing` term had no other reader and were
+deleted with it; `headerLeadingInset`, which lands the status header's *icon* on the row icon
+column, stays and is now what aligns a status section with its rows.
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidebarIcon.swift` | `statusRowIndent` and `titleLeadingBearing` removed |
+| `Sources/App/SidebarView.swift` | `leadingIndent` parameter and both `.padding(.leading, …)` removed |
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 739 tests, with 0 failures
+(0 unexpected)`, then `==> CI passed.` Layout carries no test; the count is unchanged, as a
+padding-only change should leave it.
