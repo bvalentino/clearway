@@ -146,6 +146,15 @@ hook block into the real `~/.claude/settings.json` — the toggle defaults on �
 `settings.json.clearway-backup` beside it. That is the feature, not a test artefact. GitHub's runner
 has no `~/.claude`, and the installer's directory gate makes it a no-op there.
 
+### Background load generators
+
+A CPU-load reproduction (`yes > /dev/null &` × N behind an `xcodebuild` loop) must not rely on a
+trailing `kill` to clean up: the Bash tool's timeout kills the shell, not its backgrounded children,
+and twelve orphaned `yes` processes once ran at 100% CPU each for 22 hours after a
+`-run-tests-until-failure` loop outran the 10-minute limit. Bound every generator by its own
+lifetime (`timeout 540 yes > /dev/null &`) or `trap 'kill $LOADPIDS' EXIT`, and keep the run
+shorter than the tool timeout.
+
 ### Merge model
 
 The pipeline never merges; the operator merges by hand once CI is green. Squash and rebase merges
