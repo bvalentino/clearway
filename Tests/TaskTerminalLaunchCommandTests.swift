@@ -70,12 +70,9 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         XCTAssertNil(WorkTaskCoordinator.startNowTarget(row: nil, selection: nil))
     }
 
-    /// The regression. The rule keeps no state, so a second call answers with the selection it is
-    /// handed and never with the earlier one. AppKit keeps the toolbar's `NSMenu` and the `Button`
-    /// closures built with it alive across selection changes, so an item that captured a `WorkTask`
-    /// planned the task selected when the menu was first built — replacing that task's terminal and
-    /// killing the agent in it. Only a caller reading `selection:` inside the action closure gets
-    /// this answer.
+    /// The regression: the rule keeps no state, so a second call answers with the selection it is
+    /// handed and never with the earlier one. That is what lets an item resolve its target at click
+    /// time rather than capture a task.
     func testStartNowTargetCarriesNoMemoryOfAnEarlierSelection() {
         let taskA = WorkTask(title: "A")
         let taskB = WorkTask(title: "B")

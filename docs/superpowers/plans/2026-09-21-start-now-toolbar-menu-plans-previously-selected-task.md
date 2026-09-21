@@ -300,3 +300,12 @@ note sits in the place the plan asked for without breaking a referent.
 **Gate.** Markdown-only change, and T2's `./scripts/ci.sh` run was green with no Swift file touched
 since, so the plan's T3 verification does not call for a re-run. `git status --porcelain` →
 `M Sources/App/CLAUDE.md` and nothing else; no `default.profraw`, no untracked files.
+
+### Simplify
+
+The stale-capture symptom chain was narrated in full four times. The two mandated guards keep it
+(the `startNowItems` docstring and the `Sources/App/CLAUDE.md` note, D8); `startNowTarget`'s
+docstring and `testStartNowTargetCarriesNoMemoryOfAnEarlierSelection`'s were trimmed to the rule
+plus a pointer to the call site — T1 AC2's two facts, the hazard and the read-inside-the-closure
+requirement, are still stated. No code changed. `./scripts/ci.sh` → `==> CI passed.`,
+`Executed 787 tests, with 0 failures`; `swiftlint lint --quiet` exit 0.
