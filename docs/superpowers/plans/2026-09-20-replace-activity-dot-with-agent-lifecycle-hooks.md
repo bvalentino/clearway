@@ -1616,3 +1616,25 @@ skill's raw Markdown into a JSON string; run with a sample `SessionStart` payloa
 
 **Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 742 tests, with 0 failures
 (0 unexpected)`, then `==> CI passed.`
+
+### C3 — A subagent row carries a glyph in the icon column
+
+**Reported.** After C1 a subagent row is plain text against the list's leading edge. The operator
+wants it to carry an icon rather than an indent, so it reads as a child without a second edge.
+
+**Decision.** `SubagentRow` becomes a `Label` whose icon is a `SidebarIcon`, the same slot the
+worktree row's glyph, the top-level destinations and the status headers draw into — so the shared
+left edge C1 established is untouched, the weight and size come from the row's own font exactly as
+they do for every other icon in the sidebar, and nothing about the padding changes. The symbol is
+`point.3.connected.trianglepath.dotted`: connected nodes read as work fanned out from the row above,
+it collides with nothing else in the sidebar's vocabulary, and, unlike a branch or arrow glyph, it
+carries no git meaning in a git app. SF Symbols dates it to 2021 — macOS 12.0, below the 13.0
+deployment target, where the worktree row's own `square.on.square.intersection.dashed` is macOS 13.0.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `SubagentRow` is a `Label` over a `SidebarIcon`; text unchanged |
+
+**Gate.** `./scripts/ci.sh` — green, run after the last edit. `Executed 742 tests, with 0 failures
+(0 unexpected)`, then `==> CI passed.` The row carries no test; the count is unchanged, as an
+icon-only change should leave it.

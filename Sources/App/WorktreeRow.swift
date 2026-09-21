@@ -88,23 +88,28 @@ struct WorktreeRow: View {
 
 // MARK: - Subagent Row
 
-/// One live subagent under its worktree. Text only, no icon: the sidebar's icon column belongs to
-/// the rows that are selection destinations, and this one is not.
+/// One live subagent under its worktree. Its glyph goes in the same `SidebarIcon` column the
+/// worktree row's does, so the two share one leading edge and the child reads as a child through
+/// the symbol rather than through an indent.
 struct SubagentRow: View {
     let subagent: AgentSubagent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(subagent.type ?? "Subagent")
-                .lineLimit(1)
-            if let toolName = subagent.toolName {
-                Text(toolName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(subagent.type ?? "Subagent")
                     .lineLimit(1)
+                if let toolName = subagent.toolName {
+                    Text(toolName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } icon: {
+            SidebarIcon(systemImage: "point.3.connected.trianglepath.dotted")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
