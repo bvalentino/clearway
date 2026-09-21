@@ -660,3 +660,41 @@ Deviations from the plan.
 Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
 `git status --porcelain` before the commit showed only the four files above plus this plan; no
 `default.profraw` and no untracked files.
+
+### T6: Claim ⌘R, ⌥⌘R and ⌘O from focused terminal surfaces
+
+What landed.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AppKeyboardShortcuts.swift` | `case [.command]:` gains `letter == "r" \|\| letter == "o"`; `case [.command, .option]:` gains `letter == "r"`. Both clause comments rewritten to name every key their clause claims. The `[.command, .shift]` clause, the Ctrl+digit clause and the key codes are untouched. |
+| `Tests/AppKeyboardShortcutsTests.swift` | New `// MARK: - The Worktree menu's Run and Open In` section: `testCommandRIsClaimed`, `testCommandOIsClaimed`, `testCommandOptionRIsClaimed` and `testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed` (⌥⌘O, ⌃⌘R, ⇧⌘R all declined, each with a message naming why). |
+
+Evidence. The three positive assertions were written first and run against the unfixed `claims`
+via `./scripts/ci.sh`, which failed:
+
+```
+Test Suite 'AppKeyboardShortcutsTests' started at 2026-09-21 19:00:47.939.
+    ✖ testCommandOIsClaimed, XCTAssertTrue failed - Open in the primary app
+    ✖ testCommandOptionRIsClaimed, XCTAssertTrue failed - Run…, which pops the toolbar Run dropdown
+    ✖ testCommandRIsClaimed, XCTAssertTrue failed - Run the primary saved command
+Executed 787 tests, with 3 failures (0 unexpected) in 131.232 (131.544) seconds
+```
+
+The three negative assertions passed in that same red run, which is what they are for: they pin
+combos the table already declines against a later clause widening onto them.
+
+Acceptance criteria. 1: the four tests above, green after the change. 2: the failure quoted above.
+3: `[.command]` now reads "new tab, close tab, bottom panel, sidebar, new window, run primary
+command, open in primary app, settings"; `[.command, .option]` reads "toggle aside, new agent tab,
+pop the Run dropdown". 4: `git diff Sources/App/AppKeyboardShortcuts.swift` touches only those two
+clauses and their comments.
+
+Deviations from the plan. One, cosmetic: the ⇧⌘R pin is written `claims([.command, .shift], "R")`
+rather than the plan's lowercase `"r"`. `charactersIgnoringModifiers` applies Shift, so uppercase is
+how the key actually arrives, and it is what every other shifted assertion in the file already
+passes. `claims` lowercases, so the two spellings are equivalent.
+
+Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the two files above plus this plan; no
+`default.profraw` and no untracked files.
