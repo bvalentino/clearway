@@ -482,8 +482,12 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     is the only payload carrying the prompt's own summary**, so `keepOnly` carries both the type and
     the description over from the row it already holds when the entry omits them: a later `Stop`
     must not blank what an earlier one named, and no other event can restore it. `SubagentRow` draws
-    that summary beside the type on one line, the way Claude Code's own status line does, with the
-    in-flight tool below.
+    that summary beside the type on one line, the way Claude Code's own status line does, and that
+    is the whole row. **A subagent's in-flight tool is not recorded**: it had one reader, the second
+    line of that row, so it went with it rather than staying as state nothing reads. `tool_name`
+    still lands on `leadToolName`, which the tab chip renders, and the rule that keeps the two apart
+    is now the whole of `startTool`/`finishTool` — a subagent's tool traffic names its row and
+    touches the lead's label never.
     **Nothing in the pipeline has a clock.** No timer, no expiry, no mtime heuristic: a surface
     leaves a state only because an event said so. A `SIGKILL`ed session therefore pins a dot until
     its next `SessionStart`, which is accepted — the expiring heuristic this replaced guessed wrong

@@ -100,20 +100,12 @@ struct SubagentRow: View {
 
     var body: some View {
         Label {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(subagent.type ?? "Subagent")
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                    if let description = subagent.description {
-                        Text(description)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                if let toolName = subagent.toolName {
-                    Text(toolName)
-                        .font(.subheadline)
+            HStack(spacing: 6) {
+                Text(subagent.type ?? "Subagent")
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let description = subagent.description {
+                    Text(description)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

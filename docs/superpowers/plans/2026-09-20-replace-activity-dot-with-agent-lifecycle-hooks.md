@@ -1696,3 +1696,38 @@ Executed 21 tests, with 1 failure (0 unexpected)
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.` One test more than C3's 742, as one added test
 should leave it. The row's layout carries no test, the same as C3.
+
+### C5 — A subagent row is one line, and the store stops recording a subagent's tool
+
+**Reported.** Looking at the rows C4 produced, the operator asked for the second line — the
+subagent's in-flight tool name — to go. The first line, type plus description, stays exactly as it
+is.
+
+**Decision.** `SubagentRow`'s `VStack` collapses to the `HStack` that was its first line. That left
+`AgentSubagent.toolName` with no reader outside its own tests, so the field is deleted rather than
+kept as state nothing renders: `startTool`'s subagent branch now only upserts the row from
+`agent_id`/`agent_type`, `keepOnly` no longer carries a tool over, and `finishTool` is the lead's
+guard alone. The rule the field's two helpers existed to hold — a subagent's tool traffic must never
+touch `leadToolName` — is unchanged and still pinned, since the tab chip (T10) reads that label and
+is not affected by any of this.
+
+The three tests that asserted a subagent's tool went with it. Two of them keep the case they were
+written for by asserting the row instead: tool traffic that names a subagent still upserts its row
+and still leaves the lead's label alone.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeRow.swift` | `SubagentRow` is one line: type, description |
+| `Sources/App/AgentActivityStore.swift` | `AgentSubagent.toolName` removed; `startTool`, `keepOnly`, `finishTool` follow |
+| `Tests/AgentActivityStoreTests.swift` | the four subagent-`toolName` assertions removed, two replaced by roster assertions |
+| `docs/…/specs/…md` | Decisions 20, 24 and 25, and the subagent-row acceptance line |
+| `CLAUDE.md` | the row is one line; a subagent's tool is not recorded |
+
+**Evidence.** None to watch fail: this removes a rendered line and the state behind it, so there is
+no behaviour to pin that the surviving tests do not already cover. The regression risk it does carry
+— the lead's label being blanked by a subagent's `PostToolUse` — is exactly what
+`testSubagentToolTrafficLeavesTheLeadToolAlone` still asserts, and it passed after the edit.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 743 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.` The count is unchanged: no test was deleted, only
+assertions inside three of them.

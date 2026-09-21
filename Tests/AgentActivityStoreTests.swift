@@ -33,19 +33,20 @@ final class AgentActivityStoreTests: XCTestCase {
         XCTAssertEqual(store.phase(forWorktree: worktreeOne), .working)
     }
 
-    /// The discriminating case for "clear the *corresponding* tool": a subagent's tool traffic must
-    /// never touch the lead's label, or the tab chip goes blank while the lead is still running.
+    /// The discriminating case for "the lead's tool is the lead's alone": a subagent's tool traffic
+    /// must never touch that label, or the tab chip goes blank while the lead is still running. The
+    /// traffic still names the subagent's row, and neither event may drop it.
     func testSubagentToolTrafficLeavesTheLeadToolAlone() {
         apply("PreToolUse", tool: "Edit")
         apply("PreToolUse", tool: "Grep", agentId: "sub-1")
 
         XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Edit")
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Grep"])
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
 
         apply("PostToolUse", tool: "Grep", agentId: "sub-1")
 
         XCTAssertEqual(store.leadToolName(forSurface: surfaceA), "Edit")
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), [String?.none])
+        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.id), ["sub-1"])
     }
 
     // MARK: - Waiting on permission
@@ -201,7 +202,7 @@ final class AgentActivityStoreTests: XCTestCase {
     /// Two background subagents, replayed from the payloads a Claude Code 2.1.278 session actually
     /// sent. The lead answers — and so `Stop`s — while both are still running, which is what a
     /// background launch means; the payload names them, so both rows survive it, and the `Bash` one
-    /// of them runs lands on its own row without taking the other's away.
+    /// of them runs takes away neither the other's row nor the lead's own label.
     func testBackgroundSubagentsSurviveTheLeadsStop() {
         applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
         applyRaw(subagentStart(agentId: "aa713d00cbb27a6be"))
@@ -224,8 +225,8 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
 
         XCTAssertEqual(
-            store.subagents(forWorktree: worktreeOne).map(\.toolName),
-            ["Bash", nil]
+            store.subagents(forWorktree: worktreeOne).map(\.id),
+            ["a42b06983b46906f7", "aa713d00cbb27a6be"]
         )
         XCTAssertNil(store.leadToolName(forSurface: surfaceA))
     }
@@ -254,7 +255,6 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(subagentPreToolUse(agentId: "ac545fc45491c3fde"))
 
         XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.type), ["general-purpose"])
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Bash"])
     }
 
     /// `Stop`'s `background_tasks` is the only payload carrying the prompt's own summary, so the row
@@ -276,7 +276,6 @@ final class AgentActivityStoreTests: XCTestCase {
             store.subagents(forWorktree: worktreeOne).map(\.description),
             ["Count Swift files slowly"]
         )
-        XCTAssertEqual(store.subagents(forWorktree: worktreeOne).map(\.toolName), ["Bash"])
     }
 
     // MARK: - Helpers

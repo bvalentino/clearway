@@ -14,7 +14,6 @@ struct AgentSubagent: Identifiable, Equatable {
     let id: String
     var type: String?
     var description: String?
-    var toolName: String?
 }
 
 struct AgentSurfaceState {
@@ -29,16 +28,16 @@ struct AgentSurfaceState {
         subagents.isEmpty ? phase : Swift.max(phase, .working)
     }
 
-    /// Upserts, because a `PreToolUse` whose `SubagentStart` was missed still names a real subagent.
-    /// Every event carrying an `agent_id` carries its `agent_type` beside it, so such a row is named
-    /// rather than left on `SubagentRow`'s fallback label.
+    /// The tool is the lead's only when the event names no subagent; a subagent's own tool traffic
+    /// must never touch the lead's label, which is the one thing a tab chip reads. It still upserts
+    /// the row, because a `PreToolUse` whose `SubagentStart` was missed names a real subagent, and
+    /// every event carrying an `agent_id` carries its `agent_type` beside it.
     fileprivate mutating func startTool(_ toolName: String?, agentId: String?, agentType: String?) {
         guard let agentId else {
             leadToolName = toolName
             return
         }
         note(agentId: agentId, type: agentType)
-        subagents[agentId]?.toolName = toolName
     }
 
     /// A type the event did not carry never overwrites one already known: only `Stop`'s roster
@@ -60,21 +59,17 @@ struct AgentSurfaceState {
             roster[task.id] = AgentSubagent(
                 id: task.id,
                 type: task.agentType ?? subagents[task.id]?.type,
-                description: task.description ?? subagents[task.id]?.description,
-                toolName: subagents[task.id]?.toolName
+                description: task.description ?? subagents[task.id]?.description
             )
         }
     }
 
-    /// Clears the tool the event belongs to and no other: a subagent finishing must not blank the
-    /// lead's label while the lead is still running. Unlike `startTool` this creates nothing — a
-    /// `PostToolUse` for a subagent already gone would otherwise leave an empty row behind.
+    /// Clears the lead's tool and only the lead's: a subagent finishing must not blank the label
+    /// while the lead is still running. It creates nothing, so a `PostToolUse` for a subagent
+    /// already gone leaves no empty row behind.
     fileprivate mutating func finishTool(agentId: String?) {
-        guard let agentId else {
-            leadToolName = nil
-            return
-        }
-        subagents[agentId]?.toolName = nil
+        guard agentId == nil else { return }
+        leadToolName = nil
     }
 }
 
