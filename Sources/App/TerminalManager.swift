@@ -416,6 +416,11 @@ class TerminalManager: ObservableObject {
 
         for (key, pane) in panes {
             if let tab = pane.main.tabs.first(where: { $0.surface === deadSurface }) {
+                // The child is gone on either branch, so no further hook can name this surface and
+                // whatever phase it was left in is now stale. Retiring it ahead of the branch is
+                // what keeps a tab kept for its crash output from pinning its worktree's dot for
+                // the rest of the session; the kept tab itself is unaffected.
+                Self.retireSurface(deadSurface.surfaceId)
                 // Match native terminal behavior: auto-close on clean exit
                 // (Ctrl+D, `exit`), but keep the dead tab around on abnormal
                 // exit so users can inspect crashes or error output.
@@ -432,6 +437,8 @@ class TerminalManager: ObservableObject {
             var timestamps = recentRestarts[key, default: []].filter { now.timeIntervalSince($0) < 2 }
             guard timestamps.count < 3 else {
                 Ghostty.logger.warning("Terminal restart loop detected, stopping")
+                // Abandoned rather than replaced, so this is the last word on the dead surface.
+                Self.retireSurface(deadSurface.surfaceId)
                 return
             }
             timestamps.append(now)
