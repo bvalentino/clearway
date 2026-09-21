@@ -683,3 +683,30 @@ nonisolated `XCTestCase` — and is left matching its sibling rather than annota
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 798 tests, 0 failures (794 after T4, plus the monitor
 case and the three row cases). `git status --porcelain` lists only the four files above, the
 regenerated `Clearway.xcodeproj/project.pbxproj` and this plan; no `default.profraw`.
+
+### T6: Rewrite the agent-pipeline notes that this change makes false
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | Five passages of the agent-pipeline bullet rewritten in place; no bullet added, nothing else touched. **Framing** (`:331`) reads "surface id, activity owner" and names the two spellings `worktree:<path>` / `task:<uuid>` and the split-on-the-first-colon rule. **Guards** (`:336`) reads "surface id, activity owner, a socket that exists". **"Two ids, not one, and the second one is tagged"** (`:340`) says the surface id does not survive a relaunch and the owner does, why one tagged value makes "exactly one owner" the only representable shape, and records the rename to `CLEARWAY_ACTIVITY_OWNER` with no fallback and its one-time cost — the second guard fires for an agent running across the upgrade and its dot stays dark until its next `SessionStart`. **The monitor** (`:407`) publishes "three values, not four" — `worktreePhases`, `taskPhases`, `worktreeSubagents` — and says the tool label is not among them, keeping the `ToolNames` reasoning intact. **The dot** (`:444`) is now keyed on "the same owner", names `AgentActivityDot` as the one view both rows render, keeps the worktree rule, and adds `WorkTaskRow.dot(phase:)` over `taskPhases` with its no-`hasNotification`/no-`isOpen` reason and why task rows carry no subagent children while a live subagent still counts as work through `effectivePhase`. |
+
+**Evidence.** Documentation only: no behaviour changes, so there is no watched failure to quote and
+no regression test is owed. What each rewritten sentence asserts was read back off the code rather
+than off the plan — `AgentActivityOwner.rawValue`/`init?(rawValue:)` in `AgentHookEvent.swift`, the
+three guards and the `printf` in `AgentHookScript.body`, `AgentHookIdentity.ownerKey`, the three
+`@Published` properties and their gates in `AgentActivityMonitor.publish()`, the
+`worktreeSubagents` filter in `AgentActivityStore`, and `WorkTaskRow.dot(phase:)` with its call
+site in `WorkTaskListView`.
+
+**Criterion 1.** `grep -n "worktree id\|CLEARWAY_WORKTREE_ID\|two values, not three\|worktreeId"
+Sources/App/CLAUDE.md` returns one line — `:348`, the sentence recording that
+`CLEARWAY_ACTIVITY_OWNER` was renamed from `CLEARWAY_WORKTREE_ID` and that no fallback reads the
+old name, which the task asks for. No sentence describes the second preamble line as the worktree
+id, the live variable as the old name, or the monitor as publishing two values.
+
+**Deviations.** None in substance. Three neighbouring lines were re-wrapped where a replaced phrase
+changed their length; no sentence outside the five passages changed.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 798 tests, 0 failures, unchanged from T5 since
+markdown is not in the target's sources. `git status --porcelain` lists only
+`Sources/App/CLAUDE.md` and this plan; no untracked files, no `default.profraw`.
