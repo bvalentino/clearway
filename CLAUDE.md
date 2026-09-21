@@ -500,6 +500,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     in both directions. `publish()` is change-gated because `PreToolUse`/`PostToolUse` fire around
     every tool call and assigning an unchanged value to a `@Published` still re-renders every
     observer.
+    **The monitor publishes two values, not three.** `worktreePhases` and `worktreeSubagents` are
+    `@Published` on it and the sidebar observes them; the tab chip's tool label is
+    `AgentActivityMonitor.ToolNames`, a nested `ObservableObject` the monitor holds as a plain `let`
+    and `ClearwayApp` injects beside it. Change gating is not enough on its own here: a tool name
+    changes twice per tool call while the sidebar's two values change about once a turn, so on the
+    monitor it invalidated every observer of *any* of the three, in every window — including the
+    whole of `MainTerminalTabStrip`, which is the rebuild its chip-scoped `@ObservedObject` exists
+    to prevent. Only `TerminalTabChip` observes it, and the strip itself now reads nothing off the
+    monitor at all.
     **One owner**: a `@StateObject` on `ClearwayApp`, injected on the project `WindowGroup` only, so
     a standalone Task or Prompt window reaching for it would fault. Surface retirement is
     `TerminalManager.retireSurface`, the same process-scoped static provider shape as

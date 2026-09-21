@@ -173,6 +173,7 @@ struct ClearwayApp: App {
                 .environmentObject(caffeine)
                 .environmentObject(portMonitor)
                 .environmentObject(agentActivity)
+                .environmentObject(agentActivity.toolNames)
                 .clearwayChrome(settings)
                 .onAppear { agentActivity.setEnabled(settings.agentHooksEnabled) }
                 .onChange(of: settings.agentHooksEnabled) { enabled in

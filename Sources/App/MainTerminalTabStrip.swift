@@ -69,11 +69,13 @@ private struct TabChip: View {
     }
 }
 
-/// Wraps `TabChip` for a surface tab, observing only its own surface for title changes.
-/// Scoping `@ObservedObject` here prevents whole-strip rebuilds on every title update.
+/// Wraps `TabChip` for a surface tab, observing only its own surface for title changes and the
+/// tool-name roster for the label beside it. Both observations are scoped here rather than on the
+/// strip: a title lands on every keystroke and a tool name twice per tool call, and neither may
+/// rebuild the whole strip in every window.
 private struct TerminalTabChip: View {
     @ObservedObject var surface: Ghostty.SurfaceView
-    let toolName: String?
+    @EnvironmentObject private var toolNames: AgentActivityMonitor.ToolNames
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -83,7 +85,7 @@ private struct TerminalTabChip: View {
     var body: some View {
         TabChip(
             title: surface.title.isEmpty ? "Terminal" : surface.title,
-            toolName: toolName,
+            toolName: toolNames.bySurface[surface.surfaceId.uuidString],
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,
@@ -104,7 +106,6 @@ struct MainTerminalTabStrip: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var settings: SettingsManager
-    @EnvironmentObject private var agentActivity: AgentActivityMonitor
 
     var body: some View {
         let tabs = terminalManager.mainTabs(for: worktreeId)
@@ -262,7 +263,6 @@ struct MainTerminalTabStrip: View {
 
         return TerminalTabChip(
             surface: tab.surface,
-            toolName: agentActivity.surfaceToolNames[tab.surface.surfaceId.uuidString],
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,

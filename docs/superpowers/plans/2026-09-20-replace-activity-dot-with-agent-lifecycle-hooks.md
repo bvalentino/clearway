@@ -1890,3 +1890,40 @@ them rather than what either said on its own.
 
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 750 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.` 744 → 750 is the six new cases.
+
+#### R3 — The tab chip's tool name is its own observable
+
+**Reported.** `MainTerminalTabStrip` took `@EnvironmentObject agentActivity` to read
+`surfaceToolNames`, which changes twice per tool call and is app-wide. Every one of those changes
+invalidated the whole strip in every window — against the file's own doc comment about scoping
+`@ObservedObject` to the chip for exactly this reason.
+
+**What landed.** `surfaceToolNames` moves off the monitor onto `AgentActivityMonitor.ToolNames`, a
+nested `ObservableObject` the monitor holds as a plain `let` and `ClearwayApp` injects beside the
+monitor itself. `TerminalTabChip` observes it directly and resolves its own surface's name;
+`MainTerminalTabStrip` now reads nothing off the monitor at all, so it drops the environment object
+rather than keeping a narrower one. The sidebar's two readers are untouched.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentActivityMonitor.swift` | nested `ToolNames`; `publish()` writes `toolNames.bySurface` |
+| `Sources/App/MainTerminalTabStrip.swift` | the chip holds the `@EnvironmentObject`; the strip holds none, and passes no `toolName` |
+| `Sources/App/ClearwayApp.swift` | `.environmentObject(agentActivity.toolNames)` |
+| `Tests/AgentActivityMonitorTests.swift` | the republish case; the existing reader follows the value |
+| `CLAUDE.md` | the monitor publishes two values, not three |
+
+**Evidence.** Watched red against the code as committed at R1 — the sources restored from `git show
+HEAD:…` with the test written against the old `surfaceToolNames` — then restored from the scratchpad:
+
+```
+Tests/AgentActivityMonitorTests.swift:90: error: -[ClearwayTests.AgentActivityMonitorTests
+  testAToolNameChangeDoesNotRepublishTheMonitor] : Fulfilled inverted expectation
+  "the monitor republished".
+```
+
+The case fires `UserPromptSubmit` first and waits for `.working`, so the phase is already where the
+`PreToolUse` would leave it: the only value the tool event changes is the tool name, and an inverted
+expectation on `monitor.objectWillChange` is what says so.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 751 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.`

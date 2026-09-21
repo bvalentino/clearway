@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Clearway
 
@@ -65,7 +66,7 @@ final class AgentActivityMonitorTests: XCTestCase {
 
         try fire(#"{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "\#(bulk)"}}"#)
 
-        try await waitFor("Bash", describing: "the lead's in-flight tool") { self.monitor.surfaceToolNames[self.surfaceId] }
+        try await waitFor("Bash", describing: "the lead's in-flight tool") { self.monitor.toolNames.bySurface[self.surfaceId] }
     }
 
     func testASubagentRosterIsPublishedForItsWorktree() async throws {
@@ -77,6 +78,26 @@ final class AgentActivityMonitorTests: XCTestCase {
             (self.monitor.worktreeSubagents[self.worktreeId] ?? []).compactMap(\.type)
         }
         XCTAssertEqual(monitor.worktreePhases[worktreeId], .working, "a live subagent is work even between the lead's turns")
+    }
+
+    /// `PreToolUse`/`PostToolUse` fire around every tool call, so the tool name changes far more
+    /// often than anything the sidebar reads. Published off the monitor it invalidated every view
+    /// observing any of the monitor's values, in every window — the whole tab strip included, whose
+    /// chip-scoped `@ObservedObject` exists to prevent exactly that.
+    func testAToolNameChangeDoesNotRepublishTheMonitor() async throws {
+        monitor.setEnabled(true)
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+
+        let republished = expectation(description: "the monitor republished")
+        republished.isInverted = true
+        let subscription = monitor.objectWillChange.sink { _ in republished.fulfill() }
+        defer { subscription.cancel() }
+
+        try fire(#"{"hook_event_name": "PreToolUse", "tool_name": "Bash"}"#)
+
+        try await waitFor("Bash", describing: "the lead's in-flight tool") { self.monitor.toolNames.bySurface[self.surfaceId] }
+        await fulfillment(of: [republished], timeout: 0.1)
     }
 
     // MARK: - The toggle

@@ -10,9 +10,19 @@ import Foundation
 /// twice. Nothing here has a clock — a surface leaves a state only because an event said so.
 @MainActor
 final class AgentActivityMonitor: ObservableObject {
+    /// The in-flight tool of each lead, keyed by surface id. Its own observable object rather than
+    /// a `@Published` on the monitor because it changes twice per tool call while the sidebar's two
+    /// values change once a turn: on the monitor it invalidated every view observing any of them,
+    /// in every window, which is exactly what the tab strip's chip-scoped `@ObservedObject` exists
+    /// to avoid. Only the chip observes this.
+    @MainActor
+    final class ToolNames: ObservableObject {
+        @Published fileprivate(set) var bySurface: [String: String] = [:]
+    }
+
     @Published private(set) var worktreePhases: [String: AgentPhase] = [:]
     @Published private(set) var worktreeSubagents: [String: [AgentSubagent]] = [:]
-    @Published private(set) var surfaceToolNames: [String: String] = [:]
+    let toolNames = ToolNames()
 
     private let paths: AgentHookPaths
     private let home: String
@@ -79,8 +89,8 @@ final class AgentActivityMonitor: ObservableObject {
         if phases != worktreePhases { worktreePhases = phases }
         let subagents = store.worktreeSubagents
         if subagents != worktreeSubagents { worktreeSubagents = subagents }
-        let toolNames = store.surfaceToolNames
-        if toolNames != surfaceToolNames { surfaceToolNames = toolNames }
+        let names = store.surfaceToolNames
+        if names != toolNames.bySurface { toolNames.bySurface = names }
     }
 }
 
