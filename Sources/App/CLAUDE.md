@@ -326,10 +326,15 @@
   another Clearway is listening, so neither the unlink nor the bind happens, and this instance
   publishes `.ownedByAnotherInstance` and runs without hook events until that one quits. Every
   errno falls through to the unlink and the bind, which is what keeps a crash from leaving an inode
-  that fails every later launch with `EADDRINUSE` so no dot ever lights again. **The unlink that
-  undoes the bind belongs to `HookSocketListener`'s own `deinit`**, so only the instance that bound
-  the path can remove it and turning the toggle off is `listener = nil` and nothing else — a
-  `stop()` that unlinked on its own took the live instance's socket by the other door.
+  that fails every later launch with `EADDRINUSE` so no dot ever lights again. A probe descriptor
+  that cannot be created is the one case that is neither: nothing was learned, so the path is left
+  alone rather than read as free. **The unlink that undoes the bind belongs to
+  `HookSocketListener`'s own `deinit`**, so only the instance that bound the path can remove it and
+  turning the toggle off is `listener = nil` and nothing else — a `stop()` that unlinked on its own
+  took the live instance's socket by the other door. It unlinks the **inode** it bound, not the
+  name: a path replaced underneath a running instance — by an older build with no probe, or through
+  the window between this one's probe and its bind — must survive that instance's teardown, or the
+  theft happens through a third door.
   **The forwarder is `/usr/bin/nc -U -w 1`, absolute, and never carries `-N`.** macOS reads `-N` as
   a probe count, not OpenBSD's shutdown flag, so a script using it fails on every hook with no
   diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to

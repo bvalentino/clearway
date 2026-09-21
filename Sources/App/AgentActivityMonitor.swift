@@ -82,16 +82,15 @@ final class AgentActivityMonitor: ObservableObject {
             listener = opened
             socketState = .listening
         case .ownedByAnotherInstance:
+            listener = nil
             socketState = .ownedByAnotherInstance
         case .unavailable:
+            listener = nil
             socketState = .unavailable
         }
     }
 
     private func stop() {
-        // The whole teardown: the listener's `deinit` cancels the source and unlinks the path it
-        // bound. An instance that found the path owned holds no listener, so nothing here can take
-        // the live instance's socket.
         listener = nil
         socketState = .off
         store = AgentActivityStore()
@@ -135,9 +134,9 @@ enum HookSocketOutcome {
     case unavailable
 }
 
-/// The listening socket, held so that releasing it is the whole teardown: the cancel handler closes
-/// the descriptor, the `deinit` unlinks the path, and a nonisolated `deinit` that touches only its
-/// own stored values reads nothing isolated. `ScheduledWork` is the precedent.
+/// The listening socket as an RAII holder: a nonisolated `deinit` touching only its own stored
+/// values reads nothing isolated, so releasing it is the whole teardown. `ScheduledWork` is the
+/// precedent.
 ///
 /// Everything below is `nonisolated static` on purpose. `setEventHandler` and `setCancelHandler`
 /// take a `@convention(block)` closure, so a literal written inside an actor-isolated method carries
@@ -147,19 +146,30 @@ enum HookSocketOutcome {
 final class HookSocketListener {
     private let source: DispatchSourceRead
     private let socketPath: String
+    private let bound: stat
 
-    private init(source: DispatchSourceRead, socketPath: String) {
+    private init(source: DispatchSourceRead, socketPath: String, bound: stat) {
         self.source = source
         self.socketPath = socketPath
+        self.bound = bound
     }
 
     /// The unlink lives here because binding is what earns it: an instance that found the path owned
-    /// builds no listener, so it cannot remove a socket it never bound. It runs synchronously
-    /// wherever the last reference is dropped — on the main actor, in `stop()` — and after the
-    /// cancel, so a disable immediately followed by an enable cannot unlink the socket the new
-    /// listener has just bound.
+    /// builds no listener, so it cannot remove a socket it never bound. Nothing else holds a
+    /// reference, so it runs synchronously at `listener = nil` and a disable immediately followed by
+    /// an enable cannot take away the socket the new listener has just bound.
+    ///
+    /// It is scoped to the inode rather than the name, because binding earns the inode and only the
+    /// inode: an older build with no connect probe — or the window between this one's probe and its
+    /// bind — can replace the path while this instance runs, and unlinking by name would then delete
+    /// the live owner's socket. That is the same theft through a third door.
     deinit {
         source.cancel()
+        var current = stat()
+        guard stat(socketPath, &current) == 0,
+              current.st_dev == bound.st_dev,
+              current.st_ino == bound.st_ino
+        else { return }
         unlink(socketPath)
     }
 
@@ -183,7 +193,16 @@ final class HookSocketListener {
         source.setEventHandler { acceptPending(descriptor, onPayload) }
         source.setCancelHandler { close(descriptor) }
         source.resume()
-        return .listening(HookSocketListener(source: source, socketPath: socketPath))
+        return .listening(HookSocketListener(source: source, socketPath: socketPath, bound: identity(of: socketPath)))
+    }
+
+    /// The inode `bind` created, so the `deinit` can tell this instance's socket from a path another
+    /// process has since replaced. A `stat` that fails leaves a zeroed identity, which matches
+    /// nothing: the inode is then left for the next launch's probe to find unanswered and reclaim.
+    private nonisolated static func identity(of socketPath: String) -> stat {
+        var identity = stat()
+        _ = stat(socketPath, &identity)
+        return identity
     }
 
     /// `HookSocketOutcome` cannot serve here: there is no listener yet, only a descriptor.
@@ -201,14 +220,18 @@ final class HookSocketListener {
 
         // Refused rather than taken over: a live owner's surfaces carry the ids that match its
         // socket, so its events are the ones that mean anything.
-        guard !isAnswering(at: address) else {
-            Ghostty.logger.warning("Another Clearway instance is listening at \(socketPath, privacy: .public); this one runs without hook events.")
+        guard let answering = isAnswering(at: address) else { return .unavailable }
+        guard !answering else {
+            Ghostty.logger.warning(
+                "A process is already listening at \(socketPath, privacy: .public) — most likely a second Clearway; this one runs without hook events until that one quits."
+            )
             return .ownedByAnotherInstance
         }
 
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
-            Ghostty.logger.error("The agent hook socket could not be created: \(errno)")
+            let failure = errno
+            Ghostty.logger.error("The agent hook socket could not be created: \(failure, privacy: .public)")
             return .unavailable
         }
         // A process that died without closing leaves the inode behind, and `bind` refuses an address
@@ -220,7 +243,8 @@ final class HookSocketListener {
               listen(descriptor, 64) == 0,
               fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL, 0) | O_NONBLOCK) == 0
         else {
-            Ghostty.logger.error("The agent hook socket could not be bound at \(socketPath, privacy: .public): \(errno)")
+            let failure = errno
+            Ghostty.logger.error("The agent hook socket could not be bound at \(socketPath, privacy: .public): \(failure, privacy: .public)")
             close(descriptor)
             return .unavailable
         }
@@ -239,7 +263,6 @@ final class HookSocketListener {
         return address
     }
 
-    /// The address rebound to the `sockaddr` and length every socket call takes.
     nonisolated static func withUnixAddress<Answer>(
         _ address: sockaddr_un,
         _ body: (UnsafePointer<sockaddr>, socklen_t) -> Answer
@@ -265,9 +288,17 @@ final class HookSocketListener {
     /// unaccepted connections reads as stale. The accept loop drains to `EAGAIN` on every event and
     /// hook connections are one per lifecycle event, so reaching it means the queue is parked; it is
     /// a known limit rather than a reason for a retry.
-    private nonisolated static func isAnswering(at address: sockaddr_un) -> Bool {
+    /// `nil` is neither answer: the probe descriptor could not be created, so nothing was learned.
+    /// Reading that as "nobody is there" would hand the unlink an answer the probe never gave —
+    /// under `EMFILE` a descriptor freed between here and the `socket(2)` below is enough to take a
+    /// live instance's socket — so the caller leaves the path alone instead.
+    private nonisolated static func isAnswering(at address: sockaddr_un) -> Bool? {
         let probe = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard probe >= 0 else { return false }
+        guard probe >= 0 else {
+            let failure = errno
+            Ghostty.logger.error("The agent hook socket liveness probe could not be created: \(failure, privacy: .public)")
+            return nil
+        }
         defer { close(probe) }
         return withUnixAddress(address) { connect(probe, $0, $1) } == 0
     }

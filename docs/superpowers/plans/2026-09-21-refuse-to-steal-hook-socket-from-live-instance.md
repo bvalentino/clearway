@@ -343,3 +343,48 @@ failing it. Four comments restating the same invariant were cut to one apiece, a
 Skipped: hoisting the probe out of `listeningDescriptor` into `start()` (D5 settles it there,
 adjacent to the unlink it guards) and dropping `@Published` from `socketState` (D7 settles it, and
 the companion Settings task reads it). Behavior is unchanged throughout.
+
+### Review
+
+`/pr-review-toolkit:review-pr code tests errors types` over `git diff main...HEAD`, plus the three
+items the prior review step raised and the orchestrator accepted.
+
+**Accepted items**
+
+1. `testASecondEnableDoesNotReachTheInstallerAfterABindThatFailed` now asserts `.unavailable`.
+2. `start()` assigns `listener` in every arm, so "holding a listener" and "this instance bound"
+   cannot disagree whichever branch ran.
+3. The probe/bind race is spec Decision 15 and an Out-of-scope bullet beside the saturated backlog.
+
+**Fixed from this pass**
+
+| Finding | Change |
+| --- | --- |
+| A probe descriptor that cannot be created read as "nobody is there", and that answer authorises the unlink. Under `EMFILE` a descriptor freed between the probe and the listening `socket(2)` is enough to take a live instance's socket. | `isAnswering` returns `Bool?`; `nil` logs its errno and returns `.unavailable`, so a probe that never ran changes nothing. |
+| The `deinit` unlinked by name. A path replaced underneath a running instance — an older build with no probe, or the Decision 15 window — meant that instance's ordinary teardown deleted the live owner's socket: the same theft through a third door. | The listener stores the `st_dev`/`st_ino` `bind` created and unlinks only on a match. A `stat` that fails leaves a zeroed identity, which matches nothing, and the orphan inode is reclaimed by the next launch's probe. |
+| `\(errno)` inside an `os.Logger` interpolation is an escaping autoclosure, read after `isEnabled` and a heap allocation; and neither errno carried `privacy: .public`. | Both sites capture `let failure = errno` first and interpolate it `.public`. |
+| The blocked instance's one log line asserted "Another Clearway instance is listening", which `connect` returning 0 does not prove. | It now says a process is listening and names a second Clearway as the likely one. |
+| The teardown rule was stated three times in prose within seventy lines, and the `deinit`'s version credited the ordering to `source.cancel()`, which is asynchronous. | `stop()`'s comment and the class doc's restatement are gone; the `deinit` doc names the guarantee that holds — it runs synchronously at `listener = nil`. `withUnixAddress`'s doc, which was its signature in English, is gone too. |
+| The empty-payload drop, `.off`, the toggle as the only retry, and the inode-scoped unlink were all unpinned. | Four cases: `testAConnectionThatWritesNothingNeverReachesTheCallback` (drives the listener directly, so the guard is deletable only at the cost of a red test), `testATeardownLeavesAPathAnotherProcessHasSinceReboundAlone`, `testABlockedInstanceTakesTheSocketOnceTheOwnerHasQuit`, and `.off` assertions on both `stop()` paths. |
+
+**Spec rows corrected, not reopened**
+
+D8 said the `stop()` unlink is "gated on `socketState == .listening`" and D9 put the empty-payload
+guard in the parse callback. The simplify step moved both — into `HookSocketListener.deinit` and
+into `acceptPending` — and three reviewers flagged the rows as stale. Both now describe what
+shipped; the decisions themselves are unchanged, and D8 additionally records the inode scoping.
+
+**Declined**
+
+- `fileprivate` on `HookSocketOutcome` and `HookSocketListener.start`. It would close the seam the
+  new empty-payload case uses to drive the listener without a monitor.
+- Dropping the two `listener = nil` assignments as unreachable, which two reviewers asked for after
+  the orchestrator had accepted them. They are unreachable, and with the inode-scoped unlink they
+  can no longer do harm on the branch that concluded another instance owns the path.
+
+**Follow-ups** are listed in the report; none blocks this branch.
+
+**Gate**
+
+Not run here — `sign-off` owns the single `./scripts/ci.sh` run. `git status --porcelain` before the
+commit: the four files above and nothing else, no `default.profraw`, no untracked files.
