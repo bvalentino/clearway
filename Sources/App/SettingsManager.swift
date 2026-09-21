@@ -8,6 +8,7 @@ enum SettingsKey {
     static let colorScheme = "clearway.colorScheme"
     static let openSecondaryOnStart = "clearway.openSecondaryOnStart"
     static let showDetachedWorktrees = "clearway.showDetachedWorktrees"
+    static let agentHooksEnabled = "clearway.agentHooksEnabled"
     static let openInApps = "clearway.openInApps"
     static let lastUsedOpenInApp = "clearway.lastUsedOpenInApp"
 }
@@ -75,6 +76,14 @@ class SettingsManager: ObservableObject {
     @Published var showDetachedWorktrees: Bool {
         didSet {
             defaults.set(showDetachedWorktrees, forKey: SettingsKey.showDetachedWorktrees)
+        }
+    }
+
+    /// Drives `AgentActivityMonitor.setEnabled`: on, the hooks are installed and the listener is
+    /// open; off, they are removed and it is closed.
+    @Published var agentHooksEnabled: Bool {
+        didSet {
+            defaults.set(agentHooksEnabled, forKey: SettingsKey.agentHooksEnabled)
         }
     }
 
@@ -154,6 +163,7 @@ class SettingsManager: ObservableObject {
         self.showFocusBorder = defaults.object(forKey: SettingsKey.showFocusBorder) as? Bool ?? true
         self.openSecondaryOnStart = defaults.object(forKey: SettingsKey.openSecondaryOnStart) as? Bool ?? false
         self.showDetachedWorktrees = defaults.object(forKey: SettingsKey.showDetachedWorktrees) as? Bool ?? false
+        self.agentHooksEnabled = defaults.object(forKey: SettingsKey.agentHooksEnabled) as? Bool ?? true
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         self.lastUsedOpenInAppId = defaults.string(forKey: SettingsKey.lastUsedOpenInApp)
             .flatMap(UUID.init(uuidString:))

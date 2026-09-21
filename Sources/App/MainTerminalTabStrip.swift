@@ -5,6 +5,7 @@ import SwiftUI
 /// A tab chip: the title and the close button that appears on hover or while active.
 private struct TabChip: View {
     let title: String
+    let toolName: String?
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -15,11 +16,22 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(title)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .font(.system(size: 12))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .font(.system(size: 12))
+                    .layoutPriority(1)
+
+                if let toolName {
+                    Text(toolName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isHovering || isActive {
                 Button {
@@ -57,10 +69,13 @@ private struct TabChip: View {
     }
 }
 
-/// Wraps `TabChip` for a surface tab, observing only its own surface for title changes.
-/// Scoping `@ObservedObject` here prevents whole-strip rebuilds on every title update.
+/// Wraps `TabChip` for a surface tab, observing only its own surface for title changes and the
+/// tool-name roster for the label beside it. Both observations are scoped here rather than on the
+/// strip: a title lands on every keystroke and a tool name twice per tool call, and neither may
+/// rebuild the whole strip in every window.
 private struct TerminalTabChip: View {
     @ObservedObject var surface: Ghostty.SurfaceView
+    @EnvironmentObject private var toolNames: AgentActivityMonitor.ToolNames
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -70,6 +85,7 @@ private struct TerminalTabChip: View {
     var body: some View {
         TabChip(
             title: surface.title.isEmpty ? "Terminal" : surface.title,
+            toolName: toolNames.bySurface[surface.surfaceId.uuidString],
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,

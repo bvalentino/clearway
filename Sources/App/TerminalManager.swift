@@ -11,6 +11,19 @@ class TerminalManager: ObservableObject {
     /// All live instances, tracked via weak references for app-level queries.
     static let allInstances = NSHashTable<TerminalManager>.weakObjects()
 
+    /// Set by the app layer to be told a surface id is gone for good. Every door that drops a
+    /// surface reports it here; nothing ever reconciles against a list of the live ones, because a
+    /// hook already in flight arrives after the surface it names has been dropped and must be
+    /// ignored rather than re-lighting what the user just closed.
+    static var retireSurface: (UUID) -> Void = { _ in }
+
+    private func retire(_ pane: TerminalPane) {
+        for tab in pane.main.tabs {
+            Self.retireSurface(tab.surface.surfaceId)
+        }
+        Self.retireSurface(pane.secondary.surfaceId)
+    }
+
     private var panes: [String: TerminalPane] = [:]
     /// The active `ghostty_app_t` handle captured on first surface creation.
     /// Non-private so the task-terminal extension (a separate file) can cache the handle
@@ -91,6 +104,21 @@ class TerminalManager: ObservableObject {
         })
     }
 
+    /// Retire every surface this manager owns — each main tab, the secondary shell and every task
+    /// terminal — in one call.
+    ///
+    /// The window-close door, wired from `ProjectContentView` through `WindowCloseHandler`. A
+    /// closed project window drops its whole `TerminalManager` without passing through
+    /// `closeWorktree` or `removeSurface`, and the surfaces themselves are freed by ARC, which
+    /// reports nothing. Without this an agent still working when the operator closes the window
+    /// keeps its phase and its subagent rows for the rest of the session: its child is gone, so no
+    /// further hook can name it and nothing is left that could clear it.
+    func retireAllSurfaces() {
+        for surface in allSurfaces {
+            Self.retireSurface(surface.surfaceId)
+        }
+    }
+
     /// Explicitly close all terminal surfaces, sending SIGHUP to their shells.
     ///
     /// Called during app termination to ensure graceful cleanup before the
@@ -98,6 +126,7 @@ class TerminalManager: ObservableObject {
     /// the restart logic from firing during teardown.
     func closeAllSurfaces() {
         closeSurfaceObserver = nil
+        retireAllSurfaces()
         for surface in allSurfaces {
             surface.closeSurface()
         }
@@ -139,7 +168,7 @@ class TerminalManager: ObservableObject {
         }
 
         let dir = worktree.path ?? projectPath
-        let secondary = Ghostty.SurfaceView(app, workingDirectory: dir)
+        let secondary = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
 
         // Registered with no tabs so the first one is made through `appendTab` like every other.
         let tp = TerminalPane(main: MainTerminal(tabs: [], activeId: nil), secondary: secondary)
@@ -296,7 +325,8 @@ class TerminalManager: ObservableObject {
         let surface = Ghostty.SurfaceView(
             app,
             workingDirectory: existingPane?.secondary.initialWorkingDirectory ?? worktree.path,
-            command: command
+            command: command,
+            worktreeId: key
         )
         let newTab = TerminalTab(id: UUID(), surface: surface)
 
@@ -305,7 +335,7 @@ class TerminalManager: ObservableObject {
             panes[key]?.main.activeId = newTab.id
         } else {
             ghosttyApp = app
-            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path)
+            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path, worktreeId: key)
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
@@ -363,6 +393,7 @@ class TerminalManager: ObservableObject {
         }
 
         objectWillChange.send()
+        Self.retireSurface(removedTab.surface.surfaceId)
         removedTab.surface.closeSurface()
 
         if let newActiveSurface {
@@ -391,6 +422,7 @@ class TerminalManager: ObservableObject {
 
         // Task terminals: remove instead of restarting
         if let tid = taskId(for: deadSurface) {
+            Self.retireSurface(deadSurface.surfaceId)
             taskSurfaces.removeValue(forKey: tid)
             openTaskIds.remove(tid)
             taskTerminalVisible.removeValue(forKey: tid)
@@ -400,6 +432,11 @@ class TerminalManager: ObservableObject {
 
         for (key, pane) in panes {
             if let tab = pane.main.tabs.first(where: { $0.surface === deadSurface }) {
+                // The child is gone on either branch, so no further hook can name this surface and
+                // whatever phase it was left in is now stale. Retiring it ahead of the branch is
+                // what keeps a tab kept for its crash output from pinning its worktree's dot for
+                // the rest of the session; the kept tab itself is unaffected.
+                Self.retireSurface(deadSurface.surfaceId)
                 // Match native terminal behavior: auto-close on clean exit
                 // (Ctrl+D, `exit`), but keep the dead tab around on abnormal
                 // exit so users can inspect crashes or error output.
@@ -416,13 +453,16 @@ class TerminalManager: ObservableObject {
             var timestamps = recentRestarts[key, default: []].filter { now.timeIntervalSince($0) < 2 }
             guard timestamps.count < 3 else {
                 Ghostty.logger.warning("Terminal restart loop detected, stopping")
+                // Abandoned rather than replaced, so this is the last word on the dead surface.
+                Self.retireSurface(deadSurface.surfaceId)
                 return
             }
             timestamps.append(now)
             recentRestarts[key] = timestamps
 
             let dir = deadSurface.pwd ?? deadSurface.initialWorkingDirectory
-            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir)
+            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
+            Self.retireSurface(deadSurface.surfaceId)
             objectWillChange.send()
             panes[key]!.secondary = newSurface
             // Secondary terminal: hide the panel instead of respawning visibly.
@@ -440,7 +480,9 @@ class TerminalManager: ObservableObject {
 
     /// Remove terminal surfaces when a worktree is deleted.
     func removeSurface(for worktreeId: String) {
-        panes.removeValue(forKey: worktreeId)
+        if let pane = panes.removeValue(forKey: worktreeId) {
+            retire(pane)
+        }
         cleanupState(for: worktreeId)
     }
 
@@ -462,6 +504,7 @@ class TerminalManager: ObservableObject {
     /// try to restart the dying shells, then sends SIGHUP via `closeSurface()`.
     func closeWorktree(_ worktreeId: String) {
         guard let pane = panes.removeValue(forKey: worktreeId) else { return }
+        retire(pane)
         cleanupState(for: worktreeId)
         for tab in pane.main.tabs {
             tab.surface.closeSurface()

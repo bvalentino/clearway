@@ -13,7 +13,7 @@ struct SidebarView: View {
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var workTaskManager: WorkTaskManager
-    @EnvironmentObject private var claudeActivityMonitor: ClaudeActivityMonitor
+    @EnvironmentObject private var agentActivity: AgentActivityMonitor
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var caffeine: CaffeineManager
     @EnvironmentObject private var settings: SettingsManager
@@ -403,21 +403,20 @@ struct SidebarView: View {
         if !(isSearching && rows.isEmpty) {
             Section {
                 ForEach(rows) { wt in
-                    worktreeRowView(
-                        for: wt,
-                        titles: titles,
-                        shortcuts: shortcuts,
-                        moveDisabled: true,
-                        leadingIndent: SidebarRowMetrics.statusRowIndent
-                    )
+                    worktreeRowView(for: wt, titles: titles, shortcuts: shortcuts, moveDisabled: true)
                 }
             } header: {
-                HStack(spacing: SidebarRowMetrics.headerIconSpacing) {
-                    SidebarIcon(systemImage: status.symbol)
-                        .foregroundStyle(status.color)
+                // A row's own `Label` over a row's own icon slot, so the header's two columns are
+                // the rows' rather than numbers of its own. The style is stated because a header
+                // is free to resolve `Label` to another one.
+                Label {
                     Text(status.displayName)
                         .foregroundStyle(.primary)
+                } icon: {
+                    SidebarIcon(systemImage: status.symbol)
+                        .foregroundStyle(status.color)
                 }
+                .labelStyle(.titleAndIcon)
                 .padding(.leading, SidebarRowMetrics.headerLeadingInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(targetedStatus == status ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -517,12 +516,12 @@ struct SidebarView: View {
         for wt: Worktree,
         titles: [String: String],
         shortcuts: [String: Int],
-        moveDisabled: Bool,
-        leadingIndent: CGFloat = 0
+        moveDisabled: Bool
     ) -> some View {
         let isOpen = terminalManager.isOpen(wt)
         let hasNotification = terminalManager.notifiedWorktrees.contains(wt.id)
-        let isWorking = isOpen && !wt.isMain && claudeActivityMonitor.workingWorktreeIds.contains(wt.id)
+        let phase = agentActivity.worktreePhases[wt.id] ?? .idle
+        let subagents = isOpen ? agentActivity.worktreeSubagents[wt.id] ?? [] : []
         let shortcut = isSearching || !isOpen ? nil : shortcuts[wt.id]
         let (primaryText, subtitle) = WorktreeRow.rowTexts(
             for: wt,
@@ -534,16 +533,21 @@ struct SidebarView: View {
             primaryText: primaryText,
             subtitle: subtitle,
             hasNotification: hasNotification,
-            isWorking: isWorking,
+            phase: phase,
+            isOpen: isOpen,
             shortcutIndex: shortcut,
             status: groupManager.grouping == .status ? nil : groupManager.status(for: wt)
         )
-            .padding(.leading, leadingIndent)
             .tag(DetailSelection.worktree(wt))
             .opacity(isOpen ? 1.0 : 0.5)
             .contextMenu { worktreeContextMenu(wt) }
             .draggableIf(!wt.isMain && groupManager.grouping != .none, id: wt.id) { WorktreeDragChip() }
             .moveDisabled(moveDisabled)
+        // No `.tag`, so these carry no selection, the way the search, loading and error rows do.
+        ForEach(subagents) { subagent in
+            SubagentRow(subagent: subagent)
+                .moveDisabled(true)
+        }
     }
 
     // Defer @Published mutation past the NSTableView drop delegate to avoid a reentrant-list warning.

@@ -5,13 +5,11 @@ import SwiftUI
 /// three on one column.
 enum SidebarRowMetrics {
     fileprivate static let iconWidth: CGFloat = 18
-    static let headerIconSpacing: CGFloat = 6
-    /// A status `Section` header is inset less than a list row; this makes up the difference.
-    static let headerLeadingInset: CGFloat = 4
-    /// How far inside its own `Text` frame the header title's first glyph begins inking.
-    private static let titleLeadingBearing: CGFloat = 3
-    /// Lands a row's icon on the letter its status header's title starts with.
-    static let statusRowIndent: CGFloat = iconWidth + headerIconSpacing - titleLeadingBearing
+    /// A status `Section` header is inset 6 pt less than a list row; this makes up the difference.
+    /// Measured, not tuned: on the operator's 2x screenshots a header's glyph inks 2 px inside its
+    /// own slot and a row's 0 px (the `⌘N` badge) or 3 px (a symbol), which puts the header's slot
+    /// at 13 pt and the row's at 15 pt while this constant already stood at 4.
+    static let headerLeadingInset: CGFloat = 6
 }
 
 /// One slot of that column: the `⌘N` / `⌃N` hint while there is one, else the symbol. Leading
@@ -30,6 +28,27 @@ struct SidebarIcon: View {
             }
         }
         .frame(width: SidebarRowMetrics.iconWidth, alignment: .leading)
+    }
+}
+
+/// The `└` a terminal draws before a child line, centred in that same slot so a child row's text
+/// keeps the title column. Drawn rather than typed: the character's shape belongs to the font, and
+/// the sidebar's is not the monospaced one it is cut for.
+struct SidebarChildConnector: View {
+    var body: some View {
+        ChildConnector()
+            .stroke(.secondary, lineWidth: 1)
+            .frame(width: SidebarRowMetrics.iconWidth, height: SidebarRowMetrics.iconWidth)
+    }
+}
+
+private struct ChildConnector: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }
 

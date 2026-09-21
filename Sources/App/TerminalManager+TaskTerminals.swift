@@ -19,7 +19,9 @@ extension TerminalManager {
         if let existing = taskSurfaces[taskId] {
             return existing
         }
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath)
+        // A task terminal's working directory is the main worktree's path, and a worktree id is
+        // its path, so the two are the same string.
+        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, worktreeId: projectPath)
         taskSurfaces[taskId] = surface
         if !openTaskIds.contains(taskId) {
             openTaskIds.insert(taskId)
@@ -53,6 +55,7 @@ extension TerminalManager {
     /// Close a task's terminal surface. Removes entry first to prevent auto-restart.
     func closeTaskTerminal(_ taskId: UUID) {
         guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
+        Self.retireSurface(surface.surfaceId)
         openTaskIds.remove(taskId)
         taskTerminalVisible.removeValue(forKey: taskId)
         taskTerminalHeights.removeValue(forKey: taskId)
@@ -82,9 +85,15 @@ extension TerminalManager {
     ) -> Ghostty.SurfaceView {
         ghosttyApp = app
         if let old = taskSurfaces.removeValue(forKey: taskId) {
+            Self.retireSurface(old.surfaceId)
             old.closeSurface()
         }
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, command: command)
+        let surface = Ghostty.SurfaceView(
+            app,
+            workingDirectory: projectPath,
+            command: command,
+            worktreeId: projectPath
+        )
         taskSurfaces[taskId] = surface
         openTaskIds.insert(taskId)
         taskTerminalVisible[taskId] = true

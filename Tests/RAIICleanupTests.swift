@@ -81,17 +81,21 @@ final class RAIICleanupTests: TempRootTestCase {
         XCTAssertNil(weakCoordinator, "WorkTaskCoordinator leaked; its exit observer never deregisters")
     }
 
-    func testClaudeActivityMonitorDeallocates() {
-        weak var weakMonitor: ClaudeActivityMonitor?
+    /// The listening socket rides on `HookSocketListener`'s release, so an enabled monitor must
+    /// still deallocate.
+    func testAgentActivityMonitorDeallocates() throws {
+        let home = try makeShortTempHome("raii")
+        defer { try? FileManager.default.removeItem(atPath: home) }
+
+        weak var weakMonitor: AgentActivityMonitor?
         autoreleasepool {
-            let monitor = ClaudeActivityMonitor()
-            monitor.updateWorktrees([
-                makeWorktree(branch: "probe", path: (tempRoot as NSString).appendingPathComponent("wt")),
-            ])
+            let monitor = AgentActivityMonitor(home: home)
+            monitor.setEnabled(true)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: AgentHookPaths(home: home).socketPath))
             weakMonitor = monitor
             XCTAssertNotNil(weakMonitor)
         }
-        XCTAssertNil(weakMonitor, "ClaudeActivityMonitor leaked; its watcher sources are never cancelled")
+        XCTAssertNil(weakMonitor, "AgentActivityMonitor leaked; its listening source is never cancelled")
     }
 
     func testWorkTaskManagerDeallocates() {

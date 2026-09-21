@@ -1,36 +1,8 @@
 @preconcurrency import Dispatch
 import Foundation
 
-/// Generic Claude Code session-file watching + path helpers, used by ClaudeActivityMonitor.
-enum ClaudeSessionFiles {
-    private static let claudeDir: String = {
-        (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
-    }()
-
-    // MARK: - Path Encoding
-
-    /// Encodes a filesystem path to Claude Code's project directory name format.
-    /// `/Users/foo/bar` → `-Users-foo-bar` (replaces `/` and `.` with `-`).
-    static func encodePathForClaude(_ path: String) -> String {
-        path.replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ".", with: "-")
-    }
-
-    /// The `~/.claude/projects/` parent directory.
-    static let projectsParentDir: String = {
-        (claudeDir as NSString).appendingPathComponent("projects")
-    }()
-
-    /// Returns the Claude Code projects directory for a given worktree path.
-    static func projectDir(forWorktreePath path: String) -> String {
-        let encoded = encodePathForClaude(path)
-        return (claudeDir as NSString)
-            .appendingPathComponent("projects")
-            .appending("/\(encoded)")
-    }
-
-    // MARK: - File Watching
-
+/// The single door every file-system `DispatchSource` in the app goes through.
+enum FileWatchers {
     /// The default mask catches atomic file operations (write-to-temp → rename)
     /// and in-place rewrites that `.write` alone can miss. Directory watchers that only
     /// care about entries appearing and disappearing pass `.write` instead.
