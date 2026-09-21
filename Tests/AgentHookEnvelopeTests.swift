@@ -97,6 +97,30 @@ final class AgentHookEnvelopeTests: XCTestCase {
         XCTAssertNil(envelope?.event.toolName)
     }
 
+    /// `keepOnly` is the sweep that stops a missed `SubagentStop` pinning a row, and it trusts this
+    /// filter to be the whole of "still going". Both predicates matter: a finished task or a
+    /// background task that is not a subagent would each come back as a row nothing can remove.
+    func testOnlyRunningSubagentsCountAsBackgroundWork() {
+        let envelope = AgentHookEnvelope.parse(payload(#"""
+        {"hook_event_name":"Stop","background_tasks":[
+        {"id":"one","type":"subagent","status":"running","agent_type":"Explore","description":"Still going"},
+        {"id":"two","type":"subagent","status":"completed","agent_type":"Explore"},
+        {"id":"three","type":"subagent","status":"failed","agent_type":"Explore"},
+        {"id":"four","type":"shell","status":"running"}]}
+        """#))
+
+        XCTAssertEqual(envelope?.event.runningBackgroundSubagents.map(\.id), ["one"])
+        XCTAssertEqual(envelope?.event.runningBackgroundSubagents.first?.description, "Still going")
+    }
+
+    /// Absence and an empty list are the same answer, which is what lets every event but `Stop` go
+    /// through `keepOnly` untouched.
+    func testAnEventWithNoBackgroundTasksReportsNoneRunning() {
+        let envelope = AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#))
+
+        XCTAssertEqual(envelope?.event.runningBackgroundSubagents.count, 0)
+    }
+
     // MARK: - Refusals
 
     func testEmptyDataParsesToNil() {

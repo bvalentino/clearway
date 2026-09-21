@@ -62,7 +62,15 @@ final class AgentActivityMonitor: ObservableObject {
     private func start() {
         AgentHookInstaller.install(home: home)
         listener = HookSocketListener.start(socketPath: paths.socketPath) { [weak self] payload in
-            guard let envelope = AgentHookEnvelope.parse(payload) else { return }
+            // The forwarder sends only once both ids are set, so a payload that does not parse is
+            // always something wrong — a truncated read, or a field an agent has renamed. Nothing
+            // here has a clock, so every dropped event is permanent: a surface mid-tool-call keeps
+            // its dot and its tool label for good. That raises the bar on saying so rather than
+            // lowering it, and this line is the only place that can.
+            guard let envelope = AgentHookEnvelope.parse(payload) else {
+                Ghostty.logger.warning("A hook payload of \(payload.count) bytes did not parse and was dropped.")
+                return
+            }
             Task { @MainActor in self?.receive(envelope) }
         }
     }

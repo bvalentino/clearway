@@ -115,6 +115,23 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertTrue(monitor.worktreePhases.isEmpty, "the forwarder's socket guard makes a disabled Clearway a no-op")
     }
 
+    /// The discriminating case for `stop()`'s ordering: the `unlink` runs after the listener is
+    /// released and on the main actor both times, so a disable immediately followed by an enable
+    /// cannot take away the socket the new listener has just bound. Get it wrong — unlink first, or
+    /// from the cancel handler — and the toggle keeps reading on, the hooks stay installed, and
+    /// nothing arrives again until the app is relaunched.
+    func testTheFeedSurvivesADisableAndReEnable() async throws {
+        monitor.setEnabled(true)
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+
+        monitor.setEnabled(false)
+        monitor.setEnabled(true)
+
+        try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
+        try await waitFor(.working, describing: "the worktree's phase after a re-enable") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+    }
+
     func testEnablingInstallsTheForwarderAndIsIdempotent() {
         monitor.setEnabled(true)
         monitor.setEnabled(true)
