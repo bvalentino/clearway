@@ -70,9 +70,9 @@ private class WindowHiderView: NSView {
 ///
 /// The one door a per-window teardown can hang off: closing a project window sends nothing through
 /// `closeWorktree` or `removeSurface`, and the hosting window's delegate slot already holds
-/// `CloseConfirmationDelegate`. Both installers now sit in `ProjectContentView.body` and stay
-/// separate: the delegate is installed once through `DispatchQueue.main.async` and never
-/// re-scopes, while this observer re-scopes with the view's tenancy in a window — behavior
+/// `CloseConfirmationDelegate`. Both installers sit in `ProjectContentView.body` and stay separate:
+/// the delegate is installed once through `DispatchQueue.main.async` and never re-scopes, while
+/// this observer re-scopes with the view's tenancy in a window — behavior
 /// `WindowCloseHandlerTests` pins.
 struct WindowCloseHandler: NSViewRepresentable {
     let perform: @MainActor @Sendable () -> Void

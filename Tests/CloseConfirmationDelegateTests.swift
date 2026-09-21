@@ -8,12 +8,6 @@ import XCTest
 @MainActor
 final class CloseConfirmationDelegateTests: XCTestCase {
 
-    /// Stands in for the window's `TerminalManager` where the rule has to change between closes:
-    /// the injected closure is sendable, so it cannot capture a mutable local.
-    private final class Terminals {
-        var busy = false
-    }
-
     private func discard(_ window: NSWindow) {
         if let sheet = window.attachedSheet { window.endSheet(sheet) }
         window.close()
@@ -47,16 +41,16 @@ final class CloseConfirmationDelegateTests: XCTestCase {
     func testTheRuleIsAskedOnEveryCloseRatherThanCachedAtInit() {
         let window = makeWindow()
         defer { discard(window) }
-        let terminals = Terminals()
-        let delegate = CloseConfirmationDelegate(needsConfirm: { terminals.busy })
+        var busy = false
+        let delegate = CloseConfirmationDelegate(needsConfirm: { busy })
 
         XCTAssertTrue(delegate.windowShouldClose(window))
-        terminals.busy = true
+        busy = true
         XCTAssertFalse(delegate.windowShouldClose(window))
     }
 
     /// The body names this window, unlike the process-wide Cmd+Q alert it sits beside.
-    func testCopy() {
+    func testTheCopyNamesThisWindowsTerminals() {
         XCTAssertEqual(CloseConfirmationDelegate.messageText, "Close terminal sessions?")
         XCTAssertEqual(
             CloseConfirmationDelegate.informativeText,
