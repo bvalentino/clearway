@@ -13,6 +13,7 @@ struct WorktreeRunActions {
     /// Opens the toolbar Run button's own dropdown, so ⌥⌘R shows the operator the list they would
     /// have clicked to rather than a second menu that could drift from it.
     let popRunMenu: () -> Void
+    let addCommand: () -> Void
 }
 
 extension WorktreeRunActions {
@@ -32,6 +33,14 @@ extension WorktreeRunActions {
             guard let app = ghosttyApp.app else { return }
             terminalManager.run(command, in: worktree, app: app)
         }
+    }
+
+    /// The menu bar's door to the command editor. `RunCommandMenu` is the one presenter of that
+    /// sheet, and every open window has one, so the post carries this window's manager as `object`
+    /// for their identity guards to match on.
+    @MainActor
+    static func commandEditorOpener(_ savedCommandManager: SavedCommandManager) -> () -> Void {
+        { NotificationCenter.default.post(name: .clearwayAddCommand, object: savedCommandManager) }
     }
 }
 
@@ -93,5 +102,93 @@ extension FocusedValues {
     var worktreeOpenInActions: WorktreeOpenInActions? {
         get { self[WorktreeOpenInActionsKey.self] }
         set { self[WorktreeOpenInActionsKey.self] = newValue }
+    }
+}
+
+/// Worktree ▸ Run <name>. The title names the command a press will run, the way the toolbar's
+/// label half does; an empty list leaves the generic "Run" with nothing to run, so the row greys.
+struct RunPrimaryMenuItem: View {
+    @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
+
+    var body: some View {
+        Button(actions?.title ?? "Run") {
+            guard let actions, let command = actions.primary else { return }
+            actions.run(command)
+        }
+        .keyboardShortcut("r", modifiers: .command)
+        .disabled(actions?.primary == nil)
+    }
+}
+
+/// Worktree ▸ Run…, the row that carries ⌥⌘R. It exists because the Run submenu below it cannot:
+/// AppKit's key-equivalent dispatch fires a menu item's action, and a SwiftUI `Menu` used as a
+/// submenu row has none. It stays enabled on an empty command list, so the editor door the submenu
+/// holds is still one keystroke away.
+struct RunDropdownMenuItem: View {
+    @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
+
+    var body: some View {
+        Button("Run…") { actions?.popRunMenu() }
+            .keyboardShortcut("r", modifiers: [.command, .option])
+            .disabled(actions == nil)
+    }
+}
+
+/// Worktree ▸ Run, listing every saved command rather than the toolbar dropdown's `menuCommands`:
+/// there is no label half here running the primary, so omitting it would hide it. Picking one
+/// records it as the primary, which retitles this menu and the toolbar together.
+struct RunCommandsSubmenu: View {
+    @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
+
+    var body: some View {
+        Menu("Run") {
+            if let actions {
+                if !actions.commands.isEmpty {
+                    ForEach(actions.commands) { command in
+                        Button(command.name) { actions.run(command) }
+                    }
+                    Divider()
+                }
+                Button("Add Command…") { actions.addCommand() }
+            }
+        }
+        .disabled(actions == nil)
+    }
+}
+
+/// Worktree ▸ Open in <app>. The focused value is already nil on an empty app list, so the title
+/// never falls back to the bare word with a live row behind it.
+struct OpenInPrimaryMenuItem: View {
+    @FocusedValue(\.worktreeOpenInActions) private var actions: WorktreeOpenInActions?
+
+    var body: some View {
+        Button(actions?.title ?? "Open in") {
+            guard let actions, let app = actions.primary else { return }
+            actions.open(app)
+        }
+        .keyboardShortcut("o", modifiers: .command)
+        .disabled(actions == nil)
+    }
+}
+
+/// Worktree ▸ Open in, listing every app for the same reason the Run submenu lists every command.
+/// Disabled along with the row above it on an empty list, which puts the Settings door out of
+/// reach from here — Settings is reachable from the app menu.
+struct OpenInAppsSubmenu: View {
+    @FocusedValue(\.worktreeOpenInActions) private var actions: WorktreeOpenInActions?
+
+    var body: some View {
+        Menu("Open in") {
+            if let actions {
+                if !actions.apps.isEmpty {
+                    ForEach(actions.apps) { app in
+                        Button(app.label) { actions.open(app) }
+                    }
+                    Divider()
+                }
+                EditOpenInAppsButton()
+            }
+        }
+        .disabled(actions == nil)
     }
 }

@@ -608,3 +608,55 @@ Deviations from the plan. None.
 
 Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
 `git status --porcelain` before the commit showed only the two files above plus this plan.
+
+### T5: The Worktree menu
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeCommands.swift` | 97 → 194 lines. `WorktreeRunActions` gains `let addCommand: () -> Void` and a `commandEditorOpener(_:)` factory that posts `.clearwayAddCommand` with the window's `SavedCommandManager` as `object`. Five new `View`s: `RunPrimaryMenuItem` (⌘R), `RunDropdownMenuItem` (⌥⌘R), `RunCommandsSubmenu`, `OpenInPrimaryMenuItem` (⌘O), `OpenInAppsSubmenu`. |
+| `Sources/App/ClearwayApp.swift` | `CommandMenu("Worktree")` added after `CommandGroup(replacing: .sidebar)`, holding those five in order. |
+| `Sources/App/ContentView.swift` | 994 → 995 lines. `worktreeRunActions` passes `addCommand: WorktreeRunActions.commandEditorOpener(savedCommandManager)`. |
+| `Sources/App/OpenInMenu.swift` | 91 → 96 lines. `OpenInMenu`'s private `editAppsButton` promoted to a shared `struct EditOpenInAppsButton: View` in the same file; the toolbar dropdown and the new submenu both render it. |
+
+Evidence. Nothing added here is reachable from XCTest: a `CommandMenu`, `@FocusedValue` and
+`SettingsLink` all need a running app, which is why the plan assigns criteria 1-5, 8, 10 and 11 to
+the operator. So there is no regression test to watch fail and none was written. The checkable bar
+is the shape, read off the tree:
+
+- `grep -rn 'keyboardShortcut("r"\|keyboardShortcut("o"' Sources/App/` returns exactly three lines,
+  all in `WorktreeCommands.swift` (118, 132, 169) — criteria 2 and 6. `grep -n keyboardShortcut`
+  over `RunCommandMenu.swift` and `OpenInMenu.swift` returns nothing; `ContentView.swift`'s four
+  hits are the pre-existing ⌘1…9 and ⌃1…3 rows, untouched.
+- `swiftlint lint --quiet` prints nothing, exit 0.
+- `wc -l Sources/App/ContentView.swift` is 995, under the 1000-line `file_length` error.
+
+Acceptance criteria. 1: `CommandMenu("Worktree")` holds the five items in the plan's order. 2: the
+grep above. 3: rows 2, 3 and 5 are `.disabled(actions == nil)`; row 1 is
+`.disabled(actions?.primary == nil)`, which greys it on an empty command list while rows 2 and 3
+stay live (D9); row 4 is `.disabled(actions == nil)`, and `worktreeOpenInActions` is already nil on
+an empty app list (D8/D10). 4: `RunCommandsSubmenu` renders `actions.commands` — the whole saved
+list, not `menuCommands` — then a `Divider()` guarded on non-empty, then "Add Command…";
+`OpenInAppsSubmenu` renders `actions.apps`, the same guarded divider, then `EditOpenInAppsButton`.
+5: "Add Command…" calls `actions.addCommand()`, whose body is `commandEditorOpener`'s post of
+`.clearwayAddCommand` with `savedCommandManager` as `object`, which `RunCommandMenu`'s T4 identity
+guard matches. 6: the greps above.
+
+Deviations from the plan.
+
+1. **The "Add Command…" post goes through a closure on `WorktreeRunActions`, not `@FocusedObject`.**
+   The plan says the row posts with "the focused `SavedCommandManager`" and points at
+   `NewGroupCommand` as precedent. `NewGroupCommand` reads its manager with `@FocusedObject`, and
+   `grep -rn "focusedObject\|FocusedObject" Sources/App/*.swift` returns that one declaration and
+   no `.focusedObject(_:)` / `.focusedSceneObject(_:)` setter anywhere, so the wrapper has nothing
+   to read. Copying it would have made the row permanently disabled. The closure is built where the
+   manager actually is — `ContentView` — and rides the focused scene value the other four rows
+   already use (D6), so the notification still carries this window's manager and the identity guard
+   still scopes the sheet. Cost to `ContentView` is one line.
+2. **`OpenInMenu.editAppsButton` was promoted to `EditOpenInAppsButton` rather than copied.** The
+   plan's T5 text says the submenu "uses the same `SettingsLink` … pair as `OpenInMenu.editAppsButton`",
+   which read literally means a second copy; D12's no-duplicated-bodies rule and the project's
+   reuse rule both say share it. Behaviour is unchanged at the existing call site.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the four files above plus this plan; no
+`default.profraw` and no untracked files.

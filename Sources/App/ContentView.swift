@@ -169,7 +169,8 @@ struct ContentView: View {
             run: runAction(for: worktree),
             popRunMenu: { [savedCommandManager] in
                 ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle)
-            }
+            },
+            addCommand: WorktreeRunActions.commandEditorOpener(savedCommandManager)
         )
     }
 

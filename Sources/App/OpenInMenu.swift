@@ -63,20 +63,7 @@ struct OpenInMenu: View {
             items(apps)
             Divider()
         }
-        editAppsButton
-    }
-
-    /// The door to Settings, which is where the Open In list is edited. `SettingsLink` is macOS 14+
-    /// and the deployment target is 13, so the older path sends AppKit's own Settings action. The
-    /// Settings scene is a single form, so there is no tab to select on arrival.
-    @ViewBuilder private var editAppsButton: some View {
-        if #available(macOS 14, *) {
-            SettingsLink { Text("Edit Apps…") }
-        } else {
-            Button("Edit Apps…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }
-        }
+        EditOpenInAppsButton()
     }
 
     private func items(_ apps: [OpenInApp]) -> some View {
@@ -89,5 +76,21 @@ struct OpenInMenu: View {
     /// alert is built in one place. Only the toolbar variant records the pick.
     private var open: (OpenInApp) -> Void {
         WorktreeOpenInActions.opener(path: path, recordingUseIn: remembersLastUsed ? settings : nil)
+    }
+}
+
+/// The door to Settings, which is where the Open In list is edited, rendered by the toolbar
+/// dropdown and the Worktree menu's Open in submenu alike. `SettingsLink` is macOS 14+ and the
+/// deployment target is 13, so the older path sends AppKit's own Settings action. The Settings
+/// scene is a single form, so there is no tab to select on arrival.
+struct EditOpenInAppsButton: View {
+    var body: some View {
+        if #available(macOS 14, *) {
+            SettingsLink { Text("Edit Apps…") }
+        } else {
+            Button("Edit Apps…") {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+        }
     }
 }
