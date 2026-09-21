@@ -1958,3 +1958,61 @@ operator; it stays honest about the real `~/.clearway` because `install(home:)` 
 
 **Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 752 tests, with 0
 failures (0 unexpected)`, then `==> CI passed.`
+
+#### R10 — Closing a project window retires its surfaces
+
+**Reported.** Critical, and confirmed by two reviewers: `closeWorktree` and `removeSurface` are the
+only manager-level doors that reach `Self.retireSurface`, and both run from explicit user actions.
+`TerminalManager` is `@MainActor` with no `deinit`. So an agent working in a tab when the operator
+closed the project window left its surface state in `AgentActivityMonitor` for the rest of the
+session — reopening the project showed a lit dot and phantom subagent rows with no event left that
+could clear them.
+
+**What already happened on window close: nothing explicit.** The search found no
+`NSWindow.willCloseNotification` observer, no `onDisappear`, and no teardown in `ProjectWindow` /
+`ProjectContentView` — `closeAllSurfaces` exists only for `applicationWillTerminate`, through
+`AppDelegate` and `TerminalManager.closeAllManagers`. The surfaces are freed by ARC: the window
+closes, SwiftUI releases the `@StateObject` `TerminalManager`, and each `Ghostty.SurfaceView`'s
+`SurfaceHandle` deinit reaches `ghostty_surface_free`, which SIGHUPs the shell. So this is not a
+leak of the surfaces themselves, but it is an ARC-timed free that reports nothing, and it is why no
+retirement happened. Two consequences stay out of scope and are recorded as follow-ups: the close is
+not deterministic, and `CloseConfirmationDelegate` tells the operator "Close terminal sessions?"
+for a close that never explicitly closes one.
+
+**What landed.** `TerminalManager.retireAllSurfaces()` retires every surface the manager owns —
+each main tab, the secondary shell and every task terminal — in one pass over `allSurfaces`.
+`ProjectContentView` hangs it off `WindowCloseHandler`, an `NSViewRepresentable` that observes
+`NSWindow.willCloseNotification` on whatever window its view lands in. Not an isolated `deinit`
+(SE-0371 is barred at this deployment target, and reading `panes` from a nonisolated one is barred
+anyway), and not the window delegate, whose slot `CloseConfirmationDelegate` already holds a layer
+up where the window's managers are out of reach. The observation captures the closure, not the
+view, so the retirement still runs once the close has released the view hierarchy that owned it;
+the hop is `Task { @MainActor in }` rather than `assumeIsolated`, per the house rule, and it is safe
+because that captured closure keeps the manager and its panes alive until it runs.
+`closeAllSurfaces` calls the same method, so the static's "every door that drops a surface reports
+it here" is true of the termination door too.
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `retireAllSurfaces()`; `closeAllSurfaces` calls it |
+| `Sources/App/ProjectWindow.swift` | `WindowCloseHandler` + `WindowCloseHandlerView`; `ProjectContentView` retires on close |
+| `Tests/WindowCloseHandlerTests.swift` | the door fires on its window's close, and not after the view has left it |
+| `CLAUDE.md` | window close is a retirement door, and why it is neither a `deinit` nor the delegate |
+
+**Evidence.** The defect's own proof is not reachable from XCTest: a surface needs a real
+`ghostty_app_t`, so no test can put one in a manager to watch it stay counted. What is reachable is
+the door, which needs only an `NSWindow`. Watched red with the observation registration removed
+(`observation = nil` in its place) and the rest of the change in — the sources restored from the
+scratchpad afterwards:
+
+```
+Tests/WindowCloseHandlerTests.swift:31: error: -[ClearwayTests.WindowCloseHandlerTests
+  testClosingTheHostingWindowRunsTheHandler] : Asynchronous wait failed: Exceeded timeout of 2
+  seconds, with unfulfilled expectations: "the window-close handler ran".
+```
+
+The retirement that door runs — that `allSurfaces` covers main tabs, the secondary and the task
+terminals — stays manual, and is what the operator's Try line exercises.
+
+**Gate.** `./scripts/ci.sh` — green, exit 0, run after the last edit. `Executed 762 tests, with 0
+failures (0 unexpected)`, then `==> CI passed.`

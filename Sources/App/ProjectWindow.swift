@@ -66,6 +66,50 @@ private class WindowHiderView: NSView {
     }
 }
 
+/// Runs `perform` when the window hosting it closes.
+///
+/// The one door a per-window teardown can hang off: closing a project window sends nothing through
+/// `closeWorktree` or `removeSurface`, and no window delegate of Clearway's own is free — the
+/// hosting window's delegate slot already holds `CloseConfirmationDelegate`, installed a layer up
+/// where the window's managers are out of reach.
+struct WindowCloseHandler: NSViewRepresentable {
+    let perform: @MainActor @Sendable () -> Void
+
+    func makeNSView(context: Context) -> WindowCloseHandlerView {
+        let view = WindowCloseHandlerView()
+        view.perform = perform
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowCloseHandlerView, context: Context) {}
+}
+
+/// Observes `willCloseNotification` on whatever window it lands in, and stops observing when it
+/// leaves one. Internal, not private, because it is the only testable half of the door: a bare
+/// `NSWindow` reaches it, while everything it retires needs a `ghostty_app_t`.
+///
+/// The observation holds `perform` rather than the view, so the retirement still runs when the
+/// close has already released the view hierarchy that owned it.
+final class WindowCloseHandlerView: NSView {
+    var perform: (@MainActor @Sendable () -> Void)?
+    private var observation: NotificationObservation?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window, let perform else {
+            observation = nil
+            return
+        }
+        observation = NotificationObservation(NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in perform() }
+        })
+    }
+}
+
 /// Owns per-window `WorktreeManager` and `TerminalManager`, then renders `ContentView`.
 struct ProjectContentView: View {
     let projectPath: String
@@ -121,5 +165,8 @@ struct ProjectContentView: View {
             .onChange(of: settings.promptsDirectory) { newValue in
                 promptManager.setDirectory(newValue)
             }
+            .background(WindowCloseHandler { [terminalManager] in
+                terminalManager.retireAllSurfaces()
+            })
     }
 }

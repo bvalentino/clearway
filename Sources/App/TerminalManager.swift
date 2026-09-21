@@ -104,6 +104,21 @@ class TerminalManager: ObservableObject {
         })
     }
 
+    /// Retire every surface this manager owns — each main tab, the secondary shell and every task
+    /// terminal — in one call.
+    ///
+    /// The window-close door, wired from `ProjectContentView` through `WindowCloseHandler`. A
+    /// closed project window drops its whole `TerminalManager` without passing through
+    /// `closeWorktree` or `removeSurface`, and the surfaces themselves are freed by ARC, which
+    /// reports nothing. Without this an agent still working when the operator closes the window
+    /// keeps its phase and its subagent rows for the rest of the session: its child is gone, so no
+    /// further hook can name it and nothing is left that could clear it.
+    func retireAllSurfaces() {
+        for surface in allSurfaces {
+            Self.retireSurface(surface.surfaceId)
+        }
+    }
+
     /// Explicitly close all terminal surfaces, sending SIGHUP to their shells.
     ///
     /// Called during app termination to ensure graceful cleanup before the
@@ -111,6 +126,7 @@ class TerminalManager: ObservableObject {
     /// the restart logic from firing during teardown.
     func closeAllSurfaces() {
         closeSurfaceObserver = nil
+        retireAllSurfaces()
         for surface in allSurfaces {
             surface.closeSurface()
         }

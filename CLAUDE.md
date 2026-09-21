@@ -523,7 +523,19 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     child is gone** — never reconciled against a list of live ones. `replaceSurface` reports a dead
     main tab before it branches on the exit code, not inside the clean-exit arm: a tab kept so the
     user can read its crash output holds a surface no further hook can name, and leaving it counted
-    pinned its worktree's dot for the rest of the session. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
+    pinned its worktree's dot for the rest of the session.
+    **Closing a project window is a door of its own.** It drops the whole `TerminalManager` without
+    passing through `closeWorktree` or `removeSurface`, and its surfaces are freed by ARC, which
+    reports nothing — so an agent working when the operator closed the window kept its dot and its
+    subagent rows for the rest of the session. `ProjectContentView` hangs
+    `TerminalManager.retireAllSurfaces` — main tabs, the secondary shell and every task terminal in
+    one pass — off `WindowCloseHandler` (`ProjectWindow.swift`), an `NSWindow.willCloseNotification`
+    observer scoped to the view's own window, and not off an isolated `deinit` or the window
+    delegate: the delegate slot already holds `CloseConfirmationDelegate`, installed a layer up
+    where the window's managers are out of reach. The observation holds the closure rather than the
+    view, so the retirement still runs once the close has released the view hierarchy. Retirement is
+    permanent per surface id, which costs a reopened project nothing: its surfaces are new ones with
+    new ids. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
     feature, forwarder and socket included, under a temp root; every call site outside the tests
     takes the default.
     **The dot is `waiting > working > idle`** over every surface carrying the worktree id, where
