@@ -12,7 +12,7 @@ final class AgentHookIdentityTests: XCTestCase {
     private func preamble(_ pairs: [(key: String, value: String)]) -> String {
         let values = Dictionary(uniqueKeysWithValues: pairs.map { ($0.key, $0.value) })
         let surfaceId = values[AgentHookIdentity.surfaceIdKey] ?? ""
-        let owner = values[AgentHookIdentity.worktreeIdKey] ?? ""
+        let owner = values[AgentHookIdentity.ownerKey] ?? ""
         return "\(surfaceId)\n\(owner)\n"
     }
 
@@ -24,10 +24,7 @@ final class AgentHookIdentityTests: XCTestCase {
         let surfaceId = UUID()
         let worktreePath = "/Users/x/clearway/.worktrees/feature"
 
-        let pairs = AgentHookIdentity.environment(
-            surfaceId: surfaceId,
-            worktreeId: AgentActivityOwner.worktree(worktreePath).rawValue
-        )
+        let pairs = AgentHookIdentity.environment(surfaceId: surfaceId, owner: .worktree(worktreePath))
         let envelope = AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8))
 
         XCTAssertEqual(envelope?.surfaceId, surfaceId.uuidString)
@@ -35,30 +32,38 @@ final class AgentHookIdentityTests: XCTestCase {
         XCTAssertEqual(envelope?.event.hookEventName, "PreToolUse")
     }
 
+    /// The task owner takes the same route: a task terminal's id has to survive the `printf` and
+    /// come back as a `UUID`, or an agent planning a task lights nothing.
+    func testATaskOwnerRoundTripsThroughTheForwardersPreamble() {
+        let taskId = UUID()
+
+        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), owner: .task(taskId))
+        let envelope = AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8))
+
+        XCTAssertEqual(envelope?.owner, .task(taskId))
+    }
+
     /// A worktree path carrying spaces is the case the preamble exists for: the values are never
     /// quoted or escaped on the way through, because a line break is the only delimiter.
     func testAWorktreePathWithSpacesSurvivesIntact() {
         let worktreePath = "/Users/x/my repo/.worktrees/a b"
 
-        let pairs = AgentHookIdentity.environment(
-            surfaceId: UUID(),
-            worktreeId: AgentActivityOwner.worktree(worktreePath).rawValue
-        )
+        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), owner: .worktree(worktreePath))
         let envelope = AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8))
 
         XCTAssertEqual(envelope?.owner, .worktree(worktreePath))
     }
 
-    // MARK: - The surfaces that carry no worktree
+    // MARK: - The surfaces that carry no owner
 
-    /// The hook sheet and the debug terminal pass no worktree id, so the forwarder's second guard
+    /// The hook sheet and the debug terminal pass no owner, so the forwarder's second guard
     /// fires and nothing is ever sent. The parser refuses the payload anyway, which is what makes
     /// the guard a saved round trip rather than the only thing standing between those surfaces and
     /// a lit dot.
-    func testASurfaceWithNoWorktreeSendsNothingTheParserWouldAccept() {
-        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), worktreeId: nil)
+    func testASurfaceWithNoOwnerSendsNothingTheParserWouldAccept() {
+        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), owner: nil)
 
-        XCTAssertNil(pairs.first(where: { $0.key == AgentHookIdentity.worktreeIdKey }))
+        XCTAssertNil(pairs.first(where: { $0.key == AgentHookIdentity.ownerKey }))
         XCTAssertNil(AgentHookEnvelope.parse(Data("\(preamble(pairs))\(body)".utf8)))
     }
 
@@ -71,24 +76,28 @@ final class AgentHookIdentityTests: XCTestCase {
     @MainActor
     func testTheSurfaceProviderIsWiredAtLaunch() {
         let surfaceId = UUID()
-        let owner = AgentActivityOwner.worktree("/Users/x/clearway").rawValue
+        let owner = AgentActivityOwner.worktree("/Users/x/clearway")
 
-        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, owner)
+        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, owner.rawValue)
 
         XCTAssertEqual(
             wired.map(\.key),
-            AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: owner).map(\.key)
+            AgentHookIdentity.environment(surfaceId: surfaceId, owner: owner).map(\.key)
         )
         XCTAssertEqual(
             wired.first(where: { $0.key == AgentHookIdentity.surfaceIdKey })?.value,
             surfaceId.uuidString
+        )
+        XCTAssertEqual(
+            wired.first(where: { $0.key == AgentHookIdentity.ownerKey })?.value,
+            owner.rawValue
         )
     }
 
     // MARK: - The socket
 
     func testEverySurfaceIsToldWhereToSend() {
-        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), worktreeId: nil)
+        let pairs = AgentHookIdentity.environment(surfaceId: UUID(), owner: nil)
 
         XCTAssertEqual(
             pairs.first(where: { $0.key == AgentHookIdentity.socketKey })?.value,

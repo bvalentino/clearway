@@ -159,7 +159,12 @@ struct ClearwayApp: App {
         // whole app, so the surface identity provider and the retirement callback are wired beside
         // the line above rather than per window. The monitor is captured weakly — a static that
         // held it strongly would outlive every window and keep the socket bound through teardown.
-        Ghostty.SurfaceView.agentEnvironment = AgentHookIdentity.environment
+        Ghostty.SurfaceView.agentEnvironment = { surfaceId, owner in
+            AgentHookIdentity.environment(
+                surfaceId: surfaceId,
+                owner: owner.flatMap(AgentActivityOwner.init(rawValue:))
+            )
+        }
         let agentActivity = AgentActivityMonitor()
         TerminalManager.retireSurface = { [weak agentActivity] surfaceId in
             agentActivity?.retire(surfaceId: surfaceId)

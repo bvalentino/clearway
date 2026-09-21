@@ -560,3 +560,48 @@ surface raising a worktree key is exactly the dot on main this change exists to 
 
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 793 tests, 0 failures. `git status --porcelain` lists
 only the eight files above plus this plan; no untracked files, `default.profraw` included.
+
+### T3: Rename the env var to CLEARWAY_ACTIVITY_OWNER and give environment the owner type
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookScript.swift` | `worktreeIdKey` is now `ownerKey = "CLEARWAY_ACTIVITY_OWNER"`; `environment(surfaceId:owner:)` takes `AgentActivityOwner?` and stamps `owner.rawValue`, omitting the pair when nil. The forwarder's second guard and its `printf` name the new variable; the script is otherwise byte-identical — three guards, one `nc` round trip, `exit 0`. The doc comment reads "a surface with no owner". |
+| `Sources/App/ClearwayApp.swift` | The provider is a closure that decodes the opaque string: `owner.flatMap(AgentActivityOwner.init(rawValue:))`. A string that does not decode yields no pair, the same outcome as no owner. |
+| `Tests/AgentHookIdentityTests.swift` | `preamble` reads `AgentHookIdentity.ownerKey`; the four `environment` calls take `owner:` with a typed owner. `testASurfaceWithNoWorktreeSendsNothingTheParserWouldAccept` is now `…NoOwner…`, and its MARK with it. New `testATaskOwnerRoundTripsThroughTheForwardersPreamble` takes `.task(UUID())` from `environment` through the `printf` framing to `AgentHookEnvelope.parse`. `testTheSurfaceProviderIsWiredAtLaunch` passes the raw value to the provider and the owner itself to `environment`. |
+| `Tests/AgentHookSettingsTests.swift` | `testIdentityCarriesTheWorktreeOnlyWhenThereIsOne` is now `…TheOwner…`; it stamps through `owner:` and asserts the literal `"CLEARWAY_ACTIVITY_OWNER": "worktree:/Users/x/my repo"` — the tag is part of what is stamped, so the assertion spells it. The forwarder's guard list takes the new name. |
+| `Tests/AgentActivityMonitorTests.swift` | The `fire` helper's key is `AgentHookIdentity.ownerKey`. |
+
+**Evidence.** The watched failure is the plan's High risk: the provider wiring decodes a string T2's
+producers encoded, and a mismatch silently omits the pair and ships a dead feature. With the decode
+dropped — `owner: nil` in place of the `flatMap` — only `AgentHookIdentityTests` notices, and both
+its assertions fire:
+
+```
+✖ testTheSurfaceProviderIsWiredAtLaunch, XCTAssertEqual failed:
+  ("["CLEARWAY_SURFACE_ID", "CLEARWAY_HOOK_SOCKET"]")
+  is not equal to ("["CLEARWAY_SURFACE_ID", "CLEARWAY_ACTIVITY_OWNER", "CLEARWAY_HOOK_SOCKET"]")
+✖ testTheSurfaceProviderIsWiredAtLaunch, XCTAssertEqual failed:
+  ("nil") is not equal to ("Optional("worktree:/Users/x/clearway")")
+Executed 6 tests, with 2 failures (0 unexpected)
+```
+
+Every other suite stayed green in that run, `AgentActivityMonitorTests` included — it builds the
+forwarder's environment itself rather than through the provider, so this one test is the whole of
+what stands between a wiring mistake and a feature that lights nothing. Restoring the `flatMap`
+turns it green.
+
+**Criterion 1.** `grep -rn "CLEARWAY_WORKTREE_ID\|worktreeIdKey" Sources/ Tests/` returns nothing
+(exit 1). The `worktreeId` identifiers still in `Sources/App` are worktree ids in the sidebar, the
+tab strip and `TerminalManager`'s pane keys — unrelated to the hook pipeline and out of scope.
+
+**Deviations.**
+
+- `testTheSurfaceProviderIsWiredAtLaunch` gained a third assertion comparing the provider's stamped
+  owner **value** against `owner.rawValue`, beyond the key-list comparison the plan specifies. The
+  key list alone catches a decode that yields nil; it does not catch one that yields a different
+  owner, which is the same silently-dead feature. It is one line at the site the risk table already
+  nominates.
+
+**Gate.** `./scripts/ci.sh` — passed, exit 0. 794 tests, 0 failures (793 after T2, plus the task
+round trip). `git status --porcelain` lists only the five files above plus this plan; no untracked
+files, no `default.profraw`.

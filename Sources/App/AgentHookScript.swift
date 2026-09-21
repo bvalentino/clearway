@@ -37,7 +37,7 @@ enum AgentHookScript {
     /// hook that exits non-zero can block or deny a tool call, and Clearway decides nothing.
     ///
     /// The first guard is what makes an agent Clearway did not launch a no-op; the second keeps a
-    /// surface with no worktree — the hook sheet, the debug terminal — from sending a preamble the
+    /// surface with no owner — the hook sheet, the debug terminal — from sending a preamble the
     /// server would refuse anyway. `/usr/bin/nc` is absolute so a shadowed `nc` on `PATH` cannot
     /// silently break forwarding, and **never** carries `-N`: macOS reads that as a probe count,
     /// not OpenBSD's shutdown flag. It already shuts the write side on stdin EOF, which is what
@@ -45,9 +45,9 @@ enum AgentHookScript {
     static let body = #"""
     #!/bin/sh
     [ -n "$CLEARWAY_SURFACE_ID" ] || exit 0
-    [ -n "$CLEARWAY_WORKTREE_ID" ] || exit 0
+    [ -n "$CLEARWAY_ACTIVITY_OWNER" ] || exit 0
     [ -S "$CLEARWAY_HOOK_SOCKET" ] || exit 0
-    { printf '%s\n%s\n' "$CLEARWAY_SURFACE_ID" "$CLEARWAY_WORKTREE_ID"; cat; } | /usr/bin/nc -U -w 1 "$CLEARWAY_HOOK_SOCKET" >/dev/null 2>&1
+    { printf '%s\n%s\n' "$CLEARWAY_SURFACE_ID" "$CLEARWAY_ACTIVITY_OWNER"; cat; } | /usr/bin/nc -U -w 1 "$CLEARWAY_HOOK_SOCKET" >/dev/null 2>&1
     exit 0
 
     """#
@@ -71,15 +71,15 @@ enum AgentHookScript {
 /// provider wired in `ClearwayApp.init`.
 enum AgentHookIdentity {
     static let surfaceIdKey = "CLEARWAY_SURFACE_ID"
-    static let worktreeIdKey = "CLEARWAY_WORKTREE_ID"
+    static let ownerKey = "CLEARWAY_ACTIVITY_OWNER"
     static let socketKey = "CLEARWAY_HOOK_SOCKET"
 
-    /// The worktree pair is omitted rather than blanked when there is none, so the forwarder's
+    /// The owner pair is omitted rather than blanked when there is none, so the forwarder's
     /// second guard fires and the surface stays invisible.
-    static func environment(surfaceId: UUID, worktreeId: String?) -> [(key: String, value: String)] {
+    static func environment(surfaceId: UUID, owner: AgentActivityOwner?) -> [(key: String, value: String)] {
         var pairs = [(key: surfaceIdKey, value: surfaceId.uuidString)]
-        if let worktreeId {
-            pairs.append((key: worktreeIdKey, value: worktreeId))
+        if let owner {
+            pairs.append((key: ownerKey, value: owner.rawValue))
         }
         pairs.append((key: socketKey, value: AgentHookPaths().socketPath))
         return pairs

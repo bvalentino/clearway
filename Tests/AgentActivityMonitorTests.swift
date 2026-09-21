@@ -448,7 +448,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: paths.scriptPath)
         process.environment = [
             AgentHookIdentity.surfaceIdKey: surfaceId,
-            AgentHookIdentity.worktreeIdKey: AgentActivityOwner.worktree(worktreePath).rawValue,
+            AgentHookIdentity.ownerKey: AgentActivityOwner.worktree(worktreePath).rawValue,
             AgentHookIdentity.socketKey: paths.socketPath,
         ]
         let input = Pipe()
