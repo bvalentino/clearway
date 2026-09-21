@@ -492,8 +492,15 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     no header owns an icon-to-title gap of its own. **A subagent's in-flight tool is not recorded**: it had one reader, the second
     line of that row, so it went with it rather than staying as state nothing reads. `tool_name`
     still lands on `leadToolName`, which the tab chip renders, and the rule that keeps the two apart
-    is now the whole of `startTool`/`finishTool` — a subagent's tool traffic names its row and
-    touches the lead's label never.
+    is the whole of `startTool`/`finishTool` — a subagent's tool traffic names its row and touches
+    the lead's label never. **It does not touch the lead's `phase` either**, which is why those two
+    methods carry the phase rather than the `apply` switch setting it first: `effectivePhase`
+    already reads a non-empty roster as working, so a phase written from a subagent's event says
+    nothing the roster was not already saying and outlives the row that justified it. A background
+    subagent runs on past the lead's `Stop`, so its `PreToolUse` pinned an idle lead at working and
+    its `SubagentStop` then took the roster away and left the dot lit with nothing running and no
+    event left to clear it — the stale dot this whole change exists to retire. The same write took
+    the lead off a `PermissionRequest`, which is the one state that needs the user.
     **Nothing in the pipeline has a clock.** No timer, no expiry, no mtime heuristic: a surface
     leaves a state only because an event said so. A `SIGKILL`ed session therefore pins a dot until
     its next `SessionStart`, which is accepted — the expiring heuristic this replaced guessed wrong
@@ -512,8 +519,11 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
     **One owner**: a `@StateObject` on `ClearwayApp`, injected on the project `WindowGroup` only, so
     a standalone Task or Prompt window reaching for it would fault. Surface retirement is
     `TerminalManager.retireSurface`, the same process-scoped static provider shape as
-    `claimsShortcut`, reported from every door that drops a surface — never reconciled against a list
-    of live ones. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
+    `claimsShortcut`, reported from every door that drops a surface **and every door that learns its
+    child is gone** — never reconciled against a list of live ones. `replaceSurface` reports a dead
+    main tab before it branches on the exit code, not inside the clean-exit arm: a tab kept so the
+    user can read its crash output holds a surface no further hook can name, and leaving it counted
+    pinned its worktree's dot for the rest of the session. `AgentHookPaths(home:)` and `install(home:)` exist so the suite can drive the whole
     feature, forwarder and socket included, under a temp root; every call site outside the tests
     takes the default.
     **The dot is `waiting > working > idle`** over every surface carrying the worktree id, where

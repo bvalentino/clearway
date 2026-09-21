@@ -73,6 +73,20 @@ final class AgentActivityStoreTests: XCTestCase {
         XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
     }
 
+    /// The phase is the lead's alone, and a subagent's tool traffic must not take it off a
+    /// permission prompt — the one state that needs the user, and the one a background subagent
+    /// running beside the lead would otherwise clear within a second of it appearing.
+    func testASubagentsToolTrafficLeavesTheLeadWaiting() {
+        apply("PermissionRequest", tool: "Bash")
+        applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
+
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .waiting)
+
+        apply("PostToolUse", tool: "Bash", agentId: "a42b06983b46906f7")
+
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .waiting)
+    }
+
     // MARK: - The subagent roster
 
     func testSubagentStartAddsARowAndSubagentStopRemovesIt() {
@@ -234,6 +248,23 @@ final class AgentActivityStoreTests: XCTestCase {
         applyRaw(stop(running: []))
 
         XCTAssertTrue((store.worktreeSubagents[worktreeOne] ?? []).isEmpty)
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
+    }
+
+    /// The discriminating case for the phase being the lead's alone. A background subagent outlives
+    /// the lead's `Stop`, so its tool traffic arrives while the lead is idle; a phase written from
+    /// that traffic outlives the row that justified it, and the `SubagentStop` that takes the row
+    /// away then leaves the worktree lit with nothing running and no event left to clear it —
+    /// `Stop` has already been and gone, and nothing in the pipeline has a clock.
+    func testABackgroundSubagentsToolTrafficDoesNotOutliveItsRow() {
+        applyRaw(subagentStart(agentId: "a42b06983b46906f7"))
+        applyRaw(stop(running: [("a42b06983b46906f7", "Count Swift files slowly")]))
+        applyRaw(subagentPreToolUse(agentId: "a42b06983b46906f7"))
+
+        XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .working)
+
+        apply("SubagentStop", agentId: "a42b06983b46906f7")
+
         XCTAssertEqual((store.worktreePhases[worktreeOne] ?? .idle), .idle)
     }
 

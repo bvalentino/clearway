@@ -28,12 +28,23 @@ struct AgentSurfaceState {
         subagents.isEmpty ? phase : Swift.max(phase, .working)
     }
 
-    /// The tool is the lead's only when the event names no subagent; a subagent's own tool traffic
-    /// must never touch the lead's label, which is the one thing a tab chip reads. It still upserts
-    /// the row, because a `PreToolUse` whose `SubagentStart` was missed names a real subagent, and
-    /// every event carrying an `agent_id` carries its `agent_type` beside it.
-    fileprivate mutating func startTool(_ toolName: String?, agentId: String?, agentType: String?) {
+    /// The phase and the tool are both the lead's, and only the lead's: a subagent's own tool
+    /// traffic must never touch the label a tab chip reads, and it must not write the phase either.
+    /// `effectivePhase` already lifts the surface to working for as long as that subagent holds a
+    /// row, so a write here would outlive the row that justified it — a background subagent runs on
+    /// past the lead's `Stop`, so its `PreToolUse` would pin an idle lead at working and its
+    /// `SubagentStop` would then take the roster away and leave the dot lit with nothing running
+    /// and no event left to clear it. It still upserts the row, because a `PreToolUse` whose
+    /// `SubagentStart` was missed names a real subagent, and every event carrying an `agent_id`
+    /// carries its `agent_type` beside it.
+    fileprivate mutating func startTool(
+        _ toolName: String?,
+        agentId: String?,
+        agentType: String?,
+        phase newPhase: AgentPhase
+    ) {
         guard let agentId else {
+            phase = newPhase
             leadToolName = toolName
             return
         }
@@ -65,11 +76,13 @@ struct AgentSurfaceState {
         }
     }
 
-    /// Clears the lead's tool and only the lead's: a subagent finishing must not blank the label
-    /// while the lead is still running. It creates nothing, so a `PostToolUse` for a subagent
-    /// already gone leaves no empty row behind.
+    /// Returns the lead to working and clears its tool, and only the lead's: a subagent finishing
+    /// must move neither while the lead is still running — nor while it is waiting on a permission
+    /// prompt, which is the one state that needs the user. It creates nothing, so a `PostToolUse`
+    /// for a subagent already gone leaves no empty row behind.
     fileprivate mutating func finishTool(agentId: String?) {
         guard agentId == nil else { return }
+        phase = .working
         leadToolName = nil
     }
 }
@@ -99,17 +112,24 @@ struct AgentActivityStore {
             }
         case "PreToolUse":
             update(envelope) { state in
-                state.phase = .working
-                state.startTool(event.toolName, agentId: event.agentId, agentType: event.agentType)
+                state.startTool(
+                    event.toolName,
+                    agentId: event.agentId,
+                    agentType: event.agentType,
+                    phase: .working
+                )
             }
         case "PermissionRequest":
             update(envelope) { state in
-                state.phase = .waiting
-                state.startTool(event.toolName, agentId: event.agentId, agentType: event.agentType)
+                state.startTool(
+                    event.toolName,
+                    agentId: event.agentId,
+                    agentType: event.agentType,
+                    phase: .waiting
+                )
             }
         case "PostToolUse":
             update(envelope) { state in
-                state.phase = .working
                 state.finishTool(agentId: event.agentId)
             }
         case "SubagentStart":
