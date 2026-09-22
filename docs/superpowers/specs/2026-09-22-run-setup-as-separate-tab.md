@@ -29,6 +29,7 @@ following only "Open secondary terminal on start".
 | 12 | `runHookInSecondary` and `revealSecondaryForHook` are deleted along with the test that pins them. Nothing else calls them. | Operator (panel obeys the setting only) |
 | 13 | Edge case, accepted: if a saved `.agent` first tab refuses to launch (prompt-file write failure, `startAgentTab`'s `.argv` refusal), no first tab lands and the Setup hook stays pending. It then runs as tab 2 when the user next opens a tab in that worktree. If the pane is torn down first, `cleanupState` drops it. | Mine. This keeps "Setup is never tab 1" without adding a special failure path. |
 | 14 | Before remove, the create sheet's "Run agent command after create" picker, hook storage and interpolation, ⌘T / ⌥⌘T / `+`, and task terminals are all unchanged. | Operator |
+| 15 | A failed After create hook surfaces only as the red exit banner inside the background Setup tab. No chip mark, no activation. | Operator (confirmed 2026-09-22). Revisit with a Setup-chip failure mark only if missed failures prove costly. |
 
 ## Assumptions (verified)
 
