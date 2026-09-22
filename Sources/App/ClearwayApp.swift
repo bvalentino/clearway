@@ -236,6 +236,14 @@ struct ClearwayApp: App {
                     Label("Show Frontmatter", systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             }
+            CommandMenu("Worktree") {
+                RunPrimaryMenuItem()
+                RunDropdownMenuItem()
+                RunCommandsSubmenu()
+                OpenInPrimaryMenuItem()
+                OpenInDropdownMenuItem()
+                OpenInAppsSubmenu()
+            }
         }
 
         WindowGroup(for: WorkTaskIdentifier.self) { $identifier in

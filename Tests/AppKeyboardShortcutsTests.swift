@@ -121,6 +121,31 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertFalse(claims([.command, .option], "f"))
     }
 
+    // MARK: - The Worktree menu's Run and Open In
+
+    func testCommandRIsClaimed() {
+        XCTAssertTrue(claims([.command], "r"), "Run the primary saved command")
+    }
+
+    func testCommandOIsClaimed() {
+        XCTAssertTrue(claims([.command], "o"), "Open in the primary app")
+    }
+
+    func testCommandOptionRIsClaimed() {
+        XCTAssertTrue(claims([.command, .option], "r"), "Run…, which pops the toolbar Run dropdown")
+    }
+
+    func testCommandOptionOIsClaimed() {
+        XCTAssertTrue(claims([.command, .option], "o"), "Open in…, which pops the toolbar Open In dropdown")
+    }
+
+    func testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed() {
+        XCTAssertFalse(claims([.command, .control], "r"), "Cmd+Ctrl+R is declared nowhere")
+        XCTAssertFalse(claims([.command, .shift], "R"), "Cmd+Shift+R is declared nowhere")
+        XCTAssertFalse(claims([.command, .control], "o"), "Cmd+Ctrl+O is declared nowhere")
+        XCTAssertFalse(claims([.command, .shift], "O"), "Cmd+Shift+O is declared nowhere")
+    }
+
     // MARK: - Retired shortcuts
 
     /// Cmd+Ctrl+3 was the aside's shortcut before Cmd+Option+B replaced it. Cmd+Ctrl+2 was the

@@ -16,7 +16,9 @@ struct RunCommandMenu: View {
 
     let worktree: Worktree
 
-    @State private var showCommandEditor = false
+    /// Owned by `ContentView` so the Worktree menu's "Add Command…" can raise this sheet without a
+    /// second route into the view — that row sets the same flag the dropdown's own door sets.
+    @Binding var showCommandEditor: Bool
 
     var body: some View {
         menu
@@ -25,6 +27,17 @@ struct RunCommandMenu: View {
             .sheet(isPresented: $showCommandEditor) {
                 CommandEditorSheet(command: nil)
             }
+    }
+
+    /// `WorktreeRunActions.runner` is the one implementation of running a saved command, shared
+    /// with the menu bar's Run rows.
+    private var run: (SavedCommand) -> Void {
+        WorktreeRunActions.runner(
+            worktree: worktree,
+            savedCommandManager: savedCommandManager,
+            terminalManager: terminalManager,
+            ghosttyApp: ghosttyApp
+        )
     }
 
     /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice and
@@ -74,11 +87,5 @@ struct RunCommandMenu: View {
             Divider()
         }
         Button("Add Command…") { showCommandEditor = true }
-    }
-
-    private func run(_ command: SavedCommand) {
-        savedCommandManager.recordLastRun(command)
-        guard let app = ghosttyApp.app else { return }
-        terminalManager.run(command, in: worktree, app: app)
     }
 }

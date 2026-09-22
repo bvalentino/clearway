@@ -62,6 +62,10 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskManager: WorkTaskManager
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var groupManager: WorktreeGroupManager
+    @EnvironmentObject private var savedCommandManager: SavedCommandManager
+    /// Raised by the Run dropdown's "Add Command…" and by the Worktree menu's, so the one
+    /// `CommandEditorSheet` presenter in this window serves both.
+    @State private var showCommandEditor = false
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var sidebarSelection: DetailSelection? = .tasks
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
@@ -156,6 +160,40 @@ struct ContentView: View {
         }
     }
 
+    /// Run and Open In, exposed via `focusedSceneValue` so the Worktree menu's rows reach this
+    /// window's state and grey out where the action doesn't apply. Each gate mirrors its toolbar
+    /// counterpart: Run needs a `ghostty_app_t`, Open In a path and an app to open — and only a
+    /// non-empty list resolves one, which is the toolbar item's own condition.
+    private var worktreeRunActions: WorktreeRunActions? {
+        guard let worktree = selectedWorktree, ghosttyApp.app != nil else { return nil }
+        return WorktreeRunActions(
+            primary: savedCommandManager.primaryCommand,
+            commands: savedCommandManager.commands,
+            run: WorktreeRunActions.runner(
+                worktree: worktree,
+                savedCommandManager: savedCommandManager,
+                terminalManager: terminalManager,
+                ghosttyApp: ghosttyApp
+            ),
+            popRunMenu: { [savedCommandManager] in
+                ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle)
+            },
+            addCommand: { showCommandEditor = true }
+        )
+    }
+
+    private var worktreeOpenInActions: WorktreeOpenInActions? {
+        guard let path = currentWorktree?.path, let primary = settings.primaryOpenInApp else { return nil }
+        return WorktreeOpenInActions(
+            primary: primary,
+            apps: settings.openInApps,
+            open: WorktreeOpenInActions.opener(path: path, recordingUseIn: settings),
+            popOpenInMenu: { [settings] in
+                ToolbarSplitButtonMenu.popUp(labelled: settings.openInButtonTitle)
+            }
+        )
+    }
+
     private var sidebarSelectionBinding: Binding<DetailSelection?> {
         Binding(
             get: { sidebarSelection },
@@ -196,7 +234,7 @@ struct ContentView: View {
                 .toolbar {
                     if let runWorktree = selectedWorktree {
                         ToolbarItem(placement: .primaryAction) {
-                            RunCommandMenu(worktree: runWorktree)
+                            RunCommandMenu(worktree: runWorktree, showCommandEditor: $showCommandEditor)
                         }
                         ToolbarGroupBreak()
                         if !settings.openInApps.isEmpty, let path = currentWorktree?.path {
@@ -265,6 +303,8 @@ struct ContentView: View {
         .focusedSceneValue(\.sidebarToggle, sidebarPanel)
         .focusedSceneValue(\.bottomPanelToggle, bottomPanel)
         .focusedSceneValue(\.asideToggle, asidePanel)
+        .focusedSceneValue(\.worktreeRunActions, worktreeRunActions)
+        .focusedSceneValue(\.worktreeOpenInActions, worktreeOpenInActions)
         .navigationTitle(navigationTitle)
         .onChange(of: detailSelection) { [old = detailSelection] new in
             previousDetailSelection = old
@@ -888,7 +928,11 @@ struct ContentView: View {
                         if asideVisible {
                             Divider()
                             VStack(spacing: 0) {
-                                sidePanelTabStrip
+                                SidePanelTabStrip(
+                                    selection: $sidePanelTab,
+                                    tabs: availableSidePanelTabs,
+                                    effectiveTab: effectiveSidePanelTab
+                                )
 
                                 switch effectiveSidePanelTab {
                                 case .task:
@@ -948,64 +992,5 @@ struct ContentView: View {
 
     @ViewBuilder private func detailPlaceholder(_ text: String) -> some View {
         Text(text).font(.title3).foregroundStyle(.tertiary).frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Side Panel Tab Strip
-
-    @ViewBuilder
-    private var sidePanelTabStrip: some View {
-        if #available(macOS 26.0, *) {
-            HStack(spacing: 2) {
-                ForEach(availableSidePanelTabs, id: \.self) { tab in
-                    sidePanelTabButton(for: tab)
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Side panel tab")
-            .padding(4)
-            .glassEffect(in: Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-        } else {
-            Picker(selection: $sidePanelTab) {
-                ForEach(availableSidePanelTabs, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            } label: {
-                Text("Side panel tab")
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-        }
-    }
-
-    @available(macOS 26.0, *)
-    @ViewBuilder
-    private func sidePanelTabButton(for tab: SidePanelTab) -> some View {
-        let isSelected = effectiveSidePanelTab == tab
-        Button {
-            sidePanelTab = tab
-        } label: {
-            Text(tab.rawValue)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
-                .background {
-                    if isSelected {
-                        Capsule().fill(Color.accentColor)
-                    }
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 }

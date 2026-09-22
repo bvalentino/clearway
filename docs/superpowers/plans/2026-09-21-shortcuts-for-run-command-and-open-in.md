@@ -1,0 +1,1036 @@
+# Plan: Shortcuts for Run command and Open In
+
+Breaks down `docs/superpowers/specs/2026-09-21-shortcuts-for-run-command-and-open-in.md`.
+
+**Date:** 2026-09-21
+**Base:** 4e93fceeb10f1dc984f3d33cdaec50223e95ac59 (Spec: shortcuts for Run command and Open In)
+
+## Architecture decisions carried from the spec
+
+- Each key is declared **once**, on its Worktree-menu item. No hidden `.keyboardShortcut` button
+  anywhere, and no `.keyboardShortcut` on the toolbar's Run or Open In buttons — a second
+  declaration lands in a layer that silently wins (D1, and the `PanelCommands` rule in
+  `Sources/App/CLAUDE.md`).
+- ⌥⌘R pops the **toolbar** Run split button's live `NSMenu` through AppKit. There is no fallback
+  behaviour: if the control is not found, the action does nothing (D2, D3, and the Risks section).
+- The pop is: recursive search of `NSApp.keyWindow`'s content view tree for an
+  `NSSegmentedControl` whose `labelForSegment(0)` equals `SavedCommandManager.runButtonTitle`, then
+  `menuForSegment(1)`, then `popUpMenuPositioningItem(nil, at: <control's bottom-left in its own
+  coordinates>, in: control)`. The label match is what rules out `CommandsView`'s
+  `.pickerStyle(.segmented)` filter and the Open In split button (D3, A6, A7).
+- The Worktree menu has **five** rows, in order: "Run \<name>" (⌘R), "Run…" (⌥⌘R), a Run submenu,
+  "Open in \<label>" (⌘O), an "Open in" submenu. The fifth row exists because a SwiftUI `Menu` used
+  as a submenu row has no action closure for AppKit's key-equivalent dispatch to fire (D4, A5).
+  The operator accepted this row on 2026-09-21.
+- ⌘R, ⌥⌘R and ⌘O are claimed **unconditionally** in `AppKeyboardShortcuts.claims`, like ⌘T. The
+  table is pure and holds no window state; a terminal surface only has focus on the worktree
+  destination, where all three are live (D5).
+- The menu items reach per-window state through **two** focused **scene** values published by
+  `ContentView`: `WorktreeRunActions?` and `WorktreeOpenInActions?`. Each carries its list, its
+  primary, its title and its closures. `nil` greys the items out. Two values, not one, because
+  they gate on different preconditions (D6, D7).
+- `WorktreeRunActions` is nil when no worktree is selected or `ghosttyApp.app == nil`.
+  `WorktreeOpenInActions` is nil when there is no selected worktree path or
+  `settings.openInApps.isEmpty` (D8).
+- With no saved commands, "Run \<name>" renders "Run" and is disabled; the Run submenu and "Run…"
+  stay enabled so "Add Command…" is reachable. With an empty app list, "Open in \<label>" **and**
+  the Open in submenu are both disabled (D9, D10).
+- The submenu's "Add Command…" posts a new `Notification.Name.clearwayAddCommand` with the focused
+  window's `SavedCommandManager` as `object`; `RunCommandMenu` observes it and sets its existing
+  `showCommandEditor`. One presenter of `CommandEditorSheet`, not two (D11, A10).
+- **No duplicated action bodies.** Run's record-then-launch and Open In's launch-then-alert have
+  exactly one implementation each, moved out of the two menu views; the toolbar views are handed
+  the action they call. `OpenInMenu.presentFailure` must not be written a second time (D12).
+- One `CommandMenu("Worktree")` in `ClearwayApp.commands`; SwiftUI places it after View (D13).
+- `ContentView.swift` is at 1011 lines against a 1000-line `file_length` **error**, carried by the
+  file-wide disable at line 1. `sidePanelTabStrip` + `sidePanelTabButton` are extracted into
+  `Sources/App/SidePanelTabStrip.swift` **before** anything is added (D14, A12).
+- The `swiftlint:disable file_length` at `ContentView.swift:1` and the
+  `swiftlint:disable:next type_body_length` at line 54 both **stay**. The file lands near 980
+  lines, over the 700-line warning threshold, and the project forbids new warnings (D15).
+- ⌥⌘O is not claimed and nothing declares it (D16).
+- Out of scope: moving Remove Worktree or any other toolbar action into the Worktree menu;
+  changing what Run or Open In do or how a primary is chosen; per-command or per-app shortcuts; the
+  sidebar's right-click Open In submenu; the tab strip `+` menu and the File menu; retiring
+  `ContentView`'s SwiftLint disables.
+
+## Regression check
+
+Every task below verifies with the project's one command, from `CLAUDE.md`'s `## Pipeline` section:
+
+```
+./scripts/ci.sh
+```
+
+It regenerates the Xcode project — without which new Swift files are invisible to the build —
+lints, builds and runs the suite. Do not hand-write an `xcodebuild` line.
+
+Criteria 1–5, 8 and 11 of the spec are operator hand-checks; no task claims them.
+
+## Dependency graph
+
+```
+T1 (extract SidePanelTabStrip — makes room in ContentView)
+      │
+      └── T2 (action structs + focused-value keys; toolbar views take them)
+                │
+                ├── T3 (ToolbarSplitButtonMenu: the AppKit reach for ⌥⌘R)
+                │         │
+                ├── T4 (.clearwayAddCommand → RunCommandMenu's sheet)
+                │         │
+                │         │
+                └────────┴── T5 (the Worktree menu's five items)
+                                   │
+                                   └── T6 (claim ⌘R / ⌥⌘R / ⌘O + pin the table)
+                                             │
+                                             └── T7 (rewrite the CLAUDE.md notes this falsifies)
+```
+
+T1 first: `ContentView.swift` cannot take another line until the strip moves out. T2 is the
+foundation every menu item stands on and changes no behaviour. T3 and T4 are independent of each
+other and both feed T5. T6 lands **after** T5 so no key is claimed from the shell before a handler
+exists for it. T7 describes the shape T5 and T6 create.
+
+### T1: Extract the side panel tab strip out of ContentView
+
+**Files:** `Sources/App/ContentView.swift`, `Sources/App/SidePanelTabStrip.swift` (new)
+
+**What it does.** Moves `sidePanelTabStrip` and `sidePanelTabButton(for:)`
+(`ContentView.swift:954-1010`) into a new `struct SidePanelTabStrip: View` in its own file. The
+strip's whole input is three things ContentView already computes:
+
+- `selection: Binding<SidePanelTab>` — bound to ContentView's `@State sidePanelTab`
+- `tabs: [SidePanelTab]` — ContentView's `availableSidePanelTabs`
+- `effectiveTab: SidePanelTab` — ContentView's `effectiveSidePanelTab`, which clamps the stored tab
+  to the available set and must stay in ContentView, since it is read by the `switch` at line 893
+
+The call site at `ContentView.swift:891` becomes
+`SidePanelTabStrip(selection: $sidePanelTab, tabs: availableSidePanelTabs, effectiveTab: effectiveSidePanelTab)`.
+
+Both `@available(macOS 26.0, *)` branches, the `glassEffect` capsule, the accessibility element and
+label, the pre-26 `.pickerStyle(.segmented)` fallback and its trailing `Divider()` move across
+verbatim. Nothing about the rendering changes.
+
+`ContentView.swift`'s two SwiftLint disables stay (D15). Do not add a doc comment restating the
+type name; the file is new but the project's comment rule still applies.
+
+**Acceptance criteria.**
+1. `Sources/App/SidePanelTabStrip.swift` exists and holds the strip and its per-tab button; neither
+   symbol remains in `ContentView.swift`.
+2. `wc -l Sources/App/ContentView.swift` is under 1000.
+3. `swiftlint lint --quiet` reports zero errors and no **new** warnings against the pre-change
+   baseline.
+4. The rendered strip is unchanged: same two availability branches, same modifiers, same
+   `Divider()` below the pre-26 picker.
+
+**Verification.** `./scripts/ci.sh` green. Criteria 1 and 2 read off `wc -l` and `grep -n
+"sidePanelTabStrip\|sidePanelTabButton" Sources/App/ContentView.swift` (the only hit must be the
+`SidePanelTabStrip(...)` call). Criterion 4 by diffing the moved bodies against
+`git show HEAD:Sources/App/ContentView.swift | sed -n '954,1010p'`.
+
+### T2: Give Run and Open In one shared action implementation each, and publish them
+
+**Files:** `Sources/App/WorktreeCommands.swift` (new), `Sources/App/RunCommandMenu.swift`,
+`Sources/App/OpenInMenu.swift`, `Sources/App/ContentView.swift`
+
+**Depends on:** T1.
+
+**What it does.** Creates the two action structs and the two focused-value keys, and moves the two
+action bodies out of the menu views so the toolbar and the menu bar share one implementation each
+(D12). **This task adds no menu and changes no behaviour** — the toolbar must look and act exactly
+as it does at HEAD when it lands.
+
+In `Sources/App/WorktreeCommands.swift`:
+
+- `struct WorktreeRunActions` carrying what a menu row needs without reaching into the environment:
+  the primary command, the title (`SavedCommandManager.runButtonTitle`), the **full** saved-command
+  list in display order (not `menuCommands` — the menu bar's submenu lists every command, spec
+  criterion 6), and a `run: (SavedCommand) -> Void` closure. `popRunMenu` is added by T3.
+- `struct WorktreeOpenInActions` carrying the primary app, the title
+  (`SettingsManager.openInButtonTitle`), the **full** `openInApps` list in display order, and an
+  `open: (OpenInApp) -> Void` closure.
+- `WorktreeRunActionsKey` / `WorktreeOpenInActionsKey` conforming to `FocusedValueKey`, and the two
+  `FocusedValues` computed properties, in the shape of `Sources/App/PanelCommands.swift:9-36`.
+- The one implementation of each action body, so neither is written twice:
+  - Run: `savedCommandManager.recordLastRun(command)` **before** the `ghosttyApp.app` guard (the
+    recorded pick is the pick, not the successful launch — `RunCommandMenu.swift:79-83` and the
+    CLAUDE.md note), then `terminalManager.run(command, in: worktree, app: app)`.
+  - Open In: optionally `settings.recordOpenInUse(app)`, then
+    `await OpenInAppLauncher.launch(command:path:)`, then on `.failed` the `NSAlert` currently in
+    `OpenInMenu.presentFailure` (`OpenInMenu.swift:102-109`), verbatim including the
+    `OpenInAppLauncher.failureMessage(command:detail:)` body and the single OK button.
+
+In `Sources/App/RunCommandMenu.swift`: the view takes the run action rather than building it.
+`recordLastRun` and `terminalManager.run` must no longer appear in this file. Everything else
+stays: the two `Menu` declarations, `.id(savedCommandManager.menuCommands)`, the primary resolved
+**inside** the `primaryAction:` closure rather than captured by the branch's `if let`, the
+`.disabled(ghosttyApp.app == nil)`, and the `.sheet` hanging outside that `.disabled`.
+
+In `Sources/App/OpenInMenu.swift`: the toolbar variant (`remembersLastUsed == true`) takes the open
+action. The sidebar variant keeps its current call shape — a plain submenu over `settings.openInApps`
+whole, no `primaryAction:`, no recording — but routes its launch through the same shared
+implementation, so `NSAlert` is constructed in exactly one place in the tree. `.id(settings.menuOpenInApps)`
+stays on the toolbar variant.
+
+In `Sources/App/ContentView.swift`: add `@EnvironmentObject private var savedCommandManager:
+SavedCommandManager` (it is already in the environment — `ProjectWindow.swift:149`), build the two
+structs as computed properties returning `nil` per D8, hand them to the two toolbar items at lines
+197-208, and add two `.focusedSceneValue` lines beside the six at lines 103-108.
+
+**Acceptance criteria.**
+1. `grep -rn "NSAlert" Sources/App/OpenInMenu.swift Sources/App/WorktreeCommands.swift` shows the
+   Open In failure alert constructed exactly once across the whole tree.
+2. `grep -n "recordLastRun\|terminalManager.run" Sources/App/RunCommandMenu.swift` returns nothing.
+3. `ContentView` publishes `\.worktreeRunActions` and `\.worktreeOpenInActions` as focused **scene**
+   values; each is `nil` exactly per D8 (run: no selected worktree, or `ghosttyApp.app == nil`;
+   open in: no selected worktree path, or `settings.openInApps.isEmpty`).
+4. The toolbar is unchanged in behaviour: Run still shows the primary command's name, still runs it
+   on a click, still records it; Open In still shows `settings.openInButtonTitle`, still opens and
+   records; the sidebar's context submenu still lists every app and records nothing.
+5. No `.keyboardShortcut` is added anywhere in this task.
+
+**Verification.** `./scripts/ci.sh` green. Criteria 1, 2 and 5 by grep. Criterion 3 by reading
+`ContentView.body` and the two computed properties. Criterion 4 is behaviour a test cannot reach
+(both paths need a `ghostty_app_t` or `NSWorkspace`), so it is read off the diff: the moved bodies
+must be identical statement-for-statement to the ones at
+`git show HEAD:Sources/App/RunCommandMenu.swift` and `:Sources/App/OpenInMenu.swift`.
+
+### T3: The AppKit reach that pops the toolbar Run dropdown
+
+**Files:** `Sources/App/ToolbarSplitButtonMenu.swift` (new), `Sources/App/WorktreeCommands.swift`,
+`Sources/App/ContentView.swift`
+
+**Depends on:** T2.
+
+**What it does.** Adds the `@MainActor` helper that ⌥⌘R calls, adds
+`popRunMenu: () -> Void` to `WorktreeRunActions`, and fills it at `ContentView`'s construction site.
+
+```swift
+@MainActor
+enum ToolbarSplitButtonMenu {
+    static func popUp(labelled label: String) { … }
+}
+```
+
+- Start at `NSApp.keyWindow?.contentView` and walk `subviews` recursively, depth first.
+- Match the first `NSSegmentedControl` whose `labelForSegment(0) == label`
+  (`NSSegmentedControl.h:77`). The caller passes `SavedCommandManager.runButtonTitle`, which is the
+  primary command's name. That is what rules out `CommandsView`'s filter picker and the Open In
+  split button (D3).
+- Read `menuForSegment(1)` (`NSSegmentedControl.h:80`). If it is nil, return.
+- `menu.popUpMenuPositioningItem(nil, at: NSPoint(x: 0, y: control.bounds.maxY), in: control)`,
+  adjusted for the control's `isFlipped` so the menu hangs below the button rather than over it.
+  `NSMenu.h:74-78` documents that with a nil item the menu's top-left (or top-right in RTL) content
+  corner lands at the given location in the view's coordinates; it returns `false` when tracking was
+  cancelled, which is the Escape case and needs no handling.
+- **If no control matches, do nothing.** No fallback to another control, no fallback to a different
+  behaviour, no alert (D2 and the spec's Risks section).
+
+Concurrency: the helper is a plain `@MainActor` enum with plain Swift function types. It forms **no**
+`@convention(c)` and **no** `@convention(block)` closure and installs no `DispatchSource`, so the
+trap documented in `CLAUDE.md`'s Concurrency section does not apply and no `nonisolated static`
+factory is needed here.
+
+Then set `WorktreeRunActions.popRunMenu` at `ContentView`'s construction site to
+`{ ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle) }`.
+
+**Acceptance criteria.**
+1. `ToolbarSplitButtonMenu.popUp(labelled:)` exists, is `@MainActor`, searches the key window's view
+   tree recursively and matches on segment 0's label.
+2. Given no matching control, it returns having done nothing — no alert, no other control popped,
+   no `assertionFailure`.
+3. It reads `menuForSegment(1)` and pops it with `popUpMenuPositioningItem(_:at:in:)`; nothing else
+   in the tree calls either API.
+4. `WorktreeRunActions.popRunMenu` calls it with `savedCommandManager.runButtonTitle`.
+5. No `@convention(c)` or `@convention(block)` literal is introduced.
+
+**Verification.** `./scripts/ci.sh` green — this is compile-and-lint coverage only. The helper needs
+a live realized toolbar, so it is unreachable from XCTest for the same reason
+`AppKeyboardShortcutsTests` records for `performKeyEquivalent`; **write no test that fakes a view
+tree for it**. Criteria 1-5 are read off the source. Popping the real dropdown is the operator's
+hand-check (spec criterion 3).
+
+### T4: Open the command editor from the menu bar
+
+**Files:** `Sources/App/AppNotifications.swift`, `Sources/App/RunCommandMenu.swift`
+
+**Depends on:** T2.
+
+**What it does.** Adds `static let clearwayAddCommand = Notification.Name("clearway.addCommand")`
+beside `clearwayNewGroup` (`AppNotifications.swift:4`), and has `RunCommandMenu` observe it:
+
+```swift
+.onReceive(NotificationCenter.default.publisher(for: .clearwayAddCommand)) { note in
+    guard note.object as? SavedCommandManager === savedCommandManager else { return }
+    showCommandEditor = true
+}
+```
+
+The identity guard is the point of the `object` — without it every mounted `RunCommandMenu` in
+every open project window presents the sheet, which is the bug `NewGroupCommand` scopes around
+(`ClearwayApp.swift:411`, `SidebarView.swift:175`). Put the `.onReceive` on `RunCommandMenu.body`
+beside the existing `.sheet`, **outside** the `.disabled(ghosttyApp.app == nil)` so the editor's
+own controls never inherit a disabled environment.
+
+`RunCommandMenu`'s existing "Add Command…" button keeps setting `showCommandEditor` directly. The
+menu-bar row posting the notification is T5's work.
+
+**Acceptance criteria.**
+1. `.clearwayAddCommand` exists in `AppNotifications.swift`.
+2. `RunCommandMenu` sets `showCommandEditor` on receiving it, and only when the notification's
+   `object` is identically its own `savedCommandManager`.
+3. The `.onReceive` sits outside the `.disabled(…)`, beside the `.sheet`.
+4. Nothing else presents `CommandEditorSheet(command: nil)` as a result of this change —
+   `ContentView` gains no sheet.
+
+**Verification.** `./scripts/ci.sh` green. Criteria 1-4 by reading `RunCommandMenu.body` and
+`grep -rn "CommandEditorSheet" Sources/App/`.
+
+### T5: The Worktree menu
+
+**Files:** `Sources/App/WorktreeCommands.swift`, `Sources/App/ClearwayApp.swift`
+
+**Depends on:** T2, T3, T4.
+
+**What it does.** Adds the five menu-item views to `WorktreeCommands.swift` and one
+`CommandMenu("Worktree")` to `ClearwayApp.body`'s `.commands` block, after the
+`CommandGroup(replacing: .sidebar)` so SwiftUI places it after View (D13).
+
+Each item reads its focused value with `@FocusedValue`, the way `PanelToggleMenuItem` and
+`NewTabMenuItem` do, and is `.disabled` when that value is `nil`:
+
+| Row | Title | Key | Action | Disabled when |
+| --- | --- | --- | --- | --- |
+| 1 | `run?.title` (i.e. `runButtonTitle`, "Run" on an empty list) | ⌘R | `run.primary.map(run.run)` | `run == nil` **or** `run.primary == nil` |
+| 2 | "Run…" | ⌥⌘R | `run?.popRunMenu()` | `run == nil` |
+| 3 | "Run" submenu | none | see below | `run == nil` |
+| 4 | `openIn?.title` (i.e. `openInButtonTitle`) | ⌘O | `openIn.primary.map(openIn.open)` | `openIn == nil` |
+| 5 | "Open in" submenu | none | see below | `openIn == nil` |
+
+Row 3's submenu lists **every** saved command in display order — not `menuCommands`, which omits
+the primary; the menu bar has no label half, so the full list is what a reader expects — then a
+`Divider()`, then "Add Command…" which posts `.clearwayAddCommand` with the focused
+`SavedCommandManager` as `object`. Choosing a command calls `run.run(command)`, which records it as
+the primary, so rows 1 and the toolbar retitle (spec criterion 6, 8). The `Divider()` is
+conditional on a non-empty list, the way `RunCommandMenu.items` guards it — AppKit renders a menu
+whose only content is a separator as a stray line.
+
+Row 5's submenu lists every app in `settings.openInApps` in display order, a `Divider()`, then
+"Edit Apps…", which uses the same `SettingsLink` under `#available(macOS 14, *)` /
+`NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)` pair as
+`OpenInMenu.editAppsButton` (`OpenInMenu.swift:72-80`). Because row 5 is disabled on an empty app
+list (D10), that door is unreachable from here in that state — deliberate; Settings is reachable
+from the app menu.
+
+Because each struct is rebuilt every time `ContentView.body` re-evaluates, and `ContentView`
+observes both `SavedCommandManager` and `SettingsManager`, an add/remove/reorder/rename in either
+list reaches the menu with no relaunch and no `.id` key (spec criterion 9). The `.id` workaround
+applies only to a realized toolbar `NSSegmentedControl`; a `CommandMenu` is rebuilt by SwiftUI.
+
+**No `.keyboardShortcut` is added to `RunCommandMenu`, `OpenInMenu` or any toolbar item** (D1), and
+⌥⌘O is not declared (D16).
+
+**Acceptance criteria.**
+1. A "Worktree" menu exists in `ClearwayApp.commands` with exactly the five rows above, in that
+   order.
+2. ⌘R is on row 1, ⌥⌘R on row 2, ⌘O on row 4, and each appears in the tree exactly once
+   (`grep -rn 'keyboardShortcut("r"\|keyboardShortcut("o"' Sources/App/` returns three lines, all in
+   `WorktreeCommands.swift`).
+3. Rows 1, 2 and 3 are disabled when `worktreeRunActions == nil`; rows 4 and 5 when
+   `worktreeOpenInActions == nil`. Row 1 is additionally disabled on an empty command list while
+   rows 2 and 3 stay enabled (D9).
+4. Row 3's submenu lists every saved command, then a divider, then "Add Command…"; row 5's lists
+   every Open In app, then a divider, then "Edit Apps…".
+5. Row 3's "Add Command…" posts `.clearwayAddCommand` with the focused `SavedCommandManager` as
+   `object`.
+6. `ContentView` and the toolbar views declare no keyboard shortcut.
+
+**Verification.** `./scripts/ci.sh` green. Criteria 1-6 are read off `WorktreeCommands.swift`,
+`ClearwayApp.swift` and the greps named. Menu rendering, the grey-out states and the titles
+tracking the primary are the operator's hand-checks (spec criteria 1-5, 8, 10, 11) — `CommandMenu`
+and `@FocusedValue` need a running app and are unreachable from XCTest.
+
+### T6: Claim ⌘R, ⌥⌘R and ⌘O from focused terminal surfaces
+
+**Files:** `Sources/App/AppKeyboardShortcuts.swift`, `Tests/AppKeyboardShortcutsTests.swift`
+
+**Depends on:** T5.
+
+**What it does.** Adds the three letters to `claims` (`AppKeyboardShortcuts.swift:42-57`):
+
+- `case [.command]:` gains `|| letter == "r" || letter == "o"` — run primary command, open in
+  primary app.
+- `case [.command, .option]:` gains `|| letter == "r"` — pop the Run dropdown.
+
+Update the two existing trailing comments so each clause still names every key it claims.
+`[.command, .shift]` is **not** touched: ⇧⌘R is not claimed.
+
+In `Tests/AppKeyboardShortcutsTests.swift`, using the existing `claims(_:_:_:)` helper, add a
+section pinning both directions (spec criterion 12):
+
+- claimed: `claims([.command], "r")`, `claims([.command], "o")`,
+  `claims([.command, .option], "r")`
+- not claimed: `claims([.command, .option], "o")` (⌥⌘O — D16),
+  `claims([.command, .control], "r")` (⌃⌘R), `claims([.command, .shift], "r")` (⇧⌘R)
+
+Follow the file's existing naming (`testCommandJIsClaimed`,
+`testCommandJWithExtraModifiersIsNotClaimed`) and give each negative assertion a message naming why
+the combo is declined, as `testCommandShiftBracketsAreClaimed` does.
+
+**Acceptance criteria.**
+1. `claims` returns true for ⌘R, ⌘O and ⌥⌘R, and false for ⌥⌘O, ⌃⌘R and ⇧⌘R.
+2. The new tests fail against the pre-change `claims` — run them before editing
+   `AppKeyboardShortcuts.swift` and record the failure.
+3. The clause comments name every key their clause claims.
+4. No other clause of `claims` changes.
+
+**Verification.** `./scripts/ci.sh` green, which runs `AppKeyboardShortcutsTests`. Criterion 2 is
+the red step: write the tests first, run `./scripts/ci.sh`, watch the six assertions fail, then add
+the claims and re-run. Criterion 4 by diffing `AppKeyboardShortcuts.swift`.
+
+### T7: Rewrite the per-file notes this change falsifies
+
+**Files:** `Sources/App/CLAUDE.md`
+
+**Depends on:** T6.
+
+**What it does.** Three statements in `Sources/App/CLAUDE.md` become false with T5 and T6, and one
+new mechanism has no note at all.
+
+1. **`OpenInMenu` / `RunCommandMenu` entry, line 563** — "The menu claims **no** keyboard shortcut,
+   so `AppKeyboardShortcuts` has no entry for it." Now false for both. Replace with: the two actions
+   carry ⌘R and ⌘O, declared **only** on the Worktree menu's rows in `WorktreeCommands.swift`, never
+   on the toolbar buttons, and all three keys have `AppKeyboardShortcuts` entries.
+2. **`AppKeyboardShortcuts.swift` entry, lines 3-15** — the list of declaration sites (`ContentView`'s
+   hidden buttons and `NSEvent` monitor, `ClearwayApp`'s menu commands, the tab strip's `+` menu
+   rows) must gain `WorktreeCommands.swift`.
+3. **`PanelCommands.swift` entry, lines 16-22** — the "declared **only** on its menu item, a hidden
+   button would win" rule now governs three more keys. Say so, or generalise the rule out of the
+   `PanelCommands` entry so the Worktree menu is covered by name.
+4. **New note** for `ToolbarSplitButtonMenu.swift`: why ⌥⌘R reaches into AppKit at all (a SwiftUI
+   submenu row has no action closure for key-equivalent dispatch to fire — the no-body rule already
+   recorded in the Plan/sidebar submenu entry), how the control is found (segment-0 label equals
+   `runButtonTitle`, which is what distinguishes it from `CommandsView`'s filter picker and the
+   Open In split button), that it does nothing when no control matches, and that it is fragile
+   because it depends on SwiftUI continuing to realize a toolbar `Menu` with `primaryAction:` as an
+   `NSSegmentedControl` — accepted by the operator over a fallback behaviour.
+5. **New note** for the Worktree menu itself: the five rows, why there are five and not four, the
+   two focused scene values and what nils each, and `.clearwayAddCommand`'s identity guard.
+
+Write these into the existing entries rather than appending a new section; keep the file's voice.
+
+**Acceptance criteria.**
+1. `grep -n "claims \*\*no\*\* keyboard shortcut" Sources/App/CLAUDE.md` returns nothing.
+2. The `AppKeyboardShortcuts` entry names `WorktreeCommands.swift` as a declaration site.
+3. There is a note covering `ToolbarSplitButtonMenu.swift` and one covering the Worktree menu,
+   each stating what the code actually does at the end of T6.
+4. No statement in the file contradicts the tree — in particular, nothing still says Run or Open In
+   claim no key.
+
+**Verification.** `./scripts/ci.sh` green (SwiftLint does not read Markdown, but the gate must stay
+green through the commit). Criteria 1-4 by reading the file against the diff of T1-T6.
+
+## Operator hand-check
+
+The suite reaches none of the UI. After T7, ask the operator to confirm, in a project window with a
+worktree selected and at least one saved command and one Open In app:
+
+1. ⌘R runs the primary command in the worktree's main terminal and the Run button retitles.
+2. ⌘R does the same with focus inside a terminal surface; the shell never sees it.
+3. ⌥⌘R pops the toolbar Run dropdown; Escape closes it; a row runs that command.
+4. ⌘O opens the worktree in the primary app, from a terminal too, with the same failure alert.
+5. The Worktree menu shows the five rows in order with the right glyphs.
+6. All five grey out with no worktree selected, on Tasks/Commands/Prompts, and on a standalone
+   Task/Prompt/Settings window; "Run \<name>" greys on an empty command list while "Run…" and the
+   Run submenu stay live; both Open In rows grey on an empty app list.
+7. Editing either list in Settings or the Commands view is reflected in the menu without relaunch.
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| SwiftUI stops realizing the toolbar split button as an `NSSegmentedControl`, or the label is not readable from it | ⌥⌘R silently does nothing | T3 does nothing rather than guessing at another control; the note added in T7 records the dependency so the next reader knows where to look. Operator accepted this over a fallback (D2). |
+| `ContentView.swift` grows past 1000 lines again | `file_length` **error**, CI red | T1 lands first and the plan adds only two `.focusedSceneValue` lines and one `@EnvironmentObject` to that file. |
+| ⌘R / ⌘O claimed before a handler exists | The key is taken from the shell and dropped | T6 is ordered after T5. |
+| The `.clearwayAddCommand` post reaches every open window's `RunCommandMenu` | Two sheets | Identity guard on the notification's `object`, the `NewGroupCommand` precedent (T4 criterion 2). |
+
+## Build log
+
+### T1: Extract the side panel tab strip out of ContentView
+
+| File | State |
+| --- | --- |
+| `Sources/App/SidePanelTabStrip.swift` | New. `struct SidePanelTabStrip: View` with `@Binding var selection: SidePanelTab`, `let tabs: [SidePanelTab]`, `let effectiveTab: SidePanelTab`, plus the private `@available(macOS 26.0, *) tabButton(for:)`. |
+| `Sources/App/ContentView.swift` | 1011 → 956 lines. `sidePanelTabStrip` and `sidePanelTabButton(for:)` deleted with their `// MARK:`; the aside `VStack` now builds `SidePanelTabStrip(selection: $sidePanelTab, tabs: availableSidePanelTabs, effectiveTab: effectiveSidePanelTab)`. `effectiveSidePanelTab` and `availableSidePanelTabs` stay, still read by the `switch` below the strip. Both SwiftLint disables kept (D15). |
+| `Clearway.xcodeproj/project.pbxproj` | Regenerated by `xcodegen` inside `ci.sh`: three lines registering the new file. |
+
+Evidence. This task moves code and adds no behaviour, so there is no regression test to watch fail;
+the bar is that the rendering is identical. Verified by diffing the moved bodies against
+`git show HEAD:Sources/App/ContentView.swift | sed -n '954,1010p'` — the only differences are the
+declaration line (`@ViewBuilder private var sidePanelTabStrip` → `var body`, which `View` supplies
+the builder for) and the four renames forced by the move: `availableSidePanelTabs` → `tabs`,
+`$sidePanelTab` → `$selection`, `sidePanelTab = tab` → `selection = tab`,
+`effectiveSidePanelTab` → `effectiveTab`, `sidePanelTabButton(for:)` → `tabButton(for:)`. Both
+`@available(macOS 26.0, *)` branches, the `glassEffect` capsule and its stroke, the accessibility
+element and label, every padding value, the `.pickerStyle(.segmented)` fallback and its trailing
+`Divider()` are byte-identical.
+
+Acceptance criteria. 1: `grep -n "sidePanelTabStrip\|sidePanelTabButton" Sources/App/ContentView.swift`
+returns nothing; the one hit for `SidePanelTabStrip` is the call at line 891. 2: `wc -l` is 956,
+under 1000. 3: `swiftlint lint --quiet` prints nothing and exits 0, against a pre-change baseline
+that also printed nothing — zero errors, no new warnings. 4: the diff above.
+
+Deviations from the plan: none.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+
+### T2: Give Run and Open In one shared action implementation each, and publish them
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeCommands.swift` | New, 91 lines. `struct WorktreeRunActions` (`primary`, `title`, `commands`, `run`) with `@MainActor static func runner(worktree:savedCommandManager:terminalManager:ghosttyApp:) -> (SavedCommand) -> Void`; `struct WorktreeOpenInActions` (`primary`, `title`, `apps`, `open`) with `@MainActor static func opener(path:recordingUseIn:) -> (OpenInApp) -> Void` and the `private static presentFailure`; `WorktreeRunActionsKey` / `WorktreeOpenInActionsKey` and their two `FocusedValues` properties, shaped after `PanelCommands.swift:9-36`. No menu views yet — those are T5. |
+| `Sources/App/RunCommandMenu.swift` | 85 → 80 lines. Drops `@EnvironmentObject terminalManager` and `let worktree`; takes `let run: (SavedCommand) -> Void`. `private func run(_:)` deleted. `menu`, `items`, `.id(menuCommands)`, the in-closure `primaryCommand` resolution, `.disabled(ghosttyApp.app == nil)` and the `.sheet` outside it are untouched. |
+| `Sources/App/OpenInMenu.swift` | 110 → 94 lines. `private func open(_:)` and `private func presentFailure(_:detail:)` replaced by a computed `private var open: (OpenInApp) -> Void` returning `WorktreeOpenInActions.opener(path:recordingUseIn: remembersLastUsed ? settings : nil)`. `init(path:remembersLastUsed:)`, both `Menu` declarations, `.id(settings.menuOpenInApps)` and `editAppsButton` unchanged. |
+| `Sources/App/ContentView.swift` | 956 → 991 lines. Adds `@EnvironmentObject savedCommandManager` (already injected at `ProjectWindow.swift:161`), the two computed action properties gated per D8, the `runAction(for:)` helper, `RunCommandMenu(run: runAction(for: runWorktree))`, and two `.focusedSceneValue` lines beside the six. Both SwiftLint disables kept. |
+| `Clearway.xcodeproj/project.pbxproj` | Regenerated by `xcodegen` inside `ci.sh`: three lines registering `WorktreeCommands.swift`. |
+
+Evidence. This task moves two action bodies and adds no behaviour, so there is no regression test to
+watch fail — the plan says so under Verification, because both paths need a `ghostty_app_t` or
+`NSWorkspace`. The bar is statement-for-statement identity with HEAD, read off the diff:
+
+- Run — `git show HEAD:Sources/App/RunCommandMenu.swift | sed -n '79,83p'` is
+  `savedCommandManager.recordLastRun(command)` / `guard let app = ghosttyApp.app else { return }` /
+  `terminalManager.run(command, in: worktree, app: app)`. `WorktreeRunActions.runner`'s closure body
+  is those three statements in that order; `recordLastRun` still precedes the guard.
+- Open In — `git show HEAD:Sources/App/OpenInMenu.swift | sed -n '88,109p'`. `opener`'s closure is the
+  same `Task`, the same `await OpenInAppLauncher.launch(command:path:)`, the same
+  `guard case .failed(let message)`, and `presentFailure` is byte-identical in its five statements.
+  The `if remembersLastUsed { settings.recordOpenInUse(app) }` branch becomes
+  `settings?.recordOpenInUse(app)` over an optional manager the sidebar variant passes as `nil` —
+  the same two cases, decided at the same call site.
+
+Acceptance criteria. 1: `grep -rn "NSAlert" Sources/App/OpenInMenu.swift Sources/App/WorktreeCommands.swift`
+hits only `WorktreeCommands.swift:67` (plus the doc line at 62) — the alert is constructed once in the
+tree. 2: `grep -n "recordLastRun\|terminalManager.run" Sources/App/RunCommandMenu.swift` returns
+nothing. 3: `ContentView.body` carries `.focusedSceneValue(\.worktreeRunActions, …)` and
+`.focusedSceneValue(\.worktreeOpenInActions, …)`; `worktreeRunActions` returns nil on
+`selectedWorktree == nil || ghosttyApp.app == nil`, `worktreeOpenInActions` on
+`currentWorktree?.path == nil || settings.openInApps.isEmpty`. 4: the diff above; both toolbar call
+sites keep their gates, and `SidebarView.swift:475`'s `OpenInMenu(path:)` is untouched. 5:
+`grep -rn "keyboardShortcut" Sources/App/{WorktreeCommands,RunCommandMenu,OpenInMenu,ContentView}.swift`
+returns only ContentView's four pre-existing ⌘1-9 / ⌃1-3 hidden buttons.
+
+Deviations from the plan. One, in shape only. The plan has the toolbar's `OpenInMenu` *take* the open
+action from `ContentView`; it instead keeps `init(path:remembersLastUsed:)` and derives the same
+shared `opener` internally. Handing it in would have passed `path` twice at the call site — once to
+the view, once to the factory — because `OpenInMenu` needs the path anyway for the sidebar variant,
+which `ContentView` does not construct. `RunCommandMenu` genuinely loses a dependency by taking its
+action (`worktree` and `terminalManager` are gone from that file), so it takes it as planned. D12 is
+satisfied either way: one implementation of each body, both in `WorktreeCommands.swift`.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean (`swiftlint lint --quiet`
+silent, exit 0); `==> CI passed.` `git status --porcelain` before the commit showed only the four
+files above.
+
+### T3: The AppKit reach that pops the toolbar Run dropdown
+
+| File | State |
+| --- | --- |
+| `Sources/App/ToolbarSplitButtonMenu.swift` | New, 36 lines. `@MainActor enum ToolbarSplitButtonMenu` with `static func popUp(labelled:)` and a `private static func segmentedControl(in:labelled:)` that walks `NSApp.keyWindow?.contentView`'s `subviews` pre-order depth first. The match is `view as? NSSegmentedControl` with `segmentCount > 1` and `label(forSegment: 0) == label`; the pop is `control.menu(forSegment: 1)` then `menu.popUp(positioning: nil, at: NSPoint(x: bounds.minX, y: bottomEdge), in: control)`, where `bottomEdge` is `bounds.maxY` on a flipped view and `bounds.minY` otherwise. Every failure path is a plain `return` inside the one `guard`. |
+| `Sources/App/WorktreeCommands.swift` | 94 → 98 lines. `WorktreeRunActions` gains `let popRunMenu: () -> Void`. Nothing else changed. |
+| `Sources/App/ContentView.swift` | 991 → 994 lines. The single `WorktreeRunActions(...)` construction site gains `popRunMenu: { [savedCommandManager] in ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle) }`. Both SwiftLint disables kept. |
+| `Clearway.xcodeproj/project.pbxproj` | Regenerated by `xcodegen` inside `ci.sh`: three lines registering the new file. |
+
+Evidence. This task adds a helper that needs a live realized toolbar, so there is no regression test
+to watch fail — the plan's Verification section says so outright and forbids a faked view tree. The
+bar is compile-and-lint coverage plus the API contract, which was re-read from the local SDK rather
+than recalled:
+
+- `MacOSX27.0.sdk/…/AppKit.framework/Headers/NSSegmentedControl.h:76-80` —
+  `- (nullable NSString *)labelForSegment:(NSInteger)segment;` and
+  `- (nullable NSMenu *)menuForSegment:(NSInteger)segment;`.
+- `…/NSMenu.h:74-78` — "If item is nil, the menu is positioned such that the top left or right of
+  the menu content frame is at the given location… The method returns YES if menu tracking ended
+  because an item was selected, and NO if menu tracking was cancelled for any reason."
+  `API_AVAILABLE(macos(10.6))`, so the 13.0 target needs no availability check. Escape therefore
+  closes the menu and reports false, which is why the result is discarded.
+
+Acceptance criteria. 1: `popUp(labelled:)` is on a `@MainActor enum`, recurses through `subviews`
+and matches segment 0's label. 2: the one `guard` covers a missing key window, a missing control and
+a missing segment menu, and its `else` body is `return` — no alert, no `assertionFailure`, no second
+candidate. 3: `grep -rn "menu(forSegment\|popUp(positioning\|popUpMenuPositioningItem\|label(forSegment" Sources/ Tests/`
+returns three lines, all in `ToolbarSplitButtonMenu.swift`. 4: `grep -rn "WorktreeRunActions(" Sources/ Tests/`
+returns the single site at `ContentView.swift:165`, whose `popRunMenu` passes
+`savedCommandManager.runButtonTitle`. 5: `grep -rn "@convention"` over both touched Swift files
+returns nothing; the helper forms only plain Swift closures and installs no `DispatchSource`, so
+`CLAUDE.md`'s block-callback trap does not apply.
+
+Deviations from the plan. One, a guard the plan did not name: the search requires
+`segmentCount > 1` before reading either segment. `NSSegmentedControl` raises `NSRangeException` on
+an out-of-range segment index, so an unrelated zero- or one-segment control in the window would
+have crashed the app rather than failing the match. It cannot exclude the Run button, which is a
+two-segment split button whenever it has a primary command to pop a dropdown for.
+
+The title is read inside the closure rather than captured as a value, so the label the search
+matches on is resolved at the keypress. The explicit `[savedCommandManager]` capture keeps the
+closure off `ContentView` itself.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; `swiftlint lint --quiet` silent, exit 0;
+`==> CI passed.` `git status --porcelain` before the commit showed only the four files above.
+
+### T4: Open the command editor from the menu bar
+
+| File | State |
+| --- | --- |
+| `Sources/App/AppNotifications.swift` | 5 → 6 lines. `static let clearwayAddCommand = Notification.Name("clearway.addCommand")` beside `clearwayNewGroup`. |
+| `Sources/App/RunCommandMenu.swift` | 79 → 85 lines. `body` gains one `.onReceive(NotificationCenter.default.publisher(for: .clearwayAddCommand))` below the existing `.sheet`, whose guard is `(note.object as? SavedCommandManager) === savedCommandManager` before `showCommandEditor = true`. Nothing else changed — the "Add Command…" button still sets the flag directly. |
+
+Evidence. This task adds an observer on a SwiftUI body; nothing in `RunCommandMenu` is reachable
+from XCTest (the view needs a `ghostty_app_t` and an `EnvironmentObject` graph), and T4 has no
+poster yet — T5 owns that. So there is no regression test to watch fail, and none was written. The
+bar is compile-and-lint coverage plus the identity-guard shape, which is copied from the one
+precedent in the tree rather than invented: `SidebarView.swift:175-179` guards
+`(note.object as? WorktreeGroupManager) === groupManager` against `.clearwayNewGroup`, posted at
+`ClearwayApp.swift:411`. `SavedCommandManager` is a `final class` (`SavedCommandManager.swift:11`),
+so `===` is well-formed.
+
+Acceptance criteria. 1: `.clearwayAddCommand` is in `AppNotifications.swift`. 2: the `.onReceive`
+body is the guard then `showCommandEditor = true`, and the guard compares by identity, so a second
+project window's `RunCommandMenu` ignores a post carrying another window's manager. 3: the
+`.onReceive` is chained after `.sheet`, both below `.disabled(ghosttyApp.app == nil)`, so the
+editor's controls inherit no disabled environment and a post arriving while Ghostty is not ready
+still opens the sheet. 4: `grep -rn "CommandEditorSheet" Sources/App/*.swift` returns four lines —
+the declaration, `CommandsView.swift:51` (`command: target.command`), `RunCommandMenu.swift:27` and
+`WorkTaskListView.swift:147` (`newCommandKind: .agent`). `ContentView.swift` is untouched and gains
+no sheet.
+
+Deviations from the plan. None.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the two files above plus this plan.
+
+### T5: The Worktree menu
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorktreeCommands.swift` | 97 → 194 lines. `WorktreeRunActions` gains `let addCommand: () -> Void` and a `commandEditorOpener(_:)` factory that posts `.clearwayAddCommand` with the window's `SavedCommandManager` as `object`. Five new `View`s: `RunPrimaryMenuItem` (⌘R), `RunDropdownMenuItem` (⌥⌘R), `RunCommandsSubmenu`, `OpenInPrimaryMenuItem` (⌘O), `OpenInAppsSubmenu`. |
+| `Sources/App/ClearwayApp.swift` | `CommandMenu("Worktree")` added after `CommandGroup(replacing: .sidebar)`, holding those five in order. |
+| `Sources/App/ContentView.swift` | 994 → 995 lines. `worktreeRunActions` passes `addCommand: WorktreeRunActions.commandEditorOpener(savedCommandManager)`. |
+| `Sources/App/OpenInMenu.swift` | 91 → 96 lines. `OpenInMenu`'s private `editAppsButton` promoted to a shared `struct EditOpenInAppsButton: View` in the same file; the toolbar dropdown and the new submenu both render it. |
+
+Evidence. Nothing added here is reachable from XCTest: a `CommandMenu`, `@FocusedValue` and
+`SettingsLink` all need a running app, which is why the plan assigns criteria 1-5, 8, 10 and 11 to
+the operator. So there is no regression test to watch fail and none was written. The checkable bar
+is the shape, read off the tree:
+
+- `grep -rn 'keyboardShortcut("r"\|keyboardShortcut("o"' Sources/App/` returns exactly three lines,
+  all in `WorktreeCommands.swift` (118, 132, 169) — criteria 2 and 6. `grep -n keyboardShortcut`
+  over `RunCommandMenu.swift` and `OpenInMenu.swift` returns nothing; `ContentView.swift`'s four
+  hits are the pre-existing ⌘1…9 and ⌃1…3 rows, untouched.
+- `swiftlint lint --quiet` prints nothing, exit 0.
+- `wc -l Sources/App/ContentView.swift` is 995, under the 1000-line `file_length` error.
+
+Acceptance criteria. 1: `CommandMenu("Worktree")` holds the five items in the plan's order. 2: the
+grep above. 3: rows 2, 3 and 5 are `.disabled(actions == nil)`; row 1 is
+`.disabled(actions?.primary == nil)`, which greys it on an empty command list while rows 2 and 3
+stay live (D9); row 4 is `.disabled(actions == nil)`, and `worktreeOpenInActions` is already nil on
+an empty app list (D8/D10). 4: `RunCommandsSubmenu` renders `actions.commands` — the whole saved
+list, not `menuCommands` — then a `Divider()` guarded on non-empty, then "Add Command…";
+`OpenInAppsSubmenu` renders `actions.apps`, the same guarded divider, then `EditOpenInAppsButton`.
+5: "Add Command…" calls `actions.addCommand()`, whose body is `commandEditorOpener`'s post of
+`.clearwayAddCommand` with `savedCommandManager` as `object`, which `RunCommandMenu`'s T4 identity
+guard matches. 6: the greps above.
+
+Deviations from the plan.
+
+1. **The "Add Command…" post goes through a closure on `WorktreeRunActions`, not `@FocusedObject`.**
+   The plan says the row posts with "the focused `SavedCommandManager`" and points at
+   `NewGroupCommand` as precedent. `NewGroupCommand` reads its manager with `@FocusedObject`, and
+   `grep -rn "focusedObject\|FocusedObject" Sources/App/*.swift` returns that one declaration and
+   no `.focusedObject(_:)` / `.focusedSceneObject(_:)` setter anywhere, so the wrapper has nothing
+   to read. Copying it would have made the row permanently disabled. The closure is built where the
+   manager actually is — `ContentView` — and rides the focused scene value the other four rows
+   already use (D6), so the notification still carries this window's manager and the identity guard
+   still scopes the sheet. Cost to `ContentView` is one line.
+2. **`OpenInMenu.editAppsButton` was promoted to `EditOpenInAppsButton` rather than copied.** The
+   plan's T5 text says the submenu "uses the same `SettingsLink` … pair as `OpenInMenu.editAppsButton`",
+   which read literally means a second copy; D12's no-duplicated-bodies rule and the project's
+   reuse rule both say share it. Behaviour is unchanged at the existing call site.
+
+Gate: `./scripts/ci.sh` — passed. 783 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the four files above plus this plan; no
+`default.profraw` and no untracked files.
+
+### T6: Claim ⌘R, ⌥⌘R and ⌘O from focused terminal surfaces
+
+What landed.
+
+| File | State |
+| --- | --- |
+| `Sources/App/AppKeyboardShortcuts.swift` | `case [.command]:` gains `letter == "r" \|\| letter == "o"`; `case [.command, .option]:` gains `letter == "r"`. Both clause comments rewritten to name every key their clause claims. The `[.command, .shift]` clause, the Ctrl+digit clause and the key codes are untouched. |
+| `Tests/AppKeyboardShortcutsTests.swift` | New `// MARK: - The Worktree menu's Run and Open In` section: `testCommandRIsClaimed`, `testCommandOIsClaimed`, `testCommandOptionRIsClaimed` and `testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed` (⌥⌘O, ⌃⌘R, ⇧⌘R all declined, each with a message naming why). |
+
+Evidence. The three positive assertions were written first and run against the unfixed `claims`
+via `./scripts/ci.sh`, which failed:
+
+```
+Test Suite 'AppKeyboardShortcutsTests' started at 2026-09-21 19:00:47.939.
+    ✖ testCommandOIsClaimed, XCTAssertTrue failed - Open in the primary app
+    ✖ testCommandOptionRIsClaimed, XCTAssertTrue failed - Run…, which pops the toolbar Run dropdown
+    ✖ testCommandRIsClaimed, XCTAssertTrue failed - Run the primary saved command
+Executed 787 tests, with 3 failures (0 unexpected) in 131.232 (131.544) seconds
+```
+
+The three negative assertions passed in that same red run, which is what they are for: they pin
+combos the table already declines against a later clause widening onto them.
+
+Acceptance criteria. 1: the four tests above, green after the change. 2: the failure quoted above.
+3: `[.command]` now reads "new tab, close tab, bottom panel, sidebar, new window, run primary
+command, open in primary app, settings"; `[.command, .option]` reads "toggle aside, new agent tab,
+pop the Run dropdown". 4: `git diff Sources/App/AppKeyboardShortcuts.swift` touches only those two
+clauses and their comments.
+
+Deviations from the plan. One, cosmetic: the ⇧⌘R pin is written `claims([.command, .shift], "R")`
+rather than the plan's lowercase `"r"`. `charactersIgnoringModifiers` applies Shift, so uppercase is
+how the key actually arrives, and it is what every other shifted assertion in the file already
+passes. `claims` lowercases, so the two spellings are equivalent.
+
+Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only the two files above plus this plan; no
+`default.profraw` and no untracked files.
+
+### T7: Rewrite the per-file notes this change falsifies
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | 581 → 638 lines. All edits inside existing entries: the `AppKeyboardShortcuts.swift` declaration-site list, the `PanelCommands.swift` declared-once rule, a new `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` entry placed after `PanelCommands.swift`, and six corrections spread across the Open In / Run entry and the `TerminalManager.run` entry. |
+
+What each edit says.
+
+1. **Declaration sites** (entry 1) — now reads "`ClearwayApp`'s menu commands together with the two
+   files holding their rows, `PanelCommands.swift` and `WorktreeCommands.swift`". `PanelCommands`
+   was never named there either; both are now.
+2. **The declared-once rule** (`PanelCommands.swift` entry) — generalised in place rather than
+   moved: the rule "is not local to this file", the Worktree menu's ⌘R, ⌥⌘R and ⌘O are declared on
+   its rows and not on the toolbar's Run and Open In buttons, and the tab strip's ⌘T / ⌥⌘T rows are
+   named as the one deliberate exception.
+3. **New entry, `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift`** — the five rows in
+   order; why five and not four (key-equivalent dispatch fires an item's action and a SwiftUI
+   `Menu` submenu row has none, the same no-body rule the Plan split button hits); the two focused
+   scene values, what nils each, and why two; whole lists rather than `menuCommands` /
+   `menuOpenInApps`; the per-row disable rules, including "Run \<name>" gating on `primary` while
+   "Run…" and the submenu stay live; `runner` / `opener` as the one implementation of each action;
+   `.clearwayAddCommand`'s `===` identity guard and why the closure is built in `ContentView`
+   rather than read with `@FocusedObject` (T5 deviation 1); and the ⌥⌘R AppKit reach — the
+   segment-0-label match against `runButtonTitle`, the `segmentCount > 1` guard before either
+   segment is read (T3's deviation), the do-nothing failure path, and the fragility the operator
+   accepted over a fallback.
+4. **Open In / Run entry, five corrections** — the falsified last sentence replaced with the three
+   keys, where they are declared, and that all three are claimed; `EditOpenInAppsButton` named as a
+   shared view rendered by the toolbar dropdown and the Worktree submenu (T5 deviation 2);
+   `RunCommandMenu` kept as the one presenter of `CommandEditorSheet`, reached from the menu bar by
+   the notification; the menu bar named as the third Open In entry point, the one that greys rather
+   than disappears, with the header's "the one menu view both entry points render" narrowed to the
+   toolbar and the sidebar; and the `ContentView.swift` `file_length` sentence updated with
+   `SidePanelTabStrip.swift` as the split T1 did and the file's 995 lines.
+5. **`RunCommandMenu.run(_:)`** — that private method no longer exists after T2, and two statements
+   still named it: the record-before-guard rule (now `WorktreeRunActions.runner`'s closure) and the
+   `TerminalManager.run` entry's "not the `RunCommandMenu` view" (now "neither `RunCommandMenu` nor
+   the Worktree menu … both call the one closure `WorktreeRunActions.runner` builds").
+
+Evidence. Markdown, so nothing here is executable and there is no regression test to watch fail.
+Every statement was written against the tree at `a005c68` rather than against the plan's proposal,
+which is what deviations T2 (`OpenInMenu` derives `opener` internally), T3 (`segmentCount > 1`), T5
+(closure over `@FocusedObject`; `EditOpenInAppsButton` shared) and T6 changed. Read back from
+`Sources/App/WorktreeCommands.swift`, `ToolbarSplitButtonMenu.swift`, `ClearwayApp.swift:239-245`,
+`ContentView.swift:160-194`, `RunCommandMenu.swift:29-34`, `OpenInMenu.swift:75-96` and
+`AppKeyboardShortcuts.swift:44-55`.
+
+Acceptance criteria. 1: `grep -n "claims \*\*no\*\* keyboard shortcut" Sources/App/CLAUDE.md`
+returns nothing. 2: `grep -n "WorktreeCommands.swift"` returns line 7 (the declaration-site list),
+41 and 44 (the new entry) and 620 (the cross-reference from the Open In entry). 3: the new entry at
+line 41 covers both files; `grep -n "ToolbarSplitButtonMenu"` returns lines 41 and 72. 4: the
+corrections in items 4 and 5 are every statement the T1-T6 diff falsified — nothing else in the
+file names Run's or Open In's keys, `RunCommandMenu.run(_:)`, or `editAppsButton`.
+
+Deviations from the plan. One, an addition. The plan's five items do not cover
+`RunCommandMenu.run(_:)`, which T2 deleted and which two unrelated entries still named (item 5),
+nor the Open In entry's "both entry points" count, which the menu bar makes three. Criterion 4 asks
+that no statement contradict the tree, so both were corrected.
+
+Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==> CI passed.`
+`git status --porcelain` before the commit showed only `Sources/App/CLAUDE.md` plus this plan; no
+`default.profraw` and no untracked files.
+
+### Simplify
+
+`/simplify` over the branch. Three of four cleanup agents converged on the same finding, so
+`.clearwayAddCommand` is gone: `showCommandEditor` moved to `ContentView` as `@State`, `RunCommandMenu`
+takes it as a `@Binding`, and the Worktree submenu's "Add Command…" sets it directly — deleting the
+notification name, the `onReceive` `===` identity guard and `WorktreeRunActions.commandEditorOpener`.
+`RunCommandMenu` also went back to `let worktree: Worktree` and derives `WorktreeRunActions.runner`
+from its own environment, matching `OpenInMenu` and restoring the view's structural equality that a
+stored closure defeated; `ContentView`'s single-use `runAction(for:)` was inlined (998 → 997 lines).
+Plus a `guard`/`continue` flipped to `if let` in `ToolbarSplitButtonMenu` and three restating doc
+comments dropped. No behaviour change, and nothing the Changelog records was touched.
+Gate: `./scripts/ci.sh` — passed after the last edit. 788 tests, 0 failures; SwiftLint clean;
+`==> CI passed.` (`set -euo pipefail`, banner last, so exit 0).
+
+## Changelog
+
+Operator-requested changes made after a hands-on check. These are not plan tasks; no later step
+may revert them.
+
+### 2026-09-21 — ⌥⌘R found no control: root the walk in the toolbar, not `contentView`
+
+**Finding.** With a worktree selected and saved commands present, neither ⌥⌘R nor the Worktree ▸
+"Run…" row did anything. The row fired; `ToolbarSplitButtonMenu.popUp(labelled:)` (T3) took its
+silent `guard … return` because it started the walk at `NSApp.keyWindow?.contentView`.
+
+**Evidence.** Measured against the running Debug build of this worktree (pid 53793) by attaching
+`lldb -b -p`, not inferred. The project window is `SwiftUI.AppKitWindow 0x8387f4600`:
+
+```
+(lldb) po (id)[(id)0x83bcd1900 labelForSegment:0]
+Build & Run
+(lldb) po (id)[(id)0x83bcd1900 menuForSegment:1]
+<NSMenu: 0x83aa1d200>  Items: ( Plan, Work, separator, "Add Command…" )
+(lldb) p (bool)[(id)0x83bcd1900 isDescendantOf:(id)[(id)0x8387f4600 contentView]]
+(bool) false
+(lldb) expr … while (v) { … v = [v superview]; }
+"SwiftUI.SwiftUISegmentedControl <- …AppKitSegmentedControlAdaptor… <- ToolbarItemHostingView
+ <- NSToolbarItemViewer <- NSToolbarView <- NSTitlebarView <- NSTitlebarContainerView
+ <- NSThemeFrame <- "
+```
+
+So T3's two premises were both right — SwiftUI does realize the toolbar `Menu` with a
+`primaryAction:` as a real `NSSegmentedControl` (`isKindOfClass: NSSegmentedControl` → true,
+`segmentCount` → 2), segment 0 does carry the primary command's name, and segment 1 does own the
+dropdown — and only the **root** of the walk was wrong. The control hangs off the titlebar, a
+sibling branch of `contentView` under `NSThemeFrame`.
+
+**Change.** `ToolbarSplitButtonMenu` gains `toolbarSegmentedControl(labelled:)`, which iterates
+`NSApp.keyWindow?.toolbar?.visibleItems` and runs the existing depth-first search from each item's
+`view`. Everything else is unchanged: the `segmentCount > 1` guard, the segment 0 label match,
+`menu(forSegment: 1)`, the `isFlipped`-aware bottom-edge positioning, and every failure path a
+silent `return`.
+
+The label match stays: it is what separates the Run button from the Open In split button, the
+toolbar's other `NSSegmentedControl` (confirmed above, `labelForSegment:0` → "Open in Fork").
+
+**Corrected in review, 499dc1c+:** this entry originally added that rooting in the toolbar also
+drops `CommandsView`'s `.pickerStyle(.segmented)` filter out of the search space "since it lives
+under `contentView`". It does not — that picker is a `ToolbarItem` (`CommandsView.swift:38-46`),
+so it realizes beside the Run and Open In controls. It is unreachable for a different reason: the
+Commands destination resolves no worktree, so both focused values are nil and the rows that would
+pop anything are disabled. The segment 0 label match and the one-match rule are what cover it if
+that ever changes.
+
+`Sources/App/CLAUDE.md`'s `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` entry was
+rewritten to state where the control actually lives, since the old text said "walks
+`NSApp.keyWindow`'s view tree" and that is what the bug was.
+
+**Files.** `Sources/App/ToolbarSplitButtonMenu.swift` (36 → 50 lines), `Sources/App/CLAUDE.md`.
+
+**No test.** Same reason T3 carried none: the helper needs a live realized toolbar, and a faked
+view tree would pin the fake, not the bug. The proof is the lldb session above; the confirmation is
+the operator's hand-check.
+
+### 2026-09-21 — ⌥⌘O: give Open In the same dropdown key as Run
+
+**Request.** Operator, during the hands-on check: Run and Open In are the same control twice over,
+so the keyboard reach should be the same too. Add ⌥⌘O, popping the toolbar's Open In dropdown,
+mirroring ⌥⌘R. Recorded in the spec as D17, which supersedes D16 ("⌥⌘O is not claimed").
+
+**Change.** A sixth Worktree row, `OpenInDropdownMenuItem` — "Open in…" ⌥⌘O — between
+"Open in \<app>" ⌘O and the Open in submenu, the same place "Run…" sits relative to "Run \<name>"
+and the Run submenu. It is a real row for the same reason "Run…" is (A5): AppKit's key-equivalent
+dispatch fires a menu item's action, and a SwiftUI `Menu` used as a submenu row has none.
+
+`WorktreeOpenInActions` gains `popOpenInMenu`, filled at the same `ContentView` construction site
+as `popRunMenu` and reading `settings.openInButtonTitle` **inside** the closure, so the label it
+hands `ToolbarSplitButtonMenu.popUp(labelled:)` tracks the primary rather than capturing a stale
+name. `ToolbarSplitButtonMenu` is unchanged: it already takes the label as a parameter, and the
+lldb session in the entry above confirmed segment 0 of the Open In button reads "Open in Fork".
+
+Enablement mirrors "Open in \<app>" exactly — `.disabled(actions == nil)`. The focused value is
+already nil with no worktree, no worktree path, on Tasks/Commands/Prompts, on a standalone window
+and on an empty app list, which is also the state where no toolbar button exists to pop.
+
+**Evidence.** The ⌥⌘O pin in `Tests/AppKeyboardShortcutsTests.swift` was a *declined* pin; T6 wrote
+it that way under D16. Flipped to a claimed pin first and watched it fail against the unclaimed
+table, before `AppKeyboardShortcuts` was touched:
+
+```
+AppKeyboardShortcutsTests/testCommandOptionOIsClaimed()  Failed
+XCTAssertTrue failed - Open in…, which pops the toolbar Open In dropdown
+  Tests/AppKeyboardShortcutsTests.swift:139
+Executed 788 tests, with 1 failure (0 unexpected) in 125.129 seconds
+```
+
+⌃⌘R and ⇧⌘R stay pinned declined in `testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed`;
+only the ⌥⌘O line moved out of it.
+
+**Files.** `Sources/App/WorktreeCommands.swift` (the `popOpenInMenu` field and the new row view),
+`Sources/App/ContentView.swift` (995 → 998, still under the 1000-line `file_length` error, so no
+extraction was needed), `Sources/App/ClearwayApp.swift`, `Sources/App/AppKeyboardShortcuts.swift`,
+`Tests/AppKeyboardShortcutsTests.swift`, `Sources/App/CLAUDE.md` (six rows and their order, the
+declared-once key list, the `AppKeyboardShortcuts` pin note, the ⌥⌘R/⌥⌘O helper paragraph),
+and the spec (D17, the menu shape in criterion 5, criteria 10-12, and new criterion 14).
+
+**Gate.** `./scripts/ci.sh`.
+
+### 2026-09-21 — ⌥⌘R with no saved commands: click the pop-up button, not the segmented control
+
+On top of `becfa9a` (the simplify commit).
+
+**Finding (review).** With zero saved commands the Worktree ▸ "Run…" row (⌥⌘R) is enabled —
+`.disabled(actions == nil)`, `WorktreeCommands.swift` — but `ToolbarSplitButtonMenu.popUp(labelled:)`
+found nothing to pop. `RunCommandMenu` renders a plain `Menu` with no `primaryAction:` in that
+branch, which AppKit realizes as an `NSPopUpButton` rather than a two-segment `NSSegmentedControl`,
+so the helper took its silent return in exactly the state the row's doc comment says it exists for:
+the one where the dropdown holds "Add Command…" alone.
+
+**Path taken.** The operator's brief governs — "⌥⌘R pops open the Run dropdown … With no saved
+commands it shows the lone 'Add Command…' row, same as the click" — so the helper learned the
+second control. The reviewer's alternative (`.disabled(actions?.primary == nil)`, greying the row)
+was **not** taken: it would put the only door to a first command out of keyboard reach, the same
+mistake `RunCommandMenu.disabled` already made once.
+
+**Evidence.** No Clearway instance was running and this agent does not launch the app, so the
+realization was measured with a throwaway SwiftUI app in the session scratchpad (never in the
+repo) declaring both shapes as toolbar items of one window, dumping each `visibleItems` view
+subtree:
+
+```
+ITEM view=Optional(SwiftUI.ToolbarItemHostingView<SwiftUI._ViewList_View>)
+  ToolbarItemHostingView<_ViewList_View>
+    AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+      SwiftUIPopupButton POPUP title="Run" pullsDown=true items=[] axTitle=Optional("Run") menuItems=[]
+ITEM view=Optional(SwiftUI.ToolbarItemHostingView<SwiftUI._ViewList_View>)
+  ToolbarItemHostingView<_ViewList_View>
+    AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+      SwiftUISegmentedControl SEG count=2 labels=["Open in Fork", "nil"]
+calling performClick on SwiftUIPopupButton title="Run"
+WILL POP UP from …AppKitPopUpAdaptor<MenuStyleConfiguration.Label>.PlatformView.SwiftUIPopupButton
+```
+
+Three facts, all load-bearing: the plain `Menu` is an `NSPopUpButton` subclass whose `title` is the
+`Menu`'s own label (so the same string still discriminates Run from Open In); its `NSMenu` is
+**empty** until it opens (`items=[]`, `menuItems=[]`), so `popUp(positioning:)` would pop nothing
+and `performClick(nil)` — `NSControl.h:56` — is what runs SwiftUI's coordinator; and segment 1 of
+the split button has a `nil` label, so the two matches cannot collide.
+
+**Change.** `ToolbarSplitButtonMenu.popUp(labelled:)` now walks `visibleItems` once, trying each
+item's subtree for the segment-0-labelled `NSSegmentedControl` first and then for an `NSPopUpButton`
+of that `title`, and clicks the latter. The chevron positioning moved into
+`popUpChevronMenu(of:)` unchanged — `segmentCount > 1` guard, `menu(forSegment: 1)`,
+`isFlipped`-aware bottom edge. Every failure path is still a silent `return`.
+
+**No test.** Same reason T3 and the first Changelog entry carried none: the helper needs a live
+realized toolbar, and a faked view tree would pin the fake rather than the bug. The proof is the
+probe above; the confirmation is the operator's hand-check.
+
+**Also corrected, same commit.** The spec still described the deleted
+`Notification.Name.clearwayAddCommand`: D11 now records the `@State`/`@Binding` shape that shipped
+in `becfa9a` and why, A10 is marked no longer relied on, D12 names the two shared factories the
+toolbar views call rather than structs they are "handed", and the "Files this touches" list drops
+`AppNotifications.swift`. D3 and a new A13 record the pop-up branch and the probe.
+
+**Files.** `Sources/App/ToolbarSplitButtonMenu.swift` (51 → 72 lines),
+`Sources/App/CLAUDE.md` (the ⌥⌘R/⌥⌘O helper paragraph), the spec (D3, D11, D12, A10, A13, the
+files list), and this plan.
+
+### 2026-09-21 — PR review pass: the menu row's own verb, a one-match rule, two false doc claims
+
+Second review pass (`code tests errors types`). Four findings taken, each with its proof; the rest
+are recorded as follow-ups in the stage report.
+
+**1. "Run \<name>" rendered as the bare command name.** `RunPrimaryMenuItem` used
+`WorktreeRunActions.title`, filled from `SavedCommandManager.runButtonTitle`, which is
+`primaryCommand?.name ?? "Run"` — so with a command named `Build` the Worktree menu's ⌘R row read
+`Build`, not `Run Build`. Criterion 5, `Sources/App/CLAUDE.md` and the row's own doc comment all
+say `"Run <name>"`, and the Open In row already renders its verb because `openInButtonTitle`
+carries one. A bare noun under a **Worktree** menu, directly above `Run…`, is not a command.
+Fixed by **deleting `title` from both structs** and having each row build its own — `"Run \(name)"`
+and `"Open in \(label)"`. The field was pure redundancy: the AppKit lookup string is read live
+inside `popRunMenu` / `popOpenInMenu`, never off the struct, so nothing else wanted it, and a title
+that can disagree with the `primary` beside it is now unrepresentable.
+
+**2. `WorktreeOpenInActions.primary` was optional and could not be nil.** The only construction
+site gated on `!settings.openInApps.isEmpty`, and `primaryOpenInApp` is
+`lastUsedOpenInApp ?? openInApps.first` with the remembered id resolved against the same list — so
+non-empty list ⇒ non-nil primary, and `OpenInPrimaryMenuItem`'s `guard let app = actions.primary`
+was unreachable. Made non-optional, with the gate restated as `let primary = settings.primaryOpenInApp`
+(the same condition, said as the app the row will open). The two rows' differing `.disabled`
+spellings now state the gate asymmetry instead of hiding it. Spec D8 revised.
+
+**3. ⌥⌘O could pop the Run dropdown.** `popUp(labelled:)` returned on the first match and the label
+is user text: `runButtonTitle` is a saved command's name verbatim, so a command named `Open in Fork`
+gives the Run button the Open In button's label, and the Run item is declared first in the toolbar.
+The operator would pick what reads as an app and run a shell command. The spec's Risks section
+promises "do nothing rather than guess at another control", and this was the guess. `popUp` now
+collects every match through one recursive `matches(in:labelled:)` — replacing the two separate
+finders — and pops nothing unless exactly one control answers, logging the label and the count
+otherwise. That log is also the first diagnostic this helper has ever had, which matters because
+the key is claimed, so a press that does nothing leaves no other trace; it already shipped broken
+silently once. Spec D3 revised.
+
+**4. Two false claims in the docs, both in the paragraph a future reader is sent to.**
+`Sources/App/CLAUDE.md` and the first Changelog entry above said rooting the walk in the toolbar
+puts `CommandsView`'s segmented filter picker out of the search space, the entry adding "since it
+lives under `contentView`". It does not: that picker is a `ToolbarItem`
+(`CommandsView.swift:38-46`), so it realizes beside the Run and Open In controls and the toolbar
+holds three segmented shapes, not two. What actually keeps it unreachable is the segment 0 label
+match plus the rows being disabled on the Commands destination, which resolves no worktree — a
+runtime gate, not construction. Segment 0 of that picker reads `All`, so a primary command named
+`All` would match it, and finding 3's one-match rule is what makes that a no-op. Spec D5's
+rationale was wrong the same way — a terminal surface does have focus off the worktree destination
+(the Tasks bottom panel) — and was corrected without changing the decision.
+
+**Also.** ⌃⌘O and ⇧⌘O got the declined pins their R siblings already had, the convention ⌘B's four
+variants set; the guard is a later feature folding `letter == "o"` into the `[.command, .shift]`
+case. The spec's `## Verification` section listed only criteria 1-5, 8 and 11 as the operator's,
+leaving 6, 7, 9, 10 and 14 in nobody's column — all five are manual for the same reason and are now
+named. `Sources/App/CLAUDE.md`'s stated `ContentView.swift` line count went stale by one and was
+dropped rather than re-pinned.
+
+**No new tests.** Findings 1-3 are all in `@MainActor` SwiftUI menu rows or the AppKit toolbar
+walk, unreachable from XCTest for the reasons T3 and the entries above record; the claim-table
+additions are the only testable part and are pinned.
+
+**Files.** `Sources/App/WorktreeCommands.swift`, `Sources/App/ContentView.swift`,
+`Sources/App/ToolbarSplitButtonMenu.swift`, `Tests/AppKeyboardShortcutsTests.swift`,
+`Sources/App/CLAUDE.md`, the spec (D3, D5, D8, `## Verification`), and this plan.
+
+**Gate.** `./scripts/ci.sh` at sign-off.
+
+### 2026-09-21 — Operator's call: the ⌘R row reads the bare command name
+
+**Decision.** The Worktree menu's ⌘R row shows the primary command's **bare** name — "Build", not
+"Run Build" — with "Run" only as the disabled empty-list placeholder. The operator made this call
+during review, on the build they hand-checked, reversing finding 1 of the entry above. Recorded as
+spec **D18**; criterion 5 now states the bare name rather than "Run \<name>", so the two no longer
+disagree.
+
+**Why.** The Run submenu heading sits directly below the row and already supplies the verb, so the
+row repeating it is redundant. The finding's other half stands and was not touched: `title` stays
+deleted from both action structs and each primary row still builds its own string off its own
+`primary`, so no struct can hold a title that disagrees with the command or app beside it. The ⌘O
+row is unchanged and still renders "Open in \<label>".
+
+**Change.** `RunPrimaryMenuItem.title` is `actions?.primary?.name ?? "Run"`. Its doc comment, the
+`WorktreeCommands.swift` entry in `Sources/App/CLAUDE.md`, and spec criteria 5 and 10, D4 and D9 all
+say the bare name and name the decision's owner and date.
+
+**Everything else from d3c4300 is kept:** the non-optional `WorktreeOpenInActions.primary`, the
+single recursive `matches(in:labelled:)` with its exactly-one-match rule and its log line, the ⌃⌘O
+and ⇧⌘O declined pins, and the two doc corrections.
+
+**Gate.** The review pass never compiled its edits, so this run was the first build of d3c4300.
+`./scripts/ci.sh` — passed after the last edit. 788 tests, 0 failures; SwiftLint clean;
+`==> CI passed.` (`set -euo pipefail`, banner last, so exit 0). **d3c4300 introduced no compile,
+lint or test failure**, so nothing beyond this entry's own change was needed.
+
+**Files.** `Sources/App/WorktreeCommands.swift`, `Sources/App/CLAUDE.md`, the spec (D4, D9, D18,
+criteria 5 and 10), and this plan.

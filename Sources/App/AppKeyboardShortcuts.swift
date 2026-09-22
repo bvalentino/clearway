@@ -41,17 +41,18 @@ enum AppKeyboardShortcuts {
 
         switch flags.intersection([.command, .shift, .control, .option]) {
         case [.command]:
-            // new tab, close tab, bottom panel, sidebar, new window, settings (the `Settings`
-            // scene's automatic Cmd+, is a menu key equivalent like any other, so it needs
-            // claiming too)
+            // new tab, close tab, bottom panel, sidebar, new window, run primary command, open in
+            // primary app, settings (the `Settings` scene's automatic Cmd+, is a menu key
+            // equivalent like any other, so it needs claiming too)
             return letter == "t" || letter == "w" || letter == "j" || letter == "b" || letter == "n"
-                || keyCode == KeyCode.comma
+                || letter == "r" || letter == "o" || keyCode == KeyCode.comma
         case [.command, .shift]:
             // previous/next tab, new group, reload configuration
             return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket
                 || letter == "n" || keyCode == KeyCode.comma
         case [.command, .option]:
-            return letter == "b" || letter == "t"  // toggle aside, new agent tab
+            // toggle aside, new agent tab, pop the Run dropdown, pop the Open In dropdown
+            return letter == "b" || letter == "t" || letter == "r" || letter == "o"
         default:
             return false
         }
