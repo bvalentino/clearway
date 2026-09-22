@@ -187,3 +187,18 @@ listed files. `WorkTaskCoordinatorTests` unmodified and passing.
 
 **Gate.** `./scripts/ci.sh` after the last code edit: exit 0, "Test Succeeded", 846 tests, 0 failures.
 `swiftlint lint --quiet` on the two files: no output, exit 0.
+
+### Simplify
+
+Reviewed the T1+T2 diff for reuse, simplification, efficiency and altitude. Nothing to change:
+`TaskTerminalLayout` is already a minimal pure enum, `TaskDetailView`'s `GeometryReader` computes
+`terminalHeight` once and reuses it for both the frame and the drag base, and the worktree bottom
+terminal's separate height logic (D12) is a deliberate, already-documented scope boundary, not
+missed reuse. `./scripts/ci.sh`: exit 0, 846 tests, 0 failures.
+
+### Simplify
+
+Reviewed the diff for reuse, simplification, efficiency and altitude. Nothing to change:
+`TaskTerminalLayout` is already the single shared clamp, `ContentView`'s `clampedColumnWidth` is an
+unrelated fixed-range helper, and the worktree bottom terminal stays untouched per D12. `./scripts/ci.sh`
+after this pass: exit 0, "Test Succeeded", 846 tests, 0 failures; `git status --porcelain` clean.
