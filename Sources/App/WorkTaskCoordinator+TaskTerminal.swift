@@ -10,16 +10,20 @@ extension WorkTaskCoordinator {
     /// `await` rather than on the keypress, because the resolved shell PATH is unbounded on a
     /// session's first call; a reveal awaits nothing and focuses on the keypress itself.
     func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
-        guard taskIsStillInBacklog(taskId) else { return }
+        // A surface whose `ghostty_surface_new` failed is still stored and nothing prunes it, so
+        // only a live pointer counts: revealing that one protects no process and strands the task
+        // on a blank strip no press can recover.
+        let hasSurface = terminalManager.existingTaskSurface(for: taskId)?.surfacePtr != nil
+        // The rule gates minting, not flipping. Hiding or revealing a surface the task already has
+        // takes nothing away from a row that has left the list, and refusing it would strand a
+        // running agent in a pane no press can collapse.
+        guard hasSurface || taskIsStillInBacklog(taskId) else { return }
         let projectPath = worktreeManager.projectPath
         let makeCommand = taskTerminalLaunchCommand()
 
         switch Self.taskTerminalToggle(
             isVisible: terminalManager.isTaskTerminalVisible(for: taskId),
-            // A surface whose `ghostty_surface_new` failed is still stored and nothing prunes it,
-            // so only a live pointer counts: revealing that one protects no process and strands the
-            // task on a blank strip no press can recover.
-            hasSurface: terminalManager.existingTaskSurface(for: taskId)?.surfacePtr != nil,
+            hasSurface: hasSurface,
             hasLaunchCommand: makeCommand != nil
         ) {
         case .hide:
@@ -87,22 +91,22 @@ extension WorkTaskCoordinator {
 
     /// Whether the task is still one the Tasks list renders a row for — it exists, and it names no
     /// worktree. Both doors onto a task terminal suspend on `ShellEnvironment.awaitPath()` before
-    /// they open anything, and both ways a task can leave that list land in the window: Start Now →
+    /// they mint anything, and both ways a task can leave that list land in the window: Start Now →
     /// Create writes the link and closes the terminal, and Delete removes the file and closes it
     /// too. A launch that resumed regardless would reopen a terminal with no row left to report to —
     /// an agent lighting no dot anywhere, which is the state those closes exist to prevent.
     ///
-    /// It is also each door's **entry** guard, so the rule is one rule read twice rather than a
-    /// weaker check on the way in. Entry needs the full rule too: `selectedTaskId` is cleared only
-    /// once `git worktree add` reports back, so between Create and that moment a promoted task is
-    /// still selected and `TaskDetailView` still renders it — and a Cmd+J there took the `.reveal`
-    /// branch, which mints a surface without ever reaching the post-await guard. Nothing legitimate
-    /// is refused: the Tasks list renders `backlogTasks` alone, and a create that fails restores the
-    /// task through `abandonPendingCreate`, which makes the guard pass again.
+    /// Read again on the way in, because the window opens before the await: `selectedTaskId` is
+    /// cleared only once `git worktree add` reports back, so a promoted task stays selected and
+    /// `TaskDetailView` still renders it, and a Cmd+J there took `.reveal` — which mints a surface
+    /// without ever reaching the post-await guard. It gates a mint only, never a hide or a reveal
+    /// of a surface the task already has; a linked task can still reach the toggle, and refusing it
+    /// there would strand a live agent. A create that fails restores the task through
+    /// `abandonPendingCreate`, which makes the guard pass again.
     ///
-    /// A promoted task stays in `tasks` and is filtered out of `backlogTasks` by its link; a deleted
-    /// one leaves `tasks` at once, because `deleteTask` drops it from the pool rather than waiting
-    /// on the watcher.
+    /// A promoted task stays in `tasks` and is filtered out of the list by its link. A deleted one
+    /// leaves `tasks` as `deleteTask` reloads — but only for the manager that performed the delete,
+    /// so a delete from the standalone task window still reaches this one behind the watcher.
     func taskIsStillInBacklog(_ taskId: UUID) -> Bool {
         guard let task = workTaskManager.tasks.first(where: { $0.id == taskId }) else { return false }
         return task.worktree == nil

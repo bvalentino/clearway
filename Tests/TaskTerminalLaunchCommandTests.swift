@@ -47,37 +47,43 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
     /// that has left `backlogTasks` — an agent lighting no dot anywhere, which is the state that
     /// close exists to prevent.
     ///
-    /// Driven through `confirmCreate` rather than a hand-set `worktree`, so the rule cannot drift
-    /// from the write the promote actually performs.
+    /// Driven through `confirmCreate` and `abandonPendingCreate` rather than a hand-set `worktree`,
+    /// so the rule cannot drift from the writes the promote actually performs. The unwind is the
+    /// half that keeps the guard from refusing something legitimate: `git worktree add` can fail,
+    /// and a task left reading as promoted would have Cmd+J and Plan both dead until a relaunch.
     func testALaunchOpensNothingOnceCreateHasWrittenTheLink() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Ship it") else {
-            XCTFail("createTask returned nil"); return
-        }
+        let seed = try XCTUnwrap(taskManager.createTask(title: "Ship it"))
         let coordinator = makeCoordinator(taskManager)
         XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
-                      "a task still in the backlog opens its terminal exactly as before")
+                      "a task still in the backlog is one the list renders a row for")
 
         coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
 
         XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
                        "a launch resuming after the promote must open nothing")
+
+        coordinator.abandonPendingCreate()
+
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "an unwound create must not leave the task's terminal unreachable")
     }
 
     /// Delete is the other way a task leaves the list mid-launch, and it closes the terminal too
     /// (`WorkTaskListView`'s two delete doors). A resumed launch must not reopen one for a task with
     /// no file and no row.
     ///
-    /// Nothing reloads the pool here on purpose: in the app the watcher reload is 0.3s behind the
+    /// Nothing reloads the pool from the test on purpose: in the app the watcher is 0.3s behind the
     /// delete, which is longer than the window this rule guards, so a `deleteTask` that only
     /// removed the file would leave the launch reading a task that is still in `tasks` and still
-    /// names no worktree — and opening a terminal for it.
+    /// names no worktree — and opening a terminal for it. It pins the removal too: `deleteTask`
+    /// re-derives the pool from disk, so a delete that unlinked nothing answers `true` here.
     func testALaunchOpensNothingOnceTheTasksFileIsDeleted() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Ship it") else {
-            XCTFail("createTask returned nil"); return
-        }
+        let seed = try XCTUnwrap(taskManager.createTask(title: "Ship it"))
         let coordinator = makeCoordinator(taskManager)
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "a task still in the backlog is one the list renders a row for")
 
         taskManager.deleteTask(seed)
 

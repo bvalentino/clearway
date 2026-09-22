@@ -547,10 +547,17 @@ longer one the list renders.
   the rule is one rule read twice. Entry needs the full rule: `selectedTaskId` is cleared only when
   `git worktree add` reports back, so a promoted task stays selected and rendered until then, and a
   Cmd+J in that window took the `.reveal` branch — which mints a surface without reaching the
-  post-await guard at all.
-- `WorkTaskManager.deleteTask` drops the task from `tasks` as it removes the file, mirroring
-  `persist`. The watcher reload is 0.3s behind, which is longer than the window the rule guards,
-  so the delete half of the rule never fired in the app before this.
+  post-await guard at all. On the toggle door the entry guard gates the **mint** only
+  (`hasSurface || taskIsStillInBacklog`): hiding or revealing a surface the task already has takes
+  nothing from a row that has left the list, and `TaskDetailView` renders a linked task and draws
+  its toggle, so refusing there would strand a live agent in a pane no press can collapse.
+- `WorkTaskManager.deleteTask` re-derives the pool as it removes the file, the way `createTask` and
+  `relocateTaskToWorktree` already do. The watcher reload is 0.3s behind, which is longer than the
+  window the rule guards, so the delete half of the rule never fired in the app before this.
+  `reload` rather than dropping the id: disk is what the method wrote, so a removal that failed
+  leaves the task standing instead of taking its row away and resurrecting it at the next
+  unrelated load. It is per-manager — the standalone task window owns its own `WorkTaskManager`,
+  so its Delete still reaches the project window behind the watcher.
 - The Cmd+J launch guards between building the command and `openTaskTerminal`
   (`WorkTaskCoordinator+TaskTerminal.swift:39-41`).
 - `planTask`'s await is not in `planTask`: `TerminalManager.run(_:inTaskTerminalFor:app:directory:)`
@@ -571,10 +578,12 @@ longer one the list renders.
 3. A task still in the backlog when the launch resumes opens its terminal exactly as before.
 4. The launch claim is released in every case, so the next Cmd+J on a task that survived still
    works.
-5. A press on the toggle for a task that is already promoted or already deleted opens nothing
-   either, on the reveal branch as much as the launch branch.
+5. A press on the toggle for a task that is already promoted or already deleted mints nothing
+   either, on the reveal branch as much as the launch branch — while a press on a surface the task
+   already has still hides and reveals it.
 6. `deleteTask` takes the task out of `tasks` without waiting for the watcher, so the deleted answer
-   holds inside the debounce window rather than only after it.
+   holds inside the debounce window rather than only after it, and a removal that failed leaves the
+   row standing.
 
 **Verification.** `TaskTerminalLaunchCommandTests` pins the rule on all three answers, driving the
 promote through `confirmCreate` and the delete through `deleteTask` with no reload in between —
@@ -651,6 +660,21 @@ guard. Criterion 5 is the same method called at the door, the one line each door
   entry guards were tightened to `taskIsStillInBacklog` and the wording kept — this also closes the
   `.reveal` branch, which minted a surface without reaching the post-await guard at all. Acceptance
   criteria 5 and 6 added to T8.
+
+- **2026-09-22, third review-pr pass (6674e2a) — two fixes, no new decisions.** F1: the toggle
+  door's entry guard sat above the whole `switch`, so it refused `.hide` and `.reveal` as well as
+  the mint. `TaskDetailView` renders a linked task and draws its terminal toggle, so a task that
+  acquired a worktree without going through `closeTaskTerminal` — an external frontmatter write —
+  left a running agent in a pane no press could collapse. The guard is now
+  `hasSurface || taskIsStillInBacklog`, which keeps the `.reveal`-mints hole closed. F2:
+  `deleteTask` dropped the id from `tasks` unconditionally while `removeItem` stayed `try?`, so a
+  failed unlink took the row away with the file still on disk — and since nothing changed on disk,
+  no watcher event fired to bring it back. It now calls `reload()`, the primitive `createTask` and
+  `relocateTaskToWorktree` already use, which self-corrects and makes the existing test pin the
+  file removal too. Also: the `abandonPendingCreate` claim in the guard's docstring is now pinned
+  by the promote test, and the near-verbatim duplication between that docstring and
+  `Sources/App/CLAUDE.md` was cut back to the sentences that span files. Acceptance criteria 5
+  and 6 restated.
 
 ## Build log
 
