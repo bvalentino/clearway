@@ -169,6 +169,26 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertTrue(files.filter { $0.hasSuffix(".md") }.isEmpty, "no task file is written")
     }
 
+    /// A promoted task leaves `backlogTasks`, the only renderer of `taskPhases`, so an agent left
+    /// running in its bottom terminal would light no dot anywhere. Create closes that terminal.
+    ///
+    /// The surface half of the close needs a `ghostty_app_t` XCTest cannot produce. The panel
+    /// bookkeeping is the observable half, and a height the operator dragged is the one piece of it
+    /// a test can seed through the manager's own API.
+    func testConfirmCreateClosesThePromotedTasksTerminal() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Ship it") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        coordinator.terminalManager.setTaskTerminalHeight(320, for: seed.id)
+
+        coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
+
+        XCTAssertEqual(coordinator.terminalManager.taskTerminalHeight(for: seed.id), 200,
+                       "a promoted task keeps no terminal of its own")
+    }
+
     // MARK: - Abandoning a create
 
     /// `git worktree add` can fail after the frontmatter is already written — a branch that exists

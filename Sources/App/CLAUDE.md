@@ -188,6 +188,12 @@
   task's file vanished between Start Now and Create: the worktree the operator confirmed is still
   created, but nothing was written, so there is nothing to unwind and nothing to relocate. The
   slot is `private(set)`; `confirmCreate` is the only thing that can build a well-formed record.
+  It also **closes the promoted task's bottom terminal**: the link it writes takes the task out of
+  `backlogTasks`, which is the only renderer of `taskPhases`, so an agent still running there would
+  light no dot anywhere — not on the task, which no longer renders, and not on main, which the
+  `task:<uuid>` owner keeps it off. The close is the one part of the write `abandonPendingCreate`
+  cannot unwind, and it is deliberate: leaving the agent stranded and invisible is worse than a
+  failed create costing a terminal the operator can reopen.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
   to the relocated file), the shadow task, the creation mark — which **carries that command** —

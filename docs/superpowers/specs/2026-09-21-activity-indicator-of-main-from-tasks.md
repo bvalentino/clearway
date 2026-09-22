@@ -34,6 +34,7 @@ hues. Main's dot goes back to reflecting only agents running in main's own termi
 | 16 | Does a task terminal opened before its project path is known get an owner? | Yes, and this is a small behaviour gain: `taskSurface(for:app:projectPath:)` is called with an optional `projectPath` and today stamps `worktreeId: nil` when it is absent, so such a surface is invisible to the pipeline. A task id is always present, so a task terminal now always carries an owner. | Spec |
 | 17 | Do the retirement doors need new work? | No. Every door already reports by surface id: `closeTaskTerminal` (`TerminalManager+TaskTerminals.swift:58`), the replace-on-launch path (`:88`), the dead-child path (`TerminalManager.swift:425`), and the window-close sweep, whose `allSurfaces` already includes `taskSurfaces.values` (`TerminalManager.swift:554-556`, `retireAllSurfaces` at `:116`). Retirement is owner-agnostic and stays so. | Spec (verified) |
 | 18 | Is main's dot suppressed again? | No. PR #247's un-suppression stands (`SidebarView.swift:523` reads the phase for every worktree including main). The bug is the attribution, not the rendering: once a task surface names its task, nothing is left attributing task work to main. | Spec |
+| 19 | What happens to a task terminal when its task is promoted to a worktree? | Start Now → Create **closes it**, retiring any agent surface under `.task(id)`. The link `confirmCreate` writes takes the task out of `backlogTasks`, which is the only renderer of `taskPhases`, so an agent left running there would light no dot anywhere — not the task's row, which no longer renders, and not main's, which this change took it off. Closing was chosen over leaving the agent stranded and invisible, and over widening the change to the aside card. It is the one part of the write `abandonPendingCreate` cannot unwind. | Operator (after review-pr) |
 
 ## Assumptions
 
@@ -108,6 +109,8 @@ Behavioural, checked by the operator against the running app:
 - Quitting and relaunching Clearway while a task agent is working: its next hook event lights the
   task's row, not main.
 - Two tasks with agents at once each light their own row only.
+- Promoting a task with a working agent through Start Now → Create closes its task terminal: the
+  task leaves the list with no dot left behind, and main stays dark.
 
 Mechanical, checked by the suite:
 
@@ -123,6 +126,7 @@ Mechanical, checked by the suite:
 - `AgentHookSettingsTests` pins the renamed key on the stamped environment and in the forwarder's
   guards.
 - A `WorkTaskRow.dot(phase:)` test pins waiting over working over nothing.
+- A `WorkTaskCoordinatorTests` case pins that `confirmCreate` closes the promoted task's terminal.
 - `./scripts/ci.sh` passes.
 
 ## Verification commands
@@ -158,6 +162,8 @@ Sources:
   `AgentActivityDot` with a nested `Kind`.
 - `Sources/App/WorkTaskListView.swift` — `WorkTaskRow` gains `phase`, its `dot(phase:)` static and
   the trailing dot; the list observes the monitor and passes the phase in.
+- `Sources/App/WorkTaskCoordinator.swift` — `confirmCreate` closes the promoted task's terminal
+  (D19).
 - `Sources/App/CLAUDE.md` — the agent-pipeline notes that state the framing ("two preamble lines —
   surface id, worktree id"), "Two ids, not one", and "The monitor publishes two values, not three".
 - `Sources/Ghostty/CLAUDE.md` — the `agentEnvironment` note's mention of `worktreeId`.
@@ -168,6 +174,7 @@ Tests:
   `Tests/AgentHookIdentityTests.swift`, `Tests/AgentHookSettingsTests.swift`,
   `Tests/AgentActivityMonitorTests.swift` — the owner rename and the new task derivation.
 - `Tests/WorktreeRowTests.swift` — unchanged in substance; it never spells `WorktreeRow.Dot`.
+- `Tests/WorkTaskCoordinatorTests.swift` — the promote closing the task's terminal (D19).
 - One new test target file for `WorkTaskRow.dot`. `ci.sh` runs `xcodegen generate`, without which a
   new Swift file is invisible to the build.
 

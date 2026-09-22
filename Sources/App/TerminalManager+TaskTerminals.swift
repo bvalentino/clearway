@@ -50,13 +50,17 @@ extension TerminalManager {
         taskTerminalVisible[taskId] = !isVisible
     }
 
-    /// Close a task's terminal surface. Removes entry first to prevent auto-restart.
+    /// Close a task's terminal surface. Removes entry first to prevent auto-restart. The
+    /// bookkeeping goes whether or not a surface was ever minted — the task has no terminal after
+    /// this call either way, and that half is the only one XCTest can observe, since a
+    /// `Ghostty.SurfaceView` needs a `ghostty_app_t`.
     func closeTaskTerminal(_ taskId: UUID) {
-        guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
-        Self.retireSurface(surface.surfaceId)
+        let surface = taskSurfaces.removeValue(forKey: taskId)
         openTaskIds.remove(taskId)
         taskTerminalVisible.removeValue(forKey: taskId)
         taskTerminalHeights.removeValue(forKey: taskId)
+        guard let surface else { return }
+        Self.retireSurface(surface.surfaceId)
         surface.closeSurface()
     }
 

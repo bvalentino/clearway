@@ -481,6 +481,47 @@ change replaces. Each is rewritten in place, in the file's existing voice, with 
 returns only sentences that are still true. `./scripts/ci.sh` passes (markdown is excluded from the
 target's sources, so this is a no-op regression check, run because the stage owns it).
 
+### T7: Close the task terminal when a task is promoted to a worktree
+
+**Files:** `Sources/App/WorkTaskCoordinator.swift`,
+`Sources/App/TerminalManager+TaskTerminals.swift`, `Sources/App/CLAUDE.md`,
+`Tests/WorkTaskCoordinatorTests.swift`
+
+**What it does.** Added after review-pr. `confirmCreate` writes `updated.worktree = branch`
+(`WorkTaskCoordinator.swift:101`) and leaves the task's bottom terminal running, while the link it
+just wrote takes the task out of `backlogTasks` — the only renderer of `taskPhases` (assumption 5).
+So an agent working in a promoted task's terminal lights no dot anywhere: not the task's row, which
+no longer renders, and not main's, which T2 took it off. The operator chose closing that terminal
+over leaving the agent stranded or widening the change to the aside card.
+
+- `confirmCreate` calls `terminalManager.closeTaskTerminal(taskId)` inside its `if let taskId`
+  block, after the write and its `written == nil` log. Unconditional on the task id, not on the
+  write landing: a task whose file vanished between Start Now and Create is gone from the list
+  either way, so its terminal has no row left to report to. `closeTaskTerminal` is today reached
+  only from the two delete confirmations (`WorkTaskListView.swift:156`, `:174`).
+- `closeTaskTerminal` clears `openTaskIds`, `taskTerminalVisible` and `taskTerminalHeights`
+  unconditionally and keeps the surface teardown — `retireSurface` plus `closeSurface` — behind the
+  `taskSurfaces` lookup. The task has no terminal after the call whether or not a surface was ever
+  minted, and that bookkeeping is the only half XCTest can observe: a `Ghostty.SurfaceView` needs a
+  `ghostty_app_t`. No reachable state has bookkeeping without a surface, so this changes no
+  behaviour — every writer (`taskSurface(for:)`, `openTaskTerminal`) mints the surface in the same
+  call that records the task as open.
+- `Sources/App/CLAUDE.md` — the `confirmCreate` passage gains the close, why it is there, and that
+  it is the one part of the write `abandonPendingCreate` cannot unwind.
+- `Tests/WorkTaskCoordinatorTests.swift` — one case in the "Confirming a create" section: a task
+  whose terminal height the operator dragged to 320 is promoted, and the height reads back as the
+  200 default, which only `closeTaskTerminal` does.
+
+**Acceptance criteria.**
+1. Start Now → Create on a backlog task closes that task's bottom terminal, retiring any agent
+   surface under `.task(id)`.
+2. A hand-made worktree (no task id) closes nothing.
+3. The two delete doors keep working exactly as they did.
+
+**Verification.** `WorkTaskCoordinatorTests` covers 1 and, by `confirmCreate(taskId: nil, …)`
+already being pinned, 2. Criterion 3 is pinned by the delete paths going through the same method
+with a surface present, which no test can reach. `./scripts/ci.sh` passes.
+
 ## Risks
 
 | Risk | Impact | Mitigation |
@@ -495,6 +536,15 @@ target's sources, so this is a no-op regression check, run because the stage own
 - A `SIGKILL`ed agent in a task terminal pins the task's dot until its next `SessionStart` —
   nothing in the pipeline has a clock.
 - The aside card and the standalone Task window show no activity for a task whose list row is lit.
+
+## Changelog
+
+- **2026-09-21, after review-pr (05285ad) — T7 added.** Operator decision: when a backlog task is
+  promoted to a worktree through Start Now → Create, its bottom task terminal is closed, retiring
+  any agent surface under `.task(id)`. A promoted task leaves `backlogTasks`, the only renderer of
+  `taskPhases`, so an agent left running there would light no dot anywhere; the operator chose
+  closing over leaving it stranded and over widening the change to the aside card. Recorded as
+  Decision 19 in the spec, with a matching acceptance criterion.
 
 ## Build log
 
@@ -722,3 +772,35 @@ callers. `TerminalManager.makeSurface(_:workingDirectory:command:owner:)` replac
 duplicated lines) and the provider's decode in `ClearwayApp`, which is what keeps `environment`
 typed so no caller can stamp an untagged owner. `./scripts/ci.sh` — passed, exit 0, 798 tests,
 0 failures, unchanged from T6.
+
+### T7: Close the task terminal when a task is promoted to a worktree
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `confirmCreate` ends its `if let taskId` block with `terminalManager.closeTaskTerminal(taskId)`, after the write and its `written == nil` log, so a task whose file vanished loses its terminal too. The doc comment says why the close is there. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | `closeTaskTerminal` clears `openTaskIds`, `taskTerminalVisible` and `taskTerminalHeights` unconditionally and keeps `retireSurface` + `closeSurface` behind the `taskSurfaces` lookup. No reachable state carries the bookkeeping without a surface — both writers mint one in the same call — so behaviour is unchanged and the bookkeeping is now observable from XCTest. |
+| `Sources/App/CLAUDE.md` | The `confirmCreate` passage gains the close, its reason (a promoted task leaves `backlogTasks`, the only renderer of `taskPhases`), and that it is the one part of the write `abandonPendingCreate` cannot unwind. |
+| `Tests/WorkTaskCoordinatorTests.swift` | `testConfirmCreateClosesThePromotedTasksTerminal`: a task whose terminal height was set to 320 is promoted, and the height reads back as the 200 default. |
+
+**Evidence.** With the `closeTaskTerminal` call removed from `confirmCreate` — the code as review-pr
+found it — the new case is the only failure in the suite:
+
+```
+✖ testConfirmCreateClosesThePromotedTasksTerminal, XCTAssertEqual failed:
+  ("320.0") is not equal to ("200.0") - a promoted task keeps no terminal of its own
+Executed 799 tests, with 1 failure (0 unexpected)
+```
+
+Restoring the one line turns it green. The surface half of the close cannot be driven from XCTest —
+a `Ghostty.SurfaceView` needs a `ghostty_app_t` — so what the case pins is that the promote reaches
+`closeTaskTerminal`; that the method retires the surface it finds is the line beside the teardown,
+and `AgentActivityStoreTests.testRetiringATaskSurfaceClearsItsTaskPhase` pins what retirement then
+does to the dot.
+
+**Deviations.** One. The plan's file list did not name the `closeTaskTerminal` restructure as a
+change in its own right; it is the seam that makes the promote observable, and it is described in
+the task above.
+
+**Gate.** `./scripts/ci.sh` — passed, "==> CI passed." under `set -euo pipefail`, so exit 0. 799
+tests, 0 failures (798 after T6, plus this case). `git status --porcelain` lists only the four files
+above plus this plan and the spec; no untracked files, no `default.profraw`.
