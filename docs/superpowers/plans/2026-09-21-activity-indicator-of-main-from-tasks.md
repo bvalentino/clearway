@@ -546,6 +546,15 @@ with a surface present, which no test can reach. `./scripts/ci.sh` passes.
   closing over leaving it stranded and over widening the change to the aside card. Recorded as
   Decision 19 in the spec, with a matching acceptance criterion.
 
+- **2026-09-21, after T7 (2950938) — no code change.** Operator decision: the close stays in
+  `WorkTaskCoordinator.confirmCreate`, beside the link write and before `git worktree add`, rather
+  than moving to `completePendingCreate` as the build agent proposed. A failed create therefore
+  restores the task to the backlog without its terminal. Recorded as Decision 20 in the spec.
+
+- **2026-09-21, after T7 (2950938) — no code change.** Operator decision: promote does not confirm
+  before closing a task terminal with a live process, unlike Delete and Plan, because promote is an
+  explicit action on the task. Recorded as Decision 21 in the spec.
+
 ## Build log
 
 ### T1: Rename the surface's owner parameter to activityOwner
