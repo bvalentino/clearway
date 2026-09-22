@@ -558,4 +558,16 @@ final class TerminalManagerTests: XCTestCase {
     func test_stagedText_leavesOrdinaryTextAlone() {
         XCTAssertEqual(TerminalManager.stagedText("review the diff"), "review the diff")
     }
+
+    // MARK: - taskTerminalHeight
+
+    func test_taskTerminalHeight_isNilUntilDragged() {
+        let manager = TerminalManager()
+        let taskId = UUID()
+
+        XCTAssertNil(manager.taskTerminalHeight(for: taskId))
+
+        manager.setTaskTerminalHeight(320, for: taskId)
+        XCTAssertEqual(manager.taskTerminalHeight(for: taskId), 320)
+    }
 }

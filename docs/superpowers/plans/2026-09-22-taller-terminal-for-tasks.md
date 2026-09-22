@@ -199,6 +199,15 @@ and the drag base. The worktree bottom terminal's separate height logic stays un
 deliberate, already-documented scope boundary. `./scripts/ci.sh`: exit 0, "Test Succeeded", 846
 tests, 0 failures; `git status --porcelain` clean.
 
+### Review PR
+
+`/pr-review-toolkit:review-pr code tests errors types` over `main...HEAD`. The code, errors and
+types reviewers found nothing to fix. The tests reviewer found one gap: nothing checked that
+`TerminalManager.taskTerminalHeight(for:)` returns nil before a drag, so restoring
+`taskTerminalHeights[taskId] ?? 200` would still compile and pin the terminal back at 200 pt.
+Added `TerminalManagerTests.test_taskTerminalHeight_isNilUntilDragged`. Per the stage brief, the
+suite was not run here; sign-off runs it.
+
 ## Changelog
 
 Operator decisions from the review step. These are not plan tasks; no later stage may revert them.
