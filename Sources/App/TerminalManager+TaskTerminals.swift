@@ -12,6 +12,10 @@ extension TerminalManager {
         taskSurfaces[taskId]?.needsConfirmQuit ?? false
     }
 
+    static func taskHasActiveProcessInAnyManager(_ taskId: UUID) -> Bool {
+        allInstances.allObjects.contains { $0.taskHasActiveProcess(taskId) }
+    }
+
     /// Get or create a terminal surface for a task.
     @discardableResult
     func taskSurface(for taskId: UUID, app: ghostty_app_t, projectPath: String?) -> Ghostty.SurfaceView {
@@ -32,9 +36,9 @@ extension TerminalManager {
         taskTerminalVisible[taskId] ?? false
     }
 
-    /// The stored terminal panel height for a task, or the default.
-    func taskTerminalHeight(for taskId: UUID) -> CGFloat {
-        taskTerminalHeights[taskId] ?? 200
+    /// The height the user dragged a task's terminal panel to, or nil when it follows the default.
+    func taskTerminalHeight(for taskId: UUID) -> CGFloat? {
+        taskTerminalHeights[taskId]
     }
 
     /// Store a task's terminal panel height.
@@ -62,6 +66,12 @@ extension TerminalManager {
         guard let surface else { return }
         Self.retireSurface(surface.surfaceId)
         surface.closeSurface()
+    }
+
+    static func closeTaskTerminalInAllManagers(_ taskId: UUID) {
+        for manager in allInstances.allObjects {
+            manager.closeTaskTerminal(taskId)
+        }
     }
 
     /// Claims the task's terminal for a launch that has yet to build its command, and reports

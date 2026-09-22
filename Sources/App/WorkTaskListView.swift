@@ -85,6 +85,7 @@ struct WorkTaskListView: View {
                     if let task = startableTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
+                .id(savedCommandManager.agentCommands)
             }
 
             ToolbarGroupBreak()
@@ -264,7 +265,16 @@ struct WorkTaskListView: View {
     /// *row* it is built for instead — `nil` from the toolbar, the row's own task from a context
     /// menu — and every item resolves its target through
     /// `WorkTaskCoordinator.startNowTarget(row:selection:)` **inside** its action, against the
-    /// live `selectedTask`. No test can catch a regression here; this docstring is the guard.
+    /// live `selectedTask`. Nor may an item capture a `SavedCommand`: an edit keeps a command's id
+    /// and the item count, so an item carrying the command value ran the text from when the menu
+    /// was first built. Each item captures only the command's id and resolves it **inside** its
+    /// action through `CommandDefaults.resolve(_:in:)`, against the live
+    /// `savedCommandManager.commands`. No test can catch a regression here; this docstring is the
+    /// guard.
+    ///
+    /// The toolbar control is keyed on `savedCommandManager.agentCommands`: a split button's
+    /// `NSMenu` is filled once, so a renamed command would otherwise keep its old label. See the
+    /// `.id` rule for toolbar split buttons in `Sources/App/CLAUDE.md`.
     ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
@@ -274,9 +284,11 @@ struct WorkTaskListView: View {
         if WorkTaskCoordinator.startNowTarget(row: row, selection: selectedTask) != nil,
            ghosttyApp.readiness == .ready, !commands.isEmpty {
             ForEach(commands) { command in
+                let commandId = command.id
                 Button(command.name) {
-                    if let task = WorkTaskCoordinator.startNowTarget(row: row, selection: selectedTask) {
-                        plan(task, using: command)
+                    if let task = WorkTaskCoordinator.startNowTarget(row: row, selection: selectedTask),
+                       let current = CommandDefaults.resolve(commandId, in: savedCommandManager.commands) {
+                        plan(task, using: current)
                     }
                 }
             }
