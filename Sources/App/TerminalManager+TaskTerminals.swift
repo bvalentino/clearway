@@ -12,7 +12,7 @@ extension TerminalManager {
         taskSurfaces[taskId]?.needsConfirmQuit ?? false
     }
 
-    static func anyTaskHasActiveProcess(_ taskId: UUID) -> Bool {
+    static func taskHasActiveProcessInAnyManager(_ taskId: UUID) -> Bool {
         allInstances.allObjects.contains { $0.taskHasActiveProcess(taskId) }
     }
 

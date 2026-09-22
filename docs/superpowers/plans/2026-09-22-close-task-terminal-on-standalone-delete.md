@@ -35,7 +35,7 @@ T2 calls the members T1 adds, so T1 lands first.
 **What it does:** Adds two `static` members to the `TerminalManager` extension in
 `TerminalManager+TaskTerminals.swift`, next to the instance members they wrap:
 
-- `static func anyTaskHasActiveProcess(_ taskId: UUID) -> Bool`: `true` when any manager in
+- `static func taskHasActiveProcessInAnyManager(_ taskId: UUID) -> Bool`: `true` when any manager in
   `allInstances.allObjects` returns `true` from `taskHasActiveProcess(taskId)`.
 - `static func closeTaskTerminalInAllManagers(_ taskId: UUID)`: calls `closeTaskTerminal(taskId)`
   on every manager in `allInstances.allObjects`.
@@ -77,7 +77,7 @@ appear as passed in its output.
 
 - Add `@State private var showForceDeleteConfirmation = false`.
 - The "Delete Task" menu button (`WorkTaskWindow.swift:98-104`) reads
-  `TerminalManager.anyTaskHasActiveProcess(taskId)` (T1's name) at click time and sets
+  `TerminalManager.taskHasActiveProcessInAnyManager(taskId)` (T1's name) at click time and sets
   `showForceDeleteConfirmation = true` when it is `true`, else `showDeleteConfirmation = true`.
 - Extract one private `deleteTask()` used by both prompts. It runs, in order:
   `deleted = true`; if `task` exists, `TerminalManager.closeTaskTerminalInAllManagers(task.id)` then
@@ -129,8 +129,8 @@ None.
 
 | File | State |
 | --- | --- |
-| `Sources/App/TerminalManager+TaskTerminals.swift` | Adds `static func anyTaskHasActiveProcess(_:)` (next to `taskHasActiveProcess`) and `static func closeTaskTerminalInAllManagers(_:)` (next to `closeTaskTerminal`), both over `allInstances.allObjects`. The instance members are unchanged. |
-| `Tests/TerminalManagerTests.swift` | Adds `test_closeTaskTerminalInAllManagers_clearsTheTaskInEveryManager` and `test_anyTaskHasActiveProcess_isFalseWithoutASurface`, plus two private helpers that seed and check task bookkeeping. |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | Adds `static func taskHasActiveProcessInAnyManager(_:)` (next to `taskHasActiveProcess`) and `static func closeTaskTerminalInAllManagers(_:)` (next to `closeTaskTerminal`), both over `allInstances.allObjects`. The instance members are unchanged. |
+| `Tests/TerminalManagerTests.swift` | Adds `test_closeTaskTerminalInAllManagers_clearsTheTaskInEveryManager` and `test_taskHasActiveProcessInAnyManager_isFalseWithoutASurface`, plus two private helpers that seed and check task bookkeeping. |
 
 **Watched failure.** With `closeTaskTerminalInAllManagers` temporarily written as
 `allInstances.allObjects.first?.closeTaskTerminal(taskId)` (reaches one manager only), running
@@ -158,7 +158,7 @@ xcresult. `swiftlint lint --quiet` on the two touched files reports nothing.
 
 | File | State |
 | --- | --- |
-| `Sources/App/WorkTaskWindow.swift` | Adds `showForceDeleteConfirmation`. "Delete Task" reads `TerminalManager.anyTaskHasActiveProcess(task.id)` at click time and raises the new `confirmationDialog` (title `Delete "<title>"?`, `titleVisibility: .visible`, message "There are processes still running in this task's terminal.", one destructive Delete) or the existing alert, which is unchanged apart from its Delete button. Both Delete buttons call a new private `deleteTask()`: `deleted = true`, then `closeTaskTerminalInAllManagers(task.id)` before `workTaskManager.deleteTask(task)`, then the existing async key-window close. Cancel on either prompt runs nothing. |
+| `Sources/App/WorkTaskWindow.swift` | Adds `showForceDeleteConfirmation`. "Delete Task" reads `TerminalManager.taskHasActiveProcessInAnyManager(task.id)` at click time and raises the new `confirmationDialog` (title `Delete "<title>"?`, `titleVisibility: .visible`, message "There are processes still running in this task's terminal.", one destructive Delete) or the existing alert, which is unchanged apart from its Delete button. Both Delete buttons call a new private `deleteTask()`: `deleted = true`, then `closeTaskTerminalInAllManagers(taskId)` (unconditionally, so a task that vanished from the pool while a prompt was open still has its terminal closed) before `workTaskManager.deleteTask(task)`, then the existing async key-window close. Cancel on either prompt runs nothing. |
 | `Sources/App/CLAUDE.md` | One clause added to the Delete note: the standalone door closes the task terminal directly through the static fan-out over `allInstances`, so only the pool waits on the watcher. |
 
 **Watched failure.** None for this task. The change is SwiftUI prompt wiring, which XCTest cannot

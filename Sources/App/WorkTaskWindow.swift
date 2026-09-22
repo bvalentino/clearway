@@ -98,7 +98,7 @@ struct WorkTaskWindow: View {
 
                     if let task, task.worktree == nil {
                         Button(role: .destructive) {
-                            if TerminalManager.anyTaskHasActiveProcess(task.id) {
+                            if TerminalManager.taskHasActiveProcessInAnyManager(task.id) {
                                 showForceDeleteConfirmation = true
                             } else {
                                 showDeleteConfirmation = true
@@ -297,10 +297,8 @@ struct WorkTaskWindow: View {
 
     private func deleteTask() {
         deleted = true
-        if let task {
-            TerminalManager.closeTaskTerminalInAllManagers(task.id)
-            workTaskManager.deleteTask(task)
-        }
+        TerminalManager.closeTaskTerminalInAllManagers(taskId)
+        if let task { workTaskManager.deleteTask(task) }
         DispatchQueue.main.async {
             NSApplication.shared.keyWindow?.close()
         }

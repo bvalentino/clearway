@@ -585,13 +585,13 @@ final class TerminalManagerTests: XCTestCase {
         assertNoTaskTerminal(taskB, in: second)
     }
 
-    func test_anyTaskHasActiveProcess_isFalseWithoutASurface() {
+    func test_taskHasActiveProcessInAnyManager_isFalseWithoutASurface() {
         let manager = TerminalManager()
         let task = UUID()
         seedTaskTerminal(task, in: manager)
 
-        XCTAssertFalse(TerminalManager.anyTaskHasActiveProcess(task))
-        XCTAssertFalse(TerminalManager.anyTaskHasActiveProcess(UUID()))
+        XCTAssertFalse(TerminalManager.taskHasActiveProcessInAnyManager(task))
+        XCTAssertFalse(TerminalManager.taskHasActiveProcessInAnyManager(UUID()))
     }
 
     private func seedTaskTerminal(_ taskId: UUID, in manager: TerminalManager) {
