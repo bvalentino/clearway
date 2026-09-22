@@ -28,15 +28,15 @@ enum ToolbarSplitButtonMenu {
     private static func toolbarSegmentedControl(labelled label: String) -> NSSegmentedControl? {
         guard let items = NSApp.keyWindow?.toolbar?.visibleItems else { return nil }
         for item in items {
-            guard let view = item.view,
-                  let control = segmentedControl(in: view, labelled: label) else { continue }
-            return control
+            if let view = item.view, let control = segmentedControl(in: view, labelled: label) {
+                return control
+            }
         }
         return nil
     }
 
-    /// Depth first from a toolbar item's own view. The segment count is checked before either
-    /// segment is read: `NSSegmentedControl` raises on an out-of-range index.
+    /// The segment count is checked before either segment is read: `NSSegmentedControl` raises on
+    /// an out-of-range index.
     private static func segmentedControl(in view: NSView, labelled label: String) -> NSSegmentedControl? {
         if let control = view as? NSSegmentedControl,
            control.segmentCount > 1,

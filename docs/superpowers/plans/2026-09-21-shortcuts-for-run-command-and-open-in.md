@@ -762,6 +762,20 @@ Gate: `./scripts/ci.sh` — passed. 787 tests, 0 failures; SwiftLint clean; `==>
 `git status --porcelain` before the commit showed only `Sources/App/CLAUDE.md` plus this plan; no
 `default.profraw` and no untracked files.
 
+### Simplify
+
+`/simplify` over the branch. Three of four cleanup agents converged on the same finding, so
+`.clearwayAddCommand` is gone: `showCommandEditor` moved to `ContentView` as `@State`, `RunCommandMenu`
+takes it as a `@Binding`, and the Worktree submenu's "Add Command…" sets it directly — deleting the
+notification name, the `onReceive` `===` identity guard and `WorktreeRunActions.commandEditorOpener`.
+`RunCommandMenu` also went back to `let worktree: Worktree` and derives `WorktreeRunActions.runner`
+from its own environment, matching `OpenInMenu` and restoring the view's structural equality that a
+stored closure defeated; `ContentView`'s single-use `runAction(for:)` was inlined (998 → 997 lines).
+Plus a `guard`/`continue` flipped to `if let` in `ToolbarSplitButtonMenu` and three restating doc
+comments dropped. No behaviour change, and nothing the Changelog records was touched.
+Gate: `./scripts/ci.sh` — passed after the last edit. 788 tests, 0 failures; SwiftLint clean;
+`==> CI passed.` (`set -euo pipefail`, banner last, so exit 0).
+
 ## Changelog
 
 Operator-requested changes made after a hands-on check. These are not plan tasks; no later step

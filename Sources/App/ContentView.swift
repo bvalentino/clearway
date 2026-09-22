@@ -63,6 +63,9 @@ struct ContentView: View {
     @EnvironmentObject private var workTaskCoordinator: WorkTaskCoordinator
     @EnvironmentObject private var groupManager: WorktreeGroupManager
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
+    /// Raised by the Run dropdown's "Add Command…" and by the Worktree menu's, so the one
+    /// `CommandEditorSheet` presenter in this window serves both.
+    @State private var showCommandEditor = false
     @State private var detailSelection: DetailSelection? = .tasks
     @State private var sidebarSelection: DetailSelection? = .tasks
     /// True during the synchronous tick of an arrow keyDown in the sidebar.
@@ -166,11 +169,16 @@ struct ContentView: View {
             primary: savedCommandManager.primaryCommand,
             title: savedCommandManager.runButtonTitle,
             commands: savedCommandManager.commands,
-            run: runAction(for: worktree),
+            run: WorktreeRunActions.runner(
+                worktree: worktree,
+                savedCommandManager: savedCommandManager,
+                terminalManager: terminalManager,
+                ghosttyApp: ghosttyApp
+            ),
             popRunMenu: { [savedCommandManager] in
                 ToolbarSplitButtonMenu.popUp(labelled: savedCommandManager.runButtonTitle)
             },
-            addCommand: WorktreeRunActions.commandEditorOpener(savedCommandManager)
+            addCommand: { showCommandEditor = true }
         )
     }
 
@@ -184,15 +192,6 @@ struct ContentView: View {
             popOpenInMenu: { [settings] in
                 ToolbarSplitButtonMenu.popUp(labelled: settings.openInButtonTitle)
             }
-        )
-    }
-
-    private func runAction(for worktree: Worktree) -> (SavedCommand) -> Void {
-        WorktreeRunActions.runner(
-            worktree: worktree,
-            savedCommandManager: savedCommandManager,
-            terminalManager: terminalManager,
-            ghosttyApp: ghosttyApp
         )
     }
 
@@ -236,7 +235,7 @@ struct ContentView: View {
                 .toolbar {
                     if let runWorktree = selectedWorktree {
                         ToolbarItem(placement: .primaryAction) {
-                            RunCommandMenu(run: runAction(for: runWorktree))
+                            RunCommandMenu(worktree: runWorktree, showCommandEditor: $showCommandEditor)
                         }
                         ToolbarGroupBreak()
                         if !settings.openInApps.isEmpty, let path = currentWorktree?.path {

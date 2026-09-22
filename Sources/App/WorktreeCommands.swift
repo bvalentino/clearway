@@ -34,14 +34,6 @@ extension WorktreeRunActions {
             terminalManager.run(command, in: worktree, app: app)
         }
     }
-
-    /// The menu bar's door to the command editor. `RunCommandMenu` is the one presenter of that
-    /// sheet, and every open window has one, so the post carries this window's manager as `object`
-    /// for their identity guards to match on.
-    @MainActor
-    static func commandEditorOpener(_ savedCommandManager: SavedCommandManager) -> () -> Void {
-        { NotificationCenter.default.post(name: .clearwayAddCommand, object: savedCommandManager) }
-    }
 }
 
 /// The focused project window's Open In action, published as a focused scene value. `nil` when the
@@ -53,7 +45,6 @@ struct WorktreeOpenInActions {
     let title: String
     let apps: [OpenInApp]
     let open: (OpenInApp) -> Void
-    /// Opens the toolbar Open In button's own dropdown, the ⌥⌘O counterpart of `popRunMenu`.
     let popOpenInMenu: () -> Void
 }
 
@@ -107,8 +98,8 @@ extension FocusedValues {
     }
 }
 
-/// Worktree ▸ Run <name>. The title names the command a press will run, the way the toolbar's
-/// label half does; an empty list leaves the generic "Run" with nothing to run, so the row greys.
+/// Worktree ▸ Run <name>. An empty command list leaves the generic "Run" with nothing to run, so
+/// the row greys.
 struct RunPrimaryMenuItem: View {
     @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
 

@@ -65,13 +65,12 @@
   `WorktreeRunActions.runner` and `WorktreeOpenInActions.opener` are the **one** implementation of
   each action, shared with `RunCommandMenu` and `OpenInMenu`, so record-then-launch and the Open In
   failure alert exist once in the tree.
-  The submenu's "Add Command…" posts `.clearwayAddCommand` carrying this window's
-  `SavedCommandManager` as `object`, and `RunCommandMenu` — the one presenter of
-  `CommandEditorSheet` in a project window — guards on `===` identity before opening it, or every
-  open window would raise a sheet (the `.clearwayNewGroup` precedent in `SidebarView`). The closure
-  is built in `ContentView`, where the manager is, rather than read with `@FocusedObject`: nothing
-  in the tree calls `.focusedObject(_:)`, so that wrapper reads nil and would leave the row
-  permanently disabled.
+  The submenu's "Add Command…" sets `ContentView`'s `showCommandEditor`, the same `@State` the Run
+  dropdown's own door sets — `RunCommandMenu` takes it as a `@Binding` and stays the one presenter
+  of `CommandEditorSheet` in a project window. Owning the flag one level up is what keeps this
+  per-window: a broadcast `Notification` would reach every open window's menu and need an `===`
+  identity guard to undo that (the `.clearwayNewGroup` shape in `SidebarView`), and
+  `@FocusedObject` reads nil because nothing in the tree calls `.focusedObject(_:)`.
   **⌥⌘R and ⌥⌘O pop the toolbar's own dropdowns through AppKit** rather than drawing a second list
   that could drift from them. SwiftUI cannot present a `Menu` programmatically, so
   `ToolbarSplitButtonMenu.popUp(labelled:)` walks the view tree depth first for an
@@ -569,9 +568,9 @@
   AppKit renders as a click that does nothing. Run's door is "Add Command…", presenting the same
   `CommandEditorSheet(command: nil)` the Commands view's `+` opens; the sheet hangs off
   `RunCommandMenu`'s own body, **outside** the `.disabled(…)` so the editor's controls never
-  inherit a disabled environment, rather than off `ContentView`, whose `file_length` budget is
-  spent. That stays the one presenter: the Worktree menu's Run submenu carries the same door but
-  posts `.clearwayAddCommand` to it instead of raising a sheet of its own. Open in's door is
+  inherit a disabled environment, while the `isPresented` flag it binds lives on `ContentView`.
+  That stays the one presenter: the Worktree menu's Run submenu carries the same door and sets the
+  same flag rather than raising a sheet of its own. Open in's door is
   "Edit Apps…", opening the Settings window where this list is edited:
   `SettingsLink` under `#available(macOS 14, *)` — both it and `@Environment(\.openSettings)` are
   macOS 14.0+ against a 13.0 target — falling back to

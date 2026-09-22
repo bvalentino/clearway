@@ -11,13 +11,14 @@ import SwiftUI
 /// editor through it.
 struct RunCommandMenu: View {
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
+    @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
 
-    /// `WorktreeRunActions.runner`, handed in so the menu bar's Run rows and this button share one
-    /// implementation.
-    let run: (SavedCommand) -> Void
+    let worktree: Worktree
 
-    @State private var showCommandEditor = false
+    /// Owned by `ContentView` so the Worktree menu's "Add Command…" can raise this sheet without a
+    /// second route into the view — that row sets the same flag the dropdown's own door sets.
+    @Binding var showCommandEditor: Bool
 
     var body: some View {
         menu
@@ -26,12 +27,17 @@ struct RunCommandMenu: View {
             .sheet(isPresented: $showCommandEditor) {
                 CommandEditorSheet(command: nil)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .clearwayAddCommand)) { note in
-                // The notification is broadcast to every mounted view, so only the menu whose
-                // command manager matches the post's target presents the sheet.
-                guard (note.object as? SavedCommandManager) === savedCommandManager else { return }
-                showCommandEditor = true
-            }
+    }
+
+    /// `WorktreeRunActions.runner` is the one implementation of running a saved command, shared
+    /// with the menu bar's Run rows.
+    private var run: (SavedCommand) -> Void {
+        WorktreeRunActions.runner(
+            worktree: worktree,
+            savedCommandManager: savedCommandManager,
+            terminalManager: terminalManager,
+            ghosttyApp: ghosttyApp
+        )
     }
 
     /// `primaryAction:` cannot be attached conditionally, so the menu is declared twice and
