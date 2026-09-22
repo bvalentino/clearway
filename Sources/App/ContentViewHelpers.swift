@@ -13,13 +13,12 @@ private let hookLogger = Logger(
 
 /// Wraps a hook command for use as a Ghostty surface `command:` parameter.
 ///
-/// Runs the hook through `/bin/sh` with the resolved user PATH exported. On
+/// Runs the hook through `/bin/sh` with `path` exported. On
 /// failure, prints a red banner with the exit status and then exits with the
 /// same status — so `ghosttyChildExited` fires reliably, letting the UI
 /// transition into a visible "failed" state (with output preserved on screen).
-func hookShellCommand(_ cmd: String) -> String {
-    let resolvedPath = ShellEnvironment.path
-    let exportPath = "export PATH=\(shellEscape(resolvedPath)); "
+func hookShellCommand(_ cmd: String, path: String = ShellEnvironment.path) -> String {
+    let exportPath = "export PATH=\(shellEscape(path)); "
     let failBanner = "printf '\\n\\033[31m[hook failed: exit %d]\\033[0m\\n' \"$s\""
     let script = exportPath + "(" + cmd + "); s=$?; if [ $s -ne 0 ]; then \(failBanner); fi; exit $s"
     let wrapped = "/bin/sh -c \(shellEscape(script))"
