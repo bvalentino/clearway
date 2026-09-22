@@ -983,7 +983,7 @@ struct ContentView: View {
     private func beginCloseTab(id: UUID, in worktreeId: String) {
         guard let tab = terminalManager.mainTabs(for: worktreeId).first(where: { $0.id == id }) else { return }
         if tab.surface.needsConfirmQuit {
-            let title = tab.surface.title.isEmpty ? "Terminal" : tab.surface.title
+            let title = TerminalTab.displayTitle(name: tab.name, surfaceTitle: tab.surface.title)
             tabCloseQueue.append(TabCloseRequest(worktreeId: worktreeId, tabId: id, title: title))
         } else {
             terminalManager.closeMainTab(id: id, in: worktreeId)
