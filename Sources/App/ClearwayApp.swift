@@ -160,10 +160,14 @@ struct ClearwayApp: App {
         // the line above rather than per window. The monitor is captured weakly — a static that
         // held it strongly would outlive every window and keep the socket bound through teardown.
         Ghostty.SurfaceView.agentEnvironment = { surfaceId, owner in
-            AgentHookIdentity.environment(
-                surfaceId: surfaceId,
-                owner: owner.flatMap(AgentActivityOwner.init(rawValue:))
-            )
+            // A string that fails to decode leaves the surface unstamped, which is the
+            // silently-dead dot with no diagnostic. Only `nil` is a legitimate absence.
+            let decoded = owner.flatMap(AgentActivityOwner.init(rawValue:))
+            if let owner, decoded == nil {
+                Ghostty.logger.error("An activity owner of \(owner, privacy: .public) did not decode.")
+                assertionFailure("Undecodable activity owner \(owner)")
+            }
+            return AgentHookIdentity.environment(surfaceId: surfaceId, owner: decoded)
         }
         let agentActivity = AgentActivityMonitor()
         TerminalManager.retireSurface = { [weak agentActivity] surfaceId in

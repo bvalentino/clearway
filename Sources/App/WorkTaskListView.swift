@@ -361,9 +361,10 @@ struct WorkTaskRow: View {
     var hasActiveTerminal: Bool = false
     var phase: AgentPhase = .idle
 
-    /// Which dot the row carries, or none. The phase rule and nothing on top of it: a task terminal
-    /// raises no notification, and a retired surface has already left the store, so there is no
-    /// `hasNotification` and no `isOpen` to gate on.
+    /// Which dot the row carries, or none. The phase rule and nothing on top of it: no notification
+    /// is tracked for a task terminal — `handleDesktopNotification` resolves a surface through
+    /// `panes`, which never holds one — and a retired surface has already left the store, so there
+    /// is no `hasNotification` and no `isOpen` to gate on.
     static func dot(phase: AgentPhase) -> AgentActivityDot.Kind? {
         AgentActivityDot.Kind(phase: phase)
     }

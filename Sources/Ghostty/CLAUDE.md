@@ -12,11 +12,13 @@
   `ContentView.onAppear`. A SwiftUI `.keyboardShortcut` declared without a matching entry is
   unreachable whenever a terminal has focus, which is why the table and the declarations live in
   the same layer.
-  `SurfaceView.agentEnvironment` is the second such provider, wired in the same two lines of
-  `ClearwayApp.init` to `AgentHookIdentity.environment`. It returns the env vars to stamp on a
-  surface's child process from its `surfaceId` and `activityOwner`, and it exists so this layer never
-  learns the names: `Sources/Ghostty` wraps libghostty and must not import the hook feature, and a
-  provider makes the names testable without a `ghostty_app_t`. Its default is `{ _, _ in [] }`, so
+  `SurfaceView.agentEnvironment` is the second such provider, wired beside it in `ClearwayApp.init`
+  to a closure that decodes the owner tag and hands it to `AgentHookIdentity.environment` — the one
+  place the opaque string becomes a typed owner, so an undecodable one is reported there rather than
+  dropped. It returns the env vars to stamp on a surface's child process from its `surfaceId` and
+  `activityOwner`, and it exists so this layer never learns the names: `Sources/Ghostty` wraps
+  libghostty and must not import the hook feature, and a provider makes the names testable without
+  a `ghostty_app_t`. Its default is `{ _, _ in [] }`, so
   a missing wiring line compiles, launches and silently ships a dead feature —
   `AgentHookIdentityTests.testTheSurfaceProviderIsWiredAtLaunch` is the pin, and it works because
   the unit-test bundle is hosted by the app, so `ClearwayApp.init` has already run.

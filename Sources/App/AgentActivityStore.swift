@@ -158,8 +158,9 @@ struct AgentActivityStore {
         surfaces.removeValue(forKey: surfaceId)
     }
 
-    /// The four derivations the monitor publishes whole, so the views read a dictionary rather than
-    /// asking the store once per row.
+    /// The three derivations the monitor publishes whole, so the views read a dictionary rather
+    /// than asking the store once per row. `surfaceToolNames` below is not among them — it goes to
+    /// `AgentActivityMonitor.ToolNames`, which only the tab chip observes.
     var worktreePhases: [String: AgentPhase] {
         surfaces.values.reduce(into: [:]) { phases, state in
             guard case .worktree(let id) = state.owner else { return }

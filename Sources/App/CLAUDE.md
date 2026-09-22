@@ -616,9 +616,11 @@
   surfaces are already retired; the blue notification dot survives it, because a notification
   raised before the worktree closed is still unread. The task rule is `WorkTaskRow.dot(phase:)`,
   keyed on `taskPhases`: the phase rule and nothing else, with no `hasNotification` and no
-  `isOpen`, because a task terminal raises no notification and a retired surface has already left
-  the store. Task rows carry no subagent children — `worktreeSubagents` is filtered to worktree
-  owners, so a task surface's roster contributes no key and nothing renders — but that roster still
+  `isOpen`, because no notification is tracked for a task terminal — libghostty raises one for any
+  surface, but `handleDesktopNotification` resolves it through `panes`, which never holds a task
+  surface, so it is dropped — and a retired surface has already left the store. Task rows carry no
+  subagent children — `worktreeSubagents` is filtered to worktree owners, so a task surface's
+  roster contributes no key and nothing renders — but that roster still
   counts as work, because `effectivePhase` lifts a surface holding a live subagent to `.working`
   before any derivation sees it.
 - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
