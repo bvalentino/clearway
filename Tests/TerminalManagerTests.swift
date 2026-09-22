@@ -600,8 +600,12 @@ final class TerminalManagerTests: XCTestCase {
         manager.taskTerminalHeights[taskId] = 320
     }
 
-    private func assertNoTaskTerminal(_ taskId: UUID, in manager: TerminalManager,
-                                      file: StaticString = #filePath, line: UInt = #line) {
+    private func assertNoTaskTerminal(
+        _ taskId: UUID,
+        in manager: TerminalManager,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         XCTAssertNil(manager.taskSurfaces[taskId], file: file, line: line)
         XCTAssertFalse(manager.openTaskIds.contains(taskId), file: file, line: line)
         XCTAssertNil(manager.taskTerminalVisible[taskId], file: file, line: line)

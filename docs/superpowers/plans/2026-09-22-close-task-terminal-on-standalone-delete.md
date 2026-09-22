@@ -169,3 +169,10 @@ quoted above. The prompt choice and the close are left to the operator's manual 
 
 **Gate.** `./scripts/ci.sh` exit 0: 842 tests, 0 failures, "CI passed." `swiftlint lint --quiet
 Sources/App/WorkTaskWindow.swift` reports nothing.
+
+### Simplify
+
+Rewrapped `assertNoTaskTerminal`'s signature in `Tests/TerminalManagerTests.swift` onto one
+parameter per line, matching the project's existing `file:`/`line:` default-parameter style
+(`Tests/SavedCommandTests.swift:63-66`) instead of the ad hoc hanging indent it landed with. No
+other simplification found; T1/T2's production and test code were already minimal.
