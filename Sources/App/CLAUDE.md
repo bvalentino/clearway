@@ -239,14 +239,20 @@
   enabled flag unreliably, and a menu first built with nothing selected kept its commands greyed
   out after a task was selected, while the unconditional editor door beside them stayed live.
   Changing the item set changes the content's structural identity, which rebuilds the menu.
-  That same retention forbids an item from **capturing** a `WorkTask`: the closures built with the
-  menu outlive the selection they were built under, so a captured task made the toolbar dropdown
-  plan whatever had been selected when the menu was first built — replacing *that* task's terminal,
-  killing the agent running in it, and snapping the selection back to it. `startNowItems(for row:)`
-  takes the row it is built for instead — `nil` from the toolbar, the row's own task from a context
-  menu — and every item resolves its target **inside** its action through
-  `WorkTaskCoordinator.startNowTarget(row:selection:)`, which falls back to the live `selectedTask`.
-  That rule is unit-tested; the laziness at the call site is not, and no test in this project can
+  That same retention forbids an item from **capturing** a `WorkTask` or a `SavedCommand`: the
+  closures built with the menu outlive the selection they were built under, so a captured task made
+  the toolbar dropdown plan whatever had been selected when the menu was first built — replacing
+  *that* task's terminal, killing the agent running in it, and snapping the selection back to it.
+  `startNowItems(for row:)` takes the row it is built for instead — `nil` from the toolbar, the
+  row's own task from a context menu — and every item resolves its target **inside** its action
+  through `WorkTaskCoordinator.startNowTarget(row:selection:)`, which falls back to the live
+  `selectedTask`.
+  A captured command failed the same way: an edit keeps a command's id and the item count, so the
+  menu was not rebuilt and an edited agent command ran its pre-edit text. Each item binds only the
+  command's id before its `Button` and resolves it inside the action through
+  `CommandDefaults.resolve(_:in:)` against the live `savedCommandManager.commands`; a deleted or
+  terminal-kind command resolves to `nil` and the click does nothing.
+  Both rules are unit-tested; the laziness at the call site is not, and no test in this project can
   reach it, so this note and the `startNowItems` docstring are its only guards.
   The terminal half of that gate is `readiness` and not `ghosttyApp.app`: `readiness` is
   `@Published`, while `app` is a computed property over `appHandle` with no
@@ -257,10 +263,12 @@
   action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
   control in the app.
   On the toolbar it is a split button in its **own** `ToolbarGroupBreak` capsule, between the `+`
-  and the copy/`…` group; in the row context menu it cannot be a split button, because
-  an AppKit menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the
-  primary action as firing "when the user taps or clicks on the body of the control" — so there
-  the same action is the submenu's first item, ahead of the shared `startNowItems`. Either way
+  and the copy/`…` group, keyed on `.id(savedCommandManager.agentCommands)` (see the split-button
+  `.id` rule); in the row context menu it cannot be a split button, because an AppKit menu item
+  carrying a submenu has no body to click — SwiftUI's `Menu` documents the primary action as firing
+  "when the user taps or clicks on the body of the control" — so there the same action is the
+  submenu's first item, ahead of the shared `startNowItems`, and the submenu needs no `.id` key of
+  its own. Either way
   `plan` selects the task first: the terminal a plan opens is the one `TaskDetailView` renders
   for the selection.
   Plan (`planTask`, in `WorkTaskCoordinator+TaskTerminal.swift`) runs the chosen command in the
@@ -736,10 +744,12 @@
   the primary action again.
   **A split button in a toolbar keeps the dropdown it was built with**, so each one carries
   `.id(<its own dropdown's contents>)` — `.id(settings.menuOpenInApps)` on `OpenInMenu`,
-  `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`. SwiftUI realizes a toolbar `Menu`
-  that carries a `primaryAction:` as an `NSSegmentedControl` whose `NSMenu` is filled once, when
-  the control is built, and never refilled: later renders update the label segment and leave the
-  menu items — and the values their actions captured — as they were. A plain `Menu` has no such
+  `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`,
+  `.id(savedCommandManager.agentCommands)` on the Start Now toolbar item in `WorkTaskListView`.
+  SwiftUI realizes a toolbar `Menu` that carries a `primaryAction:` as an `NSSegmentedControl`
+  whose `NSMenu` is filled once, when the control is built, and never refilled: later renders
+  update the label segment and leave the menu items — and the values their actions captured — as
+  they were. A plain `Menu` has no such
   problem, because it is an `NSPopUpButton` whose menu starts empty and is filled by its
   coordinator each time it opens, which is why the sidebar's submenu and Run's empty-list menu
   need no key. Keying the view on what the dropdown draws is what rebuilds the control. Do not

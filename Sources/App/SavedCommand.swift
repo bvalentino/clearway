@@ -59,6 +59,8 @@ struct CommandDefaults: Codable, Equatable {
     /// A slot resolves only to a **live** `.agent`-kind command: an id that was deleted, or that now
     /// names a terminal-kind command, reads as None. The stored id is left alone either way — it may
     /// name a command that returns when the user reverts a `commands.json` edit.
+    /// Start Now items resolve their command through this on every click, so a change to this rule
+    /// changes what those items run.
     static func resolve(_ id: UUID?, in commands: [SavedCommand]) -> SavedCommand? {
         guard let id else { return nil }
         return commands.first { $0.id == id && $0.kind == .agent }
