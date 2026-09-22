@@ -52,7 +52,7 @@ Then run the pipeline (wall-clock ~10 minutes, dominated by two notary round-tri
 ./scripts/publish-update.sh # signs DMG, writes docs/appcast.xml, prints gh release cmd
 ```
 
-`publish-update.sh` prints a ready-to-paste `gh release create` command. Run it **before** committing and pushing, so the DMG is reachable when GitHub Pages redeploys the appcast feed:
+`publish-update.sh` fetches GitHub's auto-generated notes for the tag, embeds a trimmed Markdown copy in the appcast item so Sparkle's update dialog lists the changes inline, saves the full text to `release/v<VERSION>-notes.md`, and prints a ready-to-paste `gh release create` command. Run it **before** committing and pushing, so the DMG is reachable when GitHub Pages redeploys the appcast feed:
 
 ```bash
 gh release create v<VERSION> \
@@ -60,7 +60,7 @@ gh release create v<VERSION> \
   release/Clearway.dmg \
   --repo bvalentino/clearway \
   --title v<VERSION> \
-  --generate-notes
+  --notes-file release/v<VERSION>-notes.md
 
 git add project.yml Clearway.xcodeproj/project.pbxproj docs/appcast.xml
 git commit -m "Release v<VERSION>"

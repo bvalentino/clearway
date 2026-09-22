@@ -14,12 +14,12 @@
 #   SPARKLE_PRIVATE_KEY_PATH  absolute path to the exported Sparkle ed25519
 #                             private key (see RELEASING.md in the repo root)
 #
-# Release notes for Sparkle's update dialog are NOT hand-written per release.
-# The <description> CDATA is auto-populated with a short stub that links to
-# the GitHub release page for the tag (e.g., the v1.0.1 release page). Users
-# clicking "Check for Updates…" see "See the v1.0.1 release notes on GitHub
-# for details" with a clickable link, and GitHub's own auto-generated
-# changelog (from --generate-notes) is the single source of truth.
+# Release notes are never hand-written. The script asks GitHub for the notes
+# it would auto-generate for the tag (merged PR titles since the previous
+# release), saves them to release/<tag>-notes.md for `gh release create
+# --notes-file`, and embeds a trimmed Markdown copy (no author/PR suffixes,
+# no "Full Changelog" footer) in the appcast <description> so Sparkle's update
+# dialog shows the list of changes inline.
 #
 # sign_update is resolved from Sparkle's SPM artifact bundle under this
 # project's DerivedData — nothing needs to be installed on PATH. Run
@@ -177,11 +177,16 @@ FEED_URL="https://${OWNER}.github.io/${REPO}/appcast.xml"
 # leave two <item> entries with identical <sparkle:shortVersionString>, which
 # confuses Sparkle's "available update" UI. Bump MARKETING_VERSION in
 # project.yml before publishing a new user-visible release.
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: gh is required to generate release notes and create the release."
+  exit 1
+fi
+
 TAG="v${MARKETING_VERSION}"
 TAG_EXISTS=""
 if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null 2>&1; then
   TAG_EXISTS="local"
-elif command -v gh >/dev/null 2>&1 && gh release view "${TAG}" --repo "$REPO_SLUG" >/dev/null 2>&1; then
+elif gh release view "${TAG}" --repo "$REPO_SLUG" >/dev/null 2>&1; then
   TAG_EXISTS="remote"
 fi
 
@@ -222,11 +227,42 @@ DMG_BASENAME=$(basename "$DMG_PATH")
 DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/download/v${MARKETING_VERSION}/${DMG_BASENAME}"
 RELEASE_PAGE_URL="https://github.com/${REPO_SLUG}/releases/tag/${TAG}"
 
+# --- Generate the release notes ------------------------------------------------
+# Same text `gh release create --generate-notes` would write, fetched up front
+# so the appcast and the GitHub release share it. previous_tag_name pins the
+# range to the latest published release; without it GitHub picks the previous
+# tag itself, which is only wrong on the very first release (no tags yet).
+PREVIOUS_TAG=$(gh release view --repo "$REPO_SLUG" --json tagName --jq .tagName 2>/dev/null || true)
+GENERATE_ARGS=(-f "tag_name=${TAG}")
+if [ -n "$PREVIOUS_TAG" ]; then
+  GENERATE_ARGS+=(-f "previous_tag_name=${PREVIOUS_TAG}")
+fi
+
+echo "==> Generating release notes for ${TAG}${PREVIOUS_TAG:+ since $PREVIOUS_TAG}..."
+GITHUB_NOTES=$(gh api "repos/${REPO_SLUG}/releases/generate-notes" "${GENERATE_ARGS[@]}" --jq .body)
+if [ -z "$GITHUB_NOTES" ]; then
+  echo "Error: GitHub returned empty release notes for ${TAG}."
+  exit 1
+fi
+
+NOTES_FILE="$RELEASE_DIR/${TAG}-notes.md"
+printf '%s\n' "$GITHUB_NOTES" >"$NOTES_FILE"
+
+# The update dialog gets the PR titles only: drop the section heading, the
+# " by @author in <pr url>" suffix on each bullet, and the compare-link footer,
+# then squeeze the blank lines that leaves behind and end with a link to the
+# release page. Sparkle 2.9+ renders <description sparkle:format="markdown">.
+UPDATE_NOTES=$(printf '%s\n' "$GITHUB_NOTES" \
+  | sed -E '/^## What.s Changed$/d; /^\*\*Full Changelog\*\*/d; s/ by @[^ ]+ in https?:[^ ]+$//' \
+  | cat -s \
+  | sed -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+UPDATE_NOTES="${UPDATE_NOTES}
+
+[${TAG} on GitHub](${RELEASE_PAGE_URL})"
+UPDATE_NOTES=${UPDATE_NOTES//]]>/]]]]><![CDATA[>}
+
 # Build the new <item> block via heredoc so the template is readable. The block
-# is then spliced into docs/appcast.xml below. The <description> is a fixed
-# stub that links to the GitHub release page — GitHub's auto-generated
-# changelog (from gh release create --generate-notes) is the canonical source
-# of user-facing release notes, so there's no per-release HTML to maintain.
+# is then spliced into docs/appcast.xml below.
 NEW_ITEM=$(cat <<EOF
     <item>
       <title>Version ${MARKETING_VERSION}</title>
@@ -234,8 +270,8 @@ NEW_ITEM=$(cat <<EOF
       <sparkle:version>${CURRENT_PROJECT_VERSION}</sparkle:version>
       <sparkle:shortVersionString>${MARKETING_VERSION}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[
-        <p>See the <a href="${RELEASE_PAGE_URL}">${TAG} release notes on GitHub</a> for details.</p>
+      <description sparkle:format="markdown"><![CDATA[
+${UPDATE_NOTES}
       ]]></description>
       <enclosure url="${DOWNLOAD_URL}" length="${BYTES}" type="application/octet-stream" sparkle:edSignature="${SIG}"/>
     </item>
@@ -313,12 +349,11 @@ echo "==> Appcast updated: docs/appcast.xml"
 echo ""
 echo "Next steps (run manually):"
 echo ""
-echo "  1. Create the GitHub release, upload BOTH DMGs, auto-generate the"
-echo "     changelog from merged PRs since the previous tag:"
+echo "  1. Create the GitHub release with BOTH DMGs and the generated notes:"
 echo "     gh release create ${TAG} \"$DMG_PATH\" \"$LATEST_DMG\" \\"
 echo "       --repo \"$REPO_SLUG\" \\"
 echo "       --title \"${TAG}\" \\"
-echo "       --generate-notes"
+echo "       --notes-file \"$NOTES_FILE\""
 echo ""
 echo "  2. Commit the version bump, regenerated pbxproj, and appcast so"
 echo "     GitHub Pages redeploys docs/appcast.xml:"
