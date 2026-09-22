@@ -6,6 +6,62 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 2.0.0</title>
+      <pubDate>Tue, 22 Sep 2026 17:46:24 +0000</pubDate>
+      <sparkle:version>18</sparkle:version>
+      <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[
+* (chore) WT post create script
+* Remove the workflow engine, autopilot, and the Workflow view
+* Rename Planning to Tasks
+* Add saved commands and a worktree Run dropdown
+* Hide detached worktrees from the sidebar
+* Mark the primary worktree's sidebar row with a primary badge
+* Add an Open in menu for worktrees
+* Add worktree statuses and three sidebar view modes
+* Run the completing ShellPathResolver cases at the production limit
+* Move the secondary terminal toggle to the status bar
+* Give worktree statuses an icon in the sidebar
+* Show a worktree's live ports in the status bar
+* Store saved commands per project
+* Name a worktree when you create it, and store it in git config
+* Label the Run toolbar menu with text
+* Stop opening the aside by default
+* New tab opens a terminal
+* Keep worktree groups, order and grouping mode in git config
+* Move the aside's + into a full-width Add button
+* Replace the fixed sleeps in the WorktreeGroupManager suites and close the named coverage gaps
+* Clear the three pre-existing SwiftLint warnings
+* Stage, never submit, when a prompt is delivered to a running agent
+* Surface failed group and position writes in WorktreeGroupManager
+* Run an agent command when a worktree is created, and to plan a task
+* Split buttons for Run and Open in
+* Move the task terminal toggle to the task path bar
+* Log failed clearway.name and clearway.status writes
+* Publish WorktreeConfigStore's git failure logs in release builds
+* Refuse a terminal-kind command when planning a task
+* Prove the ShellPathStore no-wait rules without wall-clock bounds
+* Finish the awaited-signal migration in the WorktreeGroupManager suites
+* Show the run agent command picker on the create sheet
+* Reveal a hidden task terminal on Cmd+J instead of relaunching it
+* Reconcile WorktreeGroupManager against git when a config write is refused
+* Replace the JSONL-mtime activity dot with agent lifecycle hooks
+* Move per-file CLAUDE.md notes into Sources/App and Sources/Ghostty
+* Scope the close terminal sessions prompt to the closing window
+* Require pipeline load generators to bound their own lifetime
+* Refuse to steal the hook socket from a live Clearway instance
+* Surface agent-hook install and socket failures in Settings
+* Resolve the Start Now dropdown's task at click time
+* Shortcuts for Run command and Open In
+* Embed GitHub's generated release notes in the Sparkle update dialog
+* Attribute a task terminal's agent activity to its task, not to main
+
+[v2.0.0 on GitHub](https://github.com/bvalentino/clearway/releases/tag/v2.0.0)
+      ]]></description>
+      <enclosure url="https://github.com/bvalentino/clearway/releases/download/v2.0.0/Clearway-2.0.0-59b0856.dmg" length="34868967" type="application/octet-stream" sparkle:edSignature="MTwFDeEK7C6rfvRO0LHHP7Lf9UvEATASc/ev5qHaQYQDcBHqXp50y1CbZxVgethTEY8Y4P/80IP5zmMg0OMiBQ=="/>
+    </item>
+    <item>
       <title>Version 1.9.4</title>
       <pubDate>Fri, 04 Sep 2026 01:14:45 +0000</pubDate>
       <sparkle:version>17</sparkle:version>

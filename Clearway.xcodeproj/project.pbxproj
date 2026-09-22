@@ -1055,7 +1055,7 @@
 				CODE_SIGN_ENTITLEMENTS = Clearway.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
@@ -1072,7 +1072,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
-				MARKETING_VERSION = 1.9.4;
+				MARKETING_VERSION = 2.0.0;
 				OTHER_LDFLAGS = (
 					"-lghostty",
 					"-lz",
@@ -1258,7 +1258,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = 76AEQBHY3K;
 				ENABLE_HARDENED_RUNTIME = YES;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1276,7 +1276,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64",
 				);
-				MARKETING_VERSION = 1.9.4;
+				MARKETING_VERSION = 2.0.0;
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				OTHER_LDFLAGS = (
 					"-lghostty",
