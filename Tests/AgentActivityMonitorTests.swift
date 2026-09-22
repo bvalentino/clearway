@@ -90,7 +90,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(try socketInode(), inode, "an unlink would replace the inode the live instance is listening on")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after a second instance started") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -107,7 +107,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.health, .listening, "an inode nothing answers on is this instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the worktree's phase over an abandoned socket inode") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -229,7 +229,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(try socketInode(), inode, "a blocked instance's stop() must not unlink a socket it never bound")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after the second was disabled") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -265,7 +265,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(second.health, .listening, "the owner has quit, so the path is the second instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the second monitor's worktree phase after it took the socket") {
-            second.worktreePhases[self.worktreeId] ?? .idle
+            second.worktreePhases[self.worktreePath] ?? .idle
         }
         second.setEnabled(false)
     }

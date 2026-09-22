@@ -555,6 +555,14 @@ with a surface present, which no test can reach. `./scripts/ci.sh` passes.
   before closing a task terminal with a live process, unlike Delete and Plan, because promote is an
   explicit action on the task. Recorded as Decision 21 in the spec.
 
+- **2026-09-22, rebase onto origin/main — one fix commit.** Main's #252 added four monitor cases to
+  `Tests/AgentActivityMonitorTests.swift` that read `self.worktreeId`, the fixture property T2
+  renamed to `worktreePath`; git merged both sides cleanly and the test target stopped compiling.
+  The four references were renamed. Two `Sources/App/CLAUDE.md` conflicts were resolved by folding
+  #253's `health` paragraph together with this branch's `taskPhases` rewrite (the monitor now
+  publishes four values, not three), and one in `Clearway.xcodeproj/project.pbxproj` by keeping
+  both file references.
+
 ## Build log
 
 ### T1: Rename the surface's owner parameter to activityOwner
