@@ -133,20 +133,20 @@ final class AgentHookSettingsTests: XCTestCase {
 
     // MARK: - Identity
 
-    func testIdentityCarriesTheWorktreeOnlyWhenThereIsOne() {
+    func testIdentityCarriesTheOwnerOnlyWhenThereIsOne() {
         let surfaceId = UUID()
 
-        let stamped = AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: "/Users/x/my repo")
+        let stamped = AgentHookIdentity.environment(surfaceId: surfaceId, owner: .worktree("/Users/x/my repo"))
         XCTAssertEqual(stamped.count, 3)
         XCTAssertEqual(Dictionary(uniqueKeysWithValues: stamped.map { ($0.key, $0.value) }), [
             "CLEARWAY_SURFACE_ID": surfaceId.uuidString,
-            "CLEARWAY_WORKTREE_ID": "/Users/x/my repo",
+            "CLEARWAY_ACTIVITY_OWNER": "worktree:/Users/x/my repo",
             "CLEARWAY_HOOK_SOCKET": AgentHookPaths().socketPath,
         ])
 
-        let unstamped = AgentHookIdentity.environment(surfaceId: surfaceId, worktreeId: nil)
+        let unstamped = AgentHookIdentity.environment(surfaceId: surfaceId, owner: nil)
         XCTAssertEqual(unstamped.count, 2)
-        XCTAssertNil(unstamped.first { $0.key == "CLEARWAY_WORKTREE_ID" })
+        XCTAssertNil(unstamped.first { $0.key == "CLEARWAY_ACTIVITY_OWNER" })
     }
 
     // MARK: - The forwarder
@@ -158,7 +158,7 @@ final class AgentHookSettingsTests: XCTestCase {
         let body = AgentHookScript.body
 
         XCTAssertTrue(body.hasPrefix("#!/bin/sh\n"))
-        for key in ["CLEARWAY_SURFACE_ID", "CLEARWAY_WORKTREE_ID", "CLEARWAY_HOOK_SOCKET"] {
+        for key in ["CLEARWAY_SURFACE_ID", "CLEARWAY_ACTIVITY_OWNER", "CLEARWAY_HOOK_SOCKET"] {
             XCTAssertTrue(body.contains("[ -n \"$\(key)\" ] || exit 0") || body.contains("[ -S \"$\(key)\" ] || exit 0"),
                           "\(key) must be guarded before anything is forwarded")
         }

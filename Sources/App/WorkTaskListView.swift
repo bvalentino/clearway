@@ -9,6 +9,7 @@ struct WorkTaskListView: View {
     @EnvironmentObject private var terminalManager: TerminalManager
     @EnvironmentObject private var savedCommandManager: SavedCommandManager
     @EnvironmentObject private var ghosttyApp: Ghostty.App
+    @EnvironmentObject private var agentActivity: AgentActivityMonitor
     @Binding var selection: UUID?
     @Binding var editorMode: TaskEditorMode
     /// One-shot creation-focus signal owned by `ContentView`; set when this list creates
@@ -216,7 +217,11 @@ struct WorkTaskListView: View {
     private var taskList: some View {
         List(selection: $selection) {
             ForEach(backlogTasks) { task in
-                WorkTaskRow(task: task, hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id))
+                WorkTaskRow(
+                    task: task,
+                    hasActiveTerminal: terminalManager.taskHasActiveProcess(task.id),
+                    phase: agentActivity.taskPhases[task.id] ?? .idle
+                )
                     .tag(task.id)
                     .contextMenu {
                         Menu {
@@ -351,9 +356,18 @@ struct WorkTaskCard: View {
 
 // MARK: - Task Row (for List selection)
 
-private struct WorkTaskRow: View {
+struct WorkTaskRow: View {
     let task: WorkTask
     var hasActiveTerminal: Bool = false
+    var phase: AgentPhase = .idle
+
+    /// Which dot the row carries, or none. The phase rule and nothing on top of it: no notification
+    /// is tracked for a task terminal — `handleDesktopNotification` resolves a surface through
+    /// `panes`, which never holds one — and a retired surface has already left the store, so there
+    /// is no `hasNotification` and no `isOpen` to gate on.
+    static func dot(phase: AgentPhase) -> AgentActivityDot.Kind? {
+        AgentActivityDot.Kind(phase: phase)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -368,6 +382,12 @@ private struct WorkTaskRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Group {
+                    if let kind = Self.dot(phase: phase) {
+                        AgentActivityDot(kind: kind)
+                    }
+                }
+                .animation(.easeOut(duration: 0.6), value: phase)
             }
             Text(task.createdAt.formatted(.relative(presentation: .named)))
                 .font(.caption)

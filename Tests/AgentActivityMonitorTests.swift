@@ -16,7 +16,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     /// and its `deinit` runs on teardown rather than wherever ARC chose.
     private var directListener: HookSocketListener?
 
-    private let worktreeId = "/Users/x/my repo/.worktrees/a b"
+    private let worktreePath = "/Users/x/my repo/.worktrees/a b"
     private let surfaceId = "8F1D4C0A-5B2E-4A77-9C31-6E0F2A8D1B44"
 
     override func setUp() async throws {
@@ -42,10 +42,22 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"session_id": "s", "hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         try fire(#"{"session_id": "s", "hook_event_name": "Stop", "stop_reason": "end_turn"}"#)
-        try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.idle, describing: "the worktree's phase after Stop") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
+    }
+
+    /// The whole point of the owner tag, end to end over the real socket: an agent in a task's
+    /// bottom terminal lights that task's row and leaves the worktree it runs in dark.
+    func testAForwardedEventFromATaskSurfaceLightsOnlyThatTask() async throws {
+        monitor.setEnabled(true)
+        let taskId = UUID()
+
+        try fire(#"{"session_id": "s", "hook_event_name": "UserPromptSubmit"}"#, owner: .task(taskId))
+
+        try await waitFor(.working, describing: "the task's phase") { self.monitor.taskPhases[taskId] ?? .idle }
+        XCTAssertTrue(monitor.worktreePhases.isEmpty, "a task surface lights no worktree, which is the dot on main this removes")
     }
 
     /// The discriminating case for unlinking before `bind`: a process killed without closing leaves
@@ -59,7 +71,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         monitor.setEnabled(true)
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase over a stale socket path") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
     /// The discriminating case for probing before the unlink: two Clearway builds on one machine —
@@ -78,7 +90,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(try socketInode(), inode, "an unlink would replace the inode the live instance is listening on")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after a second instance started") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -95,7 +107,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.health, .listening, "an inode nothing answers on is this instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the worktree's phase over an abandoned socket inode") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -159,9 +171,9 @@ final class AgentActivityMonitorTests: XCTestCase {
         try fire(#"{"hook_event_name": "SubagentStart", "agent_id": "a1", "agent_type": "Explore"}"#)
 
         try await waitFor(["Explore"], describing: "the worktree's subagent roster") {
-            (self.monitor.worktreeSubagents[self.worktreeId] ?? []).compactMap(\.type)
+            (self.monitor.worktreeSubagents[self.worktreePath] ?? []).compactMap(\.type)
         }
-        XCTAssertEqual(monitor.worktreePhases[worktreeId], .working, "a live subagent is work even between the lead's turns")
+        XCTAssertEqual(monitor.worktreePhases[worktreePath], .working, "a live subagent is work even between the lead's turns")
     }
 
     /// `PreToolUse`/`PostToolUse` fire around every tool call, so the tool name changes far more
@@ -171,7 +183,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testAToolNameChangeDoesNotRepublishTheMonitor() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         let republished = expectation(description: "the monitor republished")
         republished.isInverted = true
@@ -189,7 +201,7 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testDisablingClosesTheSocketAndForgetsEverySurface() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         monitor.setEnabled(false)
 
@@ -217,7 +229,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(try socketInode(), inode, "a blocked instance's stop() must not unlink a socket it never bound")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the first monitor's worktree phase after the second was disabled") {
-            self.monitor.worktreePhases[self.worktreeId] ?? .idle
+            self.monitor.worktreePhases[self.worktreePath] ?? .idle
         }
     }
 
@@ -253,7 +265,7 @@ final class AgentActivityMonitorTests: XCTestCase {
         XCTAssertEqual(second.health, .listening, "the owner has quit, so the path is the second instance's to take")
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
         try await waitFor(.working, describing: "the second monitor's worktree phase after it took the socket") {
-            second.worktreePhases[self.worktreeId] ?? .idle
+            second.worktreePhases[self.worktreePath] ?? .idle
         }
         second.setEnabled(false)
     }
@@ -302,13 +314,13 @@ final class AgentActivityMonitorTests: XCTestCase {
     func testTheFeedSurvivesADisableAndReEnable() async throws {
         monitor.setEnabled(true)
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
 
         monitor.setEnabled(false)
         monitor.setEnabled(true)
 
         try fire(#"{"hook_event_name": "UserPromptSubmit"}"#)
-        try await waitFor(.working, describing: "the worktree's phase after a re-enable") { self.monitor.worktreePhases[self.worktreeId] ?? .idle }
+        try await waitFor(.working, describing: "the worktree's phase after a re-enable") { self.monitor.worktreePhases[self.worktreePath] ?? .idle }
     }
 
     func testEnablingInstallsTheForwarderAndIsIdempotent() {
@@ -443,12 +455,12 @@ final class AgentActivityMonitorTests: XCTestCase {
 
     /// Runs the installed forwarder exactly as an agent does: the three identity variables in the
     /// environment, the hook JSON on stdin, nothing else inherited.
-    private func fire(_ json: String) throws {
+    private func fire(_ json: String, owner: AgentActivityOwner? = nil) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: paths.scriptPath)
         process.environment = [
             AgentHookIdentity.surfaceIdKey: surfaceId,
-            AgentHookIdentity.worktreeIdKey: worktreeId,
+            AgentHookIdentity.ownerKey: (owner ?? .worktree(worktreePath)).rawValue,
             AgentHookIdentity.socketKey: paths.socketPath,
         ]
         let input = Pipe()

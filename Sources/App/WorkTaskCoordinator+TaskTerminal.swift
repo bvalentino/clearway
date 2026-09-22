@@ -10,16 +10,20 @@ extension WorkTaskCoordinator {
     /// `await` rather than on the keypress, because the resolved shell PATH is unbounded on a
     /// session's first call; a reveal awaits nothing and focuses on the keypress itself.
     func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
-        guard workTaskManager.tasks.contains(where: { $0.id == taskId }) else { return }
+        // A surface whose `ghostty_surface_new` failed is still stored and nothing prunes it, so
+        // only a live pointer counts: revealing that one protects no process and strands the task
+        // on a blank strip no press can recover.
+        let hasSurface = terminalManager.existingTaskSurface(for: taskId)?.surfacePtr != nil
+        // The rule gates minting, not flipping. Hiding or revealing a surface the task already has
+        // takes nothing away from a row that has left the list, and refusing it would strand a
+        // running agent in a pane no press can collapse.
+        guard hasSurface || taskIsStillInBacklog(taskId) else { return }
         let projectPath = worktreeManager.projectPath
         let makeCommand = taskTerminalLaunchCommand()
 
         switch Self.taskTerminalToggle(
             isVisible: terminalManager.isTaskTerminalVisible(for: taskId),
-            // A surface whose `ghostty_surface_new` failed is still stored and nothing prunes it,
-            // so only a live pointer counts: revealing that one protects no process and strands the
-            // task on a blank strip no press can recover.
-            hasSurface: terminalManager.existingTaskSurface(for: taskId)?.surfacePtr != nil,
+            hasSurface: hasSurface,
             hasLaunchCommand: makeCommand != nil
         ) {
         case .hide:
@@ -37,6 +41,7 @@ extension WorkTaskCoordinator {
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
+                guard taskIsStillInBacklog(taskId) else { return }
                 terminalManager.openTaskTerminal(
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
@@ -84,6 +89,29 @@ extension WorkTaskCoordinator {
         }
     }
 
+    /// Whether the task is still one the Tasks list renders a row for — it exists, and it names no
+    /// worktree. Both doors onto a task terminal suspend on `ShellEnvironment.awaitPath()` before
+    /// they mint anything, and both ways a task can leave that list land in the window: Start Now →
+    /// Create writes the link and closes the terminal, and Delete removes the file and closes it
+    /// too. A launch that resumed regardless would reopen a terminal with no row left to report to —
+    /// an agent lighting no dot anywhere, which is the state those closes exist to prevent.
+    ///
+    /// Read again on the way in, because the window opens before the await: `selectedTaskId` is
+    /// cleared only once `git worktree add` reports back, so a promoted task stays selected and
+    /// `TaskDetailView` still renders it, and a Cmd+J there took `.reveal` — which mints a surface
+    /// without ever reaching the post-await guard. It gates a mint only, never a hide or a reveal
+    /// of a surface the task already has; a linked task can still reach the toggle, and refusing it
+    /// there would strand a live agent. A create that fails restores the task through
+    /// `abandonPendingCreate`, which makes the guard pass again.
+    ///
+    /// A promoted task stays in `tasks` and is filtered out of the list by its link. A deleted one
+    /// leaves `tasks` as `deleteTask` reloads — but only for the manager that performed the delete,
+    /// so a delete from the standalone task window still reaches this one behind the watcher.
+    func taskIsStillInBacklog(_ taskId: UUID) -> Bool {
+        guard let task = workTaskManager.tasks.first(where: { $0.id == taskId }) else { return false }
+        return task.worktree == nil
+    }
+
     /// Whether planning would take something live away from the operator. `planTask` opens a fresh
     /// surface over whatever the task terminal already holds, so a running foreground process is
     /// the one case the view must confirm before planning.
@@ -112,6 +140,7 @@ extension WorkTaskCoordinator {
     /// watching the task can see it, which is how the first cut of this looked like a dead button.
     func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
         guard let resolved = planCommand(for: task, using: command) else { return }
+        guard taskIsStillInBacklog(task.id) else { return }
 
         let taskId = task.id
         let directory = Self.planWorkingDirectory(
@@ -121,8 +150,10 @@ extension WorkTaskCoordinator {
         guard terminalManager.beginTaskLaunch(for: taskId) else { return }
         Task { @MainActor in
             defer { terminalManager.endTaskLaunch(for: taskId) }
+            let path = await ShellEnvironment.awaitPath()
+            guard taskIsStillInBacklog(taskId) else { return }
             await terminalManager.run(
-                resolved, inTaskTerminalFor: taskId, app: app, directory: directory)
+                resolved, inTaskTerminalFor: taskId, app: app, directory: directory, path: path)
         }
 
         NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)

@@ -2,37 +2,52 @@ import XCTest
 @testable import Clearway
 
 /// Pins the wire contract between `clearway-hook.sh` and the socket listener: two newline-terminated
-/// preamble lines carrying the surface id and the worktree id, then the agent's raw JSON body to
-/// EOF. The body is never re-encoded by the forwarder, so it arrives exactly as the agent wrote it —
+/// preamble lines carrying the surface id and the tagged activity owner, then the agent's raw JSON
+/// body to EOF. The body is never re-encoded by the forwarder, so it arrives exactly as the agent wrote it —
 /// pretty-printed on one agent, compact on another — and the split must therefore be on the first
 /// two lines only.
 final class AgentHookEnvelopeTests: XCTestCase {
 
     private let surfaceId = "8F1D4C0A-5B2E-4A77-9C31-6E0F2A8D1B44"
-    private let worktreeId = "/Users/x/my repo/.worktrees/a b"
+    private let worktreePath = "/Users/x/my repo/.worktrees/a b"
 
-    private func payload(_ body: String) -> Data {
-        Data("\(surfaceId)\n\(worktreeId)\n\(body)".utf8)
+    private func payload(_ body: String, owner: String? = nil) -> Data {
+        let owner = owner ?? AgentActivityOwner.worktree(worktreePath).rawValue
+        return Data("\(surfaceId)\n\(owner)\n\(body)".utf8)
     }
 
     // MARK: - The happy path
 
-    func testParsesBothIdsAndTheEvent() {
+    func testParsesTheSurfaceIdTheOwnerAndTheEvent() {
         let envelope = AgentHookEnvelope.parse(
             payload(#"{"hook_event_name":"PreToolUse","tool_name":"Bash"}"#)
         )
 
         XCTAssertEqual(envelope?.surfaceId, surfaceId)
-        XCTAssertEqual(envelope?.worktreeId, worktreeId)
+        XCTAssertEqual(envelope?.owner, .worktree(worktreePath))
         XCTAssertEqual(envelope?.event.hookEventName, "PreToolUse")
         XCTAssertEqual(envelope?.event.toolName, "Bash")
     }
 
-    /// A worktree id is a filesystem path and paths carry spaces. Nothing quotes or escapes the
-    /// preamble, so the line is taken whole.
-    func testWorktreeIdKeepsItsSpaces() {
-        let envelope = AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#))
-        XCTAssertEqual(envelope?.worktreeId, "/Users/x/my repo/.worktrees/a b")
+    /// A worktree owner names a filesystem path, and paths carry spaces — and colons. Nothing
+    /// quotes or escapes the preamble, and only the leading tag is split off, so everything after
+    /// the first colon is taken whole.
+    func testAWorktreePathKeepsItsSpacesAndItsOwnColon() {
+        let path = "/Users/x/my repo/.worktrees/a:b"
+        let envelope = AgentHookEnvelope.parse(
+            payload(#"{"hook_event_name":"Stop"}"#, owner: AgentActivityOwner.worktree(path).rawValue)
+        )
+        XCTAssertEqual(envelope?.owner, .worktree(path))
+    }
+
+    /// A task terminal names its task rather than the path it runs in, which is what keeps its
+    /// agent off the main worktree's dot.
+    func testATaskOwnerRoundTripsToItsId() {
+        let id = UUID()
+        let envelope = AgentHookEnvelope.parse(
+            payload(#"{"hook_event_name":"Stop"}"#, owner: AgentActivityOwner.task(id).rawValue)
+        )
+        XCTAssertEqual(envelope?.owner, .task(id))
     }
 
     /// The discriminating case: splitting the whole payload on every newline would leave the body a
@@ -150,10 +165,38 @@ final class AgentHookEnvelopeTests: XCTestCase {
     }
 
     func testEmptySurfaceIdParsesToNil() {
-        XCTAssertNil(AgentHookEnvelope.parse(Data("\n\(worktreeId)\n{\"hook_event_name\":\"Stop\"}".utf8)))
+        let owner = AgentActivityOwner.worktree(worktreePath).rawValue
+        XCTAssertNil(AgentHookEnvelope.parse(Data("\n\(owner)\n{\"hook_event_name\":\"Stop\"}".utf8)))
     }
 
-    func testEmptyWorktreeIdParsesToNil() {
-        XCTAssertNil(AgentHookEnvelope.parse(Data("\(surfaceId)\n\n{\"hook_event_name\":\"Stop\"}".utf8)))
+    func testEmptyOwnerParsesToNil() {
+        XCTAssertNil(AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#, owner: "")))
+    }
+
+    /// The shape a forwarder from before the rename sends: a bare path with no tag. It is refused
+    /// rather than read as a worktree, which is what makes "exactly one owner" the only parseable
+    /// state.
+    func testAnUntaggedOwnerParsesToNil() {
+        XCTAssertNil(
+            AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#, owner: worktreePath))
+        )
+    }
+
+    func testAnUnknownOwnerTagParsesToNil() {
+        XCTAssertNil(
+            AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#, owner: "branch:main"))
+        )
+    }
+
+    func testATaskOwnerThatIsNotAUUIDParsesToNil() {
+        XCTAssertNil(
+            AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#, owner: "task:not-a-uuid"))
+        )
+    }
+
+    func testAnOwnerTagWithNoValueParsesToNil() {
+        XCTAssertNil(
+            AgentHookEnvelope.parse(payload(#"{"hook_event_name":"Stop"}"#, owner: "worktree:"))
+        )
     }
 }

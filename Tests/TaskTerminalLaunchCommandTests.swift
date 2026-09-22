@@ -3,8 +3,9 @@ import XCTest
 
 /// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
 /// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
-/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J; and
-/// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
+/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J;
+/// `taskIsStillInBacklog`, which both doors re-read the task through once their `await` resumes;
+/// and `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
 /// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
 /// are their whole testable surface.
 @MainActor
@@ -36,6 +37,58 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         coordinator.terminalManager.mainCommandProvider = { nil }
 
         XCTAssertNil(coordinator.taskTerminalLaunchCommand())
+    }
+
+    // MARK: - A launch that resumes after its task has left the list
+
+    /// Both doors claim the task's terminal, suspend on `ShellEnvironment.awaitPath()`, and open the
+    /// surface when they resume. Start Now → Create can land in that window: it writes the worktree
+    /// link and closes the terminal, so a launch that resumed regardless would reopen one for a task
+    /// that has left `backlogTasks` — an agent lighting no dot anywhere, which is the state that
+    /// close exists to prevent.
+    ///
+    /// Driven through `confirmCreate` and `abandonPendingCreate` rather than a hand-set `worktree`,
+    /// so the rule cannot drift from the writes the promote actually performs. The unwind is the
+    /// half that keeps the guard from refusing something legitimate: `git worktree add` can fail,
+    /// and a task left reading as promoted would have Cmd+J and Plan both dead until a relaunch.
+    func testALaunchOpensNothingOnceCreateHasWrittenTheLink() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        let seed = try XCTUnwrap(taskManager.createTask(title: "Ship it"))
+        let coordinator = makeCoordinator(taskManager)
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "a task still in the backlog is one the list renders a row for")
+
+        coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
+
+        XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
+                       "a launch resuming after the promote must open nothing")
+
+        coordinator.abandonPendingCreate()
+
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "an unwound create must not leave the task's terminal unreachable")
+    }
+
+    /// Delete is the other way a task leaves the list mid-launch, and it closes the terminal too
+    /// (`WorkTaskListView`'s two delete doors). A resumed launch must not reopen one for a task with
+    /// no file and no row.
+    ///
+    /// Nothing reloads the pool from the test on purpose: in the app the watcher is 0.3s behind the
+    /// delete, which is longer than the window this rule guards, so a `deleteTask` that only
+    /// removed the file would leave the launch reading a task that is still in `tasks` and still
+    /// names no worktree — and opening a terminal for it. It pins the removal too: `deleteTask`
+    /// re-derives the pool from disk, so a delete that unlinked nothing answers `true` here.
+    func testALaunchOpensNothingOnceTheTasksFileIsDeleted() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        let seed = try XCTUnwrap(taskManager.createTask(title: "Ship it"))
+        let coordinator = makeCoordinator(taskManager)
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "a task still in the backlog is one the list renders a row for")
+
+        taskManager.deleteTask(seed)
+
+        XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
+                       "a launch resuming after the delete must open nothing")
     }
 
     // MARK: - Confirming a plan

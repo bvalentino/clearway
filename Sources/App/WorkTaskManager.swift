@@ -250,8 +250,14 @@ class WorkTaskManager: ObservableObject {
         reload()
     }
 
+    /// Removes the task's file and re-derives the pool in the same turn, like every other mutator
+    /// here: the watcher reload is 0.3s behind, and a caller re-reading `tasks` inside that window
+    /// would otherwise still find a row for a task whose file is gone. `reload` rather than
+    /// dropping the id, because disk is what this wrote — a removal that failed leaves the task
+    /// standing instead of taking its row away and resurrecting it at the next unrelated load.
     func deleteTask(_ task: WorkTask) {
         try? FileManager.default.removeItem(atPath: filePath(for: task))
+        reload()
     }
 
     // MARK: - Branch Name Derivation

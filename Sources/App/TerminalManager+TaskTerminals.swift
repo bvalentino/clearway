@@ -19,9 +19,7 @@ extension TerminalManager {
         if let existing = taskSurfaces[taskId] {
             return existing
         }
-        // A task terminal's working directory is the main worktree's path, and a worktree id is
-        // its path, so the two are the same string.
-        let surface = Ghostty.SurfaceView(app, workingDirectory: projectPath, worktreeId: projectPath)
+        let surface = makeSurface(app, workingDirectory: projectPath, owner: .task(taskId))
         taskSurfaces[taskId] = surface
         if !openTaskIds.contains(taskId) {
             openTaskIds.insert(taskId)
@@ -52,13 +50,17 @@ extension TerminalManager {
         taskTerminalVisible[taskId] = !isVisible
     }
 
-    /// Close a task's terminal surface. Removes entry first to prevent auto-restart.
+    /// Close a task's terminal surface. Removes entry first to prevent auto-restart. The
+    /// bookkeeping goes whether or not a surface was ever minted — the task has no terminal after
+    /// this call either way, and that half is the only one XCTest can observe, since a
+    /// `Ghostty.SurfaceView` needs a `ghostty_app_t`.
     func closeTaskTerminal(_ taskId: UUID) {
-        guard let surface = taskSurfaces.removeValue(forKey: taskId) else { return }
-        Self.retireSurface(surface.surfaceId)
+        let surface = taskSurfaces.removeValue(forKey: taskId)
         openTaskIds.remove(taskId)
         taskTerminalVisible.removeValue(forKey: taskId)
         taskTerminalHeights.removeValue(forKey: taskId)
+        guard let surface else { return }
+        Self.retireSurface(surface.surfaceId)
         surface.closeSurface()
     }
 
@@ -88,11 +90,11 @@ extension TerminalManager {
             Self.retireSurface(old.surfaceId)
             old.closeSurface()
         }
-        let surface = Ghostty.SurfaceView(
+        let surface = makeSurface(
             app,
             workingDirectory: projectPath,
             command: command,
-            worktreeId: projectPath
+            owner: .task(taskId)
         )
         taskSurfaces[taskId] = surface
         openTaskIds.insert(taskId)

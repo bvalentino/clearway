@@ -158,6 +158,22 @@ class TerminalManager: ObservableObject {
     /// pane may have been torn down since the launch started.
     func hasPane(for worktreeId: String) -> Bool { panes[worktreeId] != nil }
 
+    /// The one place an `AgentActivityOwner` becomes the opaque string the Ghostty layer carries,
+    /// so no call site can hand a surface an untagged owner.
+    func makeSurface(
+        _ app: ghostty_app_t,
+        workingDirectory: String?,
+        command: String? = nil,
+        owner: AgentActivityOwner
+    ) -> Ghostty.SurfaceView {
+        Ghostty.SurfaceView(
+            app,
+            workingDirectory: workingDirectory,
+            command: command,
+            activityOwner: owner.rawValue
+        )
+    }
+
     /// Get or create terminal panes for the given worktree.
     func pane(for worktree: Worktree, app: ghostty_app_t, projectPath: String?) -> TerminalPane {
         ghosttyApp = app
@@ -168,7 +184,7 @@ class TerminalManager: ObservableObject {
         }
 
         let dir = worktree.path ?? projectPath
-        let secondary = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
+        let secondary = makeSurface(app, workingDirectory: dir, owner: .worktree(key))
 
         // Registered with no tabs so the first one is made through `appendTab` like every other.
         let tp = TerminalPane(main: MainTerminal(tabs: [], activeId: nil), secondary: secondary)
@@ -322,11 +338,11 @@ class TerminalManager: ObservableObject {
     func appendTab(for worktree: Worktree, app: ghostty_app_t, command: String? = nil) -> Ghostty.SurfaceView {
         let key = worktree.id
         let existingPane = panes[key]
-        let surface = Ghostty.SurfaceView(
+        let surface = makeSurface(
             app,
             workingDirectory: existingPane?.secondary.initialWorkingDirectory ?? worktree.path,
             command: command,
-            worktreeId: key
+            owner: .worktree(key)
         )
         let newTab = TerminalTab(id: UUID(), surface: surface)
 
@@ -335,7 +351,7 @@ class TerminalManager: ObservableObject {
             panes[key]?.main.activeId = newTab.id
         } else {
             ghosttyApp = app
-            let secondary = Ghostty.SurfaceView(app, workingDirectory: worktree.path, worktreeId: key)
+            let secondary = makeSurface(app, workingDirectory: worktree.path, owner: .worktree(key))
             let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
@@ -461,7 +477,7 @@ class TerminalManager: ObservableObject {
             recentRestarts[key] = timestamps
 
             let dir = deadSurface.pwd ?? deadSurface.initialWorkingDirectory
-            let newSurface = Ghostty.SurfaceView(app, workingDirectory: dir, worktreeId: key)
+            let newSurface = makeSurface(app, workingDirectory: dir, owner: .worktree(key))
             Self.retireSurface(deadSurface.surfaceId)
             objectWillChange.send()
             panes[key]!.secondary = newSurface

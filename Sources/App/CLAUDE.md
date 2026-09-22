@@ -188,6 +188,25 @@
   task's file vanished between Start Now and Create: the worktree the operator confirmed is still
   created, but nothing was written, so there is nothing to unwind and nothing to relocate. The
   slot is `private(set)`; `confirmCreate` is the only thing that can build a well-formed record.
+  It also **closes the promoted task's bottom terminal**: the link it writes takes the task out of
+  `backlogTasks`, which is the only renderer of `taskPhases`, so an agent still running there would
+  light no dot anywhere — not on the task, which no longer renders, and not on main, which the
+  `task:<uuid>` owner keeps it off. It is keyed on the task id, not on the write landing, so the
+  vanished-file case above closes the terminal too — that task leaves `backlogTasks` by being gone
+  rather than by being linked, and the row is missing either way. The close is the one part of the
+  write `abandonPendingCreate` cannot unwind, and it is deliberate: leaving the agent stranded and
+  invisible is worse than a failed create costing a terminal the operator can reopen.
+  **A launch already in flight would undo that close.** Both doors onto a task terminal claim it,
+  suspend on `await ShellEnvironment.awaitPath()` and mint the surface when they resume, so a
+  promote — or a Delete, the other door that empties a task's row — landing in that window is
+  followed a moment later by a terminal for a task that has left `backlogTasks`. Both re-read the
+  task through `WorkTaskCoordinator.taskIsStillInBacklog`, which is why
+  `TerminalManager.run(_:inTaskTerminalFor:app:directory:path:)` takes the resolved PATH rather
+  than awaiting one of its own: the suspension has to sit where the re-read can follow it, and
+  inside `run` it was past the point of no return. Delete's in-memory half is
+  `WorkTaskManager.deleteTask` reloading the pool as it removes the file, because the watcher is
+  0.3s behind — but only in the manager that deleted, so the standalone task window's door still
+  reaches the project window behind that watcher.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
   to the relocated file), the shadow task, the creation mark — which **carries that command** —
@@ -476,16 +495,25 @@
   diagnostic; `nc` already shuts the write side on stdin EOF, which is what lets the server read to
   EOF. `curl` would need a URL and an HTTP server for a payload that is already framed. A shadowed
   `nc` on `PATH` is why the path is absolute.
-  **Framing is two preamble lines — surface id, worktree id — then the agent's raw JSON to EOF.**
-  `AgentHookEnvelope.parse` takes the first two newlines off the byte buffer and hands the
-  untouched remainder to `JSONDecoder`. Never split the payload on every newline: agents send the
-  body pretty-printed, so that truncates it to `{` and the event vanishes with no trace. The
-  script's three guards — surface id, worktree id, a socket that exists — are what make a `claude`
-  started in Terminal.app, the hook sheet and the debug terminal cost nothing, and it always
-  `exit 0`s, because a non-zero hook can block or deny a tool call and Clearway decides nothing.
-  **Two ids, not one.** The surface id does not survive a relaunch; the worktree id is the path and
-  does. An agent still running after Clearway restarts arrives with a surface id this process never
-  minted and still lights its worktree's dot and draws its subagent rows.
+  **Framing is two preamble lines — surface id, activity owner — then the agent's raw JSON to EOF.**
+  The owner is one tagged string, `worktree:<path>` or `task:<uuid>`, decoded by splitting on the
+  **first** colon so a path carrying a colon of its own survives. `AgentHookEnvelope.parse` takes
+  the first two newlines off the byte buffer and hands the untouched remainder to `JSONDecoder`.
+  Never split the payload on every newline: agents send the body pretty-printed, so that truncates
+  it to `{` and the event vanishes with no trace. The script's three guards — surface id, activity
+  owner, a socket that exists — are what make a `claude` started in Terminal.app, the hook sheet
+  and the debug terminal cost nothing, and it always `exit 0`s, because a non-zero hook can block
+  or deny a tool call and Clearway decides nothing.
+  **Two ids, not one, and the second one is tagged.** The surface id does not survive a relaunch;
+  the owner does — a worktree's path and a task's id both outlive the process that minted the
+  surface. An agent still running after Clearway restarts arrives with a surface id this process
+  never minted and still lights its owner's dot, and draws its subagent rows where that owner is a
+  worktree. One tagged value rather than a variable per owner type is what makes "exactly one
+  owner" the only representable shape: neither kind can be absent while the other is set, and the
+  forwarder decides nothing. The variable is `CLEARWAY_ACTIVITY_OWNER`, renamed from
+  `CLEARWAY_WORKTREE_ID` with **no** fallback reading the old name — an agent already running
+  across that upgrade carries the old variable, so the forwarder's second guard fires and its dot
+  stays dark until its next `SessionStart`, one time.
   **The managed block is reconciled by content, not versioned.** Recognition is `type == "command"`
   plus containment of `/.clearway/hooks/clearway-hook.sh` — never equality with the command string,
   or a user's hand-edit and an older spelling of the same path both leave a live hook forwarding to
@@ -543,15 +571,15 @@
   in both directions. `publish()` is change-gated because `PreToolUse`/`PostToolUse` fire around
   every tool call and assigning an unchanged value to a `@Published` still re-renders every
   observer.
-  **The monitor publishes three values, not four.** `worktreePhases`, `worktreeSubagents` and
-  `health` are `@Published` on it, the sidebar observing the first two and Settings the third; the
-  tab chip's tool label is
+  **The monitor publishes four values.** `worktreePhases`, `taskPhases` and `worktreeSubagents`
+  are `@Published` on it, the sidebar and the Tasks list observing them, and `health` is the
+  fourth, observed by Settings. The tab chip's tool label is not among them. It is
   `AgentActivityMonitor.ToolNames`, a nested `ObservableObject` the monitor holds as a plain `let`
   and `ClearwayApp` injects beside it. Change gating is not enough on its own here: a tool name
-  changes twice per tool call while the sidebar's two values change about once a turn, so on the
-  monitor it invalidated every observer of *any* of them, in every window — including the
-  whole of `MainTerminalTabStrip`, which is the rebuild its chip-scoped `@ObservedObject` exists
-  to prevent. Only `TerminalTabChip` observes it, and the strip itself now reads nothing off the
+  changes twice per tool call while the row values change about once a turn, so on the monitor it
+  invalidated every observer of *any* of them, in every window — including the whole of
+  `MainTerminalTabStrip`, which is the rebuild its chip-scoped `@ObservedObject` exists to
+  prevent. Only `TerminalTabChip` observes it, and the strip itself now reads nothing off the
   monitor at all. `health` costs that nothing: it moves only when the toggle does.
   **`health` is the last enable attempt's outcome and nothing else.** `start()` sets it from the
   install report and the socket outcome together, `stop()` resets it to `.off`, and nothing
@@ -593,16 +621,27 @@
   nothing: its surfaces are new ones with new ids. `AgentHookPaths(home:)` and `install(home:)`
   exist so the suite can drive the whole feature, forwarder and socket included, under a temp root;
   every call site outside the tests takes the default.
-  **The dot is `waiting > working > idle`** over every surface carrying the worktree id, where
+  **The dot is `waiting > working > idle`** over every surface carrying the same owner, where
   working also means holding a live subagent — a lead between turns while subagents run must not go
   dark. Waiting on a permission prompt is a static 7 pt purple dot: orange is working, blue the
   plain-shell notification, red failure, green success and yellow a status badge, so purple is the
   only hue left, and not pulsing separates it by shape as well. `isMain` no longer suppresses the
-  dot. That precedence is `WorktreeRow.dot(phase:hasNotification:isOpen:)`, a pure static beside
-  `rowTexts` for the same reason — nothing in a SwiftUI body is reachable from XCTest — and
+  dot. `AgentActivityDot` (`Sources/App/AgentActivityDot.swift`) is the one view both rows render —
+  the hues, the 7 pt circle, the glow animation and the help strings are written once, there — and
+  `AgentActivityDot.Kind(phase:)` is the phase half of both rules, so a row rule states only what
+  is its own. The worktree rule is `WorktreeRow.dot(phase:hasNotification:isOpen:)`, a pure static
+  beside `rowTexts` — nothing in a SwiftUI body is reachable from XCTest — and
   `isOpen` gates the **phase** alone, along with the subagent rows, since a closed worktree's
   surfaces are already retired; the blue notification dot survives it, because a notification
-  raised before the worktree closed is still unread.
+  raised before the worktree closed is still unread. The task rule is `WorkTaskRow.dot(phase:)`,
+  keyed on `taskPhases`: the phase rule and nothing else, with no `hasNotification` and no
+  `isOpen`, because no notification is tracked for a task terminal — libghostty raises one for any
+  surface, but `handleDesktopNotification` resolves it through `panes`, which never holds a task
+  surface, so it is dropped — and a retired surface has already left the store. Task rows carry no
+  subagent children — `worktreeSubagents` is filtered to worktree owners, so a task surface's
+  roster contributes no key and nothing renders — but that roster still
+  counts as work, because `effectivePhase` lifts a surface holding a live subagent to `.working`
+  before any derivation sees it.
 - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
   `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
   launcher, the one menu view the toolbar and the sidebar both render, and the Settings section

@@ -84,6 +84,10 @@ class WorkTaskCoordinator: ObservableObject {
     /// the operator confirmed and records the pending create so `completePendingCreate` can relocate
     /// TASK.md and run the command once the worktree is live. A hand-made worktree passes no task id
     /// and so writes no task file.
+    ///
+    /// It also closes the promoted task's bottom terminal. The link written here takes the task out
+    /// of `backlogTasks`, which is the only renderer of `taskPhases`, so an agent left running there
+    /// would light no dot anywhere.
     func confirmCreate(taskId: UUID?, branch: String, command: SavedCommand?) {
         var link: PendingCreate.TaskLink?
         if let taskId {
@@ -109,6 +113,7 @@ class WorkTaskCoordinator: ObservableObject {
                 Ghostty.logger.error(
                     "confirmCreate: task \(taskId, privacy: .public) no longer exists; creating \(branch, privacy: .public) unlinked")
             }
+            terminalManager.closeTaskTerminal(taskId)
         }
         pendingCreate = PendingCreate(task: link, branch: branch, command: command)
     }

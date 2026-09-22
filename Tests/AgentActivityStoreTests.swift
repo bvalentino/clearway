@@ -5,6 +5,8 @@ private let surfaceA = "1D3C7E9A-0000-4000-8000-00000000000A"
 private let surfaceB = "1D3C7E9A-0000-4000-8000-00000000000B"
 private let worktreeOne = "/Users/x/my repo/.worktrees/one"
 private let worktreeTwo = "/Users/x/my repo/.worktrees/two"
+private let taskOne = UUID(uuidString: "2E4F8A1B-0000-4000-8000-000000000001")!
+private let taskTwo = UUID(uuidString: "2E4F8A1B-0000-4000-8000-000000000002")!
 
 /// Pins the transitions of the spec's Decision 20 and the worktree derivation of Decision 21. Every
 /// event goes in through `AgentHookEnvelope.parse`, so the wire format is exercised alongside the
@@ -298,6 +300,52 @@ final class AgentActivityStoreTests: XCTestCase {
         )
     }
 
+    // MARK: - Task owners
+
+    /// The whole point of the tagged owner: an agent in a task terminal lands on its task and
+    /// leaves the worktree it happens to run in dark.
+    func testATaskOwnerContributesToTaskPhasesAndNotToWorktreePhases() {
+        apply("UserPromptSubmit", owner: .task(taskOne))
+
+        XCTAssertEqual(store.taskPhases[taskOne], .working)
+        XCTAssertTrue(store.worktreePhases.isEmpty)
+    }
+
+    func testAWorktreeOwnerContributesToWorktreePhasesAndNotToTaskPhases() {
+        apply("UserPromptSubmit")
+
+        XCTAssertEqual(store.worktreePhases[worktreeOne], .working)
+        XCTAssertTrue(store.taskPhases.isEmpty)
+    }
+
+    /// A task row carries no subagent children by design, so a task surface's roster contributes no
+    /// key at all. Its lead still reads as working between turns, because `effectivePhase` lifts
+    /// the surface before either derivation sees it.
+    func testATaskOwnersLiveSubagentRaisesItsPhaseAndNoRosterKey() {
+        applyRaw(subagentStart(agentId: "a42b06983b46906f7"), owner: .task(taskOne))
+        applyRaw(stop(running: [("a42b06983b46906f7", "Count Swift files slowly")]), owner: .task(taskOne))
+
+        XCTAssertEqual(store.taskPhases[taskOne], .working)
+        XCTAssertTrue(store.worktreeSubagents.isEmpty)
+    }
+
+    func testRetiringATaskSurfaceClearsItsTaskPhase() {
+        apply("UserPromptSubmit", owner: .task(taskOne))
+        XCTAssertEqual(store.taskPhases[taskOne], .working)
+
+        store.retire(surfaceId: surfaceA)
+
+        XCTAssertNil(store.taskPhases[taskOne])
+    }
+
+    func testTasksAreIndependent() {
+        apply("UserPromptSubmit", owner: .task(taskOne))
+        apply("PermissionRequest", surface: surfaceB, owner: .task(taskTwo), tool: "Bash")
+
+        XCTAssertEqual(store.taskPhases[taskOne], .working)
+        XCTAssertEqual(store.taskPhases[taskTwo], .waiting)
+    }
+
     // MARK: - Helpers
 
     /// The captured payloads, verbatim but for the home-directory paths. Every key the agent sends
@@ -337,8 +385,12 @@ final class AgentActivityStoreTests: XCTestCase {
         """
     }
 
-    private func applyRaw(_ body: String, surface: String = surfaceA, worktree: String = worktreeOne) {
-        guard let envelope = AgentHookEnvelope.parse(Data("\(surface)\n\(worktree)\n\(body)".utf8)) else {
+    private func applyRaw(
+        _ body: String,
+        surface: String = surfaceA,
+        owner: AgentActivityOwner = .worktree(worktreeOne)
+    ) {
+        guard let envelope = AgentHookEnvelope.parse(Data("\(surface)\n\(owner.rawValue)\n\(body)".utf8)) else {
             return XCTFail("the captured payload did not parse")
         }
         store.apply(envelope)
@@ -347,7 +399,7 @@ final class AgentActivityStoreTests: XCTestCase {
     private func apply(
         _ event: String,
         surface: String = surfaceA,
-        worktree: String = worktreeOne,
+        owner: AgentActivityOwner = .worktree(worktreeOne),
         tool: String? = nil,
         agentId: String? = nil,
         agentType: String? = nil
@@ -356,7 +408,7 @@ final class AgentActivityStoreTests: XCTestCase {
         if let tool { fields.append(#""tool_name":"\#(tool)""#) }
         if let agentId { fields.append(#""agent_id":"\#(agentId)""#) }
         if let agentType { fields.append(#""agent_type":"\#(agentType)""#) }
-        let payload = Data("\(surface)\n\(worktree)\n{\(fields.joined(separator: ","))}".utf8)
+        let payload = Data("\(surface)\n\(owner.rawValue)\n{\(fields.joined(separator: ","))}".utf8)
 
         guard let envelope = AgentHookEnvelope.parse(payload) else {
             return XCTFail("the test helper built an unparseable \(event) payload")
