@@ -241,6 +241,7 @@ struct ClearwayApp: App {
                 RunDropdownMenuItem()
                 RunCommandsSubmenu()
                 OpenInPrimaryMenuItem()
+                OpenInDropdownMenuItem()
                 OpenInAppsSubmenu()
             }
         }

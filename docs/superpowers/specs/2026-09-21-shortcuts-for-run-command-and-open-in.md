@@ -5,9 +5,9 @@
 
 The worktree toolbar's Run and Open In split buttons are reachable only by mouse and appear nowhere
 in the menu bar. This change adds a top-level **Worktree** menu carrying both actions, gives the
-primary Run command ⌘R and the primary Open In app ⌘O, and gives ⌥⌘R a door onto the Run button's
-dropdown so a non-primary command can be picked without the mouse. All three keys are claimed from
-focused terminal surfaces the way the app's other shortcuts are.
+primary Run command ⌘R and the primary Open In app ⌘O, and gives ⌥⌘R and ⌥⌘O doors onto those
+buttons' dropdowns so a non-primary command or app can be picked without the mouse. All four keys
+are claimed from focused terminal surfaces the way the app's other shortcuts are.
 
 ## Decisions
 
@@ -28,7 +28,8 @@ focused terminal surfaces the way the app's other shortcuts are.
 | D13 | Where does the Worktree menu sit? | One `CommandMenu("Worktree")` in `ClearwayApp.commands`, which SwiftUI places after View. | Task leaves the position to the engineer; after View and before Window reads correctly for a window-scoped noun. |
 | D14 | `ContentView.swift` split | Extract `sidePanelTabStrip` + `sidePanelTabButton` (`ContentView.swift:956-1010`) into `Sources/App/SidePanelTabStrip.swift` before adding anything. | Project constraint: the file is 1011 lines against a 1000-line `file_length` **error** and survives only on the file-wide disable at line 1. The strip is the most self-contained chunk — one binding, one worktree id, the tab list. |
 | D15 | Does the split retire `// swiftlint:disable file_length`? | No. Keep it. | The file lands near 980 lines, over the 700-line **warning** threshold; removing the disable would introduce a new warning, which the project forbids. `type_body_length` stays disabled for the same reason. |
-| D16 | Is ⌥⌘O claimed? | No. Nothing declares it. | "Claim exactly what the app handles"; a claimed combo with no handler is taken from the shell and dropped. |
+| D16 | Is ⌥⌘O claimed? | No. Nothing declares it. **Superseded by D17.** | "Claim exactly what the app handles"; a claimed combo with no handler is taken from the shell and dropped. |
+| D17 | Does Open In get the dropdown key too? | Yes. A **sixth** row, "Open in…" (⌥⌘O), between "Open in \<label>" and the Open in submenu, popping the toolbar's Open In dropdown through `ToolbarSplitButtonMenu.popUp(labelled:)` with `SettingsManager.openInButtonTitle`. ⌥⌘O is claimed in `AppKeyboardShortcuts`. **Operator-requested during the hands-on check, 2026-09-21.** | Run and Open In are the same control in two copies, so the keyboard reach should be the same too: ⌘O opens the primary app, ⌥⌘O picks another. The row has to be real for the same reason "Run…" does (D4, A5), and the helper already takes the label as a parameter — segment 0 of the Open In button reads "Open in Fork", confirmed in the lldb session recorded in the plan's Changelog. Enablement mirrors "Open in \<label>": `.disabled(actions == nil)`, which is already nil on an empty app list, where no toolbar button exists to pop. D16 stood only while nothing declared the key. |
 
 ## Assumptions
 
@@ -57,7 +58,7 @@ visible in the menu bar with their keys, from a focused terminal as well as from
 
 ### Success criteria
 
-The task's acceptance criteria, unchanged, plus what D4 changes:
+The task's acceptance criteria, unchanged, plus what D4 and D17 change:
 
 1. With a worktree selected and ≥1 saved command, ⌘R runs the primary command in that worktree's
    main terminal; the Run button's label then names it, as after a click.
@@ -66,7 +67,7 @@ The task's acceptance criteria, unchanged, plus what D4 changes:
 4. ⌘O opens the worktree path in the primary Open In app, including from a focused terminal, with
    the same last-used recording and the same failure alert.
 5. A **Worktree** menu carries, in order: "Run <name>" (⌘R), "Run…" (⌥⌘R), a Run submenu, "Open in
-   <label>" (⌘O), an Open in submenu.
+   <label>" (⌘O), "Open in…" (⌥⌘O), an Open in submenu.
 6. The Run submenu lists every saved command in display order, then a divider, then "Add Command…";
    choosing a command runs it and records it as primary; the door opens `CommandEditorSheet`.
 7. The Open in submenu lists every app in display order, then a divider, then "Edit Apps…";
@@ -75,14 +76,17 @@ The task's acceptance criteria, unchanged, plus what D4 changes:
    menu and toolbar labels agree.
 9. Adding, removing, reordering or renaming in either list is reflected in the menu without a
    relaunch.
-10. All five items are disabled with no worktree selected, on Tasks/Commands/Prompts, and on a
+10. All six items are disabled with no worktree selected, on Tasks/Commands/Prompts, and on a
     standalone Task/Prompt/Settings window. "Run <name>" is disabled on an empty command list;
-    "Open in <label>" and the Open in submenu are disabled on an empty app list; the Run submenu and
-    "Run…" stay enabled on an empty command list.
-11. Pressing any of the three keys in a disabled state does nothing and does not reach the shell.
-12. ⌘R, ⌥⌘R and ⌘O are added to `AppKeyboardShortcuts` in the same change, with `AppKeyboardShortcutsTests`
-    pinning the three claims and pinning ⌥⌘O, ⌃⌘R and ⇧⌘R as **not** claimed.
+    "Open in <label>", "Open in…" and the Open in submenu are disabled on an empty app list; the Run
+    submenu and "Run…" stay enabled on an empty command list.
+11. Pressing any of the four keys in a disabled state does nothing and does not reach the shell.
+12. ⌘R, ⌥⌘R, ⌘O and ⌥⌘O are added to `AppKeyboardShortcuts` in the same change as their rows, with
+    `AppKeyboardShortcutsTests` pinning the four claims and pinning ⌃⌘R and ⇧⌘R as **not** claimed.
 13. `./scripts/ci.sh` passes.
+14. ⌥⌘O pops the toolbar Open In dropdown; Escape closes it; choosing a row opens the worktree in
+    that app. (D17; added after the hands-on check, so it follows criterion 13 rather than
+    renumbering the list the plan's tasks cite.)
 
 ## Verification
 
@@ -101,8 +105,8 @@ claim table (criterion 12) is unit-tested; `performKeyEquivalent`, which consume
 
 Changed:
 
-- `Sources/App/AppKeyboardShortcuts.swift` — add `"r"` and `"o"` to the `[.command]` case and `"r"`
-  to `[.command, .option]`.
+- `Sources/App/AppKeyboardShortcuts.swift` — add `"r"` and `"o"` to the `[.command]` case, and `"r"`
+  and `"o"` (D17) to `[.command, .option]`.
 - `Sources/App/ClearwayApp.swift` — the new `CommandMenu("Worktree")`.
 - `Sources/App/ContentView.swift` — publish the two focused scene values; remove the extracted
   tab strip; hand the toolbar views their action structs.
@@ -119,7 +123,7 @@ Changed:
 Added:
 
 - `Sources/App/WorktreeCommands.swift` — the two focused-value keys, the action structs, and the
-  five menu-item views.
+  six menu-item views.
 - `Sources/App/ToolbarSplitButtonMenu.swift` — the `nonisolated`-free, `@MainActor` AppKit helper
   that finds the realized segmented control by its segment-0 label and pops its segment menu.
 - `Sources/App/SidePanelTabStrip.swift` — the extraction that makes room in `ContentView`.

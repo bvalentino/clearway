@@ -180,7 +180,10 @@ struct ContentView: View {
             primary: settings.primaryOpenInApp,
             title: settings.openInButtonTitle,
             apps: settings.openInApps,
-            open: WorktreeOpenInActions.opener(path: path, recordingUseIn: settings)
+            open: WorktreeOpenInActions.opener(path: path, recordingUseIn: settings),
+            popOpenInMenu: { [settings] in
+                ToolbarSplitButtonMenu.popUp(labelled: settings.openInButtonTitle)
+            }
         )
     }
 

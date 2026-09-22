@@ -815,3 +815,47 @@ rewritten to state where the control actually lives, since the old text said "wa
 **No test.** Same reason T3 carried none: the helper needs a live realized toolbar, and a faked
 view tree would pin the fake, not the bug. The proof is the lldb session above; the confirmation is
 the operator's hand-check.
+
+### 2026-09-21 — ⌥⌘O: give Open In the same dropdown key as Run
+
+**Request.** Operator, during the hands-on check: Run and Open In are the same control twice over,
+so the keyboard reach should be the same too. Add ⌥⌘O, popping the toolbar's Open In dropdown,
+mirroring ⌥⌘R. Recorded in the spec as D17, which supersedes D16 ("⌥⌘O is not claimed").
+
+**Change.** A sixth Worktree row, `OpenInDropdownMenuItem` — "Open in…" ⌥⌘O — between
+"Open in \<app>" ⌘O and the Open in submenu, the same place "Run…" sits relative to "Run \<name>"
+and the Run submenu. It is a real row for the same reason "Run…" is (A5): AppKit's key-equivalent
+dispatch fires a menu item's action, and a SwiftUI `Menu` used as a submenu row has none.
+
+`WorktreeOpenInActions` gains `popOpenInMenu`, filled at the same `ContentView` construction site
+as `popRunMenu` and reading `settings.openInButtonTitle` **inside** the closure, so the label it
+hands `ToolbarSplitButtonMenu.popUp(labelled:)` tracks the primary rather than capturing a stale
+name. `ToolbarSplitButtonMenu` is unchanged: it already takes the label as a parameter, and the
+lldb session in the entry above confirmed segment 0 of the Open In button reads "Open in Fork".
+
+Enablement mirrors "Open in \<app>" exactly — `.disabled(actions == nil)`. The focused value is
+already nil with no worktree, no worktree path, on Tasks/Commands/Prompts, on a standalone window
+and on an empty app list, which is also the state where no toolbar button exists to pop.
+
+**Evidence.** The ⌥⌘O pin in `Tests/AppKeyboardShortcutsTests.swift` was a *declined* pin; T6 wrote
+it that way under D16. Flipped to a claimed pin first and watched it fail against the unclaimed
+table, before `AppKeyboardShortcuts` was touched:
+
+```
+AppKeyboardShortcutsTests/testCommandOptionOIsClaimed()  Failed
+XCTAssertTrue failed - Open in…, which pops the toolbar Open In dropdown
+  Tests/AppKeyboardShortcutsTests.swift:139
+Executed 788 tests, with 1 failure (0 unexpected) in 125.129 seconds
+```
+
+⌃⌘R and ⇧⌘R stay pinned declined in `testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed`;
+only the ⌥⌘O line moved out of it.
+
+**Files.** `Sources/App/WorktreeCommands.swift` (the `popOpenInMenu` field and the new row view),
+`Sources/App/ContentView.swift` (995 → 998, still under the 1000-line `file_length` error, so no
+extraction was needed), `Sources/App/ClearwayApp.swift`, `Sources/App/AppKeyboardShortcuts.swift`,
+`Tests/AppKeyboardShortcutsTests.swift`, `Sources/App/CLAUDE.md` (six rows and their order, the
+declared-once key list, the `AppKeyboardShortcuts` pin note, the ⌥⌘R/⌥⌘O helper paragraph),
+and the spec (D17, the menu shape in criterion 5, criteria 10-12, and new criterion 14).
+
+**Gate.** `./scripts/ci.sh`.

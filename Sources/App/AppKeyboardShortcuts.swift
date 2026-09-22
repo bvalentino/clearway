@@ -51,8 +51,8 @@ enum AppKeyboardShortcuts {
             return keyCode == KeyCode.leftBracket || keyCode == KeyCode.rightBracket
                 || letter == "n" || keyCode == KeyCode.comma
         case [.command, .option]:
-            // toggle aside, new agent tab, pop the Run dropdown
-            return letter == "b" || letter == "t" || letter == "r"
+            // toggle aside, new agent tab, pop the Run dropdown, pop the Open In dropdown
+            return letter == "b" || letter == "t" || letter == "r" || letter == "o"
         default:
             return false
         }

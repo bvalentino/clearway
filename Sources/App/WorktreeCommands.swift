@@ -53,6 +53,8 @@ struct WorktreeOpenInActions {
     let title: String
     let apps: [OpenInApp]
     let open: (OpenInApp) -> Void
+    /// Opens the toolbar Open In button's own dropdown, the ⌥⌘O counterpart of `popRunMenu`.
+    let popOpenInMenu: () -> Void
 }
 
 extension WorktreeOpenInActions {
@@ -168,6 +170,19 @@ struct OpenInPrimaryMenuItem: View {
         }
         .keyboardShortcut("o", modifiers: .command)
         .disabled(actions == nil)
+    }
+}
+
+/// Worktree ▸ Open in…, the row that carries ⌥⌘O, for the same reason "Run…" carries ⌥⌘R: the
+/// submenu below it has no action for AppKit's key-equivalent dispatch to fire. It greys with the
+/// rows around it — an empty app list draws no toolbar button, so there is no dropdown to pop.
+struct OpenInDropdownMenuItem: View {
+    @FocusedValue(\.worktreeOpenInActions) private var actions: WorktreeOpenInActions?
+
+    var body: some View {
+        Button("Open in…") { actions?.popOpenInMenu() }
+            .keyboardShortcut("o", modifiers: [.command, .option])
+            .disabled(actions == nil)
     }
 }
 

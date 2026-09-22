@@ -16,12 +16,16 @@
   (⌘⌃2, ⌘⌃3, ⌘⇧T); a SwiftUI default dropped as collateral does not (⌃⌘S). The pins cover keys the
   app once owned, not every combo it declines. The Ctrl+digit claim therefore spans `"1"…"3"` —
   the sidebar's three destinations.
+  The Worktree menu's four keys — ⌘R, ⌥⌘R, ⌘O, ⌥⌘O — are all claimed. ⌥⌘O was pinned as declined
+  until "Open in…" was added on 2026-09-21; a neighbouring-modifier pin that flips like that is
+  flipped in the same change as the declaration, never left disagreeing with the table. ⌃⌘R and
+  ⇧⌘R stay pinned declined: nothing declares either.
 - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
   aside ⌥⌘B, each a `PanelToggle` (`isVisible` + `toggle`) that `ContentView` publishes as a
   focused **scene** value. A `nil` value greys the item out, which is also how all three grey out
   on a standalone Task/Prompt/Settings window. Each key is declared **only** on its menu item —
   a hidden `.keyboardShortcut` button would declare it a second time, in a layer that silently
-  wins. The rule is not local to this file: the Worktree menu's ⌘R, ⌥⌘R and ⌘O are declared on its
+  wins. The rule is not local to this file: the Worktree menu's ⌘R, ⌥⌘R, ⌘O and ⌥⌘O are declared on its
   rows and nowhere else, and in particular not on the toolbar's Run and Open In buttons, which are
   what those rows act on. The tab strip's ⌘T / ⌥⌘T rows are the one deliberate second declaration,
   and only because both run the same action.
@@ -39,14 +43,14 @@
   `ghostty_app_new` still leaves the task list rendering and setting a selection.
   `newTabAction` / `newAgentTabAction` still split the two and are the known exceptions.
 - `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` — the Worktree menu, which `ClearwayApp`
-  declares as one `CommandMenu("Worktree")` holding five rows in this order: "Run \<name>" ⌘R,
-  "Run…" ⌥⌘R, a Run submenu, "Open in \<app>" ⌘O, an Open in submenu. Each row is its own small
-  `View` in `WorktreeCommands.swift`, which is also where all three keys are declared and the only
-  place they are.
-  **Five rows and not four**, because ⌥⌘R cannot live on the Run submenu: AppKit's key-equivalent
-  dispatch fires a menu item's action, and a SwiftUI `Menu` used as a submenu row has none — the
-  same no-body rule the Plan split button hits in the sidebar's context menu. So "Run…" is a real
-  row with a real action, and the submenu below it carries no key.
+  declares as one `CommandMenu("Worktree")` holding six rows in this order: "Run \<name>" ⌘R,
+  "Run…" ⌥⌘R, a Run submenu, "Open in \<app>" ⌘O, "Open in…" ⌥⌘O, an Open in submenu. Each row is
+  its own small `View` in `WorktreeCommands.swift`, which is also where all four keys are declared
+  and the only place they are.
+  **Six rows and not four**, because neither ⌥⌘R nor ⌥⌘O can live on the submenu it pops: AppKit's
+  key-equivalent dispatch fires a menu item's action, and a SwiftUI `Menu` used as a submenu row has
+  none — the same no-body rule the Plan split button hits in the sidebar's context menu. So "Run…"
+  and "Open in…" are real rows with real actions, and the submenus below them carry no key.
   Like the panel toggles above, the rows reach per-window state through focused **scene** values
   and a `nil` greys the row out. There are two values, not one, because they gate on different
   preconditions: `WorktreeRunActions` is nil with no selected worktree or no `ghosttyApp.app`,
@@ -55,8 +59,9 @@
   `menuCommands` / `menuOpenInApps`: the toolbar omits the primary because its label half runs it,
   and the menu bar has no label half. "Run \<name>" is the one row gated on `primary` rather than
   on the value itself, so an empty command list greys it while "Run…" and the Run submenu stay
-  live and keep the "Add Command…" door reachable; both Open in rows grey together, since their
-  value is already nil on an empty app list.
+  live and keep the "Add Command…" door reachable; all three Open in rows grey together, since their
+  value is already nil on an empty app list — and an empty list draws no toolbar button, so "Open
+  in…" would have no dropdown to pop anyway.
   `WorktreeRunActions.runner` and `WorktreeOpenInActions.opener` are the **one** implementation of
   each action, shared with `RunCommandMenu` and `OpenInMenu`, so record-then-launch and the Open In
   failure alert exist once in the tree.
@@ -67,11 +72,13 @@
   is built in `ContentView`, where the manager is, rather than read with `@FocusedObject`: nothing
   in the tree calls `.focusedObject(_:)`, so that wrapper reads nil and would leave the row
   permanently disabled.
-  **⌥⌘R pops the toolbar's own Run dropdown through AppKit** rather than drawing a second list that
-  could drift from it. SwiftUI cannot present a `Menu` programmatically, so
+  **⌥⌘R and ⌥⌘O pop the toolbar's own dropdowns through AppKit** rather than drawing a second list
+  that could drift from them. SwiftUI cannot present a `Menu` programmatically, so
   `ToolbarSplitButtonMenu.popUp(labelled:)` walks the view tree depth first for an
-  `NSSegmentedControl` whose segment 0 label equals `SavedCommandManager.runButtonTitle` and pops
-  its `menu(forSegment: 1)` below the control.
+  `NSSegmentedControl` whose segment 0 label equals the one it was given and pops its
+  `menu(forSegment: 1)` below the control. The label is the **only** thing separating the two
+  buttons, so each closure reads its own title inside the closure — `runButtonTitle` for ⌥⌘R,
+  `openInButtonTitle` for ⌥⌘O — and tracks the primary rather than capturing a stale name.
   **The walk starts at `NSApp.keyWindow?.toolbar?.visibleItems`, at each item's `view`, and not at
   `contentView`.** A toolbar item's view is no descendant of the content view: the realized chain is
   `SwiftUISegmentedControl` ← `AppKitPlatformViewHost` ← `ToolbarItemHostingView` ←
@@ -80,15 +87,15 @@
   `contentView` finds nothing and ⌥⌘R silently does nothing — which is exactly what it did when it
   first shipped. Rooting the walk in the toolbar also puts `CommandsView`'s segmented filter picker
   out of reach by construction; the label is left as the discriminator between the Run button and
-  the Open In split button, the only other segmented control in the toolbar. `segmentCount > 1` is
+  the Open In split button, the toolbar's only two segmented controls. `segmentCount > 1` is
   checked before either segment is read, because `NSSegmentedControl` raises on an out-of-range
   index. An item scrolled into the toolbar's overflow menu is absent from `visibleItems` and has no
   on-screen control to hang a menu under, so it is a non-match like any other. When nothing matches it
   **does nothing**: falling back to another control would open a dropdown the operator did not ask
   for. This is knowingly fragile. It holds only while SwiftUI keeps realizing a toolbar `Menu` with
   a `primaryAction:` as an `NSSegmentedControl` with a readable segment label — the split-button
-  note further down — and the operator took that over a fallback behaviour. If ⌥⌘R ever stops
-  opening anything, this is where to look.
+  note further down — and the operator took that over a fallback behaviour. If ⌥⌘R or ⌥⌘O ever
+  stops opening anything, this is where to look.
 - **A `.toolbar` for the detail column goes on the detail column's own content.** Attached to the
   `NavigationSplitView` in `ContentView`, SwiftUI routes the `ToolbarItem`s into the detail section
   but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
@@ -622,10 +629,10 @@
   separate files because `ContentView.swift` sits at SwiftLint's 1000-line `file_length` limit and
   only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
   needs a split first. `SidePanelTabStrip.swift` is the most recent one, moved out to make room for
-  the Worktree menu's two `focusedSceneValue` lines, and the file is back at 995.
-  Both actions do carry a keyboard shortcut — ⌘R runs the primary command, ⌘O opens in the primary
-  app, and ⌥⌘R pops this very dropdown — but every one of them is declared on the Worktree menu's
-  rows and none on these buttons, and all three are claimed in `AppKeyboardShortcuts`. See the
+  the Worktree menu's two `focusedSceneValue` lines, and the file is back at 998.
+  Both actions do carry keyboard shortcuts — ⌘R runs the primary command, ⌘O opens in the primary
+  app, and ⌥⌘R / ⌥⌘O pop these very dropdowns — but every one of them is declared on the Worktree
+  menu's rows and none on these buttons, and all four are claimed in `AppKeyboardShortcuts`. See the
   `WorktreeCommands.swift` entry near the top of this file.
 - `WorktreeGroupManager.swift` — sidebar grouping, stored entirely in git config through
   `WorktreeConfigStore`. Four keys: repo-level `clearway.grouping` (the sectioning axis) and

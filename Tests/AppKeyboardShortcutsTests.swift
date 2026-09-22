@@ -135,8 +135,11 @@ final class AppKeyboardShortcutsTests: XCTestCase {
         XCTAssertTrue(claims([.command, .option], "r"), "Run…, which pops the toolbar Run dropdown")
     }
 
+    func testCommandOptionOIsClaimed() {
+        XCTAssertTrue(claims([.command, .option], "o"), "Open in…, which pops the toolbar Open In dropdown")
+    }
+
     func testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed() {
-        XCTAssertFalse(claims([.command, .option], "o"), "Cmd+Option+O is declared nowhere")
         XCTAssertFalse(claims([.command, .control], "r"), "Cmd+Ctrl+R is declared nowhere")
         XCTAssertFalse(claims([.command, .shift], "R"), "Cmd+Shift+R is declared nowhere")
     }
