@@ -3,7 +3,8 @@ import XCTest
 
 /// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
 /// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
-/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J; and
+/// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J;
+/// `taskWasPromoted`, which both doors re-read the task through once their `await` resumes; and
 /// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
 /// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
 /// are their whole testable surface.
@@ -36,6 +37,31 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         coordinator.terminalManager.mainCommandProvider = { nil }
 
         XCTAssertNil(coordinator.taskTerminalLaunchCommand())
+    }
+
+    // MARK: - A launch that resumes after a promote
+
+    /// Both doors claim the task's terminal, suspend on `ShellEnvironment.awaitPath()`, and open the
+    /// surface when they resume. Start Now → Create can land in that window: it writes the worktree
+    /// link and closes the terminal, so a launch that resumed regardless would reopen one for a task
+    /// that has left `backlogTasks` — an agent lighting no dot anywhere, which is the state that
+    /// close exists to prevent.
+    ///
+    /// Driven through `confirmCreate` rather than a hand-set `worktree`, so the rule cannot drift
+    /// from the write the promote actually performs.
+    func testALaunchSeesItsTaskAsPromotedOnceCreateHasWrittenTheLink() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Ship it") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+        XCTAssertFalse(coordinator.taskWasPromoted(seed.id),
+                       "a task still in the backlog opens its terminal exactly as before")
+
+        coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
+
+        XCTAssertTrue(coordinator.taskWasPromoted(seed.id),
+                      "a launch resuming after the promote must open nothing")
     }
 
     // MARK: - Confirming a plan

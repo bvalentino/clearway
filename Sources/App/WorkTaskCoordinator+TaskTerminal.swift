@@ -37,6 +37,7 @@ extension WorkTaskCoordinator {
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
+                guard !taskWasPromoted(taskId) else { return }
                 terminalManager.openTaskTerminal(
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
@@ -84,6 +85,16 @@ extension WorkTaskCoordinator {
         }
     }
 
+    /// Whether the task has been promoted to a worktree since a launch claimed its terminal. Both
+    /// doors onto a task terminal suspend on `ShellEnvironment.awaitPath()` before they open
+    /// anything, and Start Now → Create can land in that window: `confirmCreate` writes the link and
+    /// closes the terminal, so a launch that resumed regardless would reopen one for a task that has
+    /// left `backlogTasks` — an agent lighting no dot anywhere, which is the state that close
+    /// exists to prevent. A promoted task stays in `tasks`; it is `backlogTasks` that filters it out.
+    func taskWasPromoted(_ taskId: UUID) -> Bool {
+        workTaskManager.tasks.first(where: { $0.id == taskId })?.worktree != nil
+    }
+
     /// Whether planning would take something live away from the operator. `planTask` opens a fresh
     /// surface over whatever the task terminal already holds, so a running foreground process is
     /// the one case the view must confirm before planning.
@@ -121,8 +132,10 @@ extension WorkTaskCoordinator {
         guard terminalManager.beginTaskLaunch(for: taskId) else { return }
         Task { @MainActor in
             defer { terminalManager.endTaskLaunch(for: taskId) }
+            let path = await ShellEnvironment.awaitPath()
+            guard !taskWasPromoted(taskId) else { return }
             await terminalManager.run(
-                resolved, inTaskTerminalFor: taskId, app: app, directory: directory)
+                resolved, inTaskTerminalFor: taskId, app: app, directory: directory, path: path)
         }
 
         NotificationCenter.default.post(name: WorkTaskNotification.taskTerminalOpened, object: taskId)

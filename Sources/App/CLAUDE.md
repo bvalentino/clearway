@@ -196,6 +196,14 @@
   rather than by being linked, and the row is missing either way. The close is the one part of the
   write `abandonPendingCreate` cannot unwind, and it is deliberate: leaving the agent stranded and
   invisible is worse than a failed create costing a terminal the operator can reopen.
+  **A launch already in flight would undo that close.** Both doors onto a task terminal claim it,
+  suspend on `await ShellEnvironment.awaitPath()` and open the surface when they resume, so a
+  promote landing in that window is followed a moment later by a terminal for a task that has left
+  `backlogTasks`. Each door re-reads the task through `WorkTaskCoordinator.taskWasPromoted` after
+  the await and abandons itself when it names a worktree by then; the `defer` releases the launch
+  claim either way. That is why `TerminalManager.run(_:inTaskTerminalFor:app:directory:path:)` takes
+  the resolved PATH rather than awaiting one of its own — the suspension has to sit where the
+  re-read can follow it, and inside `run` it was past the point of no return.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
   to the relocated file), the shadow task, the creation mark — which **carries that command** —

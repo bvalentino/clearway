@@ -39,6 +39,10 @@ extension TerminalManager {
     /// Run `command` in the task's own bottom terminal, from `directory` — the task-panel sibling
     /// of `run(_:in:app:)`, for the Tasks destination, which renders no main-terminal pane at all.
     ///
+    /// `path` is passed in rather than awaited here: the caller has to own that suspension, because
+    /// it re-reads the task across it and abandons a launch whose task was promoted meanwhile
+    /// (`WorkTaskCoordinator.taskWasPromoted`).
+    ///
     /// `autoRun` picks submit-or-stage the same way. Submitting opens the surface straight onto the
     /// agent; staging has nothing to hold a draft here, so it opens a login shell and leaves the
     /// invocation on its prompt line for the operator to send.
@@ -51,7 +55,8 @@ extension TerminalManager {
         _ command: SavedCommand,
         inTaskTerminalFor taskId: UUID,
         app: ghostty_app_t,
-        directory: String
+        directory: String,
+        path: String
     ) async {
         guard case .agent(let agent, let prompt, let submit) = CommandLaunch.launch(for: command) else { return }
         guard submit else {
@@ -71,7 +76,7 @@ extension TerminalManager {
         guard let launch = buildAgentPromptCommand(
             agentCommand: agent,
             prompt: prompt,
-            path: await ShellEnvironment.awaitPath(),
+            path: path,
             filePrefix: planFilePrefix
         ) else {
             presentPromptFileFailure(command: agent)
