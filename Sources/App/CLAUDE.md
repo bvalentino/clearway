@@ -237,14 +237,19 @@
   enabled flag unreliably, and a menu first built with nothing selected kept its commands greyed
   out after a task was selected, while the unconditional editor door beside them stayed live.
   Changing the item set changes the content's structural identity, which rebuilds the menu.
-  That same retention forbids an item from **capturing** a `WorkTask`: the closures built with the
-  menu outlive the selection they were built under, so a captured task made the toolbar dropdown
+  That same retention forbids an item from **capturing** a `WorkTask` or a `SavedCommand`: the closures
+  built with the menu outlive the selection they were built under, so a captured task made the toolbar dropdown
   plan whatever had been selected when the menu was first built — replacing *that* task's terminal,
   killing the agent running in it, and snapping the selection back to it. `startNowItems(for row:)`
   takes the row it is built for instead — `nil` from the toolbar, the row's own task from a context
   menu — and every item resolves its target **inside** its action through
   `WorkTaskCoordinator.startNowTarget(row:selection:)`, which falls back to the live `selectedTask`.
-  That rule is unit-tested; the laziness at the call site is not, and no test in this project can
+  A captured command failed the same way: an edit keeps a command's id and the item count, so the
+  menu was not rebuilt and an edited agent command ran its pre-edit text. Each item binds only the
+  command's id before its `Button` and resolves it inside the action through
+  `CommandDefaults.resolve(_:in:)` against the live `savedCommandManager.commands`; a deleted or
+  terminal-kind command resolves to `nil` and the click does nothing.
+  Both rules are unit-tested; the laziness at the call site is not, and no test in this project can
   reach it, so this note and the `startNowItems` docstring are its only guards.
   The terminal half of that gate is `readiness` and not `ghosttyApp.app`: `readiness` is
   `@Published`, while `app` is a computed property over `appHandle` with no
