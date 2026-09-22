@@ -191,14 +191,9 @@ listed files. `WorkTaskCoordinatorTests` unmodified and passing.
 ### Simplify
 
 Reviewed the T1+T2 diff for reuse, simplification, efficiency and altitude. Nothing to change:
-`TaskTerminalLayout` is already a minimal pure enum, `TaskDetailView`'s `GeometryReader` computes
-`terminalHeight` once and reuses it for both the frame and the drag base, and the worktree bottom
-terminal's separate height logic (D12) is a deliberate, already-documented scope boundary, not
-missed reuse. `./scripts/ci.sh`: exit 0, 846 tests, 0 failures.
-
-### Simplify
-
-Reviewed the diff for reuse, simplification, efficiency and altitude. Nothing to change:
-`TaskTerminalLayout` is already the single shared clamp, `ContentView`'s `clampedColumnWidth` is an
-unrelated fixed-range helper, and the worktree bottom terminal stays untouched per D12. `./scripts/ci.sh`
-after this pass: exit 0, "Test Succeeded", 846 tests, 0 failures; `git status --porcelain` clean.
+`TaskTerminalLayout` is already a minimal pure enum and the single shared clamp for this feature;
+`ContentView`'s `clampedColumnWidth` is an unrelated fixed-range helper, not missed reuse.
+`TaskDetailView`'s `GeometryReader` computes `terminalHeight` once and reuses it for both the frame
+and the drag base. The worktree bottom terminal's separate height logic stays untouched per D12, a
+deliberate, already-documented scope boundary. `./scripts/ci.sh`: exit 0, "Test Succeeded", 846
+tests, 0 failures; `git status --porcelain` clean.
