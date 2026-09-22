@@ -527,8 +527,8 @@ with a surface present, which no test can reach. `./scripts/ci.sh` passes.
 ### T8: Refuse to open a task terminal for a task promoted during its launch
 
 **Files:** `Sources/App/WorkTaskCoordinator+TaskTerminal.swift`,
-`Sources/App/TerminalManager+Commands.swift`, `Sources/App/CLAUDE.md`,
-`Tests/TaskTerminalLaunchCommandTests.swift`
+`Sources/App/TerminalManager+Commands.swift`, `Sources/App/WorkTaskManager.swift`,
+`Sources/App/CLAUDE.md`, `Tests/TaskTerminalLaunchCommandTests.swift`
 
 **What it does.** Added after review-pr. Both doors onto a task terminal claim the launch, suspend
 on `await ShellEnvironment.awaitPath()`, and open the surface when they resume. T7 made the window
@@ -539,10 +539,18 @@ same place: it removes the file and closes the terminal, and a resumed launch re
 with no row at all. Each door re-reads the task after the await and abandons itself when it is no
 longer one the list renders.
 
-- `WorkTaskCoordinator.taskIsStillInBacklog(_:)` is the whole rule, and it is the entry guard's own
-  rule read a second time: the task is in `workTaskManager.tasks` **and** names no worktree. A
-  promoted task stays in the pool with a link (it is `backlogTasks` that filters it out); a deleted
-  one leaves the pool. No new state — the launch claim is released by the `defer` either way.
+- `WorkTaskCoordinator.taskIsStillInBacklog(_:)` is the whole rule: the task is in
+  `workTaskManager.tasks` **and** names no worktree. A promoted task stays in the pool with a link
+  (it is `backlogTasks` that filters it out); a deleted one leaves the pool. No new state — the
+  launch claim is released by the `defer` either way.
+- Both doors use it as their **entry** guard too, replacing the existence-only checks they had, so
+  the rule is one rule read twice. Entry needs the full rule: `selectedTaskId` is cleared only when
+  `git worktree add` reports back, so a promoted task stays selected and rendered until then, and a
+  Cmd+J in that window took the `.reveal` branch — which mints a surface without reaching the
+  post-await guard at all.
+- `WorkTaskManager.deleteTask` drops the task from `tasks` as it removes the file, mirroring
+  `persist`. The watcher reload is 0.3s behind, which is longer than the window the rule guards,
+  so the delete half of the rule never fired in the app before this.
 - The Cmd+J launch guards between building the command and `openTaskTerminal`
   (`WorkTaskCoordinator+TaskTerminal.swift:39-41`).
 - `planTask`'s await is not in `planTask`: `TerminalManager.run(_:inTaskTerminalFor:app:directory:)`
@@ -563,10 +571,16 @@ longer one the list renders.
 3. A task still in the backlog when the launch resumes opens its terminal exactly as before.
 4. The launch claim is released in every case, so the next Cmd+J on a task that survived still
    works.
+5. A press on the toggle for a task that is already promoted or already deleted opens nothing
+   either, on the reveal branch as much as the launch branch.
+6. `deleteTask` takes the task out of `tasks` without waiting for the watcher, so the deleted answer
+   holds inside the debounce window rather than only after it.
 
 **Verification.** `TaskTerminalLaunchCommandTests` pins the rule on all three answers, driving the
-promote through `confirmCreate` and the delete through `deleteTask`. Criterion 4 is the `defer` that
-already released it, unchanged and above the guard. `./scripts/ci.sh` passes.
+promote through `confirmCreate` and the delete through `deleteTask` with no reload in between —
+which is criterion 6. Criterion 4 is the `defer` that already released it, unchanged and above the
+guard. Criterion 5 is the same method called at the door, the one line each door can carry.
+`./scripts/ci.sh` passes.
 
 ## Risks
 
@@ -626,6 +640,17 @@ already released it, unchanged and above the guard. `./scripts/ci.sh` passes.
   terminal the same way the promote does, and the narrower rule read a missing task as fine to open
   for. `taskWasPromoted` became `taskIsStillInBacklog` with the sense flipped. Folded into
   Decision 22 and the T8 acceptance criteria.
+
+- **2026-09-22, after review (4662614) — T8 fix pass.** Two findings from the reviewer. F1: the
+  delete half of `taskIsStillInBacklog` never fired in the app, because `deleteTask` removed only
+  the file and `tasks` caught up behind the watcher's 0.3s debounce; `deleteTask` now drops the task
+  from `tasks` synchronously, mirroring `persist`, and the test that had called `reloadFromDisk()`
+  around the gap is the regression pin. F2: the docs claimed the post-await rule was "the entry
+  guard's own rule read a second time" while the entry guards checked existence only. Read from the
+  code, no legitimate door opens a task terminal for a task that already has a worktree, so both
+  entry guards were tightened to `taskIsStillInBacklog` and the wording kept — this also closes the
+  `.reveal` branch, which minted a surface without reaching the post-await guard at all. Acceptance
+  criteria 5 and 6 added to T8.
 
 ## Build log
 
@@ -944,3 +969,50 @@ leaving it. The rule is now the entry guard's, re-read.
 **Gate.** `./scripts/ci.sh` — passed, "==> CI passed." under `set -euo pipefail`, so exit 0. 840
 tests, 0 failures (838 before, plus these two). `git status --porcelain` lists only the four files
 above plus this plan and the spec; no untracked files, no `default.profraw`.
+
+#### T8 fix pass after review (F1, F2)
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskManager.swift` | `deleteTask` drops the task from `tasks` as it removes the file, the mirror of `persist`'s in-memory write-back, and re-syncs the per-file watchers the way `persist` does. |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | Both entry guards are now `taskIsStillInBacklog`: `toggleTaskTerminal`'s existence check and a new line in `planTask` beside the `planCommand` unwrap. The docstring says what the method is instead of pointing at a guard that checked something else. |
+| `Sources/App/CLAUDE.md` | The "read a second time" sentence now names the entry guards as the same call, says why entry needs the full rule, and records `deleteTask`'s in-memory half. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | `testALaunchOpensNothingOnceTheTasksFileIsDeleted` no longer calls `reloadFromDisk()`. It is now the regression pin for F1 rather than a test that arranged the fix away. |
+
+**F1 — the delete half never fired in the app.** `deleteTask` removed the file and nothing else;
+`tasks` caught up through the file watcher behind a 0.3s debounce, which is longer than the window
+between a launch's `await` and its resume. So a launch resuming inside it still found the task in
+`tasks` with `worktree == nil` and opened a terminal. The test hid it by reloading. Watched red on
+the unfixed `deleteTask`, with the reload removed:
+
+```
+/Users/…/Tests/TaskTerminalLaunchCommandTests.swift:84: error:
+  -[ClearwayTests.TaskTerminalLaunchCommandTests testALaunchOpensNothingOnceTheTasksFileIsDeleted]
+  : XCTAssertFalse failed - a launch resuming after the delete must open nothing
+Executed 1 test, with 1 failure (0 unexpected)
+```
+
+Green on the same test once `deleteTask` drops the task from the pool. The other three callers
+(`WorkTaskWindow`'s alert, `WorkTaskListView`'s two) each close the window or the row right after
+the call, so an earlier disappearance from `tasks` is what they already wanted; no test depended on
+the file-only behaviour — `TaskTerminalLaunchCommandTests` was the only caller in the suite.
+
+**F2 — the entry guards were tightened, the wording kept.** The code says no legitimate door opens a
+task terminal for a task that already has a worktree. The Tasks list renders `backlogTasks` alone,
+`selectedTaskId` is only ever set from that list or from `newTaskAction`'s brand-new task, and
+`TaskDetailView` is built only for `selectedTaskId`. But `ContentView` clears `selectedTaskId` in
+the `lastCreatedBranch` handler — after `git worktree add` returns — so between Create and that
+moment the promoted task is still selected and still rendered, and Cmd+J or the path-bar button
+reached `taskTerminalToggle` and took `.reveal` (T7 closed the surface, so `hasSurface` is false;
+with no Main Terminal command configured `.reveal` is the answer). `.reveal` mints a task surface
+and never reaches the post-await guard, which is the hole the wording claimed was already closed.
+Tightening costs nothing: a create that fails restores the task through `abandonPendingCreate`, and
+the guard passes again on the next press. `planTask` takes the same line, after the `planCommand`
+unwrap so a wrong-kind command still logs its own refusal.
+
+The entry guards themselves stay unreachable from XCTest — both doors take a `ghostty_app_t` — so
+the pin is `taskIsStillInBacklog` plus the one `guard` line each, the limit the post-await guards
+already carry.
+
+**Gate.** `./scripts/ci.sh` — "==> CI passed." under `set -euo pipefail`. 840 tests, 0 failures; the
+count is unchanged because F1 fixed a test that existed rather than adding one.

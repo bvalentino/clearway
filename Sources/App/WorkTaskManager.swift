@@ -250,8 +250,15 @@ class WorkTaskManager: ObservableObject {
         reload()
     }
 
+    /// Removes the task's file and drops it from the pool in the same turn — the mirror of
+    /// `persist`, and for the same reason: the watcher reload is 0.3s behind, and a caller that
+    /// re-reads `tasks` inside that window would otherwise still find a row for a task whose file
+    /// is gone. `WorkTaskCoordinator.taskIsStillInBacklog` is one such caller, and the window it
+    /// guards is shorter than the debounce.
     func deleteTask(_ task: WorkTask) {
         try? FileManager.default.removeItem(atPath: filePath(for: task))
+        tasks.removeAll { $0.id == task.id }
+        syncTaskFileWatchers()
     }
 
     // MARK: - Branch Name Derivation

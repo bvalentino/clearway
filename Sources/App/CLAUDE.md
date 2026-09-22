@@ -201,9 +201,15 @@
   promote landing in that window is followed a moment later by a terminal for a task that has left
   `backlogTasks`. Each door re-reads the task through
   `WorkTaskCoordinator.taskIsStillInBacklog` after the await and abandons itself when the answer
-  has turned; the `defer` releases the launch claim either way. The rule is the entry guard's, read
-  a second time — the task exists **and** names no worktree — so it catches Delete as well as
-  promote, the other door that empties a task's row out from under a launch. That is why
+  has turned; the `defer` releases the launch claim either way. That method is each door's entry
+  guard as well, so this is one rule — the task exists **and** names no worktree — read twice, and
+  it catches Delete as well as promote, the other door that empties a task's row out from under a
+  launch. Entry needs the full rule and not just existence, because `selectedTaskId` is cleared
+  only once `git worktree add` reports back: between Create and that moment the promoted task is
+  still selected and `TaskDetailView` still renders it, and a Cmd+J there took `.reveal`, which
+  mints a surface without ever reaching the post-await guard. Delete's in-memory half is
+  `WorkTaskManager.deleteTask` dropping the task from `tasks` as it removes the file — the watcher
+  reload is 0.3s behind, far longer than the window being guarded. That is why
   `TerminalManager.run(_:inTaskTerminalFor:app:directory:path:)` takes the resolved PATH rather
   than awaiting one of its own — the suspension has to sit where the re-read can follow it, and
   inside `run` it was past the point of no return.

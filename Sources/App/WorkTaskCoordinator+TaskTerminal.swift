@@ -10,7 +10,7 @@ extension WorkTaskCoordinator {
     /// `await` rather than on the keypress, because the resolved shell PATH is unbounded on a
     /// session's first call; a reveal awaits nothing and focuses on the keypress itself.
     func toggleTaskTerminal(taskId: UUID, app: ghostty_app_t, focusOnReveal: Bool = false) {
-        guard workTaskManager.tasks.contains(where: { $0.id == taskId }) else { return }
+        guard taskIsStillInBacklog(taskId) else { return }
         let projectPath = worktreeManager.projectPath
         let makeCommand = taskTerminalLaunchCommand()
 
@@ -92,8 +92,17 @@ extension WorkTaskCoordinator {
     /// too. A launch that resumed regardless would reopen a terminal with no row left to report to —
     /// an agent lighting no dot anywhere, which is the state those closes exist to prevent.
     ///
-    /// The same rule the entry guard applies, re-read: a promoted task stays in `tasks` and is
-    /// filtered out of `backlogTasks` by its link, a deleted one leaves `tasks` altogether.
+    /// It is also each door's **entry** guard, so the rule is one rule read twice rather than a
+    /// weaker check on the way in. Entry needs the full rule too: `selectedTaskId` is cleared only
+    /// once `git worktree add` reports back, so between Create and that moment a promoted task is
+    /// still selected and `TaskDetailView` still renders it — and a Cmd+J there took the `.reveal`
+    /// branch, which mints a surface without ever reaching the post-await guard. Nothing legitimate
+    /// is refused: the Tasks list renders `backlogTasks` alone, and a create that fails restores the
+    /// task through `abandonPendingCreate`, which makes the guard pass again.
+    ///
+    /// A promoted task stays in `tasks` and is filtered out of `backlogTasks` by its link; a deleted
+    /// one leaves `tasks` at once, because `deleteTask` drops it from the pool rather than waiting
+    /// on the watcher.
     func taskIsStillInBacklog(_ taskId: UUID) -> Bool {
         guard let task = workTaskManager.tasks.first(where: { $0.id == taskId }) else { return false }
         return task.worktree == nil
@@ -127,6 +136,7 @@ extension WorkTaskCoordinator {
     /// watching the task can see it, which is how the first cut of this looked like a dead button.
     func planTask(_ task: WorkTask, using command: SavedCommand, app: ghostty_app_t) {
         guard let resolved = planCommand(for: task, using: command) else { return }
+        guard taskIsStillInBacklog(task.id) else { return }
 
         let taskId = task.id
         let directory = Self.planWorkingDirectory(

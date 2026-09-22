@@ -67,6 +67,11 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
     /// Delete is the other way a task leaves the list mid-launch, and it closes the terminal too
     /// (`WorkTaskListView`'s two delete doors). A resumed launch must not reopen one for a task with
     /// no file and no row.
+    ///
+    /// Nothing reloads the pool here on purpose: in the app the watcher reload is 0.3s behind the
+    /// delete, which is longer than the window this rule guards, so a `deleteTask` that only
+    /// removed the file would leave the launch reading a task that is still in `tasks` and still
+    /// names no worktree — and opening a terminal for it.
     func testALaunchOpensNothingOnceTheTasksFileIsDeleted() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
@@ -75,7 +80,6 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         let coordinator = makeCoordinator(taskManager)
 
         taskManager.deleteTask(seed)
-        taskManager.reloadFromDisk()
 
         XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
                        "a launch resuming after the delete must open nothing")
