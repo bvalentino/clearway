@@ -206,7 +206,9 @@
   inside `run` it was past the point of no return. Delete's in-memory half is
   `WorkTaskManager.deleteTask` reloading the pool as it removes the file, because the watcher is
   0.3s behind — but only in the manager that deleted, so the standalone task window's door still
-  reaches the project window behind that watcher.
+  reaches the project window behind that watcher; it closes the task terminal directly through
+  `TerminalManager.closeTaskTerminalInAllManagers`, a static fan-out over `allInstances`, so only
+  the pool, not the terminal, waits on the watcher.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
   to the relocated file), the shadow task, the creation mark — which **carries that command** —
