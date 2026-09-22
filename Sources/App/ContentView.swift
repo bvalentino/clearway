@@ -366,14 +366,6 @@ struct ContentView: View {
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand, setupHook: projectHookCmd)
             detailSelection = .worktree(wt)
-
-            // The hook runs in the secondary terminal, reusing the persistent login shell so its
-            // output survives to a usable prompt (no blocking modal, no respawn).
-            if let cmd = projectHookCmd, let app = ghosttyApp.app {
-                terminalManager.runHookInSecondary(
-                    for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
-                )
-            }
         }
         .onChange(of: worktreeManager.worktrees) { newWorktrees in
             // Re-merge the task pool: a created/removed worktree adds/drops its TASK.md, and a

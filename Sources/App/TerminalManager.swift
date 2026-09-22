@@ -341,29 +341,40 @@ class TerminalManager: ObservableObject {
         panes[worktreeId]?.main.activeId
     }
 
-    /// Append a tab running `command` — or a login shell when it is nil — and activate it.
+    /// Append a tab running `command` — or a login shell when it is nil — activating and focusing
+    /// it unless `activate` is false.
     ///
     /// Creates the pane on the fly when it does not exist yet. The sole door: every main tab in
-    /// the app is made here.
+    /// the app is made here, the Setup tab included — a pane's first tab opens it right behind
+    /// itself when the worktree has an After create hook pending.
     @discardableResult
-    func appendTab(for worktree: Worktree, app: ghostty_app_t, command: String? = nil) -> Ghostty.SurfaceView {
+    func appendTab(
+        for worktree: Worktree,
+        app: ghostty_app_t,
+        command: String? = nil,
+        name: String? = nil,
+        activate: Bool = true
+    ) -> Ghostty.SurfaceView {
         let key = worktree.id
         let existingPane = panes[key]
+        let isFirstTab = existingPane?.main.tabs.isEmpty ?? true
         let surface = makeSurface(
             app,
             workingDirectory: existingPane?.secondary.initialWorkingDirectory ?? worktree.path,
             command: command,
             owner: .worktree(key)
         )
-        let newTab = TerminalTab(id: UUID(), surface: surface)
+        let newTab = TerminalTab(id: UUID(), surface: surface, name: name)
 
         if existingPane != nil {
             panes[key]?.main.tabs.append(newTab)
-            panes[key]?.main.activeId = newTab.id
+            if activate {
+                panes[key]?.main.activeId = newTab.id
+            }
         } else {
             ghosttyApp = app
             let secondary = makeSurface(app, workingDirectory: worktree.path, owner: .worktree(key))
-            let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
+            let mainTerminal = MainTerminal(tabs: [newTab], activeId: activate ? newTab.id : nil)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
@@ -372,7 +383,12 @@ class TerminalManager: ObservableObject {
         }
 
         objectWillChange.send()
-        transferFirstResponder(to: surface)
+        if activate {
+            transferFirstResponder(to: surface)
+        }
+        if isFirstTab, let hook = takeSetupHook(for: key) {
+            openSetupTab(for: worktree, app: app, hook: hook)
+        }
         return surface
     }
 
