@@ -873,3 +873,64 @@ declared-once key list, the `AppKeyboardShortcuts` pin note, the ⌥⌘R/⌥⌘O
 and the spec (D17, the menu shape in criterion 5, criteria 10-12, and new criterion 14).
 
 **Gate.** `./scripts/ci.sh`.
+
+### 2026-09-21 — ⌥⌘R with no saved commands: click the pop-up button, not the segmented control
+
+On top of `becfa9a` (the simplify commit).
+
+**Finding (review).** With zero saved commands the Worktree ▸ "Run…" row (⌥⌘R) is enabled —
+`.disabled(actions == nil)`, `WorktreeCommands.swift` — but `ToolbarSplitButtonMenu.popUp(labelled:)`
+found nothing to pop. `RunCommandMenu` renders a plain `Menu` with no `primaryAction:` in that
+branch, which AppKit realizes as an `NSPopUpButton` rather than a two-segment `NSSegmentedControl`,
+so the helper took its silent return in exactly the state the row's doc comment says it exists for:
+the one where the dropdown holds "Add Command…" alone.
+
+**Path taken.** The operator's brief governs — "⌥⌘R pops open the Run dropdown … With no saved
+commands it shows the lone 'Add Command…' row, same as the click" — so the helper learned the
+second control. The reviewer's alternative (`.disabled(actions?.primary == nil)`, greying the row)
+was **not** taken: it would put the only door to a first command out of keyboard reach, the same
+mistake `RunCommandMenu.disabled` already made once.
+
+**Evidence.** No Clearway instance was running and this agent does not launch the app, so the
+realization was measured with a throwaway SwiftUI app in the session scratchpad (never in the
+repo) declaring both shapes as toolbar items of one window, dumping each `visibleItems` view
+subtree:
+
+```
+ITEM view=Optional(SwiftUI.ToolbarItemHostingView<SwiftUI._ViewList_View>)
+  ToolbarItemHostingView<_ViewList_View>
+    AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+      SwiftUIPopupButton POPUP title="Run" pullsDown=true items=[] axTitle=Optional("Run") menuItems=[]
+ITEM view=Optional(SwiftUI.ToolbarItemHostingView<SwiftUI._ViewList_View>)
+  ToolbarItemHostingView<_ViewList_View>
+    AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<PlatformView>>
+      SwiftUISegmentedControl SEG count=2 labels=["Open in Fork", "nil"]
+calling performClick on SwiftUIPopupButton title="Run"
+WILL POP UP from …AppKitPopUpAdaptor<MenuStyleConfiguration.Label>.PlatformView.SwiftUIPopupButton
+```
+
+Three facts, all load-bearing: the plain `Menu` is an `NSPopUpButton` subclass whose `title` is the
+`Menu`'s own label (so the same string still discriminates Run from Open In); its `NSMenu` is
+**empty** until it opens (`items=[]`, `menuItems=[]`), so `popUp(positioning:)` would pop nothing
+and `performClick(nil)` — `NSControl.h:56` — is what runs SwiftUI's coordinator; and segment 1 of
+the split button has a `nil` label, so the two matches cannot collide.
+
+**Change.** `ToolbarSplitButtonMenu.popUp(labelled:)` now walks `visibleItems` once, trying each
+item's subtree for the segment-0-labelled `NSSegmentedControl` first and then for an `NSPopUpButton`
+of that `title`, and clicks the latter. The chevron positioning moved into
+`popUpChevronMenu(of:)` unchanged — `segmentCount > 1` guard, `menu(forSegment: 1)`,
+`isFlipped`-aware bottom edge. Every failure path is still a silent `return`.
+
+**No test.** Same reason T3 and the first Changelog entry carried none: the helper needs a live
+realized toolbar, and a faked view tree would pin the fake rather than the bug. The proof is the
+probe above; the confirmation is the operator's hand-check.
+
+**Also corrected, same commit.** The spec still described the deleted
+`Notification.Name.clearwayAddCommand`: D11 now records the `@State`/`@Binding` shape that shipped
+in `becfa9a` and why, A10 is marked no longer relied on, D12 names the two shared factories the
+toolbar views call rather than structs they are "handed", and the "Files this touches" list drops
+`AppNotifications.swift`. D3 and a new A13 record the pop-up branch and the probe.
+
+**Files.** `Sources/App/ToolbarSplitButtonMenu.swift` (51 → 72 lines),
+`Sources/App/CLAUDE.md` (the ⌥⌘R/⌥⌘O helper paragraph), the spec (D3, D11, D12, A10, A13, the
+files list), and this plan.

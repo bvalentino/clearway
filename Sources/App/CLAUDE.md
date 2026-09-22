@@ -78,6 +78,20 @@
   `menu(forSegment: 1)` below the control. The label is the **only** thing separating the two
   buttons, so each closure reads its own title inside the closure — `runButtonTitle` for ⌥⌘R,
   `openInButtonTitle` for ⌥⌘O — and tracks the primary rather than capturing a stale name.
+  **It looks for two controls, not one**, because the Run button is not always a split button: with
+  no saved commands `RunCommandMenu` drops the `primaryAction:` and SwiftUI realizes the `Menu` as
+  a `SwiftUIPopupButton` (an `NSPopUpButton`, `pullsDown = true`) whose `title` is the `Menu`'s own
+  label — the same string segment 0 would have carried. So each toolbar item is tried for the
+  segmented control first and then for a pop-up button of that title, and the pop-up is opened with
+  `performClick(nil)`. Not `popUp(positioning:)`: a plain `Menu`'s `NSMenu` is **empty** until
+  SwiftUI's coordinator fills it on open (the split-button note further down), so there is nothing
+  to position, and `performClick` is what runs the coordinator. Without this branch ⌥⌘R was a
+  silent no-op in exactly the state its row exists for — the one holding "Add Command…" alone.
+  All of this is measured, not assumed: a SwiftUI probe declaring both shapes as toolbar items
+  printed `SwiftUIPopupButton POPUP title="Run" pullsDown=true items=[] menuItems=[]` for the plain
+  `Menu` and `SwiftUISegmentedControl SEG count=2 labels=["Open in Fork", nil]` for the one with a
+  `primaryAction:`, and `performClick(nil)` on the pop-up posted
+  `NSPopUpButton.willPopUpNotification`.
   **The walk starts at `NSApp.keyWindow?.toolbar?.visibleItems`, at each item's `view`, and not at
   `contentView`.** A toolbar item's view is no descendant of the content view: the realized chain is
   `SwiftUISegmentedControl` ← `AppKitPlatformViewHost` ← `ToolbarItemHostingView` ←
@@ -92,9 +106,10 @@
   on-screen control to hang a menu under, so it is a non-match like any other. When nothing matches it
   **does nothing**: falling back to another control would open a dropdown the operator did not ask
   for. This is knowingly fragile. It holds only while SwiftUI keeps realizing a toolbar `Menu` with
-  a `primaryAction:` as an `NSSegmentedControl` with a readable segment label — the split-button
-  note further down — and the operator took that over a fallback behaviour. If ⌥⌘R or ⌥⌘O ever
-  stops opening anything, this is where to look.
+  a `primaryAction:` as an `NSSegmentedControl` with a readable segment label, and one without as
+  an `NSPopUpButton` with a readable title — the split-button note further down — and the operator
+  took that over a fallback behaviour. If ⌥⌘R or ⌥⌘O ever stops opening anything, this is where to
+  look.
 - **A `.toolbar` for the detail column goes on the detail column's own content.** Attached to the
   `NavigationSplitView` in `ContentView`, SwiftUI routes the `ToolbarItem`s into the detail section
   but hoists every `ToolbarSpacer` into the leading sidebar section, ignoring the spacer's
