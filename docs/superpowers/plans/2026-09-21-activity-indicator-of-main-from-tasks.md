@@ -534,12 +534,15 @@ with a surface present, which no test can reach. `./scripts/ci.sh` passes.
 on `await ShellEnvironment.awaitPath()`, and open the surface when they resume. T7 made the window
 between those two moments matter: Start Now → Create promotes the task and closes its terminal, and
 the resumed launch opens a new one for a task that has left `backlogTasks` — the same stranded,
-dotless agent T7 exists to prevent, arrived by a different route. Each door re-reads the task after
-the await and abandons itself when the task now names a worktree.
+dotless agent T7 exists to prevent, arrived by a different route. Delete is the second route to the
+same place: it removes the file and closes the terminal, and a resumed launch reopens one for a task
+with no row at all. Each door re-reads the task after the await and abandons itself when it is no
+longer one the list renders.
 
-- `WorkTaskCoordinator.taskWasPromoted(_:)` is the whole rule: the task's `worktree` is non-nil in
-  `workTaskManager.tasks`, which keeps a promoted task in the pool (it is `backlogTasks` that
-  filters it out). No new state — the launch claim is released by the `defer` either way.
+- `WorkTaskCoordinator.taskIsStillInBacklog(_:)` is the whole rule, and it is the entry guard's own
+  rule read a second time: the task is in `workTaskManager.tasks` **and** names no worktree. A
+  promoted task stays in the pool with a link (it is `backlogTasks` that filters it out); a deleted
+  one leaves the pool. No new state — the launch claim is released by the `defer` either way.
 - The Cmd+J launch guards between building the command and `openTaskTerminal`
   (`WorkTaskCoordinator+TaskTerminal.swift:39-41`).
 - `planTask`'s await is not in `planTask`: `TerminalManager.run(_:inTaskTerminalFor:app:directory:)`
@@ -550,18 +553,20 @@ the await and abandons itself when the task now names a worktree.
   own `awaitShellPrompt`, which runs after the surface exists.
 - `Sources/App/CLAUDE.md` — the `confirmCreate` passage gains the in-flight launch, since the close
   it already describes is what the guard protects.
-- `Tests/TaskTerminalLaunchCommandTests.swift` — `taskWasPromoted` against the state
-  `confirmCreate` actually writes, rather than a hand-set field, so the guard cannot drift from the
-  promote it guards against.
+- `Tests/TaskTerminalLaunchCommandTests.swift` — the rule against the states `confirmCreate` and
+  `deleteTask` actually leave behind, rather than a hand-set field, so the guard cannot drift from
+  the two doors it guards against.
 
 **Acceptance criteria.**
 1. A launch suspended on `awaitPath` when the task is promoted opens no terminal on either door.
-2. A task still in the backlog when the launch resumes opens its terminal exactly as before.
-3. The launch claim is released either way, so the next Cmd+J on that task still works.
+2. A launch suspended on `awaitPath` when the task is deleted opens no terminal on either door.
+3. A task still in the backlog when the launch resumes opens its terminal exactly as before.
+4. The launch claim is released in every case, so the next Cmd+J on a task that survived still
+   works.
 
-**Verification.** `TaskTerminalLaunchCommandTests` pins the rule on both answers, driving the
-promote through `confirmCreate`. Criterion 3 is the `defer` that already released it, unchanged and
-above the guard. `./scripts/ci.sh` passes.
+**Verification.** `TaskTerminalLaunchCommandTests` pins the rule on all three answers, driving the
+promote through `confirmCreate` and the delete through `deleteTask`. Criterion 4 is the `defer` that
+already released it, unchanged and above the guard. `./scripts/ci.sh` passes.
 
 ## Risks
 
@@ -614,6 +619,13 @@ above the guard. `./scripts/ci.sh` passes.
   spec and the plan cite. Refreshed to the current ones: the spec's `Base` to `a311a93` (the commit
   this branch now sits on) and its "verified at base" line with it, the plan's `Base` to the spec
   commit `7af507a`, `05285ad` to `dc65bb3` and both `2950938` references to `38a1143`.
+
+- **2026-09-22, during T8 — rule widened.** Operator decision on the build agent's follow-up: the
+  guard reads the entry guard's whole rule, "still in `tasks` **and** naming no worktree", not
+  "naming no worktree". A task deleted across the await must open nothing either — Delete closes the
+  terminal the same way the promote does, and the narrower rule read a missing task as fine to open
+  for. `taskWasPromoted` became `taskIsStillInBacklog` with the sense flipped. Folded into
+  Decision 22 and the T8 acceptance criteria.
 
 ## Build log
 
@@ -878,28 +890,37 @@ above plus this plan and the spec; no untracked files, no `default.profraw`.
 
 | File | State |
 | --- | --- |
-| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | `taskWasPromoted(_:)` is the rule both doors re-read the task through. The Cmd+J launch guards between building the command and `openTaskTerminal`; `planTask` awaits the PATH itself, guards, then calls `run` with it. |
+| `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` | `taskIsStillInBacklog(_:)` is the rule both doors re-read the task through — in `tasks`, naming no worktree. The Cmd+J launch guards between building the command and `openTaskTerminal`; `planTask` awaits the PATH itself, guards, then calls `run` with it. |
 | `Sources/App/TerminalManager+Commands.swift` | `run(_:inTaskTerminalFor:app:directory:path:)` takes the resolved PATH instead of awaiting one. Its own `awaitShellPrompt` is unchanged — that one runs after the surface exists. |
 | `Sources/App/CLAUDE.md` | The `confirmCreate` passage gains the in-flight launch and why the PATH await moved out of `run`. |
-| `Tests/TaskTerminalLaunchCommandTests.swift` | `testALaunchSeesItsTaskAsPromotedOnceCreateHasWrittenTheLink`: a backlog task reads as not promoted, and the same task after `confirmCreate` reads as promoted. |
+| `Tests/TaskTerminalLaunchCommandTests.swift` | `testALaunchOpensNothingOnceCreateHasWrittenTheLink`: a backlog task passes the rule, and the same task after `confirmCreate` does not. `testALaunchOpensNothingOnceTheTasksFileIsDeleted`: the same for a task removed through `deleteTask`. |
 
-**Evidence.** The rule is new, so the unfixed code cannot be compiled against the case. What was
-watched instead is the rule answering as the pre-T8 code behaved — `taskWasPromoted` returning
-`false` unconditionally, which is exactly "open the terminal anyway" at both call sites. The new
-case is then the only failure in the suite:
+**Evidence.** Twice. The rule is new, so the unfixed code cannot be compiled against these cases;
+what was watched instead is the rule answering as the code it replaced behaved. First, always
+"open it" — the pre-T8 behaviour at both call sites:
 
 ```
-✖ testALaunchSeesItsTaskAsPromotedOnceCreateHasWrittenTheLink, XCTAssertTrue failed -
+✖ testALaunchOpensNothingOnceCreateHasWrittenTheLink, XCTAssertTrue failed -
   a launch resuming after the promote must open nothing
 Executed 839 tests, with 1 failure (0 unexpected)
 ```
 
-Restoring the one line turns it green. What the case cannot pin is the wiring: both doors need a
-`ghostty_app_t` XCTest cannot produce, so that each of them consults the rule is the two `guard`
-lines beside their awaits and this note, the same limit `planCommand` and `taskTerminalToggle`
-already carry.
+Then, after the operator widened the rule, the narrower `?.worktree == nil` it replaced — which
+answers "still in the backlog" for a task that is not in `tasks` at all:
 
-**Deviations.** Two, both in shape rather than behaviour.
+```
+✖ testALaunchOpensNothingOnceTheTasksFileIsDeleted, XCTAssertFalse failed -
+  a launch resuming after the delete must open nothing
+Executed 840 tests, with 1 failure (0 unexpected)
+```
+
+Each time, restoring the one line turns it green, and neither mutation moved any other case.
+
+What the cases cannot pin is the wiring: both doors need a `ghostty_app_t` XCTest cannot produce,
+so that each of them consults the rule is the two `guard` lines beside their awaits and this note,
+the same limit `planCommand` and `taskTerminalToggle` already carry.
+
+**Deviations.** Three.
 
 1. Review-pr's recommended guard was inline at each call site. It is a named method instead, because
    an inline `workTaskManager.tasks.first(where:)?.worktree == nil` is the only part of this an
@@ -912,7 +933,14 @@ already carry.
    doors the same shape: resolve the PATH, re-read the task, open. The staged branch of `run` does
    not use the path and now waits for it, which costs nothing measurable — `ShellEnvironment`
    resolves eagerly at launch and `awaitPath` returns at once once a full value is known.
+3. The delete cases were asked for "on each door". They are one case, because both doors consult
+   one method: a second copy would be the same three lines under a different name, and neither door
+   is reachable from XCTest to distinguish them. The same limit applies to the promote case.
 
-**Gate.** `./scripts/ci.sh` — passed, "==> CI passed." under `set -euo pipefail`, so exit 0. 839
-tests, 0 failures (838 before, plus this case). `git status --porcelain` lists only the four files
+**Follow-up settled.** The first cut of this task guarded on `?.worktree == nil`, which passes for a
+task that has left `tasks` entirely; the operator took that follow-up back into T8 rather than
+leaving it. The rule is now the entry guard's, re-read.
+
+**Gate.** `./scripts/ci.sh` — passed, "==> CI passed." under `set -euo pipefail`, so exit 0. 840
+tests, 0 failures (838 before, plus these two). `git status --porcelain` lists only the four files
 above plus this plan and the spec; no untracked files, no `default.profraw`.

@@ -4,8 +4,8 @@ import XCTest
 /// Pins the pure rules behind the doors onto the task terminal: `taskTerminalLaunchCommand`, the
 /// choice of what a launch runs (the bare Main Terminal command, or a plain shell);
 /// `taskTerminalToggle`, hide vs. reveal vs. launch for the path bar toggle and Cmd+J;
-/// `taskWasPromoted`, which both doors re-read the task through once their `await` resumes; and
-/// `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
+/// `taskIsStillInBacklog`, which both doors re-read the task through once their `await` resumes;
+/// and `planNeedsConfirmation` for the Start Now dropdown. `toggleTaskTerminal` and `planTask` are
 /// themselves unreachable from XCTest — both take a non-optional `ghostty_app_t` — so these helpers
 /// are their whole testable surface.
 @MainActor
@@ -39,7 +39,7 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
         XCTAssertNil(coordinator.taskTerminalLaunchCommand())
     }
 
-    // MARK: - A launch that resumes after a promote
+    // MARK: - A launch that resumes after its task has left the list
 
     /// Both doors claim the task's terminal, suspend on `ShellEnvironment.awaitPath()`, and open the
     /// surface when they resume. Start Now → Create can land in that window: it writes the worktree
@@ -49,19 +49,36 @@ final class TaskTerminalLaunchCommandTests: TempRootTestCase {
     ///
     /// Driven through `confirmCreate` rather than a hand-set `worktree`, so the rule cannot drift
     /// from the write the promote actually performs.
-    func testALaunchSeesItsTaskAsPromotedOnceCreateHasWrittenTheLink() throws {
+    func testALaunchOpensNothingOnceCreateHasWrittenTheLink() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
             XCTFail("createTask returned nil"); return
         }
         let coordinator = makeCoordinator(taskManager)
-        XCTAssertFalse(coordinator.taskWasPromoted(seed.id),
-                       "a task still in the backlog opens its terminal exactly as before")
+        XCTAssertTrue(coordinator.taskIsStillInBacklog(seed.id),
+                      "a task still in the backlog opens its terminal exactly as before")
 
         coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
 
-        XCTAssertTrue(coordinator.taskWasPromoted(seed.id),
-                      "a launch resuming after the promote must open nothing")
+        XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
+                       "a launch resuming after the promote must open nothing")
+    }
+
+    /// Delete is the other way a task leaves the list mid-launch, and it closes the terminal too
+    /// (`WorkTaskListView`'s two delete doors). A resumed launch must not reopen one for a task with
+    /// no file and no row.
+    func testALaunchOpensNothingOnceTheTasksFileIsDeleted() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Ship it") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let coordinator = makeCoordinator(taskManager)
+
+        taskManager.deleteTask(seed)
+        taskManager.reloadFromDisk()
+
+        XCTAssertFalse(coordinator.taskIsStillInBacklog(seed.id),
+                       "a launch resuming after the delete must open nothing")
     }
 
     // MARK: - Confirming a plan

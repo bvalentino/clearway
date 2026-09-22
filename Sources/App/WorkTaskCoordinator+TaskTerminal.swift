@@ -37,7 +37,7 @@ extension WorkTaskCoordinator {
             Task { @MainActor in
                 defer { terminalManager.endTaskLaunch(for: taskId) }
                 let command = makeCommand(await ShellEnvironment.awaitPath())
-                guard !taskWasPromoted(taskId) else { return }
+                guard taskIsStillInBacklog(taskId) else { return }
                 terminalManager.openTaskTerminal(
                     for: taskId, app: app, projectPath: projectPath, command: command)
                 if focusOnReveal { focusTaskTerminal(taskId) }
@@ -85,14 +85,18 @@ extension WorkTaskCoordinator {
         }
     }
 
-    /// Whether the task has been promoted to a worktree since a launch claimed its terminal. Both
-    /// doors onto a task terminal suspend on `ShellEnvironment.awaitPath()` before they open
-    /// anything, and Start Now → Create can land in that window: `confirmCreate` writes the link and
-    /// closes the terminal, so a launch that resumed regardless would reopen one for a task that has
-    /// left `backlogTasks` — an agent lighting no dot anywhere, which is the state that close
-    /// exists to prevent. A promoted task stays in `tasks`; it is `backlogTasks` that filters it out.
-    func taskWasPromoted(_ taskId: UUID) -> Bool {
-        workTaskManager.tasks.first(where: { $0.id == taskId })?.worktree != nil
+    /// Whether the task is still one the Tasks list renders a row for — it exists, and it names no
+    /// worktree. Both doors onto a task terminal suspend on `ShellEnvironment.awaitPath()` before
+    /// they open anything, and both ways a task can leave that list land in the window: Start Now →
+    /// Create writes the link and closes the terminal, and Delete removes the file and closes it
+    /// too. A launch that resumed regardless would reopen a terminal with no row left to report to —
+    /// an agent lighting no dot anywhere, which is the state those closes exist to prevent.
+    ///
+    /// The same rule the entry guard applies, re-read: a promoted task stays in `tasks` and is
+    /// filtered out of `backlogTasks` by its link, a deleted one leaves `tasks` altogether.
+    func taskIsStillInBacklog(_ taskId: UUID) -> Bool {
+        guard let task = workTaskManager.tasks.first(where: { $0.id == taskId }) else { return false }
+        return task.worktree == nil
     }
 
     /// Whether planning would take something live away from the operator. `planTask` opens a fresh
@@ -133,7 +137,7 @@ extension WorkTaskCoordinator {
         Task { @MainActor in
             defer { terminalManager.endTaskLaunch(for: taskId) }
             let path = await ShellEnvironment.awaitPath()
-            guard !taskWasPromoted(taskId) else { return }
+            guard taskIsStillInBacklog(taskId) else { return }
             await terminalManager.run(
                 resolved, inTaskTerminalFor: taskId, app: app, directory: directory, path: path)
         }

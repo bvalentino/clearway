@@ -37,7 +37,7 @@ hues. Main's dot goes back to reflecting only agents running in main's own termi
 | 19 | What happens to a task terminal when its task is promoted to a worktree? | Start Now → Create **closes it**, retiring any agent surface under `.task(id)`. The link `confirmCreate` writes takes the task out of `backlogTasks`, which is the only renderer of `taskPhases`, so an agent left running there would light no dot anywhere — not the task's row, which no longer renders, and not main's, which this change took it off. Closing was chosen over leaving the agent stranded and invisible, and over widening the change to the aside card. It is the one part of the write `abandonPendingCreate` cannot unwind. | Operator (after review-pr) |
 | 20 | Where does that close live — beside the link write, or on the success path? | Beside the link write, in `WorkTaskCoordinator.confirmCreate` (`:116`), before `git worktree add` runs. The build agent proposed moving it to `completePendingCreate` so a failed create would keep the terminal; the operator chose to keep it eager, next to the frontmatter write it belongs to. Consequence: a failed create restores the task to the backlog without its terminal. | Operator (after T7) |
 | 21 | Does promote confirm before closing a terminal with a live process, as Delete and Plan do? | No. Both of those ask first (`WorkTaskListView.swift:180`, `:197`, each on "There are processes still running in this task's terminal."); promote closes without asking. Operator's reason: promote is an explicit action on the task, so the close is part of what was asked for. | Operator (after T7) |
-| 22 | What happens to a task-terminal launch that is already in flight when the promote lands? | It **opens nothing**. Both doors — Cmd+J's launch and `planTask` — claim the task's terminal, suspend on `await ShellEnvironment.awaitPath()`, and would otherwise open a surface a moment after D19 closed one, putting the task back in the state D19 exists to prevent. Each re-reads the task after the await and abandons itself when it now names a worktree. No new state: the `defer` already on both paths releases the launch claim either way. The plan door's await lives inside `TerminalManager.run`, so `run` takes the resolved `path` as a parameter and the coordinator owns the suspension — otherwise the guard could not see a promotion that landed during it. | Operator (after review-pr) |
+| 22 | What happens to a task-terminal launch that is already in flight when the task leaves the list? | It **opens nothing**. Both doors — Cmd+J's launch and `planTask` — claim the task's terminal, suspend on `await ShellEnvironment.awaitPath()`, and would otherwise open a surface a moment after the close that took the task's row away, putting it back in the state D19 exists to prevent. Each re-reads the task after the await through the entry guard's own rule — still in `tasks`, still naming no worktree — so **Delete counts as well as promote**: a deleted task has no row for its terminal to report to either. No new state: the `defer` already on both paths releases the launch claim either way. The plan door's await lives inside `TerminalManager.run`, so `run` takes the resolved `path` as a parameter and the coordinator owns the suspension — otherwise the guard could not see a change that landed during it. | Operator (after review-pr, widened to Delete after T8) |
 
 ## Assumptions
 
@@ -117,6 +117,8 @@ Behavioural, checked by the operator against the running app:
 - Promoting a task whose terminal launch is still in flight — Cmd+J or Plan pressed, the shell PATH
   not yet resolved — opens no terminal when that launch resumes, on either door. The task leaves
   the list with nothing running under it.
+- Deleting a task whose terminal launch is still in flight does the same: no terminal opens when
+  that launch resumes, on either door.
 
 Mechanical, checked by the suite:
 
@@ -133,8 +135,9 @@ Mechanical, checked by the suite:
   guards.
 - A `WorkTaskRow.dot(phase:)` test pins waiting over working over nothing.
 - A `WorkTaskCoordinatorTests` case pins that `confirmCreate` closes the promoted task's terminal.
-- A `TaskTerminalLaunchCommandTests` case pins that a task promoted through `confirmCreate` reads as
-  promoted to a launch that resumes afterwards, and that a backlog task does not.
+- `TaskTerminalLaunchCommandTests` cases pin that a task promoted through `confirmCreate`, and one
+  deleted through `deleteTask`, both read as gone to a launch that resumes afterwards, while a
+  backlog task does not.
 - `./scripts/ci.sh` passes.
 
 ## Verification commands
@@ -174,8 +177,8 @@ Sources:
   (D19).
 - `Sources/App/WorkTaskCoordinator+TaskTerminal.swift` and
   `Sources/App/TerminalManager+Commands.swift` — both launch doors re-read the task after their
-  await and abandon a launch whose task was promoted; `run(_:inTaskTerminalFor:…)` takes the
-  resolved `path` instead of awaiting it (D22).
+  await and abandon a launch whose task has left the backlog, promoted or deleted;
+  `run(_:inTaskTerminalFor:…)` takes the resolved `path` instead of awaiting it (D22).
 - `Sources/App/CLAUDE.md` — the agent-pipeline notes that state the framing ("two preamble lines —
   surface id, worktree id"), "Two ids, not one", and "The monitor publishes two values, not three".
 - `Sources/Ghostty/CLAUDE.md` — the `agentEnvironment` note's mention of `worktreeId`.

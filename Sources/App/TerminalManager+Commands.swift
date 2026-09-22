@@ -40,8 +40,8 @@ extension TerminalManager {
     /// of `run(_:in:app:)`, for the Tasks destination, which renders no main-terminal pane at all.
     ///
     /// `path` is passed in rather than awaited here: the caller has to own that suspension, because
-    /// it re-reads the task across it and abandons a launch whose task was promoted meanwhile
-    /// (`WorkTaskCoordinator.taskWasPromoted`).
+    /// it re-reads the task across it and abandons a launch whose task has left the backlog
+    /// meanwhile (`WorkTaskCoordinator.taskIsStillInBacklog`).
     ///
     /// `autoRun` picks submit-or-stage the same way. Submitting opens the surface straight onto the
     /// agent; staging has nothing to hold a draft here, so it opens a login shell and leaves the
