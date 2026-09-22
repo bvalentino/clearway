@@ -10,7 +10,7 @@ func shellEscape(_ path: String) -> String {
 struct TerminalTab {
     let id: UUID
     let surface: Ghostty.SurfaceView
-    var name: String?
+    let name: String?
 
     static func displayTitle(name: String?, surfaceTitle: String) -> String {
         name ?? (surfaceTitle.isEmpty ? "Terminal" : surfaceTitle)

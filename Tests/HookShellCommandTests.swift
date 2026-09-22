@@ -2,22 +2,49 @@ import XCTest
 @testable import Clearway
 
 final class HookShellCommandTests: XCTestCase {
-    private func wrapped(exporting exportedPath: String, hook: String) -> String {
-        let banner = "printf '\\n\\033[31m[hook failed: exit %d]\\033[0m\\n' \"$s\""
-        let script = "export PATH=\(exportedPath); (\(hook)); s=$?; if [ $s -ne 0 ]; then \(banner); fi; exit $s"
-        return "/bin/sh -c \(shellEscape(script))"
+    private func runLine(_ line: String) throws -> (status: Int32, stdout: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", line]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
-    func testExportsTheGivenPathAroundTheHook() {
-        let line = hookShellCommand("make setup", path: "/opt/bin:/usr/bin")
+    func testExportsTheGivenPathToTheHook() throws {
+        let result = try runLine(hookShellCommand(#"printf '%s' "$PATH""#, path: "/opt/bin:/usr/bin:/bin"))
 
-        XCTAssertTrue(line.hasPrefix("/bin/sh -c '"))
-        XCTAssertEqual(line, wrapped(exporting: "'/opt/bin:/usr/bin'", hook: "make setup"))
+        XCTAssertEqual(result.status, 0)
+        XCTAssertEqual(result.stdout, "/opt/bin:/usr/bin:/bin")
     }
 
-    func testEscapesASingleQuoteInThePath() {
-        let line = hookShellCommand("true", path: "/it's/bin")
+    func testEscapesASingleQuoteInThePath() throws {
+        let result = try runLine(hookShellCommand(#"printf '%s' "$PATH""#, path: "/it's/bin:/usr/bin:/bin"))
 
-        XCTAssertEqual(line, wrapped(exporting: #"'/it'\''s/bin'"#, hook: "true"))
+        XCTAssertEqual(result.stdout, "/it's/bin:/usr/bin:/bin")
+    }
+
+    func testSuccessPrintsNoBanner() throws {
+        let result = try runLine(hookShellCommand("true", path: "/usr/bin:/bin"))
+
+        XCTAssertEqual(result.status, 0)
+        XCTAssertFalse(result.stdout.contains("hook failed"))
+    }
+
+    func testFailurePrintsTheBannerAndKeepsTheStatus() throws {
+        let result = try runLine(hookShellCommand("exit 3", path: "/usr/bin:/bin"))
+
+        XCTAssertEqual(result.status, 3)
+        XCTAssertTrue(result.stdout.contains("[hook failed: exit 3]"))
+    }
+
+    func testRunsEveryLineOfAMultiLineHook() throws {
+        let result = try runLine(hookShellCommand("echo 'a'\necho b", path: "/usr/bin:/bin"))
+
+        XCTAssertEqual(result.stdout, "a\nb\n")
     }
 }

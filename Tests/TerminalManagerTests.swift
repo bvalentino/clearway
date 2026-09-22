@@ -200,6 +200,25 @@ final class TerminalManagerTests: XCTestCase {
         XCTAssertNil(manager.takeSetupHook(for: wt.id))
     }
 
+    func test_closeWorktree_clearsThePendingSetupHook() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil, setupHook: "x")
+        manager.closeWorktree(wt.id)
+        XCTAssertNil(manager.takeSetupHook(for: wt.id))
+    }
+
+    func test_takeFirstTabSource_leavesThePendingSetupHookInPlace() {
+        let manager = TerminalManager()
+        let wt = makeWorktree(branch: "feature", path: "/tmp/feature", isMain: false)
+        manager.mainCommandProvider = { "claude" }
+
+        manager.markWorktreeCreated(wt, afterCreateCommand: nil, setupHook: "x")
+        _ = manager.takeFirstTabSource(for: wt.id)
+        XCTAssertEqual(manager.takeSetupHook(for: wt.id), "x")
+    }
+
     func test_pendingSetupHook_leavesSecondaryVisibilityToTheProvider() {
         for openOnStart in [true, false] {
             let manager = TerminalManager()
