@@ -153,3 +153,19 @@ which is enough to show both managers are live in `allInstances`.
 
 **Gate.** `./scripts/ci.sh` exit 0: 842 tests, 0 failures. Both new tests listed as Passed in the
 xcresult. `swiftlint lint --quiet` on the two touched files reports nothing.
+
+### T2: Standalone Delete closes the terminal and confirms on a running process
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskWindow.swift` | Adds `showForceDeleteConfirmation`. "Delete Task" reads `TerminalManager.anyTaskHasActiveProcess(task.id)` at click time and raises the new `confirmationDialog` (title `Delete "<title>"?`, `titleVisibility: .visible`, message "There are processes still running in this task's terminal.", one destructive Delete) or the existing alert, which is unchanged apart from its Delete button. Both Delete buttons call a new private `deleteTask()`: `deleted = true`, then `closeTaskTerminalInAllManagers(task.id)` before `workTaskManager.deleteTask(task)`, then the existing async key-window close. Cancel on either prompt runs nothing. |
+| `Sources/App/CLAUDE.md` | One clause added to the Delete note: the standalone door closes the task terminal directly through the static fan-out over `allInstances`, so only the pool waits on the watcher. |
+
+**Watched failure.** None for this task. The change is SwiftUI prompt wiring, which XCTest cannot
+reach (spec success criterion 5); the fan-out it calls is covered by T1's tests, whose failure is
+quoted above. The prompt choice and the close are left to the operator's manual check.
+
+**Deviations.** None. `WorkTaskListView.swift` is untouched.
+
+**Gate.** `./scripts/ci.sh` exit 0: 842 tests, 0 failures, "CI passed." `swiftlint lint --quiet
+Sources/App/WorkTaskWindow.swift` reports nothing.

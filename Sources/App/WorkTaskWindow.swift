@@ -34,6 +34,7 @@ struct WorkTaskWindow: View {
     @State private var pendingSave: DispatchWorkItem?
     @State private var reloadingCount = 0
     @State private var showDeleteConfirmation = false
+    @State private var showForceDeleteConfirmation = false
     @State private var deleted = false
     @State private var editorMode: EditorMode = .edit
     @State private var showCopiedFeedback = false
@@ -97,7 +98,11 @@ struct WorkTaskWindow: View {
 
                     if let task, task.worktree == nil {
                         Button(role: .destructive) {
-                            showDeleteConfirmation = true
+                            if TerminalManager.anyTaskHasActiveProcess(task.id) {
+                                showForceDeleteConfirmation = true
+                            } else {
+                                showDeleteConfirmation = true
+                            }
                         } label: {
                             Label("Delete Task", systemImage: "trash")
                         }
@@ -122,16 +127,19 @@ struct WorkTaskWindow: View {
             "Delete \"\(title)\"?",
             isPresented: $showDeleteConfirmation
         ) {
-            Button("Delete", role: .destructive) {
-                deleted = true
-                if let task { workTaskManager.deleteTask(task) }
-                DispatchQueue.main.async {
-                    NSApplication.shared.keyWindow?.close()
-                }
-            }
+            Button("Delete", role: .destructive) { deleteTask() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This action cannot be undone.")
+        }
+        .confirmationDialog(
+            "Delete \"\(title)\"?",
+            isPresented: $showForceDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteTask() }
+        } message: {
+            Text("There are processes still running in this task's terminal.")
         }
         .onChange(of: worktreeManager.worktrees) { worktrees in
             // Worktrees load asynchronously; re-merge so a task living in a worktree's `TASK.md`
@@ -286,6 +294,17 @@ struct WorkTaskWindow: View {
     }
 
     // MARK: - Helpers
+
+    private func deleteTask() {
+        deleted = true
+        if let task {
+            TerminalManager.closeTaskTerminalInAllManagers(task.id)
+            workTaskManager.deleteTask(task)
+        }
+        DispatchQueue.main.async {
+            NSApplication.shared.keyWindow?.close()
+        }
+    }
 
     private func saveAndStart() {
         saveNow()
