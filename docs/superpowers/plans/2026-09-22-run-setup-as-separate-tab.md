@@ -319,3 +319,29 @@ The tests assert the whole wrapped line instead, which pins every one of them an
 body byte for byte. The doc comment's "the resolved user PATH" now reads "`path`".
 
 **Gate.** `./scripts/ci.sh` exit 0, 845 tests, 0 failures; `swiftlint lint --quiet` reported nothing.
+
+### T3: Record the pending Setup hook per created worktree
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager.swift` | `private var pendingSetupHooks: [String: String]` beside `createdWorktrees`; `markWorktreeCreated(_:afterCreateCommand:setupHook:)` assigns `pendingSetupHooks[worktree.id] = setupHook`; internal `takeSetupHook(for:)` removes and returns it; `cleanupState` drops it. Nothing consumes it yet. |
+| `Sources/App/ContentView.swift` | The `lastCreatedBranch` handler computes `projectHookCmd` before `markWorktreeCreated` and passes it as `setupHook:`. `runHookInSecondary` still runs; T4 removes it. |
+| `Tests/TerminalManagerTests.swift` | Existing `markWorktreeCreated` calls pass `setupHook: nil`; five new tests under `// MARK: - Pending Setup hook`. |
+
+**Evidence.** RED: `./scripts/ci.sh` with only the tests changed exited 65:
+
+```
+Tests/TerminalManagerTests.swift:209:77: extra argument 'setupHook' in call
+Tests/TerminalManagerTests.swift:210:30: value of type 'TerminalManager' has no member 'takeSetupHook'
+Tests/TerminalManagerTests.swift:240:78: extra argument 'setupHook' in call
+```
+
+GREEN: the xcresult lists `test_takeSetupHook_returnsTheMarkedHookOnce`, `test_takeSetupHook_nilHookRecordsNothing`,
+`test_removeSurface_clearsThePendingSetupHook`, `test_pendingSetupHook_leavesSecondaryVisibilityToTheProvider`,
+and `test_takeSetupHook_leavesTheCreationMarkInPlace` as Passed.
+
+**Deviations.** Criterion 3 names `closeWorktree(_:)` too. It returns early without a pane, and a
+pane needs a `ghostty_app_t` XCTest cannot produce, so only `removeSurface` is tested. Both reach
+the same `cleanupState` line.
+
+**Gate.** `./scripts/ci.sh` exit 0, 850 tests, 0 failures; `swiftlint lint --quiet` reported nothing.

@@ -230,12 +230,23 @@ class TerminalManager: ObservableObject {
     /// "Run after create" command its sheet picked (`nil` when the picker was at None).
     private var createdWorktrees: [String: SavedCommand?] = [:]
 
+    /// The After create hook each created worktree still has to run in its Setup tab.
+    private var pendingSetupHooks: [String: String] = [:]
+
     /// Record that Clearway created this worktree, and the command its create sheet picked, so the
     /// first tab is built from both. Called from the single point every creation door funnels
     /// through — `WorktreeManager`'s `lastCreatedBranch`, which both the sidebar sheet and a task
     /// launch reach.
-    func markWorktreeCreated(_ worktree: Worktree, afterCreateCommand: SavedCommand?) {
+    func markWorktreeCreated(_ worktree: Worktree, afterCreateCommand: SavedCommand?, setupHook: String?) {
         createdWorktrees[worktree.id] = afterCreateCommand
+        pendingSetupHooks[worktree.id] = setupHook
+    }
+
+    /// The After create hook still pending for this worktree, consuming it.
+    ///
+    /// Internal (not private) so tests can reach it without a `ghostty_app_t`.
+    func takeSetupHook(for worktreeId: String) -> String? {
+        pendingSetupHooks.removeValue(forKey: worktreeId)
     }
 
     /// What this worktree's first tab runs, consuming the creation mark.
@@ -532,6 +543,7 @@ class TerminalManager: ObservableObject {
         openWorktreeIds.removeAll(where: { $0 == worktreeId })
         notifiedWorktrees.remove(worktreeId)
         createdWorktrees.removeValue(forKey: worktreeId)
+        pendingSetupHooks.removeValue(forKey: worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)

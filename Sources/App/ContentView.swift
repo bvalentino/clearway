@@ -363,12 +363,12 @@ struct ContentView: View {
             // The pick rides on the creation mark rather than being run from here: `pane(for:)` is
             // the one place a first tab is built, so the command replaces the Main Terminal tab a
             // created worktree opens instead of arriving as a second agent beside it.
-            terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand)
+            let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
+            terminalManager.markWorktreeCreated(wt, afterCreateCommand: afterCreateCommand, setupHook: projectHookCmd)
             detailSelection = .worktree(wt)
 
             // The hook runs in the secondary terminal, reusing the persistent login shell so its
             // output survives to a usable prompt (no blocking modal, no respawn).
-            let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
             if let cmd = projectHookCmd, let app = ghosttyApp.app {
                 terminalManager.runHookInSecondary(
                     for: wt, app: app, command: cmd, projectPath: worktreeManager.projectPath
