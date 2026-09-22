@@ -545,10 +545,17 @@ class TerminalManager: ObservableObject {
     ///
     /// Removes the pane entry first so the close-surface observer doesn't
     /// try to restart the dying shells, then sends SIGHUP via `closeSurface()`.
+    ///
+    /// Runs `cleanupState` even when no pane exists: a worktree Clearway just created can be
+    /// removed before its first tab is ever built, and its pending Setup hook and creation mark
+    /// still have to be dropped, not left keyed on a worktree id nothing will reuse.
     func closeWorktree(_ worktreeId: String) {
-        guard let pane = panes.removeValue(forKey: worktreeId) else { return }
-        retire(pane)
+        let pane = panes.removeValue(forKey: worktreeId)
+        if let pane {
+            retire(pane)
+        }
         cleanupState(for: worktreeId)
+        guard let pane else { return }
         for tab in pane.main.tabs {
             tab.surface.closeSurface()
         }
