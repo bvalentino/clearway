@@ -607,14 +607,15 @@
   dark. Waiting on a permission prompt is a static 7 pt purple dot: orange is working, blue the
   plain-shell notification, red failure, green success and yellow a status badge, so purple is the
   only hue left, and not pulsing separates it by shape as well. `isMain` no longer suppresses the
-  dot. `AgentActivityDot` is the one view both rows render — the hues, the 7 pt circle, the glow
-  animation and the help strings are written once, there — and each row owns its own precedence.
-  The worktree rule is `WorktreeRow.dot(phase:hasNotification:isOpen:)`, a pure static beside
-  `rowTexts` for the same reason — nothing in a SwiftUI body is reachable from XCTest — and
+  dot. `AgentActivityDot` (`Sources/App/AgentActivityDot.swift`) is the one view both rows render —
+  the hues, the 7 pt circle, the glow animation and the help strings are written once, there — and
+  `AgentActivityDot.Kind(phase:)` is the phase half of both rules, so a row rule states only what
+  is its own. The worktree rule is `WorktreeRow.dot(phase:hasNotification:isOpen:)`, a pure static
+  beside `rowTexts` — nothing in a SwiftUI body is reachable from XCTest — and
   `isOpen` gates the **phase** alone, along with the subagent rows, since a closed worktree's
   surfaces are already retired; the blue notification dot survives it, because a notification
   raised before the worktree closed is still unread. The task rule is `WorkTaskRow.dot(phase:)`,
-  keyed on `taskPhases`: waiting over working over nothing, with no `hasNotification` and no
+  keyed on `taskPhases`: the phase rule and nothing else, with no `hasNotification` and no
   `isOpen`, because a task terminal raises no notification and a retired surface has already left
   the store. Task rows carry no subagent children — `worktreeSubagents` is filtered to worktree
   owners, so a task surface's roster contributes no key and nothing renders — but that roster still

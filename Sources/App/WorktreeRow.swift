@@ -29,11 +29,7 @@ struct WorktreeRow: View {
     /// worktree's surfaces are already retired, so its phase is stale, while a notification it
     /// raised before it closed is still unread and still worth a dot.
     static func dot(phase: AgentPhase, hasNotification: Bool, isOpen: Bool) -> AgentActivityDot.Kind? {
-        switch isOpen ? phase : .idle {
-        case .waiting: return .waiting
-        case .working: return .working
-        case .idle: return hasNotification ? .notification : nil
-        }
+        AgentActivityDot.Kind(phase: isOpen ? phase : .idle) ?? (hasNotification ? .notification : nil)
     }
 
     var body: some View {
@@ -71,45 +67,6 @@ struct WorktreeRow: View {
                 shortcut: shortcutIndex.map { "⌘\($0)" }
             )
         }
-    }
-}
-
-/// The dot on the trailing edge of a row that can carry agent activity. One shape and one size for
-/// every state; the working dot's pulsing glow is the only thing that varies, and it belongs here
-/// rather than to the callers so the two rows cannot drift.
-struct AgentActivityDot: View {
-    enum Kind {
-        case waiting
-        case working
-        case notification
-    }
-
-    let kind: Kind
-    @State private var glowExpanded = false
-
-    var body: some View {
-        switch kind {
-        case .waiting:
-            circle(.purple, help: "Waiting for permission")
-                .transition(.opacity)
-        case .working:
-            circle(.orange, help: "Agent is working")
-                .shadow(color: .orange, radius: glowExpanded ? 4 : 1)
-                .shadow(color: .orange.opacity(0.5), radius: glowExpanded ? 6 : 2)
-                .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: glowExpanded)
-                .onAppear { glowExpanded = true }
-                .onDisappear { glowExpanded = false }
-                .transition(.opacity)
-        case .notification:
-            circle(.blue, help: "Terminal notification")
-        }
-    }
-
-    private func circle(_ color: Color, help: String) -> some View {
-        Circle()
-            .fill(color)
-            .frame(width: 7, height: 7)
-            .help(help)
     }
 }
 

@@ -19,11 +19,7 @@ extension TerminalManager {
         if let existing = taskSurfaces[taskId] {
             return existing
         }
-        let surface = Ghostty.SurfaceView(
-            app,
-            workingDirectory: projectPath,
-            activityOwner: AgentActivityOwner.task(taskId).rawValue
-        )
+        let surface = makeSurface(app, workingDirectory: projectPath, owner: .task(taskId))
         taskSurfaces[taskId] = surface
         if !openTaskIds.contains(taskId) {
             openTaskIds.insert(taskId)
@@ -90,11 +86,11 @@ extension TerminalManager {
             Self.retireSurface(old.surfaceId)
             old.closeSurface()
         }
-        let surface = Ghostty.SurfaceView(
+        let surface = makeSurface(
             app,
             workingDirectory: projectPath,
             command: command,
-            activityOwner: AgentActivityOwner.task(taskId).rawValue
+            owner: .task(taskId)
         )
         taskSurfaces[taskId] = surface
         openTaskIds.insert(taskId)

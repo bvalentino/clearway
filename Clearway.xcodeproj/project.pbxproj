@@ -161,6 +161,7 @@
 		E1E15B0EAE5B230942FBCC4C /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E4F120F042C2615893DCE6 /* TaskDetailView.swift */; };
 		E21DED2B4799C973A82914A8 /* WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC81A3DDDEF8D43A809CC476 /* WorktreeCommands.swift */; };
 		E32457B385B8B054183CCF38 /* WorktreeGroupManagerStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8AB4D6B26165A0245104FE6 /* WorktreeGroupManagerStatusTests.swift */; };
+		E32BC31BA3BE799F498C1BC5 /* AgentActivityDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5EF48F88E801A81CEA043B /* AgentActivityDot.swift */; };
 		E3FFB76D4901447D99D5DBDE /* WorkTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519CCB6B1F4816743FC10503 /* WorkTaskManager.swift */; };
 		E47602170CF2FCEAF1448709 /* AgentActivityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1ECAB4B3402CFEAC103DA45 /* AgentActivityStoreTests.swift */; };
 		E633959603439A5BCC3F10E4 /* SavedCommandManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F73E33487879607D16E540D /* SavedCommandManagerTests.swift */; };
@@ -292,6 +293,7 @@
 		97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMenuRowTests.swift; sourceTree = "<group>"; };
 		9797209B04B603197081D146 /* TerminalManager+Agent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Agent.swift"; sourceTree = "<group>"; };
 		9AF79A9AC43E45BCC60D2C8C /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
+		9C5EF48F88E801A81CEA043B /* AgentActivityDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityDot.swift; sourceTree = "<group>"; };
 		9D3BF64BBAC0135924F15299 /* OpenInApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInApp.swift; sourceTree = "<group>"; };
 		9EC9411B19B7913605A851B1 /* TodosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosView.swift; sourceTree = "<group>"; };
 		9F73E33487879607D16E540D /* SavedCommandManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedCommandManagerTests.swift; sourceTree = "<group>"; };
@@ -459,6 +461,7 @@
 			isa = PBXGroup;
 			children = (
 				85F31ADDFCB34EC7850C6AA2 /* AboutView.swift */,
+				9C5EF48F88E801A81CEA043B /* AgentActivityDot.swift */,
 				44A6DAE9212FC01D02329066 /* AgentActivityMonitor.swift */,
 				1C32F696C94B49C864B77F78 /* AgentActivityStore.swift */,
 				B138ED76CF9F4BF34515ACD0 /* AgentHookEvent.swift */,
@@ -855,6 +858,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				75D1A4AC9E315E7AEC9262DE /* AboutView.swift in Sources */,
+				E32BC31BA3BE799F498C1BC5 /* AgentActivityDot.swift in Sources */,
 				725C57FE397ABBC593E46796 /* AgentActivityMonitor.swift in Sources */,
 				A3359BD40D5D19AD72018EC6 /* AgentActivityStore.swift in Sources */,
 				4D279F5A55FF0BA16009ABBB /* AgentHookEvent.swift in Sources */,

@@ -710,3 +710,15 @@ changed their length; no sentence outside the five passages changed.
 **Gate.** `./scripts/ci.sh` — passed, exit 0. 798 tests, 0 failures, unchanged from T5 since
 markdown is not in the target's sources. `git status --porcelain` lists only
 `Sources/App/CLAUDE.md` and this plan; no untracked files, no `default.profraw`.
+
+### Simplify
+
+The phase→dot mapping the two row rules had each spelled out is now
+`AgentActivityDot.Kind(phase:)`, and the shared view moved to its own
+`Sources/App/AgentActivityDot.swift` rather than staying in the file named after one of its two
+callers. `TerminalManager.makeSurface(_:workingDirectory:command:owner:)` replaces six hand-written
+`AgentActivityOwner…rawValue` conversions at the Ghostty seam. Left alone: the store's twin
+`worktreePhases`/`taskPhases` reductions (a generic key extractor reads worse than the six
+duplicated lines) and the provider's decode in `ClearwayApp`, which is what keeps `environment`
+typed so no caller can stamp an untagged owner. `./scripts/ci.sh` — passed, exit 0, 798 tests,
+0 failures, unchanged from T6.
