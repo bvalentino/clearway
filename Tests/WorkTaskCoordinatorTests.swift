@@ -174,7 +174,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
     ///
     /// The surface half of the close needs a `ghostty_app_t` XCTest cannot produce. The panel
     /// bookkeeping is the observable half, and a height the operator dragged is the one piece of it
-    /// a test can seed through the manager's own API.
+    /// a test can seed through the manager's own API — so this pins that `confirmCreate` reaches
+    /// `closeTaskTerminal`, not each collection that call clears.
     func testConfirmCreateClosesThePromotedTasksTerminal() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
@@ -182,11 +183,13 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         }
         let coordinator = makeCoordinator(taskManager)
         coordinator.terminalManager.setTaskTerminalHeight(320, for: seed.id)
+        XCTAssertEqual(coordinator.terminalManager.taskTerminalHeights[seed.id], 320,
+                       "the seed must land, or the assertion below holds for a task that never had a height")
 
         coordinator.confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
 
-        XCTAssertEqual(coordinator.terminalManager.taskTerminalHeight(for: seed.id), 200,
-                       "a promoted task keeps no terminal of its own")
+        XCTAssertNil(coordinator.terminalManager.taskTerminalHeights[seed.id],
+                     "a promoted task keeps no terminal of its own")
     }
 
     // MARK: - Abandoning a create
@@ -409,17 +412,23 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
     /// The task's file can vanish between Start Now and Create. The worktree is still created, but
     /// nothing was written, so the record carries no link to unwind and names no path to relocate.
+    /// The terminal still goes: the close is keyed on the task id, not on the write landing, and a
+    /// task whose file is gone renders no row for an agent left running there to report to.
     func testConfirmCreateRecordsNoLinkWhenTheTaskIsGone() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         let coordinator = makeCoordinator(taskManager)
         let command = agentCommand(text: "work {{ task_path }}")
+        let gone = UUID()
+        coordinator.terminalManager.setTaskTerminalHeight(320, for: gone)
 
-        coordinator.confirmCreate(taskId: UUID(), branch: "vanished", command: command)
+        coordinator.confirmCreate(taskId: gone, branch: "vanished", command: command)
 
         XCTAssertEqual(
             coordinator.pendingCreate,
             WorkTaskCoordinator.PendingCreate(task: nil, branch: "vanished", command: command)
         )
+        XCTAssertNil(coordinator.terminalManager.taskTerminalHeights[gone],
+                     "a task whose file vanished still loses its terminal")
 
         coordinator.abandonPendingCreate()
         XCTAssertNil(coordinator.pendingCreate)

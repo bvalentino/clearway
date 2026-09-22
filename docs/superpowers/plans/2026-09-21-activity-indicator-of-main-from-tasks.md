@@ -509,8 +509,10 @@ over leaving the agent stranded or widening the change to the aside card.
 - `Sources/App/CLAUDE.md` — the `confirmCreate` passage gains the close, why it is there, and that
   it is the one part of the write `abandonPendingCreate` cannot unwind.
 - `Tests/WorkTaskCoordinatorTests.swift` — one case in the "Confirming a create" section: a task
-  whose terminal height the operator dragged to 320 is promoted, and the height reads back as the
-  200 default, which only `closeTaskTerminal` does.
+  whose terminal height the operator dragged to 320 is promoted, and the stored height is gone,
+  which only `closeTaskTerminal` does. Review-pr added the arrange guard that the seed landed, and
+  extended `testConfirmCreateRecordsNoLinkWhenTheTaskIsGone` with the same pair, so the close being
+  keyed on the task id rather than on the write landing is pinned rather than left to inspection.
 
 **Acceptance criteria.**
 1. Start Now → Create on a backlog task closes that task's bottom terminal, retiring any agent

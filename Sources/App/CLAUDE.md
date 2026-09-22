@@ -191,9 +191,11 @@
   It also **closes the promoted task's bottom terminal**: the link it writes takes the task out of
   `backlogTasks`, which is the only renderer of `taskPhases`, so an agent still running there would
   light no dot anywhere — not on the task, which no longer renders, and not on main, which the
-  `task:<uuid>` owner keeps it off. The close is the one part of the write `abandonPendingCreate`
-  cannot unwind, and it is deliberate: leaving the agent stranded and invisible is worse than a
-  failed create costing a terminal the operator can reopen.
+  `task:<uuid>` owner keeps it off. It is keyed on the task id, not on the write landing, so the
+  vanished-file case above closes the terminal too — that task leaves `backlogTasks` by being gone
+  rather than by being linked, and the row is missing either way. The close is the one part of the
+  write `abandonPendingCreate` cannot unwind, and it is deliberate: leaving the agent stranded and
+  invisible is worse than a failed create costing a terminal the operator can reopen.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
   to the relocated file), the shadow task, the creation mark — which **carries that command** —
