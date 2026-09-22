@@ -372,3 +372,23 @@ is built after `awaitPath()` and sent after `awaitShellPrompt`; the new paramete
 
 **Gate.** `./scripts/ci.sh` exit 0, 849 tests (850 less the deleted one), 0 failures;
 `swiftlint lint --quiet` reported nothing.
+
+### T5: Update the notes and README that describe the old hook path
+
+| File | State |
+| --- | --- |
+| `Sources/App/CLAUDE.md` | The `onChange(of: lastCreatedBranch)` step list: the creation mark carries the After create hook and the handler no longer runs it; `appendTab` runs it in a Setup tab after the first tab. The `appendTab` paragraph: activates and focuses by default; the Setup tab passes `activate: false` and `name: "Setup"` through `openSetupTab` (`TerminalManager+Setup.swift`); why `pendingSetupHooks` is separate from `createdWorktrees`. The `sendPaste` note names `TerminalManager+Setup.swift`'s Setup hook. |
+| `Sources/Ghostty/CLAUDE.md` | Line 6 example is `TerminalManager.firstTabSource` for a worktree's first tab. |
+| `README.md` | Start Now runs the after-create hook in a "Setup" tab beside the worktree's first tab. |
+
+**Evidence.** Criterion 1: `grep -rn "revealSecondaryForHook\|runHookInSecondary\|TerminalManager+Panels.swift's hook\|secondary terminal" Sources/App/CLAUDE.md Sources/Ghostty/CLAUDE.md README.md`
+exits 1. A wider sweep of every tracked `*.md` outside `docs/superpowers` for
+`runHookInSecondary|revealSecondaryForHook|secondary.{0,40}hook|hook.{0,60}secondary` also exits 1.
+Criterion 2: `appendTab(for:app:command:name:activate:)`, `takeSetupHook(for:)`,
+`openSetupTab(for:app:hook:)`, `pendingSetupHooks`, `createdWorktrees`, `takeFirstTabSource`, and
+`firstTabSource(afterCreateCommand:mainCommand:)` all exist as written in `TerminalManager.swift` and
+`TerminalManager+Setup.swift`.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` exit 0, 849 tests, 0 failures.
