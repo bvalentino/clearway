@@ -186,3 +186,18 @@ changed, so the TDD red step does not apply to this task.
 
 **Gate.** `./scripts/ci.sh` exit 0 (840 tests, 0 failures, "CI passed."). `swiftlint lint --quiet`
 on the two Swift files: zero output, exit 0.
+
+### T2: Key the toolbar Start Now menu on the agent-command list
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskListView.swift` | The toolbar Start Now `Menu` carries `.id(savedCommandManager.agentCommands)` after `.applyPrimaryActionStyle()`. The row context submenu has no key. The `startNowItems` docstring gains one paragraph naming the key and pointing to the `.id` rule in `Sources/App/CLAUDE.md`. |
+| `Sources/App/CLAUDE.md` | The `.id` rule lists `.id(savedCommandManager.agentCommands)` on the Start Now toolbar item beside `OpenInMenu` and `RunCommandMenu`. The Start Now toolbar sentence adds that the control carries this key and the context submenu needs none. |
+
+**Evidence.** No watched failure. Per spec D10 no test can reach a view's `.id` key, and no test
+file changed.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` exit 0 (840 tests, 0 failures, "CI passed."). `swiftlint lint --quiet
+Sources/App/WorkTaskListView.swift`: zero output, exit 0.

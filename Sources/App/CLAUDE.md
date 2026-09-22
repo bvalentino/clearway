@@ -260,7 +260,8 @@
   action instead, against `startableTask`. It is the one knowingly click-and-nothing-happens
   control in the app.
   On the toolbar it is a split button in its **own** `ToolbarGroupBreak` capsule, between the `+`
-  and the copy/`…` group; in the row context menu it cannot be a split button, because
+  and the copy/`…` group, keyed on `.id(savedCommandManager.agentCommands)` (see the split-button
+  `.id` rule) while the context submenu needs no key; in the row context menu it cannot be a split button, because
   an AppKit menu item carrying a submenu has no body to click — SwiftUI's `Menu` documents the
   primary action as firing "when the user taps or clicks on the body of the control" — so there
   the same action is the submenu's first item, ahead of the shared `startNowItems`. Either way
@@ -739,7 +740,8 @@
   the primary action again.
   **A split button in a toolbar keeps the dropdown it was built with**, so each one carries
   `.id(<its own dropdown's contents>)` — `.id(settings.menuOpenInApps)` on `OpenInMenu`,
-  `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`. SwiftUI realizes a toolbar `Menu`
+  `.id(savedCommandManager.menuCommands)` on `RunCommandMenu`,
+  `.id(savedCommandManager.agentCommands)` on the Start Now toolbar item in `WorkTaskListView`. SwiftUI realizes a toolbar `Menu`
   that carries a `primaryAction:` as an `NSSegmentedControl` whose `NSMenu` is filled once, when
   the control is built, and never refilled: later renders update the label segment and leave the
   menu items — and the values their actions captured — as they were. A plain `Menu` has no such

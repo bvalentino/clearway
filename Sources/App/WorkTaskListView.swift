@@ -85,6 +85,7 @@ struct WorkTaskListView: View {
                     if let task = startableTask { startTask(task) }
                 }
                 .applyPrimaryActionStyle()
+                .id(savedCommandManager.agentCommands)
             }
 
             ToolbarGroupBreak()
@@ -270,6 +271,10 @@ struct WorkTaskListView: View {
     /// action through `CommandDefaults.resolve(_:in:)`, against the live
     /// `savedCommandManager.commands`. No test can catch a regression here; this docstring is the
     /// guard.
+    ///
+    /// The toolbar control is keyed on `savedCommandManager.agentCommands`: a split button's
+    /// `NSMenu` is filled once, so a renamed command would otherwise keep its old label. See the
+    /// `.id` rule for toolbar split buttons in `Sources/App/CLAUDE.md`.
     ///
     /// The editor door is unconditional because a project with no agent commands yet would
     /// otherwise open an empty menu, which AppKit renders as nothing happening at all.
