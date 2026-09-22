@@ -7,7 +7,6 @@ import SwiftUI
 /// because its label half already runs it, and the menu bar has no label half.
 struct WorktreeRunActions {
     let primary: SavedCommand?
-    let title: String
     let commands: [SavedCommand]
     let run: (SavedCommand) -> Void
     /// Opens the toolbar Run button's own dropdown, so ⌥⌘R shows the operator the list they would
@@ -40,9 +39,13 @@ extension WorktreeRunActions {
 /// selection has no path or the Open In list is empty.
 ///
 /// `apps` is `settings.openInApps` whole, for the same reason `WorktreeRunActions.commands` is.
+///
+/// `primary` is not optional, where `WorktreeRunActions.primary` is: `SettingsManager.primaryOpenInApp`
+/// resolves for every non-empty list and nils this whole value otherwise, so a row that exists has
+/// an app to open. Run's can be nil behind a live value, which is why only its row greys on the
+/// primary rather than on the value itself.
 struct WorktreeOpenInActions {
-    let primary: OpenInApp?
-    let title: String
+    let primary: OpenInApp
     let apps: [OpenInApp]
     let open: (OpenInApp) -> Void
     let popOpenInMenu: () -> Void
@@ -104,12 +107,19 @@ struct RunPrimaryMenuItem: View {
     @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
 
     var body: some View {
-        Button(actions?.title ?? "Run") {
+        Button(title) {
             guard let actions, let command = actions.primary else { return }
             actions.run(command)
         }
         .keyboardShortcut("r", modifiers: .command)
         .disabled(actions?.primary == nil)
+    }
+
+    /// The verb is the row's, not the primary command's: `SavedCommandManager.runButtonTitle` is
+    /// the bare name, which is what the toolbar's label half wants and what a menu row cannot be.
+    private var title: String {
+        guard let command = actions?.primary else { return "Run" }
+        return "Run \(command.name)"
     }
 }
 
@@ -155,12 +165,17 @@ struct OpenInPrimaryMenuItem: View {
     @FocusedValue(\.worktreeOpenInActions) private var actions: WorktreeOpenInActions?
 
     var body: some View {
-        Button(actions?.title ?? "Open in") {
-            guard let actions, let app = actions.primary else { return }
-            actions.open(app)
+        Button(title) {
+            guard let actions else { return }
+            actions.open(actions.primary)
         }
         .keyboardShortcut("o", modifiers: .command)
         .disabled(actions == nil)
+    }
+
+    private var title: String {
+        guard let actions else { return "Open in" }
+        return "Open in \(actions.primary.label)"
     }
 }
 

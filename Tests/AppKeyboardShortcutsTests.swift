@@ -142,6 +142,8 @@ final class AppKeyboardShortcutsTests: XCTestCase {
     func testWorktreeShortcutVariantsWithOtherModifiersAreNotClaimed() {
         XCTAssertFalse(claims([.command, .control], "r"), "Cmd+Ctrl+R is declared nowhere")
         XCTAssertFalse(claims([.command, .shift], "R"), "Cmd+Shift+R is declared nowhere")
+        XCTAssertFalse(claims([.command, .control], "o"), "Cmd+Ctrl+O is declared nowhere")
+        XCTAssertFalse(claims([.command, .shift], "O"), "Cmd+Shift+O is declared nowhere")
     }
 
     // MARK: - Retired shortcuts

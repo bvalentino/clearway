@@ -18,8 +18,10 @@
   the sidebar's three destinations.
   The Worktree menu's four keys — ⌘R, ⌥⌘R, ⌘O, ⌥⌘O — are all claimed. ⌥⌘O was pinned as declined
   until "Open in…" was added on 2026-09-21; a neighbouring-modifier pin that flips like that is
-  flipped in the same change as the declaration, never left disagreeing with the table. ⌃⌘R and
-  ⇧⌘R stay pinned declined: nothing declares either.
+  flipped in the same change as the declaration, never left disagreeing with the table. ⌃⌘R, ⇧⌘R,
+  ⌃⌘O and ⇧⌘O stay pinned declined: nothing declares any of them, and a letter claimed under one
+  modifier set gets its neighbouring sets pinned the way ⌘B's four variants are — the guard against
+  a later feature folding `letter == "o"` into the `[.command, .shift]` case beside New Group.
 - `PanelCommands.swift` — the View menu's three panel toggles: sidebar ⌘B, bottom panel ⌘J,
   aside ⌥⌘B, each a `PanelToggle` (`isVisible` + `toggle`) that `ContentView` publishes as a
   focused **scene** value. A `nil` value greys the item out, which is also how all three grey out
@@ -54,10 +56,18 @@
   Like the panel toggles above, the rows reach per-window state through focused **scene** values
   and a `nil` greys the row out. There are two values, not one, because they gate on different
   preconditions: `WorktreeRunActions` is nil with no selected worktree or no `ghosttyApp.app`,
-  `WorktreeOpenInActions` with no worktree path or an empty Open In list — each gate mirroring its
-  toolbar counterpart's. Both carry the **whole** list (`commands`, `apps`), not the toolbar's
-  `menuCommands` / `menuOpenInApps`: the toolbar omits the primary because its label half runs it,
-  and the menu bar has no label half. "Run \<name>" is the one row gated on `primary` rather than
+  `WorktreeOpenInActions` with no worktree path or no `primaryOpenInApp`, which resolves for every
+  non-empty list — each gate mirroring its toolbar counterpart's. That is also why its `primary` is
+  **not** optional while Run's is: an Open in row that exists has an app to open, so there is no
+  unreachable `guard` behind an enabled row, and the two `.disabled` spellings state the gate
+  difference instead of hiding it. Both carry the **whole** list (`commands`, `apps`), not the
+  toolbar's `menuCommands` / `menuOpenInApps`: the toolbar omits the primary because its label half
+  runs it, and the menu bar has no label half. **Each primary row writes its own title** rather than
+  reusing the toolbar's: `runButtonTitle` is the bare command name, which is what a label half
+  wants and what a menu row cannot be, so the row renders `"Run \(name)"` and keeps the bare "Run"
+  for the empty list. `openInButtonTitle` already carries its verb, but the row builds the same
+  string off `primary` for symmetry, so neither struct holds a title that could disagree with the
+  app or command beside it. "Run \<name>" is the one row gated on `primary` rather than
   on the value itself, so an empty command list greys it while "Run…" and the Run submenu stay
   live and keep the "Add Command…" door reachable; all three Open in rows grey together, since their
   value is already nil on an empty app list — and an empty list draws no toolbar button, so "Open
@@ -78,11 +88,17 @@
   `menu(forSegment: 1)` below the control. The label is the **only** thing separating the two
   buttons, so each closure reads its own title inside the closure — `runButtonTitle` for ⌥⌘R,
   `openInButtonTitle` for ⌥⌘O — and tracks the primary rather than capturing a stale name.
+  **Both labels are user text, so the walk collects every match and pops nothing unless exactly
+  one control answers.** `runButtonTitle` is a saved command's name verbatim, so a command named
+  "Open in Fork" carries the Open In button's own label and matched the Run button first — ⌥⌘O
+  then opened the Run dropdown, and the operator picking what they read as an app ran a shell
+  command instead. An ambiguous label is now a non-match like any other, which is the rule the
+  paragraph below states rather than an exception to it.
   **It looks for two controls, not one**, because the Run button is not always a split button: with
   no saved commands `RunCommandMenu` drops the `primaryAction:` and SwiftUI realizes the `Menu` as
   a `SwiftUIPopupButton` (an `NSPopUpButton`, `pullsDown = true`) whose `title` is the `Menu`'s own
-  label — the same string segment 0 would have carried. So each toolbar item is tried for the
-  segmented control first and then for a pop-up button of that title, and the pop-up is opened with
+  label — the same string segment 0 would have carried. So one depth-first walk collects both
+  shapes, as a `Match` carrying either control, and a matched pop-up is opened with
   `performClick(nil)`. Not `popUp(positioning:)`: a plain `Menu`'s `NSMenu` is **empty** until
   SwiftUI's coordinator fills it on open (the split-button note further down), so there is nothing
   to position, and `performClick` is what runs the coordinator. Without this branch ⌥⌘R was a
@@ -98,14 +114,21 @@
   `NSToolbarItemViewer` ← `NSToolbarView` ← `NSTitlebarView` ← `NSTitlebarContainerView` ←
   `NSThemeFrame`, a branch beside `contentView` rather than below it, so a walk rooted at
   `contentView` finds nothing and ⌥⌘R silently does nothing — which is exactly what it did when it
-  first shipped. Rooting the walk in the toolbar also puts `CommandsView`'s segmented filter picker
-  out of reach by construction; the label is left as the discriminator between the Run button and
-  the Open In split button, the toolbar's only two segmented controls. `segmentCount > 1` is
+  first shipped. Rooting the walk in the toolbar does **not** put `CommandsView`'s segmented filter
+  picker out of the search space — that picker is a `ToolbarItem` too (the toolbar-on-the-detail-
+  column rule below), so it realizes beside the Run and Open In controls and the toolbar holds
+  three segmented shapes, not two. What keeps it from ever being popped is the segment 0 label
+  match plus the rows being disabled on the Commands destination, where `detailSelection.worktree`
+  is nil and both focused values with it — a runtime gate, not construction. Segment 0 of that
+  picker reads "All", so a primary command named `All` would match it, and the one-match rule below
+  is what makes that a no-op rather than a wrong pop. `segmentCount > 1` is
   checked before either segment is read, because `NSSegmentedControl` raises on an out-of-range
   index. An item scrolled into the toolbar's overflow menu is absent from `visibleItems` and has no
-  on-screen control to hang a menu under, so it is a non-match like any other. When nothing matches it
-  **does nothing**: falling back to another control would open a dropdown the operator did not ask
-  for. This is knowingly fragile. It holds only while SwiftUI keeps realizing a toolbar `Menu` with
+  on-screen control to hang a menu under, so it is a non-match like any other. When nothing matches
+  — or when more than one control does — it **does nothing** and logs one line naming the label and
+  the match count, because the key is claimed and so the press leaves no other trace: falling back
+  to another control would open a dropdown the operator did not ask for. This is knowingly fragile.
+  It holds only while SwiftUI keeps realizing a toolbar `Menu` with
   a `primaryAction:` as an `NSSegmentedControl` with a readable segment label, and one without as
   an `NSPopUpButton` with a readable title — the split-button note further down — and the operator
   took that over a fallback behaviour. If ⌥⌘R or ⌥⌘O ever stops opening anything, this is where to
@@ -643,7 +666,7 @@
   separate files because `ContentView.swift` sits at SwiftLint's 1000-line `file_length` limit and
   only carries on via the file-wide `swiftlint:disable` at its first line; the next addition there
   needs a split first. `SidePanelTabStrip.swift` is the most recent one, moved out to make room for
-  the Worktree menu's two `focusedSceneValue` lines, and the file is back at 998.
+  the Worktree menu's two `focusedSceneValue` lines.
   Both actions do carry keyboard shortcuts — ⌘R runs the primary command, ⌘O opens in the primary
   app, and ⌥⌘R / ⌥⌘O pop these very dropdowns — but every one of them is declared on the Worktree
   menu's rows and none on these buttons, and all four are claimed in `AppKeyboardShortcuts`. See the

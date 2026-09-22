@@ -162,12 +162,12 @@ struct ContentView: View {
 
     /// Run and Open In, exposed via `focusedSceneValue` so the Worktree menu's rows reach this
     /// window's state and grey out where the action doesn't apply. Each gate mirrors its toolbar
-    /// counterpart: Run needs a `ghostty_app_t`, Open In a path and a non-empty app list.
+    /// counterpart: Run needs a `ghostty_app_t`, Open In a path and an app to open — and only a
+    /// non-empty list resolves one, which is the toolbar item's own condition.
     private var worktreeRunActions: WorktreeRunActions? {
         guard let worktree = selectedWorktree, ghosttyApp.app != nil else { return nil }
         return WorktreeRunActions(
             primary: savedCommandManager.primaryCommand,
-            title: savedCommandManager.runButtonTitle,
             commands: savedCommandManager.commands,
             run: WorktreeRunActions.runner(
                 worktree: worktree,
@@ -183,10 +183,9 @@ struct ContentView: View {
     }
 
     private var worktreeOpenInActions: WorktreeOpenInActions? {
-        guard let path = currentWorktree?.path, !settings.openInApps.isEmpty else { return nil }
+        guard let path = currentWorktree?.path, let primary = settings.primaryOpenInApp else { return nil }
         return WorktreeOpenInActions(
-            primary: settings.primaryOpenInApp,
-            title: settings.openInButtonTitle,
+            primary: primary,
             apps: settings.openInApps,
             open: WorktreeOpenInActions.opener(path: path, recordingUseIn: settings),
             popOpenInMenu: { [settings] in

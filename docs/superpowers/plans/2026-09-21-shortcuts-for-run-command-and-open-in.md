@@ -815,10 +815,16 @@ sibling branch of `contentView` under `NSThemeFrame`.
 `menu(forSegment: 1)`, the `isFlipped`-aware bottom-edge positioning, and every failure path a
 silent `return`.
 
-Rooting in the toolbar also drops `CommandsView`'s `.pickerStyle(.segmented)` filter out of the
-search space, since it lives under `contentView`. The label match stays: it is what separates the
-Run button from the Open In split button, the toolbar's other `NSSegmentedControl` (confirmed
-above, `labelForSegment:0` → "Open in Fork").
+The label match stays: it is what separates the Run button from the Open In split button, the
+toolbar's other `NSSegmentedControl` (confirmed above, `labelForSegment:0` → "Open in Fork").
+
+**Corrected in review, 499dc1c+:** this entry originally added that rooting in the toolbar also
+drops `CommandsView`'s `.pickerStyle(.segmented)` filter out of the search space "since it lives
+under `contentView`". It does not — that picker is a `ToolbarItem` (`CommandsView.swift:38-46`),
+so it realizes beside the Run and Open In controls. It is unreachable for a different reason: the
+Commands destination resolves no worktree, so both focused values are nil and the rows that would
+pop anything are disabled. The segment 0 label match and the one-match rule are what cover it if
+that ever changes.
 
 `Sources/App/CLAUDE.md`'s `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` entry was
 rewritten to state where the control actually lives, since the old text said "walks
@@ -934,3 +940,67 @@ toolbar views call rather than structs they are "handed", and the "Files this to
 **Files.** `Sources/App/ToolbarSplitButtonMenu.swift` (51 → 72 lines),
 `Sources/App/CLAUDE.md` (the ⌥⌘R/⌥⌘O helper paragraph), the spec (D3, D11, D12, A10, A13, the
 files list), and this plan.
+
+### 2026-09-21 — PR review pass: the menu row's own verb, a one-match rule, two false doc claims
+
+Second review pass (`code tests errors types`). Four findings taken, each with its proof; the rest
+are recorded as follow-ups in the stage report.
+
+**1. "Run \<name>" rendered as the bare command name.** `RunPrimaryMenuItem` used
+`WorktreeRunActions.title`, filled from `SavedCommandManager.runButtonTitle`, which is
+`primaryCommand?.name ?? "Run"` — so with a command named `Build` the Worktree menu's ⌘R row read
+`Build`, not `Run Build`. Criterion 5, `Sources/App/CLAUDE.md` and the row's own doc comment all
+say `"Run <name>"`, and the Open In row already renders its verb because `openInButtonTitle`
+carries one. A bare noun under a **Worktree** menu, directly above `Run…`, is not a command.
+Fixed by **deleting `title` from both structs** and having each row build its own — `"Run \(name)"`
+and `"Open in \(label)"`. The field was pure redundancy: the AppKit lookup string is read live
+inside `popRunMenu` / `popOpenInMenu`, never off the struct, so nothing else wanted it, and a title
+that can disagree with the `primary` beside it is now unrepresentable.
+
+**2. `WorktreeOpenInActions.primary` was optional and could not be nil.** The only construction
+site gated on `!settings.openInApps.isEmpty`, and `primaryOpenInApp` is
+`lastUsedOpenInApp ?? openInApps.first` with the remembered id resolved against the same list — so
+non-empty list ⇒ non-nil primary, and `OpenInPrimaryMenuItem`'s `guard let app = actions.primary`
+was unreachable. Made non-optional, with the gate restated as `let primary = settings.primaryOpenInApp`
+(the same condition, said as the app the row will open). The two rows' differing `.disabled`
+spellings now state the gate asymmetry instead of hiding it. Spec D8 revised.
+
+**3. ⌥⌘O could pop the Run dropdown.** `popUp(labelled:)` returned on the first match and the label
+is user text: `runButtonTitle` is a saved command's name verbatim, so a command named `Open in Fork`
+gives the Run button the Open In button's label, and the Run item is declared first in the toolbar.
+The operator would pick what reads as an app and run a shell command. The spec's Risks section
+promises "do nothing rather than guess at another control", and this was the guess. `popUp` now
+collects every match through one recursive `matches(in:labelled:)` — replacing the two separate
+finders — and pops nothing unless exactly one control answers, logging the label and the count
+otherwise. That log is also the first diagnostic this helper has ever had, which matters because
+the key is claimed, so a press that does nothing leaves no other trace; it already shipped broken
+silently once. Spec D3 revised.
+
+**4. Two false claims in the docs, both in the paragraph a future reader is sent to.**
+`Sources/App/CLAUDE.md` and the first Changelog entry above said rooting the walk in the toolbar
+puts `CommandsView`'s segmented filter picker out of the search space, the entry adding "since it
+lives under `contentView`". It does not: that picker is a `ToolbarItem`
+(`CommandsView.swift:38-46`), so it realizes beside the Run and Open In controls and the toolbar
+holds three segmented shapes, not two. What actually keeps it unreachable is the segment 0 label
+match plus the rows being disabled on the Commands destination, which resolves no worktree — a
+runtime gate, not construction. Segment 0 of that picker reads `All`, so a primary command named
+`All` would match it, and finding 3's one-match rule is what makes that a no-op. Spec D5's
+rationale was wrong the same way — a terminal surface does have focus off the worktree destination
+(the Tasks bottom panel) — and was corrected without changing the decision.
+
+**Also.** ⌃⌘O and ⇧⌘O got the declined pins their R siblings already had, the convention ⌘B's four
+variants set; the guard is a later feature folding `letter == "o"` into the `[.command, .shift]`
+case. The spec's `## Verification` section listed only criteria 1-5, 8 and 11 as the operator's,
+leaving 6, 7, 9, 10 and 14 in nobody's column — all five are manual for the same reason and are now
+named. `Sources/App/CLAUDE.md`'s stated `ContentView.swift` line count went stale by one and was
+dropped rather than re-pinned.
+
+**No new tests.** Findings 1-3 are all in `@MainActor` SwiftUI menu rows or the AppKit toolbar
+walk, unreachable from XCTest for the reasons T3 and the entries above record; the claim-table
+additions are the only testable part and are pinned.
+
+**Files.** `Sources/App/WorktreeCommands.swift`, `Sources/App/ContentView.swift`,
+`Sources/App/ToolbarSplitButtonMenu.swift`, `Tests/AppKeyboardShortcutsTests.swift`,
+`Sources/App/CLAUDE.md`, the spec (D3, D5, D8, `## Verification`), and this plan.
+
+**Gate.** `./scripts/ci.sh` at sign-off.
