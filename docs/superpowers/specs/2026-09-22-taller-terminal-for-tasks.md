@@ -7,7 +7,8 @@ A task's terminal currently opens as a 200 pt strip under the editor/preview, an
 every time. This change makes it open at half the height of the region it shares with the
 editor/preview, and keep tracking half while the window is resized, until the user drags the
 grabber. After a drag the dragged height sticks as an absolute value, as it does today. Dragging
-also gets a ceiling, so the editor/preview above always keeps a 120 pt strip. The height decision
+also gets a ceiling that always reserves 120 pt above the terminal for the grabber plus the
+editor/preview strip (about 12 pt of grabber and 108 pt of editor/preview). The height decision
 moves into a small pure type so the default-versus-dragged rule and the clamping can be unit-tested.
 
 ## Decisions
@@ -19,14 +20,16 @@ moves into a small pure type so the default-versus-dragged rule and the clamping
 | D3 | Is the grabber part of the 50%? | No. The grabber counts against the editor's half: terminal height = `available / 2`, and the editor/preview gets the remainder minus the grabber (about 12 pt). | The terminal is the element the brief sizes. Splitting the grabber's height between both halves adds arithmetic and changes nothing a user can see. |
 | D4 | What does the stored per-task value mean now? | "The user dragged, and this is the absolute height they chose." No entry means "not dragged: follow 50%". `taskTerminalHeights: [UUID: CGFloat]` keeps its type. Only a drag writes to it. | Brief: in-memory storage on `TerminalManager` stays the source of truth for a dragged height. Absence already works as the "not dragged" marker, so no extra flag is needed. |
 | D5 | What does `TerminalManager.taskTerminalHeight(for:)` return? | `CGFloat?`: the stored dragged height, or nil. The `?? 200` default goes away. The view resolves nil through the new layout type. | `TerminalManager` has no pane geometry and must not invent a default. The resolution needs `available`, which only the view knows. |
-| D6 | Minimum editor strip | 120 pt. | Brief suggests about 120 pt. It matches the worktree bottom terminal's 120 pt default (`TerminalManager+Panels.swift:56`), and I found no reason to use another value. |
+| D6 | Minimum editor strip | 120 pt reserved above the terminal, covering the grabber plus the editor/preview strip. The ceiling is `available − 120`, and the grabber (about 12 pt) comes out of that reserve, so the editor/preview keeps about 108 pt of content. See D14. | Brief suggests about 120 pt. It matches the worktree bottom terminal's 120 pt default (`TerminalManager+Panels.swift:56`), and I found no reason to use another value. |
 | D7 | Floor versus ceiling on a short pane | Allowed range is `[80, max(80, available − 120)]`. When the pane is shorter than 200 pt, the 80 pt terminal floor wins and the editor gets less than 120 pt. The range never inverts, so the grabber never gets stuck. | Brief's open risk. The floor stays unchanged per the brief. A terminal under 80 pt is unusable, while a squeezed editor in a tiny window is still scrollable. |
 | D8 | Is the 50% default also clamped? | Yes. Both the default and the stored value pass through the same clamp. | One rule for every height. For example, `available = 150` gives a default of 75, which is raised to 80. |
-| D9 | When the window shrinks below a dragged height, is the stored value rewritten? | No. The clamp applies at render time only. The stored value is written only by a drag, and a drag stores the clamped value. | Acceptance: a dragged height "survives window resizes". Shrinking and then re-growing the window should restore the height the user chose, not a squeezed one. |
+| D9 | When the window shrinks below a dragged height, is the stored value rewritten? | No. The clamp applies at render time only. The stored value is written only by a drag, and a drag stores the clamped value. The operator checks this by hand; no unit test covers it (see D15). | Acceptance: a dragged height "survives window resizes". Shrinking and then re-growing the window should restore the height the user chose, not a squeezed one. |
 | D10 | What is the base height for a drag? | The height currently rendered (resolved and clamped), not the stored value. New height = `clamp(rendered − translation.height)`, written with `setTaskTerminalHeight`. | Before the first drag nothing is stored, so the old `stored − translation` base (`TaskDetailView.swift:117`) would jump to the default. Starting from the rendered value makes the first drag continue from exactly what is on screen. The gesture keeps its default `.local` coordinate space: the grabber moves as the terminal grows, and this is what keeps the per-event `translation` incremental in the existing code. |
 | D11 | Where does the height logic live? | A new caseless `enum TaskTerminalLayout` in `Sources/App/TaskTerminalLayout.swift` with the constants (`minimumHeight = 80`, `minimumEditorHeight = 120`) and two pure static functions: `height(stored: CGFloat?, available: CGFloat) -> CGFloat` and `draggedHeight(from current: CGFloat, translation: CGFloat, available: CGFloat) -> CGFloat`. | This is the only unit-testable piece. The acceptance criteria ask for a test of the default-versus-dragged decision, and `TaskDetailView` needs a `ghostty_app_t` surface, which XCTest cannot build. A caseless enum carries no state and no instance. |
 | D12 | Worktree bottom terminal (`secondaryHeight`) | Not touched. It keeps its own `max(80, …)` drag and its 120 pt default (`ContentView.swift:915`, `TerminalManager+Panels.swift:56`). The new type is not shared with it. | Out of scope per the brief. Sharing the type now would change its behavior (it would get a ceiling). |
 | D13 | Reset points | Unchanged. `closeTaskTerminal`, process exit (`replaceSurface`), `closeAllSurfaces` and promote-to-worktree still remove the entry, so the next open is back at 50%. `openTaskTerminal` does not touch the height, so a re-launch into the same terminal keeps a dragged height. | Out of scope per the brief, and it already behaves as the acceptance criteria require. See A5. |
+| D14 | Does the 120 pt reserve include the grabber? | Yes. The code stays as built: the ceiling is `available − 120` and the grabber takes about 12 pt of that, leaving the editor/preview about 108 pt. Only the wording of D6 and the intro changed. | Operator decision after review. Subtracting the grabber as well would add a second constant for a difference of about 12 pt that no user needs. |
+| D15 | Is D9 (stored height never rewritten by a resize) unit-tested? | No. It is checked by hand by the operator. The earlier "input not mutated" assertion was removed: it compared a `let` passed by value, so it could never fail. | Operator decision after review. The rewrite D9 forbids would happen in the view, which XCTest cannot build (Testing strategy). |
 
 ## Assumptions
 
@@ -55,15 +58,16 @@ it. The work is done when:
    region, clamped per D7.
 2. Resizing the window before any drag keeps the terminal at half of the split region.
 3. After a drag, the stored absolute height survives window resizes (render-time clamp only, D9),
-   hide/show of the panel, and re-launching a command into the same terminal.
+   hide/show of the panel, and re-launching a command into the same terminal. The operator checks
+   this by hand (D15).
 4. Closing the task terminal or its process exiting drops the stored height, and the next open is
    back at 50%.
 5. Dragging stops at 80 pt at the bottom and at `available − 120` at the top. On a pane shorter
    than 200 pt the range collapses to 80 pt and does not invert.
 6. The worktree bottom terminal still opens at 120 pt and drags as before.
 7. `./scripts/ci.sh` exits 0 with the new `Tests/TaskTerminalLayoutTests.swift` covering:
-   default = half; stored wins over the default; stored above the ceiling is clamped at render
-   without being mutated; the default on a short pane is floored at 80; the range does not invert
+   default = half; stored wins over the default; stored above the ceiling is clamped at render;
+   the default on a short pane is floored at 80; the range does not invert
    when `available < 200`; `draggedHeight` clamps at both ends and starts from the current height.
 
 ## Commands
@@ -91,7 +95,8 @@ Before sign-off, run `git status --porcelain`. Expect `default.profraw` after an
 
 XCTest, in `Tests/`, run by `./scripts/ci.sh`. The pure `TaskTerminalLayout` functions are
 unit-tested directly. The view wiring (the `GeometryReader` and the gesture) cannot be exercised in
-XCTest because a task terminal needs a `ghostty_app_t`. The operator checks it by hand, per memory:
+XCTest because a task terminal needs a `ghostty_app_t`. That includes D9: no unit test covers the
+stored height surviving a resize (D15). The operator checks it by hand, per memory:
 build agents never launch the app or take screenshots.
 
 ## Boundaries

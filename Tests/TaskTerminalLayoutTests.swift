@@ -11,10 +11,8 @@ final class TaskTerminalLayoutTests: XCTestCase {
         XCTAssertEqual(TaskTerminalLayout.height(stored: 300, available: 800), 300)
     }
 
-    func testStoredAboveCeilingIsClampedWithoutMutatingInput() {
-        let stored: CGFloat = 900
-        XCTAssertEqual(TaskTerminalLayout.height(stored: stored, available: 800), 680)
-        XCTAssertEqual(stored, 900)
+    func testStoredAboveCeilingIsClamped() {
+        XCTAssertEqual(TaskTerminalLayout.height(stored: 900, available: 800), 680)
     }
 
     func testDefaultOnShortPaneIsFlooredAtMinimum() {

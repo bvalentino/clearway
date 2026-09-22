@@ -18,12 +18,13 @@ Breaks down `docs/superpowers/specs/2026-09-22-taller-terminal-for-tasks.md`.
   dragged, and this is the absolute height"; no entry means "follow 50%". Only a drag writes it (D4).
 - `taskTerminalHeight(for:)` returns `CGFloat?`, the stored value or nil. The `?? 200` default is
   deleted (D5).
-- Constants: `minimumHeight = 80`, `minimumEditorHeight = 120` (D6).
+- Constants: `minimumHeight = 80`, `minimumEditorHeight = 120`. The 120 pt reserve covers the
+  grabber (about 12 pt) plus the editor/preview strip (about 108 pt) (D6, D14).
 - Allowed range is `[80, max(80, available - 120)]`. It never inverts; below 200 pt of `available`
   it collapses to 80 (D7).
 - The 50% default and the stored value both go through the same clamp (D8).
 - The clamp applies at render time only. A window resize never rewrites the stored value; a drag
-  stores the clamped value (D9).
+  stores the clamped value (D9). The operator checks this by hand; no unit test covers it (D15).
 - A drag starts from the rendered (resolved, clamped) height:
   `draggedHeight(from: rendered, translation: value.translation.height, available:)`, stored with
   `setTaskTerminalHeight`. The `DragGesture` keeps its default `.local` coordinate space (D10).
@@ -73,8 +74,7 @@ New files are picked up because `ci.sh` runs `xcodegen generate`.
 - `TaskTerminalLayoutTests` covers each of these as its own test method:
   1. Default is half: `height(stored: nil, available: 800) == 400`.
   2. Stored wins over the default: `height(stored: 300, available: 800) == 300`.
-  3. Stored above the ceiling is clamped at render: `height(stored: 900, available: 800) == 680`,
-     and the input value is unchanged (a `let` passed in stays 900; the function is pure).
+  3. Stored above the ceiling is clamped at render: `height(stored: 900, available: 800) == 680`.
   4. Default on a short pane is floored: `height(stored: nil, available: 150) == 80`.
   5. The range does not invert below 200: for `available` of 150 and 199, both `height(stored: 500, …)`
      and `height(stored: 10, …)` return 80.
@@ -130,7 +130,8 @@ all methods passing. `swiftlint lint --quiet` reports nothing new for the two fi
 **Verification:** `./scripts/ci.sh` exits 0. The build agent does not launch the app. The operator
 checks by hand: open a task terminal by the path-bar toggle, Cmd+J, and Start Now; it opens at half
 of the split region and tracks half on window resize; after a drag it keeps the dragged height
-across resize and hide/show; dragging stops at 80 pt and 120 pt short of the top; closing the
+across resize and hide/show, and shrinking the window below it then growing it back restores the
+dragged height (D9, not unit-tested); dragging stops at 80 pt and 120 pt short of the top; closing the
 terminal and reopening returns to half; the worktree bottom terminal still opens at 120 pt.
 
 ## Risks
@@ -197,3 +198,33 @@ Reviewed the T1+T2 diff for reuse, simplification, efficiency and altitude. Noth
 and the drag base. The worktree bottom terminal's separate height logic stays untouched per D12, a
 deliberate, already-documented scope boundary. `./scripts/ci.sh`: exit 0, "Test Succeeded", 846
 tests, 0 failures; `git status --porcelain` clean.
+
+## Changelog
+
+Operator decisions from the review step. These are not plan tasks; no later stage may revert them.
+
+### C1: The 120 pt reserve covers the grabber plus the editor strip
+
+The code is unchanged. The ceiling stays `available - 120`, and the grabber (about 12 pt) comes out
+of that reserve, so the editor/preview keeps about 108 pt of content. Spec D6 and the spec intro now
+say so, and spec D14 records the decision. Do not subtract the grabber separately or raise the
+constant.
+
+### C2: Drop the "input not mutated" assertion; D9 is checked by hand
+
+`Tests/TaskTerminalLayoutTests.swift`: `testStoredAboveCeilingIsClampedWithoutMutatingInput` is
+renamed `testStoredAboveCeilingIsClamped` and keeps only the clamp assertion
+(`height(stored: 900, available: 800) == 680`). The removed `XCTAssertEqual(stored, 900)` compared a
+`let` passed by value, so it could never fail. D9 (a resize never rewrites the stored height) is
+covered by the operator's check by hand, not by a unit test; spec D9, D15, success criteria 3 and 7,
+Testing strategy, and this plan's T1 criterion 3 and T2 verification say so. Do not re-add a
+"not mutated" assertion.
+
+| File | State |
+| --- | --- |
+| `Tests/TaskTerminalLayoutTests.swift` | One test renamed; the tautological assertion and its `let` removed. |
+| `docs/superpowers/specs/2026-09-22-taller-terminal-for-tasks.md` | Intro, D6, D9, criteria 3 and 7, Testing strategy updated; D14 and D15 added. |
+| `docs/superpowers/plans/2026-09-22-taller-terminal-for-tasks.md` | Architecture notes, T1 criterion 3, T2 verification updated; this Changelog added. |
+
+**Gate.** `./scripts/ci.sh` after the test edit: exit 0, "Test Succeeded", 846 tests, 0 failures;
+`testStoredAboveCeilingIsClamped` passed.
