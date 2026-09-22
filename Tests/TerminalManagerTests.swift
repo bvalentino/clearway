@@ -558,4 +558,57 @@ final class TerminalManagerTests: XCTestCase {
     func test_stagedText_leavesOrdinaryTextAlone() {
         XCTAssertEqual(TerminalManager.stagedText("review the diff"), "review the diff")
     }
+
+    // MARK: - Task terminal fan-out
+
+    func test_closeTaskTerminalInAllManagers_clearsTheTaskInEveryManager() {
+        let first = TerminalManager()
+        let second = TerminalManager()
+        let taskA = UUID()
+        let taskB = UUID()
+        seedTaskTerminal(taskA, in: first)
+        seedTaskTerminal(taskB, in: second)
+        XCTAssertTrue(first.openTaskIds.contains(taskA))
+        XCTAssertTrue(second.openTaskIds.contains(taskB))
+
+        TerminalManager.closeTaskTerminalInAllManagers(taskA)
+
+        for manager in [first, second] {
+            assertNoTaskTerminal(taskA, in: manager)
+        }
+        XCTAssertTrue(second.openTaskIds.contains(taskB))
+        XCTAssertEqual(second.taskTerminalVisible[taskB], true)
+        XCTAssertEqual(second.taskTerminalHeights[taskB], 320)
+
+        TerminalManager.closeTaskTerminalInAllManagers(taskB)
+
+        assertNoTaskTerminal(taskB, in: second)
+    }
+
+    func test_taskHasActiveProcessInAnyManager_isFalseWithoutASurface() {
+        let manager = TerminalManager()
+        let task = UUID()
+        seedTaskTerminal(task, in: manager)
+
+        XCTAssertFalse(TerminalManager.taskHasActiveProcessInAnyManager(task))
+        XCTAssertFalse(TerminalManager.taskHasActiveProcessInAnyManager(UUID()))
+    }
+
+    private func seedTaskTerminal(_ taskId: UUID, in manager: TerminalManager) {
+        manager.openTaskIds.insert(taskId)
+        manager.taskTerminalVisible[taskId] = true
+        manager.taskTerminalHeights[taskId] = 320
+    }
+
+    private func assertNoTaskTerminal(
+        _ taskId: UUID,
+        in manager: TerminalManager,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertNil(manager.taskSurfaces[taskId], file: file, line: line)
+        XCTAssertFalse(manager.openTaskIds.contains(taskId), file: file, line: line)
+        XCTAssertNil(manager.taskTerminalVisible[taskId], file: file, line: line)
+        XCTAssertNil(manager.taskTerminalHeights[taskId], file: file, line: line)
+    }
 }
