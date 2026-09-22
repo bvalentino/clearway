@@ -32,9 +32,9 @@ extension TerminalManager {
         taskTerminalVisible[taskId] ?? false
     }
 
-    /// The stored terminal panel height for a task, or the default.
-    func taskTerminalHeight(for taskId: UUID) -> CGFloat {
-        taskTerminalHeights[taskId] ?? 200
+    /// The height the user dragged a task's terminal panel to, or nil when it follows the default.
+    func taskTerminalHeight(for taskId: UUID) -> CGFloat? {
+        taskTerminalHeights[taskId]
     }
 
     /// Store a task's terminal panel height.

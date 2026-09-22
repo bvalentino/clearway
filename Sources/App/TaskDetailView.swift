@@ -82,45 +82,58 @@ struct TaskDetailView: View {
 
                 Divider()
 
-                Group {
-                    switch editorMode {
-                    case .edit:
-                        if showFrontmatter {
-                            MarkdownEditorView(text: $editorText)
-                        } else {
-                            MarkdownEditorView(text: $bodyText)
-                        }
-                    case .preview:
-                        MarkdownPreviewView(markdown: previewMarkdown)
-                    }
-                }
-
-                if terminalVisible, let surface = terminalManager.existingTaskSurface(for: taskId) {
-                    VStack(spacing: 0) {
-                        Divider()
-                        Capsule()
-                            .fill(.tertiary)
-                            .frame(width: 36, height: 5)
-                            .padding(.vertical, 3)
-                    }
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        if hovering {
-                            NSCursor.resizeUpDown.push()
-                        } else {
-                            NSCursor.pop()
-                        }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { value in
-                                let newHeight = max(80, terminalManager.taskTerminalHeight(for: taskId) - value.translation.height)
-                                terminalManager.setTaskTerminalHeight(newHeight, for: taskId)
-                            }
+                GeometryReader { geo in
+                    let terminalHeight = TaskTerminalLayout.height(
+                        stored: terminalManager.taskTerminalHeight(for: taskId),
+                        available: geo.size.height
                     )
+                    VStack(spacing: 0) {
+                        Group {
+                            switch editorMode {
+                            case .edit:
+                                if showFrontmatter {
+                                    MarkdownEditorView(text: $editorText)
+                                } else {
+                                    MarkdownEditorView(text: $bodyText)
+                                }
+                            case .preview:
+                                MarkdownPreviewView(markdown: previewMarkdown)
+                            }
+                        }
+                        .frame(maxHeight: .infinity)
 
-                    TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder && ghosttyApp.appIsActive)
-                        .frame(height: terminalManager.taskTerminalHeight(for: taskId))
+                        if terminalVisible, let surface = terminalManager.existingTaskSurface(for: taskId) {
+                            VStack(spacing: 0) {
+                                Divider()
+                                Capsule()
+                                    .fill(.tertiary)
+                                    .frame(width: 36, height: 5)
+                                    .padding(.vertical, 3)
+                            }
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                if hovering {
+                                    NSCursor.resizeUpDown.push()
+                                } else {
+                                    NSCursor.pop()
+                                }
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 1)
+                                    .onChanged { value in
+                                        let newHeight = TaskTerminalLayout.draggedHeight(
+                                            from: terminalHeight,
+                                            translation: value.translation.height,
+                                            available: geo.size.height
+                                        )
+                                        terminalManager.setTaskTerminalHeight(newHeight, for: taskId)
+                                    }
+                            )
+
+                            TaskTerminalSurface(surfaceView: surface, showBorder: settings.showFocusBorder && ghosttyApp.appIsActive)
+                                .frame(height: terminalHeight)
+                        }
+                    }
                 }
 
                 pathBar(for: task)

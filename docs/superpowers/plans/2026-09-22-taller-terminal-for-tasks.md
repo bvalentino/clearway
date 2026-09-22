@@ -168,3 +168,22 @@ Executed 846 tests, with 12 failures (0 unexpected)
 **Gate.** `./scripts/ci.sh` after the last code edit: exit 0, "Test Succeeded", 846 passed / 0 failed
 (from the xcresult summary); all six `TaskTerminalLayoutTests` methods reported Passed.
 `swiftlint lint --quiet` on the two new files: no output, exit 0.
+
+### T2: Wire TaskDetailView and TerminalManager to TaskTerminalLayout
+
+| File | State |
+| --- | --- |
+| `Sources/App/TerminalManager+TaskTerminals.swift` | `taskTerminalHeight(for:)` returns `CGFloat?` (`taskTerminalHeights[taskId]`); `?? 200` removed; doc comment updated. |
+| `Sources/App/TaskDetailView.swift` | Editor/preview `Group` (now `.frame(maxHeight: .infinity)`), grabber and terminal wrapped in `GeometryReader { geo in VStack(spacing: 0) { … } }`. `terminalHeight = TaskTerminalLayout.height(stored:available: geo.size.height)` drives the terminal frame; the drag stores `TaskTerminalLayout.draggedHeight(from: terminalHeight, …)`. Path bar and header rows stay outside. Grabber visuals, hover cursor and default coordinate space unchanged. |
+
+**Evidence.** No new test: the wiring needs a `ghostty_app_t` surface, which XCTest cannot build
+(spec, Testing strategy). The height logic is covered by T1's `TaskTerminalLayoutTests`. Acceptance
+greps: `grep -n "?? 200" Sources/App/TerminalManager+TaskTerminals.swift` and
+`grep -n "max(80" Sources/App/TaskDetailView.swift` both empty. The only caller of
+`taskTerminalHeight(for:)` is `TaskDetailView.swift:87`. `git diff --stat` touches only the two
+listed files. `WorkTaskCoordinatorTests` unmodified and passing.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` after the last code edit: exit 0, "Test Succeeded", 846 tests, 0 failures.
+`swiftlint lint --quiet` on the two files: no output, exit 0.
