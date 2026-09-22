@@ -197,7 +197,17 @@ on the two Swift files: zero output, exit 0.
 **Evidence.** No watched failure. Per spec D10 no test can reach a view's `.id` key, and no test
 file changed.
 
+### Simplify
+
+Reviewed the T1/T2 diff for reuse, simplification, efficiency, and altitude. The `commandId`
+binding already captures only the id rather than the whole `SavedCommand`, matching the file's own
+minimal-capture rule; `CommandDefaults.resolve` is reused rather than reimplemented; and
+`.id(agentCommands)` follows the existing `.id(menuCommands)` precedent in `RunCommandMenu.swift`.
+The Swift code was already clean. `Sources/App/CLAUDE.md`'s two edited passages had drifted past
+the file's ~96-98 char prose wrap and, in the toolbar-capsule sentence, read as a run-on ("`.id`
+rule) while the context submenu needs no key; in the row context menu..."); rewrapped both passages
+and split that sentence, with no change in content.
+
 **Deviations.** None.
 
-**Gate.** `./scripts/ci.sh` exit 0 (840 tests, 0 failures, "CI passed."). `swiftlint lint --quiet
-Sources/App/WorkTaskListView.swift`: zero output, exit 0.
+**Gate.** `./scripts/ci.sh` exit 0 (840 tests, 0 failures, "CI passed.").
