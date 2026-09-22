@@ -1004,3 +1004,33 @@ additions are the only testable part and are pinned.
 `Sources/App/CLAUDE.md`, the spec (D3, D5, D8, `## Verification`), and this plan.
 
 **Gate.** `./scripts/ci.sh` at sign-off.
+
+### 2026-09-21 — Operator's call: the ⌘R row reads the bare command name
+
+**Decision.** The Worktree menu's ⌘R row shows the primary command's **bare** name — "Build", not
+"Run Build" — with "Run" only as the disabled empty-list placeholder. The operator made this call
+during review, on the build they hand-checked, reversing finding 1 of the entry above. Recorded as
+spec **D18**; criterion 5 now states the bare name rather than "Run \<name>", so the two no longer
+disagree.
+
+**Why.** The Run submenu heading sits directly below the row and already supplies the verb, so the
+row repeating it is redundant. The finding's other half stands and was not touched: `title` stays
+deleted from both action structs and each primary row still builds its own string off its own
+`primary`, so no struct can hold a title that disagrees with the command or app beside it. The ⌘O
+row is unchanged and still renders "Open in \<label>".
+
+**Change.** `RunPrimaryMenuItem.title` is `actions?.primary?.name ?? "Run"`. Its doc comment, the
+`WorktreeCommands.swift` entry in `Sources/App/CLAUDE.md`, and spec criteria 5 and 10, D4 and D9 all
+say the bare name and name the decision's owner and date.
+
+**Everything else from d3c4300 is kept:** the non-optional `WorktreeOpenInActions.primary`, the
+single recursive `matches(in:labelled:)` with its exactly-one-match rule and its log line, the ⌃⌘O
+and ⇧⌘O declined pins, and the two doc corrections.
+
+**Gate.** The review pass never compiled its edits, so this run was the first build of d3c4300.
+`./scripts/ci.sh` — passed after the last edit. 788 tests, 0 failures; SwiftLint clean;
+`==> CI passed.` (`set -euo pipefail`, banner last, so exit 0). **d3c4300 introduced no compile,
+lint or test failure**, so nothing beyond this entry's own change was needed.
+
+**Files.** `Sources/App/WorktreeCommands.swift`, `Sources/App/CLAUDE.md`, the spec (D4, D9, D18,
+criteria 5 and 10), and this plan.

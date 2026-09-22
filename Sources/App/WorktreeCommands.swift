@@ -101,8 +101,10 @@ extension FocusedValues {
     }
 }
 
-/// Worktree ▸ Run <name>. An empty command list leaves the generic "Run" with nothing to run, so
-/// the row greys.
+/// Worktree ▸ <name>, the row that carries ⌘R. The title is the primary command's **bare** name —
+/// "Build", not "Run Build" — the operator's call, made 2026-09-21 during review: the Run submenu
+/// heading directly below already supplies the verb. An empty command list leaves the generic "Run"
+/// with nothing to run, so the row greys.
 struct RunPrimaryMenuItem: View {
     @FocusedValue(\.worktreeRunActions) private var actions: WorktreeRunActions?
 
@@ -115,12 +117,7 @@ struct RunPrimaryMenuItem: View {
         .disabled(actions?.primary == nil)
     }
 
-    /// The verb is the row's, not the primary command's: `SavedCommandManager.runButtonTitle` is
-    /// the bare name, which is what the toolbar's label half wants and what a menu row cannot be.
-    private var title: String {
-        guard let command = actions?.primary else { return "Run" }
-        return "Run \(command.name)"
-    }
+    private var title: String { actions?.primary?.name ?? "Run" }
 }
 
 /// Worktree ▸ Run…, the row that carries ⌥⌘R. It exists because the Run submenu below it cannot:

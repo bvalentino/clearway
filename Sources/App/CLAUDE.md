@@ -45,7 +45,7 @@
   `ghostty_app_new` still leaves the task list rendering and setting a selection.
   `newTabAction` / `newAgentTabAction` still split the two and are the known exceptions.
 - `WorktreeCommands.swift` / `ToolbarSplitButtonMenu.swift` — the Worktree menu, which `ClearwayApp`
-  declares as one `CommandMenu("Worktree")` holding six rows in this order: "Run \<name>" ⌘R,
+  declares as one `CommandMenu("Worktree")` holding six rows in this order: "\<name>" ⌘R,
   "Run…" ⌥⌘R, a Run submenu, "Open in \<app>" ⌘O, "Open in…" ⌥⌘O, an Open in submenu. Each row is
   its own small `View` in `WorktreeCommands.swift`, which is also where all four keys are declared
   and the only place they are.
@@ -62,12 +62,14 @@
   unreachable `guard` behind an enabled row, and the two `.disabled` spellings state the gate
   difference instead of hiding it. Both carry the **whole** list (`commands`, `apps`), not the
   toolbar's `menuCommands` / `menuOpenInApps`: the toolbar omits the primary because its label half
-  runs it, and the menu bar has no label half. **Each primary row writes its own title** rather than
-  reusing the toolbar's: `runButtonTitle` is the bare command name, which is what a label half
-  wants and what a menu row cannot be, so the row renders `"Run \(name)"` and keeps the bare "Run"
-  for the empty list. `openInButtonTitle` already carries its verb, but the row builds the same
-  string off `primary` for symmetry, so neither struct holds a title that could disagree with the
-  app or command beside it. "Run \<name>" is the one row gated on `primary` rather than
+  runs it, and the menu bar has no label half. **Each primary row writes its own title** off its own
+  `primary` rather than reusing the toolbar's, so neither struct holds a title that could disagree
+  with the app or command beside it. **The ⌘R row reads the primary command's bare name** — "Build",
+  not "Run Build" — with "Run" only as the empty-list placeholder. That is the operator's call, made
+  2026-09-21 during review on a hand-checked build, after the review pass had changed the row to
+  "Run \<name>": the Run submenu heading directly below the row already supplies the verb. The ⌘O row
+  renders "Open in \<label>", the same string `openInButtonTitle` carries. The ⌘R row is the one
+  gated on `primary` rather than
   on the value itself, so an empty command list greys it while "Run…" and the Run submenu stay
   live and keep the "Add Command…" door reachable; all three Open in rows grey together, since their
   value is already nil on an empty app list — and an empty list draws no toolbar button, so "Open
