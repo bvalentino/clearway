@@ -148,7 +148,8 @@
   the macOS 26 availability check `ToolbarSpacer` needs in one place.
   `.navigationTitle` goes the other way: `ContentView`'s sits **outside** the split view and
   overrides anything a column sets, so a per-destination window title is resolved in its
-  `navigationTitle` property, not by a `.navigationTitle` inside the detail column.
+  `navigationTitle` property, not by a `.navigationTitle` inside the detail column. A worktree's
+  title is `WorktreeRow.rowTexts`' primary text, so the title and the sidebar row share one rule.
 - **A button never hand-builds its glass.** Buttons take the system styles — `.glass` /
   `.glassProminent`, with `.bordered` / `.borderedProminent` below macOS 26 — through
   `GlassButtonStyles.swift`, which owns that availability split. `.glassEffect` plus a stroke is

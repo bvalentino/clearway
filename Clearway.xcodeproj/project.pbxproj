@@ -24,6 +24,7 @@
 		1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */; };
 		1C0C9220DD391A138677F535 /* WindowCloseHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEC43B5EF5242E06AB0DC20 /* WindowCloseHandlerTests.swift */; };
 		1D79BDC62A43580E0D889E6C /* GitResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF04318569BD95EFE4C470CA /* GitResolver.swift */; };
+		1E955F5207C824719D4C7EEC /* WindowTitleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C74599CAA9DDA323490A5AA /* WindowTitleTests.swift */; };
 		222FF87C53125F949F18D3BB /* OpenInApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D3BF64BBAC0135924F15299 /* OpenInApp.swift */; };
 		228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */; };
 		2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1F48D279D802C46C9A7164 /* WorkTask.swift */; };
@@ -201,6 +202,7 @@
 		0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAsideView.swift; sourceTree = "<group>"; };
 		0BBE75EDA8AD2C88EEA34AEC /* WorktreeGroupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeGroupTests.swift; sourceTree = "<group>"; };
 		0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
+		0C74599CAA9DDA323490A5AA /* WindowTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTitleTests.swift; sourceTree = "<group>"; };
 		111635747B13F014EEF1AB32 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		1138041E022C758DED6DA7B5 /* YAMLHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YAMLHelpers.swift; sourceTree = "<group>"; };
 		1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookInstallerTests.swift; sourceTree = "<group>"; };
@@ -434,6 +436,7 @@
 				559C61A49130CBB58157612B /* TerminalManagerTests.swift */,
 				0C58029EBBB6F3D3E03A8FDE /* TestHelpers.swift */,
 				BEEC43B5EF5242E06AB0DC20 /* WindowCloseHandlerTests.swift */,
+				0C74599CAA9DDA323490A5AA /* WindowTitleTests.swift */,
 				1BD0D090798FCFAF18898AA7 /* WorkTaskCoordinatorTests.swift */,
 				945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */,
 				09830C5C5C57BECC73694B93 /* WorkTaskManagerWatcherTests.swift */,
@@ -1014,6 +1017,7 @@
 				75AE7FFC553C6C15E5FEC328 /* TerminalManagerTests.swift in Sources */,
 				D98DC71E772EBE02BBE7ED28 /* TestHelpers.swift in Sources */,
 				1C0C9220DD391A138677F535 /* WindowCloseHandlerTests.swift in Sources */,
+				1E955F5207C824719D4C7EEC /* WindowTitleTests.swift in Sources */,
 				1982D71D58885C76ED3C514C /* WorkTaskCoordinatorTests.swift in Sources */,
 				12AD5E5827F35FCBB3875D86 /* WorkTaskManagerTests.swift in Sources */,
 				7948BECFE863C3076C46407D /* WorkTaskManagerWatcherTests.swift in Sources */,
