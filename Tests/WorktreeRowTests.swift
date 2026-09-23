@@ -36,13 +36,33 @@ final class WorktreeRowTextTests: XCTestCase {
         XCTAssertEqual(texts.subtitle, "feature-x")
     }
 
-    func testNeitherLeavesBothNil() {
+    func testNeitherFallsBackToTheBranchWithNoSubtitle() {
         let texts = WorktreeRow.rowTexts(
             for: makeWorktree(branch: "feature-x", path: "/tmp/feature-x"),
             name: nil,
             taskTitle: nil
         )
-        XCTAssertNil(texts.primaryText)
+        XCTAssertEqual(texts.primaryText, "feature-x")
+        XCTAssertNil(texts.subtitle)
+    }
+
+    func testADetachedWorktreeWithNeitherShowsDetached() {
+        let texts = WorktreeRow.rowTexts(
+            for: makeWorktree(branch: nil, path: "/tmp/loose", headStatus: .detached),
+            name: nil,
+            taskTitle: nil
+        )
+        XCTAssertEqual(texts.primaryText, "(detached)")
+        XCTAssertNil(texts.subtitle)
+    }
+
+    func testMainShowsItsBranch() {
+        let texts = WorktreeRow.rowTexts(
+            for: makeWorktree(branch: "main", path: "/tmp/repo", isMain: true),
+            name: nil,
+            taskTitle: nil
+        )
+        XCTAssertEqual(texts.primaryText, "main")
         XCTAssertNil(texts.subtitle)
     }
 
