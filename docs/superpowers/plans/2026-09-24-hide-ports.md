@@ -222,3 +222,25 @@ removes the key) passed against the stubs, as expected: they pin behaviour a no-
 **Deviations.** None.
 
 **Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 880 tests, 0 failures, lint clean.
+
+### T2: PortLink.copyURL
+
+| File | State |
+| --- | --- |
+| `Sources/App/PortLink.swift` | Imports `AppKit` in place of `Foundation`. `copyURL(_:to:)` calls `clearContents()` then `setString(urlString(port), forType: .string)`. No default pasteboard. |
+| `Tests/PortLinkTests.swift` | Imports `AppKit`. 2 cases against a uniquely named `NSPasteboard`, released with `defer`: 3000 copies as `http://localhost:3000`; a `"stale"` string is replaced by exactly `http://localhost:5174`. |
+
+**Evidence.** Tests were written first and run against an empty `copyURL` body. `./scripts/ci.sh`
+exited 65:
+
+```
+✖ testCopyURLReplacesThePreviousContents, XCTAssertEqual failed: ("Optional("stale")") is not equal to ("Optional("http://localhost:5174")")
+✖ testCopyURLWritesTheURLString, XCTAssertEqual failed: ("nil") is not equal to ("Optional("http://localhost:3000")")
+```
+
+**Deviations.** The plan allowed `defer` or `addTeardownBlock` for the release. `addTeardownBlock`
+does not compile: its closure is `sending`, and capturing the non-`Sendable` `NSPasteboard` fails
+with `Sending 'pasteboard' risks causing data races`. Each test uses `defer` instead.
+
+**Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures.
+`grep -n "general" Tests/PortLinkTests.swift` prints nothing.
