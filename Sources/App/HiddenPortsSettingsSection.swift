@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Settings → Hidden Ports. Its own file so `SettingsView` stays a plain `Form`.
 struct HiddenPortsSettingsSection: View {
 
     @ObservedObject var settings: SettingsManager
