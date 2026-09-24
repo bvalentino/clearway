@@ -36,6 +36,22 @@ enum DetailSelection: Hashable {
         case .prompts, .commands, .none: return .noPanel
         }
     }
+
+    /// The window title for a destination. Pure so it can be tested, like `bottomPanelAction`.
+    /// Exhaustive on purpose: a new destination must name its title.
+    static func windowTitle(
+        for selection: DetailSelection?,
+        projectName: String,
+        worktreeTitle: (Worktree) -> String
+    ) -> String {
+        switch selection {
+        case .tasks: return "Tasks"
+        case .prompts: return "Prompts"
+        case .commands: return "Commands"
+        case .worktree(let wt): return worktreeTitle(wt)
+        case .none: return projectName
+        }
+    }
 }
 
 /// The bottom panel a destination hosts, if any.
@@ -514,7 +530,13 @@ struct ContentView: View {
     /// this modifier sits outside the `NavigationSplitView` and overrides anything a column sets,
     /// measured in a standalone probe.
     private var navigationTitle: String {
-        detailSelection == .commands ? "Commands" : projectName
+        DetailSelection.windowTitle(for: detailSelection, projectName: projectName) { wt in
+            WorktreeRow.rowTexts(
+                for: wt,
+                name: groupManager.name(for: wt),
+                taskTitle: wt.branch.flatMap { workTaskManager.titlesByBranch[$0] }
+            ).primaryText
+        }
     }
 
     private var currentWorktree: Worktree? {

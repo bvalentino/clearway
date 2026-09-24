@@ -4,7 +4,7 @@ import SwiftUI
 
 struct WorktreeRow: View {
     let worktree: Worktree
-    var primaryText: String? = nil
+    var primaryText: String
     var subtitle: String? = nil
     var hasNotification: Bool = false
     var phase: AgentPhase = .idle
@@ -12,16 +12,16 @@ struct WorktreeRow: View {
     var shortcutIndex: Int? = nil
     var status: WorktreeStatus? = nil
 
-    /// The row's text precedence: a stored name wins, the linked task title fills the slot when
-    /// there is none, and the branch is the subtitle behind whichever won. With neither, both are
-    /// `nil` and the body falls back to `worktree.displayName` alone. Main carries no name because
-    /// `WorktreeGroupManager.name(for:)` refuses it, not because of a branch here.
+    /// The whole text precedence, read by both this row and the window title: a stored name wins,
+    /// the linked task title fills the slot when there is none, and `displayName` stands alone with
+    /// neither. The branch is the subtitle only behind a name or task title. Main carries no name
+    /// because `WorktreeGroupManager.name(for:)` refuses it, not because of a branch here.
     static func rowTexts(
         for wt: Worktree,
         name: String?,
         taskTitle: String?
-    ) -> (primaryText: String?, subtitle: String?) {
-        guard let primaryText = name ?? taskTitle else { return (nil, nil) }
+    ) -> (primaryText: String, subtitle: String?) {
+        guard let primaryText = name ?? taskTitle else { return (wt.displayName, nil) }
         return (primaryText, wt.displayName)
     }
 
@@ -36,7 +36,7 @@ struct WorktreeRow: View {
         Label {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let primaryText, let subtitle, !subtitle.isEmpty {
+                    if let subtitle, !subtitle.isEmpty {
                         Text(primaryText)
                             .lineLimit(1)
                         Text(subtitle)
@@ -44,7 +44,7 @@ struct WorktreeRow: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     } else {
-                        Text(primaryText ?? worktree.displayName)
+                        Text(primaryText)
                             .lineLimit(1)
                     }
                 }
