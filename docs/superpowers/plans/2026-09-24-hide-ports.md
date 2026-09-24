@@ -278,3 +278,12 @@ site is `ContentView.swift:973`, inside a project window.
 
 **Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures, CI passed.
 `swiftlint lint --quiet` on both files reports nothing.
+
+### Simplify
+
+Four review agents (reuse, simplification, efficiency, altitude) found the diff clean — no code
+changes applied. Four raised findings were skipped as contradicting decisions already settled and
+approved in the spec: two "redundant" test cases in `PortAttributionTests`/`PortLinkTests` each
+pin a distinct case the Testing strategy section requires; keying `hiddenPorts` per-worktree and
+moving `visible(_:hiding:)` off `PortAttribution` were both explicitly considered and rejected as
+D1 and D5.
