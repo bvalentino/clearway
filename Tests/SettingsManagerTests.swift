@@ -311,4 +311,54 @@ final class SettingsManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.menuOpenInApps, [finder, cursor])
     }
+
+    // MARK: - Hidden ports
+
+    func test_hiddenPorts_isEmptyOnAFreshSuite() {
+        let manager = SettingsManager(defaults: defaults)
+        XCTAssertEqual(manager.hiddenPorts, [])
+    }
+
+    func test_hidePort_persistsAcrossInstances() {
+        let first = SettingsManager(defaults: defaults)
+        first.hidePort(5174)
+
+        let second = SettingsManager(defaults: defaults)
+        XCTAssertEqual(second.hiddenPorts, [5174])
+    }
+
+    func test_unhidePort_removesThePortAndTheRemovalPersists() {
+        let first = SettingsManager(defaults: defaults)
+        first.hidePort(443)
+        first.hidePort(5174)
+
+        first.unhidePort(443)
+
+        XCTAssertEqual(first.hiddenPorts, [5174])
+        XCTAssertEqual(SettingsManager(defaults: defaults).hiddenPorts, [5174])
+    }
+
+    func test_unhidingTheLastPort_removesTheKey() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.hidePort(443)
+
+        manager.unhidePort(443)
+
+        XCTAssertNil(defaults.object(forKey: SettingsKey.hiddenPorts))
+    }
+
+    func test_hidePortTwice_keepsOneEntry() {
+        let manager = SettingsManager(defaults: defaults)
+        manager.hidePort(443)
+        manager.hidePort(443)
+
+        XCTAssertEqual(manager.hiddenPorts, [443])
+        XCTAssertEqual(defaults.array(forKey: SettingsKey.hiddenPorts) as? [Int], [443])
+    }
+
+    func test_storedOutOfRangeValues_areDropped() {
+        defaults.set([80, 70000, -1], forKey: SettingsKey.hiddenPorts)
+
+        XCTAssertEqual(SettingsManager(defaults: defaults).hiddenPorts, [80])
+    }
 }

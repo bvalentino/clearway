@@ -101,4 +101,22 @@ final class PortAttributionTests: XCTestCase {
 
         XCTAssertEqual(PortAttribution.attribute(listeners, to: [pathless]), [:])
     }
+
+    // MARK: - visible(_:hiding:)
+
+    func testVisibleDropsHiddenPortsAndKeepsOrder() {
+        XCTAssertEqual(PortAttribution.visible([3000, 5174, 8080], hiding: [5174]), [3000, 8080])
+    }
+
+    func testVisibleWithNothingHiddenReturnsTheInput() {
+        XCTAssertEqual(PortAttribution.visible([3000, 5174], hiding: []), [3000, 5174])
+    }
+
+    func testVisibleWithEveryPortHiddenReturnsNothing() {
+        XCTAssertEqual(PortAttribution.visible([3000, 5174], hiding: [3000, 5174]), [])
+    }
+
+    func testVisibleIgnoresAHiddenPortThatIsNotListed() {
+        XCTAssertEqual(PortAttribution.visible([3000, 5174], hiding: [443]), [3000, 5174])
+    }
 }

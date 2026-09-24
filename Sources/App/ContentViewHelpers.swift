@@ -84,6 +84,7 @@ struct WorktreeStatusBar: View {
     let onToggleSecondary: () -> Void
     @EnvironmentObject private var worktreeManager: WorktreeManager
     @EnvironmentObject private var portMonitor: PortMonitor
+    @EnvironmentObject private var settings: SettingsManager
 
     private var secondaryToggleLabel: String {
         secondaryVisible ? "Hide secondary terminal" : "Show secondary terminal"
@@ -130,7 +131,8 @@ struct WorktreeStatusBar: View {
 
     private var livePorts: [UInt16] {
         guard let worktree else { return [] }
-        return PortAttribution.attribute(portMonitor.listeners, to: worktreeManager.worktrees)[worktree.id] ?? []
+        let attributed = PortAttribution.attribute(portMonitor.listeners, to: worktreeManager.worktrees)[worktree.id] ?? []
+        return PortAttribution.visible(attributed, hiding: settings.hiddenPorts)
     }
 
     @ViewBuilder
@@ -148,6 +150,10 @@ struct WorktreeStatusBar: View {
                             if let url = PortLink.url(port) { NSWorkspace.shared.open(url) }
                         }
                         .help(PortLink.urlString(port))
+                        .contextMenu {
+                            Button("Hide Port") { settings.hidePort(port) }
+                            Button("Copy URL") { PortLink.copyURL(port, to: .general) }
+                        }
                 }
             }
         }

@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Clearway
 
@@ -20,5 +21,25 @@ final class PortLinkTests: XCTestCase {
         XCTAssertEqual(PortLink.urlString(1), "http://localhost:1")
         XCTAssertEqual(PortLink.urlString(8080), "http://localhost:8080")
         XCTAssertEqual(PortLink.urlString(65535), "http://localhost:65535")
+    }
+
+    func testCopyURLWritesTheURLString() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        PortLink.copyURL(3000, to: pasteboard)
+        XCTAssertEqual(pasteboard.string(forType: .string), "http://localhost:3000")
+    }
+
+    func testCopyURLReplacesThePreviousContents() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setString("stale", forType: .string)
+        PortLink.copyURL(5174, to: pasteboard)
+        XCTAssertEqual(pasteboard.string(forType: .string), "http://localhost:5174")
+    }
+
+    private func makePasteboard() -> NSPasteboard {
+        NSPasteboard(name: NSPasteboard.Name("PortLinkTests." + UUID().uuidString))
     }
 }

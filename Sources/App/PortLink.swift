@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// The text a live port renders as, and the URL it opens.
 ///
@@ -18,5 +18,10 @@ enum PortLink {
 
     static func url(_ port: UInt16) -> URL? {
         URL(string: urlString(port))
+    }
+
+    static func copyURL(_ port: UInt16, to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        pasteboard.setString(urlString(port), forType: .string)
     }
 }
