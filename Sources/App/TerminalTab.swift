@@ -10,6 +10,11 @@ func shellEscape(_ path: String) -> String {
 struct TerminalTab {
     let id: UUID
     let surface: Ghostty.SurfaceView
+    let name: String?
+
+    static func displayTitle(name: String?, surfaceTitle: String) -> String {
+        name ?? (surfaceTitle.isEmpty ? "Terminal" : surfaceTitle)
+    }
 }
 
 /// The collection of tabs shown in the main terminal panel for a worktree.

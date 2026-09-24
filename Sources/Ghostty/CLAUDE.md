@@ -3,8 +3,8 @@
 - `Ghostty.SurfaceView.swift` — `NSView` hosting a `ghostty_surface_t` (input, rendering).
   Nothing on it is reachable from XCTest: an instance is needed to call anything, and the
   initializer needs a real `ghostty_app_t`. So any decision rule here is lifted out into a pure
-  helper that gets tested instead — the same split `TerminalManager.revealSecondaryForHook` makes
-  for panel visibility.
+  helper that gets tested instead — the same split `TerminalManager.firstTabSource` makes
+  for a worktree's first tab.
   A focused surface swallows **every** Cmd/Ctrl combo, encoding it for the shell, unless the app
   claims it via `SurfaceView.claimsShortcut` — one **static** provider wired in `ClearwayApp.init`
   to `AppKeyboardShortcuts.claims`. Process-scoped, not per-window: the value must stay

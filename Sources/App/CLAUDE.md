@@ -211,10 +211,11 @@
   the pool, not the terminal, waits on the watcher.
   `ContentView`'s single `onChange(of: lastCreatedBranch)` handler then runs, in order:
   `completePendingCreate` (relocate `TASK.md`, return its command with `{{ task_path }}` resolved
-  to the relocated file), the shadow task, the creation mark — which **carries that command** —
-  the selection, and the afterCreate hook. The handler launches nothing itself: the command rides
-  the mark into `TerminalManager.pane(for:)` and becomes the worktree's **first** tab, in place of
-  the Settings → Main Terminal tab a created worktree otherwise opens. Running it from the handler
+  to the relocated file), the shadow task, the creation mark — which **carries that command and
+  the After create hook** — and the selection. The handler launches nothing itself: the command
+  rides the mark into `TerminalManager.pane(for:)` and becomes the worktree's **first** tab, in
+  place of the Settings → Main Terminal tab a created worktree otherwise opens, and `appendTab`
+  runs the hook in a Setup tab after that first tab. Running the command from the handler
   instead opened both, since `markWorktreeCreated` had already claimed the first tab for the Main
   Terminal agent. Relocation still precedes the launch — the mark is read only when the pane is
   built, which cannot happen before the handler reaches `markWorktreeCreated`. Nothing has ever
@@ -331,7 +332,13 @@
   escaped. A `nil` path leaves the token verbatim rather than blanking it: a command that names no
   task has nothing to say about one, and an empty argument reads as a malformed path.
 - `TerminalManager.appendTab` is the one door every main tab goes through: it builds the
-  `Ghostty.SurfaceView` with its command up front, appends, activates and focuses. No tab is ever
+  `Ghostty.SurfaceView` with its command up front, appends, and by default activates and focuses.
+  The Setup tab is the one caller that passes `activate: false`, with `name: "Setup"`: when a
+  pane's first tab is appended and `takeSetupHook` finds a pending After create hook,
+  `openSetupTab` (`TerminalManager+Setup.swift`) appends it right after, in the background, and
+  pastes the hook at its first prompt. `pendingSetupHooks` is kept apart from `createdWorktrees`
+  because `takeFirstTabSource` consumes the creation mark before an agent first tab lands, so the
+  hook cannot ride that mark to the append. No tab is ever
   an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
   shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
   created pass an agent command built by
@@ -370,7 +377,7 @@
   itself an Enter. Trimming the ends is the **whole** guarantee — an interior newline still
   arrives as an Enter on a target without bracketed paste, as it did under `sendPaste`, and
   closing that needs a bracketed-paste query the C API does not expose. `sendPaste` survives only
-  for `TerminalManager+Panels.swift`'s hook command, where Enter is wanted; no prompt-delivery
+  for `TerminalManager+Setup.swift`'s Setup hook, where Enter is wanted; no prompt-delivery
   path names it.
   `promptDelivery`, `stagedText` and `proceedsWithLaunch` are `static` so all three rules are
   testable without a `ghostty_app_t`.

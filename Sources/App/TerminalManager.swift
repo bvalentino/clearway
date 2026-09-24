@@ -230,12 +230,23 @@ class TerminalManager: ObservableObject {
     /// "Run after create" command its sheet picked (`nil` when the picker was at None).
     private var createdWorktrees: [String: SavedCommand?] = [:]
 
+    /// The After create hook each created worktree still has to run in its Setup tab.
+    private var pendingSetupHooks: [String: String] = [:]
+
     /// Record that Clearway created this worktree, and the command its create sheet picked, so the
     /// first tab is built from both. Called from the single point every creation door funnels
     /// through — `WorktreeManager`'s `lastCreatedBranch`, which both the sidebar sheet and a task
     /// launch reach.
-    func markWorktreeCreated(_ worktree: Worktree, afterCreateCommand: SavedCommand?) {
+    func markWorktreeCreated(_ worktree: Worktree, afterCreateCommand: SavedCommand?, setupHook: String?) {
         createdWorktrees[worktree.id] = afterCreateCommand
+        pendingSetupHooks[worktree.id] = setupHook
+    }
+
+    /// The After create hook still pending for this worktree, consuming it.
+    ///
+    /// Internal (not private) so tests can reach it without a `ghostty_app_t`.
+    func takeSetupHook(for worktreeId: String) -> String? {
+        pendingSetupHooks.removeValue(forKey: worktreeId)
     }
 
     /// What this worktree's first tab runs, consuming the creation mark.
@@ -330,29 +341,40 @@ class TerminalManager: ObservableObject {
         panes[worktreeId]?.main.activeId
     }
 
-    /// Append a tab running `command` — or a login shell when it is nil — and activate it.
+    /// Append a tab running `command` — or a login shell when it is nil — activating and focusing
+    /// it unless `activate` is false.
     ///
     /// Creates the pane on the fly when it does not exist yet. The sole door: every main tab in
-    /// the app is made here.
+    /// the app is made here, the Setup tab included — a pane's first tab opens it right behind
+    /// itself when the worktree has an After create hook pending.
     @discardableResult
-    func appendTab(for worktree: Worktree, app: ghostty_app_t, command: String? = nil) -> Ghostty.SurfaceView {
+    func appendTab(
+        for worktree: Worktree,
+        app: ghostty_app_t,
+        command: String? = nil,
+        name: String? = nil,
+        activate: Bool = true
+    ) -> Ghostty.SurfaceView {
         let key = worktree.id
         let existingPane = panes[key]
+        let isFirstTab = existingPane?.main.tabs.isEmpty ?? true
         let surface = makeSurface(
             app,
             workingDirectory: existingPane?.secondary.initialWorkingDirectory ?? worktree.path,
             command: command,
             owner: .worktree(key)
         )
-        let newTab = TerminalTab(id: UUID(), surface: surface)
+        let newTab = TerminalTab(id: UUID(), surface: surface, name: name)
 
         if existingPane != nil {
             panes[key]?.main.tabs.append(newTab)
-            panes[key]?.main.activeId = newTab.id
+            if activate {
+                panes[key]?.main.activeId = newTab.id
+            }
         } else {
             ghosttyApp = app
             let secondary = makeSurface(app, workingDirectory: worktree.path, owner: .worktree(key))
-            let mainTerminal = MainTerminal(tabs: [newTab], activeId: newTab.id)
+            let mainTerminal = MainTerminal(tabs: [newTab], activeId: activate ? newTab.id : nil)
             panes[key] = TerminalPane(main: mainTerminal, secondary: secondary)
             if !openWorktreeIds.contains(key) {
                 openWorktreeIds.append(key)
@@ -361,7 +383,12 @@ class TerminalManager: ObservableObject {
         }
 
         objectWillChange.send()
-        transferFirstResponder(to: surface)
+        if activate {
+            transferFirstResponder(to: surface)
+        }
+        if isFirstTab, let hook = takeSetupHook(for: key) {
+            openSetupTab(for: worktree, app: app, hook: hook)
+        }
         return surface
     }
 
@@ -518,10 +545,17 @@ class TerminalManager: ObservableObject {
     ///
     /// Removes the pane entry first so the close-surface observer doesn't
     /// try to restart the dying shells, then sends SIGHUP via `closeSurface()`.
+    ///
+    /// Runs `cleanupState` even when no pane exists: a worktree Clearway just created can be
+    /// removed before its first tab is ever built, and its pending Setup hook and creation mark
+    /// still have to be dropped, not left keyed on a worktree id nothing will reuse.
     func closeWorktree(_ worktreeId: String) {
-        guard let pane = panes.removeValue(forKey: worktreeId) else { return }
-        retire(pane)
+        let pane = panes.removeValue(forKey: worktreeId)
+        if let pane {
+            retire(pane)
+        }
         cleanupState(for: worktreeId)
+        guard let pane else { return }
         for tab in pane.main.tabs {
             tab.surface.closeSurface()
         }
@@ -532,6 +566,7 @@ class TerminalManager: ObservableObject {
         openWorktreeIds.removeAll(where: { $0 == worktreeId })
         notifiedWorktrees.remove(worktreeId)
         createdWorktrees.removeValue(forKey: worktreeId)
+        pendingSetupHooks.removeValue(forKey: worktreeId)
         recentRestarts.removeValue(forKey: worktreeId)
         asideVisible.removeValue(forKey: worktreeId)
         secondaryVisible.removeValue(forKey: worktreeId)

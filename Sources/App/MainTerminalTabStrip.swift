@@ -76,6 +76,7 @@ private struct TabChip: View {
 private struct TerminalTabChip: View {
     @ObservedObject var surface: Ghostty.SurfaceView
     @EnvironmentObject private var toolNames: AgentActivityMonitor.ToolNames
+    let name: String?
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -84,7 +85,7 @@ private struct TerminalTabChip: View {
 
     var body: some View {
         TabChip(
-            title: surface.title.isEmpty ? "Terminal" : surface.title,
+            title: TerminalTab.displayTitle(name: name, surfaceTitle: surface.title),
             toolName: toolNames.bySurface[surface.surfaceId.uuidString],
             isActive: isActive,
             onActivate: onActivate,
@@ -263,6 +264,7 @@ struct MainTerminalTabStrip: View {
 
         return TerminalTabChip(
             surface: tab.surface,
+            name: tab.name,
             isActive: isActive,
             onActivate: onActivate,
             onClose: onClose,
