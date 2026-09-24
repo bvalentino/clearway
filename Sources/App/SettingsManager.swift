@@ -11,6 +11,7 @@ enum SettingsKey {
     static let agentHooksEnabled = "clearway.agentHooksEnabled"
     static let openInApps = "clearway.openInApps"
     static let lastUsedOpenInApp = "clearway.lastUsedOpenInApp"
+    static let hiddenPorts = "clearway.hiddenPorts"
 }
 
 enum ColorSchemePreference: String, CaseIterable, Identifiable {
@@ -150,6 +151,28 @@ class SettingsManager: ObservableObject {
         lastUsedOpenInAppId = app.id
     }
 
+    @Published private(set) var hiddenPorts: Set<UInt16> {
+        didSet {
+            if hiddenPorts.isEmpty {
+                defaults.removeObject(forKey: SettingsKey.hiddenPorts)
+            } else {
+                defaults.set(hiddenPorts.sorted().map(Int.init), forKey: SettingsKey.hiddenPorts)
+            }
+        }
+    }
+
+    /// `hidePort` and `unhidePort` are the only writers, and each returns without publishing when
+    /// the set would not change, for the reason `recordOpenInUse` gives.
+    func hidePort(_ port: UInt16) {
+        guard !hiddenPorts.contains(port) else { return }
+        hiddenPorts.insert(port)
+    }
+
+    func unhidePort(_ port: UInt16) {
+        guard hiddenPorts.contains(port) else { return }
+        hiddenPorts.remove(port)
+    }
+
     @Published var colorScheme: ColorSchemePreference {
         didSet {
             defaults.set(colorScheme.rawValue, forKey: SettingsKey.colorScheme)
@@ -167,6 +190,8 @@ class SettingsManager: ObservableObject {
         self.promptsDirectory = defaults.string(forKey: SettingsKey.promptsDirectory) ?? Self.defaultPromptsDirectory
         self.lastUsedOpenInAppId = defaults.string(forKey: SettingsKey.lastUsedOpenInApp)
             .flatMap(UUID.init(uuidString:))
+        let storedHiddenPorts = defaults.array(forKey: SettingsKey.hiddenPorts) as? [Int] ?? []
+        self.hiddenPorts = Set(storedHiddenPorts.compactMap(UInt16.init(exactly:)))
         let stored = defaults.string(forKey: SettingsKey.colorScheme)
         self.colorScheme = stored.flatMap(ColorSchemePreference.init(rawValue:)) ?? .system
         let storedData = defaults.data(forKey: SettingsKey.openInApps)

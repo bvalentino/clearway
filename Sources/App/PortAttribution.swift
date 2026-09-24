@@ -25,4 +25,8 @@ enum PortAttribution {
         }
         return ports.mapValues { $0.sorted() }
     }
+
+    static func visible(_ ports: [UInt16], hiding hidden: Set<UInt16>) -> [UInt16] {
+        ports.filter { !hidden.contains($0) }
+    }
 }
