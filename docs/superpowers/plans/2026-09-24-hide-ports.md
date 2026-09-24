@@ -244,3 +244,20 @@ with `Sending 'pasteboard' risks causing data races`. Each test uses `defer` ins
 
 **Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures.
 `grep -n "general" Tests/PortLinkTests.swift` prints nothing.
+
+### T3: Status bar filters hidden ports and gains the context menu
+
+| File | State |
+| --- | --- |
+| `Sources/App/ContentViewHelpers.swift` | `WorktreeStatusBar` reads `@EnvironmentObject private var settings: SettingsManager`. `livePorts` passes the attribution result through `PortAttribution.visible(_:hiding: settings.hiddenPorts)`. Each port `Text` gains `.contextMenu` with "Hide Port" → `settings.hidePort(port)` then "Copy URL" → `PortLink.copyURL(port, to: .general)`, after the unchanged `.contentShape`, `.pointerCursorOnHover()`, `.onTapGesture` and `.help`. |
+
+**Evidence.** No new test. Both rules this task applies are already pinned by tests that were
+watched failing in T1 (`visible(_:hiding:)`, `hidePort`) and T2 (`copyURL`). What remains is SwiftUI
+wiring, the context menu, and live redraw, which the spec assigns to the operator's manual check
+(D13). `SettingsManager` reaches the status bar through `.clearwayChrome(settings)`; its only call
+site is `ContentView.swift:973`, inside a project window.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures, CI passed.
+`swiftlint lint --quiet Sources/App/ContentViewHelpers.swift` reports nothing.
