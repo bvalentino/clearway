@@ -261,3 +261,20 @@ site is `ContentView.swift:973`, inside a project window.
 
 **Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures, CI passed.
 `swiftlint lint --quiet Sources/App/ContentViewHelpers.swift` reports nothing.
+
+### T4: Hidden Ports settings section
+
+| File | State |
+| --- | --- |
+| `Sources/App/HiddenPortsSettingsSection.swift` (new) | `Section("Hidden Ports")`: one secondary "None" row when `hiddenPorts` is empty, otherwise one row per `hiddenPorts.sorted()` port with `Text(PortLink.label(port))`, a `Spacer()`, and a borderless `minus.circle` button calling `unhidePort(port)`, with `.help("Unhide")` and `.accessibilityLabel("Unhide")`. No header control, footer, or helper text. |
+| `Sources/App/SettingsView.swift` | `HiddenPortsSettingsSection(settings: settings)` directly after `OpenInAppsSettingsSection(settings: settings)`. |
+
+**Evidence.** No new test. The section is SwiftUI layout only; the rules it relies on
+(`hiddenPorts`, `unhidePort`, persistence) are pinned by the T1 tests watched failing above, and
+`PortLink.label` by the existing `PortLinkTests`. The rendered rows are the operator's manual check
+(D13). `grep -nF '\(port' Sources/App/HiddenPortsSettingsSection.swift` prints nothing.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` after the last source edit: exit 0, 882 tests, 0 failures, CI passed.
+`swiftlint lint --quiet` on both files reports nothing.
