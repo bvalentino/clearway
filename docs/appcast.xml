@@ -6,6 +6,24 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 2.0.1</title>
+      <pubDate>Fri, 25 Sep 2026 14:44:53 +0000</pubDate>
+      <sparkle:version>19</sparkle:version>
+      <sparkle:shortVersionString>2.0.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[
+* Close task terminal when deleted from standalone window
+* Start Now menu items resolve agent commands at click time
+* Task terminal opens at half region height
+* Run After create hook in Setup tab
+* Give each destination its own window title
+* Hide ports from status bar
+
+[v2.0.1 on GitHub](https://github.com/bvalentino/clearway/releases/tag/v2.0.1)
+      ]]></description>
+      <enclosure url="https://github.com/bvalentino/clearway/releases/download/v2.0.1/Clearway-2.0.1-e767f2f.dmg" length="34900872" type="application/octet-stream" sparkle:edSignature="eIZ6wXvGecBFSLMP2DqKeeHD2jzR8ZMBIzUhADvcudY6CDopUN0wjn1B9VvmgBG58i71Id2dHx2B3SdKI7YnCA=="/>
+    </item>
+    <item>
       <title>Version 2.0.0</title>
       <pubDate>Tue, 22 Sep 2026 17:46:24 +0000</pubDate>
       <sparkle:version>18</sparkle:version>
