@@ -10,8 +10,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var createdAt: Date
     var body: String
 
-    /// When true, the task is a shadow task for a worktree — it tracks state but
-    /// stays out of the Tasks backlog until the user exposes it.
+    /// When true, the task is a shadow task for a worktree — linked to it but kept
+    /// out of the Tasks backlog until the user exposes it.
     var hidden: Bool = false
 
     init(id: UUID = UUID(), title: String, worktree: String? = nil, body: String = "") {

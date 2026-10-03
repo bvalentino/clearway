@@ -372,8 +372,8 @@ struct ContentView: View {
 
             let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
-            // Give manual worktrees a hidden shadow task so state tracking works everywhere.
-            // Task-initiated creates already have their task linked, so this is a no-op.
+            // Give manual worktrees a hidden linked task, as task-initiated creates already have.
+            // For those, this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")

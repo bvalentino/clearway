@@ -135,7 +135,7 @@ class WorkTaskManager: ObservableObject {
         return tasks.first { $0.id == task.id }
     }
 
-    /// Creates a hidden shadow task linked to `branch` so the worktree has state tracking
+    /// Creates a hidden shadow task linked to `branch` so the worktree has a task
     /// without cluttering Tasks. Idempotent: returns the existing task if one already
     /// links that branch (so task-initiated worktrees, which create their task first, aren't
     /// shadowed a second time).
