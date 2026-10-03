@@ -32,28 +32,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertNil(coordinator.pendingCreate, "resolving records nothing to complete")
     }
 
-    /// A task that already names a branch keeps it: the derived name would collide with the branch
-    /// the earlier start reserved.
-    func testResolveStartPrefersTheTasksSavedBranchOverADerivedOne() throws {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Ship it") else {
-            XCTFail("createTask returned nil"); return
-        }
-        taskManager.updateFields(id: seed.id) {
-            $0.worktree = "kept-branch"
-            $0.status = WorkTask.ReservedStatus.canceled
-        }
-        guard let canceled = taskManager.freshTask(id: seed.id) else {
-            XCTFail("task missing after cancel"); return
-        }
-
-        guard case .prefill(let prefill) = makeCoordinator(taskManager).resolveStart(canceled) else {
-            XCTFail("expected prefill"); return
-        }
-
-        XCTAssertEqual(prefill.branch, "kept-branch")
-    }
-
     func testResolveStartDerivesTheBranchWhenTheTaskNamesNone() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship It Now") else {
@@ -88,18 +66,40 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(wt, live)
     }
 
-    /// Only a backlog marker starts: an in-progress task's Start Now is a no-op.
-    func testResolveStartIgnoresATaskThatIsNeitherNewNorCanceled() throws {
+    /// The gate is the worktree link, not the file's old `status:` line: an unlinked task starts
+    /// whatever that line says.
+    func testResolveStartPrefillsAnUnlinkedTaskWhoseFileSaysInProgress() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Already running") else {
+        guard let seed = taskManager.createTask(title: "Old file") else {
             XCTFail("createTask returned nil"); return
         }
-        taskManager.updateFields(id: seed.id) { $0.status = WorkTask.ReservedStatus.inProgress }
-        guard let running = taskManager.freshTask(id: seed.id) else {
-            XCTFail("task missing"); return
+        let raw = """
+            ---
+            id: \(seed.id.uuidString)
+            title: Old file
+            status: in_progress
+            ---
+            """
+        try raw.write(toFile: taskManager.filePath(for: seed), atomically: true, encoding: .utf8)
+        taskManager.reloadFromDisk()
+
+        guard case .prefill(let prefill) = makeCoordinator(taskManager).resolveStart(seed) else {
+            XCTFail("expected prefill"); return
         }
 
-        guard case .ignored = makeCoordinator(taskManager).resolveStart(running) else {
+        XCTAssertEqual(prefill.branch, "old-file")
+    }
+
+    /// A link with no live worktree is the window between Create and the worktree going live:
+    /// a second Start Now must not open another sheet for a branch already being created.
+    func testResolveStartIgnoresALinkedTaskWithNoLiveWorktree() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Being created") else {
+            XCTFail("createTask returned nil"); return
+        }
+        taskManager.updateFields(id: seed.id) { $0.worktree = "being-created" }
+
+        guard case .ignored = makeCoordinator(taskManager).resolveStart(seed) else {
             XCTFail("expected ignored"); return
         }
     }

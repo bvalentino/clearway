@@ -304,3 +304,27 @@ against the new signature can run on the unfixed code.
 **Gate:** `./scripts/ci.sh` exit 0 after the last edit (883 tests, 0 failures).
 `grep -rn "taskStatus" Sources/App Tests` returns nothing. `swiftlint lint --quiet` on the touched
 files: no output.
+
+### T2: Start gate uses the worktree link
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `resolveStart` reads no status: linked → `.reuse(wt)` for a live worktree with that branch, else `.ignored`; unlinked → `.prefill` with `deriveBranchName`. The `current.worktree ??` fallback is gone. Doc comment reworded; it now states why a linked, not-live task is ignored |
+| `Sources/App/WorkTaskWindow.swift` | `primaryActionButton` gates on `if let task, task.worktree == nil` |
+| `Tests/WorkTaskCoordinatorTests.swift` | Deleted `testResolveStartPrefersTheTasksSavedBranchOverADerivedOne` and `testResolveStartIgnoresATaskThatIsNeitherNewNorCanceled` (it asserted the old status gate). Added (a) `testResolveStartPrefillsAnUnlinkedTaskWhoseFileSaysInProgress`, written as raw frontmatter text so it survives T8, and (c) `testResolveStartIgnoresALinkedTaskWithNoLiveWorktree`. (b) is the existing `testResolveStartReusesALiveWorktree` |
+
+**Watched failure (RED).** New tests run against the unchanged `resolveStart`; `./scripts/ci.sh` exited 65:
+
+```
+✖ testResolveStartIgnoresALinkedTaskWithNoLiveWorktree, failed - expected ignored
+✖ testResolveStartPrefillsAnUnlinkedTaskWhoseFileSaysInProgress, failed - expected prefill
+Executed 883 tests, with 2 failures (0 unexpected)
+```
+
+**Deviations:** `testResolveStartIgnoresATaskThatIsNeitherNewNorCanceled` was deleted as well as the
+saved-branch test. The plan did not name it, but it pins the status gate this task removes, and test
+(a) is its replacement. The `status:` assertion in `testResolveStartWritesNothing` and the remaining
+status references in the confirm/abandon/stale-snapshot tests are left for T4/T5 as planned; they still pass.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last edit (883 tests, 0 failures). `swiftlint lint --quiet`
+on the three touched files: no output.

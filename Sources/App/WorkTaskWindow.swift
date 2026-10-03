@@ -285,7 +285,7 @@ struct WorkTaskWindow: View {
 
     @ViewBuilder
     private var primaryActionButton: some View {
-        if task?.status == WorkTask.ReservedStatus.new {
+        if let task, task.worktree == nil {
             Button("Start Now") {
                 saveAndStart()
             }

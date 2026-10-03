@@ -59,24 +59,23 @@ class WorkTaskCoordinator: ObservableObject {
         case prefill(StartPrefill)
     }
 
-    /// Start Now. Resolves what the task would start as and writes nothing: the frontmatter write
-    /// belongs to Create, so a sheet the user cancels leaves the task on its backlog marker.
+    /// Start Now. Resolves what the task would start as and writes nothing: the link write belongs
+    /// to Create, so a sheet the user cancels leaves the task unlinked.
+    ///
+    /// A linked task with no live worktree is ignored: that is the window between Create and the
+    /// worktree going live, and a second sheet there would create the same branch twice.
     func resolveStart(_ task: WorkTask) -> StartResult {
         // Content authority is disk/pool by id — never the UI-captured snapshot (a stale title/body
         // would otherwise clobber whatever the task terminal just wrote, on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
-        guard current.status == WorkTask.ReservedStatus.new
-                || current.status == WorkTask.ReservedStatus.canceled else { return .ignored }
 
-        // Starting a task creates (or focuses) its worktree. Clearway launches no agent of its own.
         // Branch-keyed lookup resolves the correct worktree even when HEAD is detached (e.g. mid-rebase).
-        if let branch = current.worktree,
-           let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
+        if let branch = current.worktree {
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
             return .reuse(wt)
         }
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
-        let branch = current.worktree
-            ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
+        let branch = workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
         return .prefill(StartPrefill(taskId: current.id, title: current.title, branch: branch))
     }
 
