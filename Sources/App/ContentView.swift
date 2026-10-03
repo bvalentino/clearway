@@ -677,10 +677,10 @@ struct ContentView: View {
 
     /// Restore the stored side panel tab for a worktree, or auto-select on first visit.
     private func restoreSidePanelTab(for worktree: Worktree) {
-        let status = worktree.branch.flatMap { workTaskManager.task(forWorktree: $0)?.status }
         sidePanelTab = resolveSidePanelTab(
             stored: terminalManager.sidePanelTab(for: worktree.id),
-            taskStatus: status, current: sidePanelTab, isMain: worktree.isMain)
+            linkedTask: worktree.branch.flatMap { workTaskManager.task(forWorktree: $0) },
+            current: sidePanelTab, isMain: worktree.isMain)
     }
 
     /// Persists the current lists-column width to both `@State` and `UserDefaults`.

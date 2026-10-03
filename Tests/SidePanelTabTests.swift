@@ -2,87 +2,90 @@ import XCTest
 @testable import Clearway
 
 final class SidePanelTabTests: XCTestCase {
-    // A stored tab wins over the status rule.
-    func testStoredTabBeatsTheStatusRule() {
+    private let visibleTask = WorkTask(title: "Visible", worktree: "feature")
+
+    private var hiddenTask: WorkTask {
+        var task = WorkTask(title: "Shadow", worktree: "feature")
+        task.hidden = true
+        return task
+    }
+
+    func testStoredTabBeatsAVisibleLinkedTask() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue,
-                                taskStatus: WorkTask.ReservedStatus.inProgress,
+            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue, linkedTask: visibleTask,
                                 current: .todos, isMain: false),
             .prompts)
     }
 
-    // No stored tab + in_progress → .task.
-    func testInProgressSelectsTask() {
+    func testVisibleLinkedTaskSelectsTask() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: nil, taskStatus: WorkTask.ReservedStatus.inProgress,
-                                current: .todos, isMain: false),
+            resolveSidePanelTab(stored: nil, linkedTask: visibleTask, current: .todos, isMain: false),
             .task)
     }
 
-    // No stored tab + non-in_progress preserves current, demoting .task to .todos
-    // (no spurious .task).
-    func testNonInProgressPreservesCurrentDemotingTask() {
+    func testHiddenLinkedTaskPreservesCurrentDemotingTask() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: nil, taskStatus: "done", current: .task, isMain: false),
+            resolveSidePanelTab(stored: nil, linkedTask: hiddenTask, current: .task, isMain: false),
             .todos)
         XCTAssertEqual(
-            resolveSidePanelTab(stored: nil, taskStatus: "done", current: .prompts, isMain: false),
+            resolveSidePanelTab(stored: nil, linkedTask: hiddenTask, current: .prompts, isMain: false),
             .prompts)
     }
 
-    // An invalid stored raw value falls through to the next rule.
+    func testNoLinkedTaskPreservesCurrentDemotingTask() {
+        XCTAssertEqual(
+            resolveSidePanelTab(stored: nil, linkedTask: nil, current: .task, isMain: false),
+            .todos)
+        XCTAssertEqual(
+            resolveSidePanelTab(stored: nil, linkedTask: nil, current: .prompts, isMain: false),
+            .prompts)
+    }
+
     func testInvalidStoredRawValueFallsThrough() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: "NotARealTab", taskStatus: WorkTask.ReservedStatus.inProgress,
+            resolveSidePanelTab(stored: "NotARealTab", linkedTask: visibleTask,
                                 current: .todos, isMain: false),
             .task)
     }
 
-    // Criterion 4 of the Notes removal: a worktree persisted on the now-deleted "Notes" tab
-    // must fall back to a valid tab, never resolve to a stale/invalid selection.
+    // A worktree persisted on the deleted "Notes" tab must fall back to a valid tab.
     func testPersistedNotesTabFallsBackToValidTab() {
-        let resolved = resolveSidePanelTab(stored: "Notes", taskStatus: "done",
+        let resolved = resolveSidePanelTab(stored: "Notes", linkedTask: nil,
                                            current: .prompts, isMain: false)
         XCTAssertEqual(resolved, .prompts)
         XCTAssertTrue(SidePanelTab.available(isMain: false).contains(resolved))
     }
 
-    // Main never lands on .task: the status rule that would pick it is clamped to .todos.
-    func testMainClampsInProgressDefaultToTodos() {
+    func testMainClampsAVisibleLinkedTaskToTodos() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: nil, taskStatus: WorkTask.ReservedStatus.inProgress,
-                                current: .task, isMain: true),
+            resolveSidePanelTab(stored: nil, linkedTask: visibleTask, current: .task, isMain: true),
             .todos)
     }
 
-    // Main drops a stored .task (e.g. persisted before this change), falling back to the current tab.
     func testMainDropsStoredTaskFallingBackToCurrent() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.task.rawValue, taskStatus: "build",
+            resolveSidePanelTab(stored: SidePanelTab.task.rawValue, linkedTask: visibleTask,
                                 current: .prompts, isMain: true),
             .prompts)
     }
 
-    // Main clamps to .todos when both the stored and current tabs are .task.
     func testMainClampsStoredAndCurrentTaskToTodos() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.task.rawValue, taskStatus: "build",
+            resolveSidePanelTab(stored: SidePanelTab.task.rawValue, linkedTask: visibleTask,
                                 current: .task, isMain: true),
             .todos)
     }
 
-    // Main keeps a valid stored non-task tab.
     func testMainKeepsStoredNonTaskTab() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue, taskStatus: "build",
+            resolveSidePanelTab(stored: SidePanelTab.prompts.rawValue, linkedTask: visibleTask,
                                 current: .todos, isMain: true),
             .prompts)
     }
 
-    // Main with no stored tab preserves a valid current non-task tab.
     func testMainPreservesCurrentNonTaskTab() {
         XCTAssertEqual(
-            resolveSidePanelTab(stored: nil, taskStatus: "build", current: .prompts, isMain: true),
+            resolveSidePanelTab(stored: nil, linkedTask: nil, current: .prompts, isMain: true),
             .prompts)
     }
 }

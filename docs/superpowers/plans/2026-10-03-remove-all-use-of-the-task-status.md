@@ -1,0 +1,306 @@
+# Plan: Remove all use of the task status
+
+Breaks down `docs/superpowers/specs/2026-10-03-remove-all-use-of-the-task-status.md`.
+
+**Date:** 2026-10-03
+**Base:** 31293f2 (Release v2.0.1)
+
+## Architecture decisions carried from the spec
+
+- `WorkTask.status`, `WorkTask.ReservedStatus`, `WorkTask.migrateStatus` and the `status:`
+  parameter of `WorkTask.init` are deleted (D1).
+- `WorkTask.attempt` is deleted, with the bump in `confirmCreate`, `TaskLink.priorAttempt` and its
+  restore in `abandonPendingCreate` (D2).
+- `Sources/App/WorkTaskAgentMetadata.swift` is deleted with its three call sites in
+  `WorkTaskWindow`, `TaskDetailView` and `TaskAsideView`. No replacement view (D3).
+- `parse` requires frontmatter and `title`, nothing else. `status`/`attempt` keys are ignored like
+  any unknown key (D4).
+- `frontmatterLines` writes `id`, `title`, then `worktree` and `hidden` when set (D5).
+- No new code stops a rewrite of old files or keeps a typed `status:` line out of the file. The
+  existing write paths already do it; tests pin it (D6, D7).
+- `resolveStart`: re-read the task with `freshTask(id:)`. Linked → `.reuse(wt)` when a live worktree
+  has that branch, else `.ignored`. Unlinked → `.prefill` with a `deriveBranchName` branch. The
+  status guard and the `current.worktree ??` fallback go (D8).
+- Start Now in the task window shows when `task` is non-nil and `task.worktree == nil`; nil `task`
+  shows no button. The Tasks list is unchanged (D9).
+- `resolveSidePanelTab(stored:linkedTask:current:isMain:)` takes `linkedTask: WorkTask?`. Stored
+  available tab wins; else `.task` when available and `linkedTask` is non-nil and not `hidden`;
+  else current, with `.task` demoted to `.todos`. `ContentView.restoreSidePanelTab` passes
+  `worktree.branch.flatMap { workTaskManager.task(forWorktree: $0) }` (D10, D11).
+- `PendingCreate.TaskLink` keeps `id` and `priorWorktree`. `abandonPendingCreate` restores
+  `worktree` only (D12).
+- Comments in `Sources/App` that mention the task status are reworded or removed (D13). README
+  §Tasks and `Sources/App/CLAUDE.md` stop describing either field (D14).
+- No migration and no strip on launch (D15). Tests mention `status`/`attempt` only as raw
+  frontmatter text in the tests that prove old lines are ignored and dropped (D16).
+
+## Sequencing
+
+The operator wants one coherent change, and every task below must leave `./scripts/ci.sh`
+passing. Swift will not compile a reference to a deleted member, so the order is: first move every
+reader off the status (T1, T2), drop the attempt label and field (T3, T4), stop every writer and
+detach every test from the field (T5, T6, T7), then delete the field itself (T8). Between T5 and
+T8 the model still has `status` and new tasks get its `"new"` default; nothing reads it by then,
+so that interim state has no visible effect and is gone at T8.
+
+## Dependency graph
+
+```
+T1 (side panel) ──────────────────────────────┐
+T2 (Start gate) ──┬─ T3 (label) ── T4 (attempt field) ── T5 (coordinator writes) ──┐
+                  │                                                                 ├── T8 (delete field) ── T9 (docs + grep)
+                  └─ T6 (manager writes) ───────────────────────────────────────────┤
+T7 (test decoupling) ───────────────────────────────────────────────────────────────┘
+```
+
+T1, T2 and T7 have no prerequisites. T3 follows T2 (both edit `WorkTaskWindow.swift`). T4 follows
+T3 (the label reads `attempt`). T5 follows T4 (both edit `WorkTaskCoordinator.swift` and its tests).
+T6 follows T2. T8 needs T1, T5, T6 and T7. Run them in numeric order unless parallelizing.
+
+## Tasks
+
+Every task's last acceptance criterion is that `./scripts/ci.sh` exits 0 after the task's final
+edit. Each task also keeps `swiftlint lint` at zero new warnings. Build agents do not launch the
+app or take screenshots.
+
+### T1: Side panel selects Task for a visible linked task
+
+**Files:** `Sources/App/ContentViewHelpers.swift`, `Sources/App/ContentView.swift`,
+`Tests/SidePanelTabTests.swift`
+
+**What:** Change `resolveSidePanelTab(stored:taskStatus:current:isMain:)` to
+`resolveSidePanelTab(stored:linkedTask:current:isMain:)` with `linkedTask: WorkTask?` (D10). The
+`.task` rule becomes `available.contains(.task), let linkedTask, !linkedTask.hidden`. Reword its
+doc comment (`ContentViewHelpers.swift:43-46`) to describe the new rule with no mention of a
+status. In `ContentView.restoreSidePanelTab` (around `:670-684`), drop the status lookup and pass
+`linkedTask: worktree.branch.flatMap { workTaskManager.task(forWorktree: $0) }`. Rewrite
+`SidePanelTabTests` against the new signature with no `taskStatus`/`ReservedStatus` reference;
+build `WorkTask(title:worktree:)` values, setting `hidden = true` for the shadow case.
+
+**Acceptance criteria:**
+- A stored available tab wins over everything; an unknown stored string falls through.
+- With no stored tab, a non-hidden linked task selects `.task`; a hidden linked task and `nil`
+  keep the current tab, with `.task` demoted to `.todos`.
+- On main, no input yields `.task`.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** the rewritten `SidePanelTabTests` cover each bullet above (spec T6);
+`grep -n "taskStatus" Sources/App Tests -r` returns nothing; `./scripts/ci.sh`.
+
+### T2: Start gate uses the worktree link
+
+**Files:** `Sources/App/WorkTaskCoordinator.swift`, `Sources/App/WorkTaskWindow.swift`,
+`Tests/WorkTaskCoordinatorTests.swift`
+
+**What:** In `resolveStart` (D8), delete the status guard (`:68-69`) and the
+`current.worktree ??` fallback (`:78`). With a link: `.reuse(wt)` if a worktree in
+`worktreeManager.worktrees` has that branch, else `.ignored`. Without a link: `.prefill` with
+`deriveBranchName(from:existingBranches:)`. Reword the doc/inline comments at `:62-63` so they
+mention no status ("leaves the task on its backlog marker" goes). In `WorkTaskWindow.primaryActionButton`
+(`:286-294`), gate on `if let task, task.worktree == nil` (D9; not `task?.worktree == nil`).
+In `WorkTaskCoordinatorTests`, replace the `resolveStart` tests: delete
+`testResolveStartPrefersTheTasksSavedBranchOverADerivedOne`, and add tests that (a) an unlinked
+task whose central file says `status: in_progress` returns `.prefill` with the derived branch —
+write that file as raw frontmatter text so the test survives T8; (b) a linked task with a live
+worktree returns `.reuse`; (c) a linked task with no live worktree returns `.ignored`. Leave the
+`confirmCreate`/`abandonPendingCreate` tests for T4/T5.
+
+**Acceptance criteria:**
+- `resolveStart` reads no status; tests (a)–(c) pass (crit. 8, 9).
+- The task window's Start Now condition is exactly `task != nil && task.worktree == nil`.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** new coordinator tests; read the `primaryActionButton` diff against D9 (no test seam,
+spec §Testing); `./scripts/ci.sh`.
+
+### T3: Remove the "Attempt N" label
+
+**Files:** `Sources/App/WorkTaskAgentMetadata.swift` (delete), `Sources/App/WorkTaskWindow.swift`,
+`Sources/App/TaskDetailView.swift`, `Sources/App/TaskAsideView.swift`
+
+**What:** Delete `WorkTaskAgentMetadata.swift` and its call sites (`WorkTaskWindow.swift:226-230`,
+`TaskDetailView.swift:77-81`, `TaskAsideView.swift:40-42`; line numbers are at base and may have
+shifted). Remove any container, divider or spacing that existed only to hold the label, so no
+empty gap is left. Reword or remove the status comment at `TaskAsideView.swift:24-25` (D13). No
+`project.yml` edit; `ci.sh` regenerates the project.
+
+**Acceptance criteria:**
+- `grep -rn "WorkTaskAgentMetadata\|Attempt " Sources/App` returns nothing (crit. 12).
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** the grep above; `./scripts/ci.sh`.
+
+### T4: Delete the attempt field and counter
+
+**Files:** `Sources/App/WorkTask.swift`, `Sources/App/WorkTaskCoordinator.swift`,
+`Tests/WorkTaskCoordinatorTests.swift`, `Tests/WorkTaskTests.swift`
+
+**What:** Remove `var attempt`, the `attempt:` line in `frontmatterLines`, and any `attempt`
+parsing in `parse` (D2). In `confirmCreate` remove the `canceled` bump; remove
+`TaskLink.priorAttempt` and its restore in `abandonPendingCreate`. Keep `priorStatus` for now (T5
+removes it). In `WorkTaskCoordinatorTests`, delete the two attempt tests (around `:139-153` and
+`:225-245`) and drop `priorAttempt:` from every `TaskLink` construction. In `WorkTaskTests`, drop
+the `attempt` assertions from the round-trip test (around `:100-131`) but keep its raw
+`attempt: 2` input line, which now proves an `attempt:` key is ignored.
+
+**Acceptance criteria:**
+- No Swift reference to `attempt`/`priorAttempt` on `WorkTask` or `TaskLink` remains in
+  `Sources/App` or `Tests` (raw frontmatter text in `WorkTaskTests` excepted).
+- A file carrying `attempt: 2` still parses, and `serialized()` of the result has no `attempt:` line.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** `grep -rnE "\.attempt\b|priorAttempt|attempt:" Sources/App Tests` (only raw
+frontmatter hits in `WorkTaskTests`); `./scripts/ci.sh`.
+
+### T5: Create writes only the worktree link
+
+**Files:** `Sources/App/WorkTaskCoordinator.swift`, `Tests/WorkTaskCoordinatorTests.swift`
+
+**What:** `confirmCreate` sets only `updated.worktree = branch` (D2, D8). `TaskLink` keeps `id` and
+`priorWorktree` (D12); `abandonPendingCreate` restores `worktree` alone. Reword the `TaskLink` doc
+comment (`:22-24`, "three system-managed fields") and the `abandonPendingCreate` doc comment
+(`:121-124`, "on `in_progress`", "a state `resolveStart` refuses") so they describe the link alone
+(D13). In `WorkTaskCoordinatorTests`, remove every remaining `status`/`ReservedStatus`/`priorStatus`
+reference (including the Plan test around `:526-541` and the stale-snapshot test around
+`:620-662`): `confirmCreate` tests assert the link is written; `abandonPendingCreate` tests assert
+the prior link is restored and `resolveStart` then returns `.prefill` (crit. 10); where a test
+asserted the file kept or gained a status, assert on `worktree` or `title`/`body` instead. The
+`status: in_progress` raw text in T2's test (a) stays.
+
+**Acceptance criteria:**
+- `WorkTaskCoordinator.swift` contains no `status`/`ReservedStatus` reference.
+- After `confirmCreate`, the task's `worktree` is the confirmed branch (crit. 2); after
+  `abandonPendingCreate`, it is the prior value and the task is startable (crit. 10).
+- `WorkTaskCoordinatorTests` references the status only as raw frontmatter text.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** `grep -nE "status|Status" Sources/App/WorkTaskCoordinator.swift Tests/WorkTaskCoordinatorTests.swift`
+shows only the raw-text fixture and unrelated worktree-status hits; `./scripts/ci.sh`.
+
+### T6: Shadow and exposed tasks stop passing a status
+
+**Files:** `Sources/App/WorkTaskManager.swift`, `Tests/WorkTaskManagerTests.swift`
+
+**What:** Drop the `status: WorkTask.ReservedStatus.inProgress` argument from `createShadowTask`
+and `createExposedTask` (around `:144-170`). Reword or remove the status comments at `:141-142`,
+`:169`, `:190`, `:202-207` and `:358` (D13). In `WorkTaskManagerTests`, remove every Swift
+reference to `status`/`ReservedStatus`: drop `status:` init arguments; delete the assertions that
+shadow/exposed tasks start `in_progress` (`:84`, `:182`); where a test uses `status` as the field a
+disk write advances, follow T7's rule. Raw frontmatter fixtures that contain a `status:` line
+(around `:159`, `:390`) stay for now; `parse` still requires it until T8.
+
+**Acceptance criteria:**
+- `WorkTaskManager.swift` contains no `status`/`ReservedStatus` reference.
+- `WorkTaskManagerTests` references the status only inside raw frontmatter strings.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** `grep -nE "\.status\b|status:|ReservedStatus" Sources/App/WorkTaskManager.swift Tests/WorkTaskManagerTests.swift`
+shows only raw fixture lines; `./scripts/ci.sh`.
+
+### T7: Detach the remaining tests from the status field
+
+**Files:** `Tests/WorkTaskManagerWatcherTests.swift`, `Tests/TaskEditorBuffersTests.swift`,
+`Tests/WorkTaskRelocationSafetyTests.swift`
+
+**What:** Test-only. Remove every Swift reference to `status`/`ReservedStatus` while keeping what
+each test proves. Rule: where a test proves an external edit is adopted (the watcher tests),
+advance `title` or `body` instead of `status`. Where a test proves a disk-only field survives a
+buffer save (the `TaskEditorBuffersTests` "body save must not clobber status" and "status from
+disk must survive body save" tests), use `worktree`, since `applyEditorBuffer` copies only
+`title` and `body` from the buffer (spec D7, Files touched). Drop `status:` init arguments
+everywhere. The raw `status: in_progress` fixture in `WorkTaskRelocationSafetyTests` (around `:22`)
+stays until T8.
+
+**Acceptance criteria:**
+- These three files reference the status only inside raw frontmatter strings.
+- Each rewritten test still fails if its guarded behavior breaks (e.g. the editor test fails if a
+  body save overwrites `worktree` from the buffer).
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** `grep -nE "\.status\b|status:|ReservedStatus" <the three files>`; `./scripts/ci.sh`.
+
+### T8: Delete the status field and pin old-line handling
+
+**Files:** `Sources/App/WorkTask.swift`, `Tests/WorkTaskTests.swift`,
+`Tests/WorkTaskManagerTests.swift`, `Tests/WorkTaskRelocationSafetyTests.swift`
+
+**What:** In `WorkTask.swift`, delete `status`, `ReservedStatus`, `migrateStatus`, the `status:`
+`init` parameter, the `status:` line in `frontmatterLines`, and the `status` requirement in
+`parse` (D1, D4, D5). Reword the comments at `:9-11` and the `parse` doc comment ("required
+fields (`title`, `status`)"). Remove the `status:` line from the raw fixtures in
+`WorkTaskManagerTests` and `WorkTaskRelocationSafetyTests` that do not test old-line handling. In
+`WorkTaskTests`, delete the `migrateStatus` and arbitrary-slug tests and add:
+- spec T1: `serialized()` of a new task, a shadow-shaped task (`hidden`, linked) and a linked task
+  has no `status:` or `attempt:` line (crit. 1);
+- spec T2: a file with only `title` parses; each of `new`, `in_progress`, `canceled`, `open`,
+  `started`, `stopped`, `ready_to_start`, an arbitrary slug, and `attempt: 3` parses equal to the
+  bare file (same `id`/`createdAt` passed in); a file with no `title` returns nil (crit. 3, 4).
+In `WorkTaskManagerTests` add:
+- spec T3: a central file with `status: in_progress` and `attempt: 2` is byte-identical after
+  `reload` and after an `updateFields` that changes nothing; after a title change neither line is
+  in the file (crit. 5);
+- spec T4: `applyEditorBuffer` with `status:`/`attempt:` lines added to the buffer leaves the
+  file with neither line (crit. 6).
+
+**Acceptance criteria:**
+- `WorkTask` has no `status` or `attempt` member, and `ReservedStatus`/`migrateStatus` do not exist.
+- The four new test groups above pass.
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** the spec's criterion-14 grep
+(`grep -rnE "ReservedStatus|migrateStatus|taskStatus|priorStatus|priorAttempt|WorkTaskAgentMetadata|\.attempt\b|task\.status|status: WorkTask|\"status\"|status:" Sources/App Tests`)
+returns only old-line test fixtures and unrelated hits (worktree status, `Todo.Status`, git exit
+status, agent hook JSON); `./scripts/ci.sh`.
+
+### T9: Docs drop the task status and attempt
+
+**Files:** `README.md`, `Sources/App/CLAUDE.md`
+
+**What:** README §Tasks (around `:58`): remove the `status` sentences, keep the Start Now
+description, and state that Start Now is offered for a task with no worktree. `Sources/App/CLAUDE.md`:
+in the `WorkTaskCoordinator` bullet (around `:175-198`) say `confirmCreate` writes
+`worktree = <branch as confirmed>` only, `resolveStart` derives the branch, and a linked task with
+no live worktree is ignored; at `:279` drop "no status"; at `:289-292` drop the two sentences about
+`status`. Remove any mention of `attempt`, `ReservedStatus`, `migrateStatus` or
+`WorkTaskAgentMetadata`. Also describe the new side-panel rule wherever the file states the old
+`in_progress` one.
+
+**Acceptance criteria:**
+- `grep -nE "status|attempt|Attempt" README.md Sources/App/CLAUDE.md` has no hit about a task's
+  status or attempt (worktree status and todo status hits remain) (crit. 13).
+- `./scripts/ci.sh` exits 0.
+
+**Verify:** the grep above, reading each hit; `./scripts/ci.sh`.
+
+## Build log
+
+### T1: Side panel selects Task for a visible linked task
+
+| File | State |
+| --- | --- |
+| `Sources/App/ContentViewHelpers.swift` | `resolveSidePanelTab(stored:linkedTask:current:isMain:)`; `.task` rule is `available.contains(.task), let linkedTask, !linkedTask.hidden`; doc comment reworded with no status |
+| `Sources/App/ContentView.swift` | `restoreSidePanelTab` passes `linkedTask: worktree.branch.flatMap { workTaskManager.task(forWorktree: $0) }` |
+| `Tests/SidePanelTabTests.swift` | Rewritten on `WorkTask(title:worktree:)` values (one with `hidden = true`); no `taskStatus`/`ReservedStatus` reference |
+
+Coverage against the acceptance criteria: stored tab wins (`testStoredTabBeatsAVisibleLinkedTask`,
+`testMainKeepsStoredNonTaskTab`); unknown stored string falls through (`testInvalidStoredRawValueFallsThrough`,
+`testPersistedNotesTabFallsBackToValidTab`); visible linked task selects `.task`
+(`testVisibleLinkedTaskSelectsTask`); hidden linked task and `nil` keep current with `.task` demoted
+(`testHiddenLinkedTaskPreservesCurrentDemotingTask`, `testNoLinkedTaskPreservesCurrentDemotingTask`);
+main never yields `.task` (`testMainClampsAVisibleLinkedTaskToTodos`, `testMainDropsStoredTaskFallingBackToCurrent`,
+`testMainClampsStoredAndCurrentTaskToTodos`, `testMainPreservesCurrentNonTaskTab`).
+
+**Watched failure (RED).** Tests written first against the old function; `./scripts/ci.sh` exited 65:
+
+```
+Tests/SidePanelTabTests.swift:15:32: incorrect argument label in call (have 'stored:linkedTask:current:isMain:', expected 'stored:taskStatus:current:isMain:')
+```
+
+The failure is a compile error, not an assertion: the change is a signature change, so no test
+against the new signature can run on the unfixed code.
+
+**Deviations:** none. `Sources/App/CLAUDE.md` still describes no side-panel rule change here; T9 owns docs.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last edit (883 tests, 0 failures).
+`grep -rn "taskStatus" Sources/App Tests` returns nothing. `swiftlint lint --quiet` on the touched
+files: no output.
