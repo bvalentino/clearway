@@ -3,21 +3,22 @@ import XCTest
 
 /// Behavioral contract for the two halves of Start Now. `resolveStart` resolves the task fresh from
 /// disk and decides what would happen, writing nothing; `confirmCreate` carries the write, stamping
-/// the worktree link and moving the task off its backlog marker onto `in_progress`. Clearway
-/// launches no agent of its own, so `in_progress` is the whole of the status advance a start performs.
+/// the worktree link and nothing else.
 @MainActor
 final class WorkTaskCoordinatorTests: TempRootTestCase {
 
     // MARK: - Resolving a start
 
     /// Start Now opens a sheet the operator can cancel, so resolving must leave the task exactly as
-    /// it was: the file that comes back from a cancelled start still reads as backlog.
+    /// it was.
     func testResolveStartWritesNothing() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
             XCTFail("createTask returned nil"); return
         }
         let coordinator = makeCoordinator(taskManager)
+        let path = taskManager.filePath(for: seed)
+        let before = try String(contentsOfFile: path, encoding: .utf8)
 
         guard case .prefill(let prefill) = coordinator.resolveStart(seed) else {
             XCTFail("expected prefill"); return
@@ -25,10 +26,8 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
         XCTAssertEqual(prefill.taskId, seed.id)
         XCTAssertEqual(prefill.title, "Ship it")
-        let onDisk = try String(contentsOfFile: taskManager.filePath(for: seed), encoding: .utf8)
-        XCTAssertTrue(onDisk.contains("status: \(WorkTask.ReservedStatus.new)"),
-                      "resolving leaves the task on its backlog marker")
-        XCTAssertFalse(onDisk.contains("worktree:"), "resolving writes no branch link")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), before,
+                       "resolving writes nothing to the task file")
         XCTAssertNil(coordinator.pendingCreate, "resolving records nothing to complete")
     }
 
@@ -106,9 +105,9 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
     // MARK: - Confirming a create
 
-    /// Create writes `in_progress` and the branch the operator confirmed — which may not be the
-    /// branch the prefill proposed.
-    func testConfirmCreateWritesTheStatusAndTheConfirmedBranch() throws {
+    /// Create writes the branch the operator confirmed — which may not be the branch the prefill
+    /// proposed.
+    func testConfirmCreateWritesTheConfirmedBranch() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
             XCTFail("createTask returned nil"); return
@@ -118,21 +117,37 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
         coordinator.confirmCreate(taskId: seed.id, branch: "hand-typed", command: command)
 
-        let written = taskManager.freshTask(id: seed.id)
-        XCTAssertEqual(written?.status, WorkTask.ReservedStatus.inProgress)
-        XCTAssertEqual(written?.worktree, "hand-typed")
+        XCTAssertEqual(taskManager.freshTask(id: seed.id)?.worktree, "hand-typed")
         XCTAssertEqual(
             coordinator.pendingCreate,
             WorkTaskCoordinator.PendingCreate(
                 task: WorkTaskCoordinator.PendingCreate.TaskLink(
                     id: seed.id,
-                    priorStatus: WorkTask.ReservedStatus.new,
                     priorWorktree: nil
                 ),
                 branch: "hand-typed",
                 command: command
             )
         )
+    }
+
+    /// The link is the whole of the write: dropping the `worktree:` line from the file Create wrote
+    /// gives back the file it started from.
+    func testConfirmCreateWritesOnlyTheWorktreeLink() throws {
+        let taskManager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = taskManager.createTask(title: "Ship it") else {
+            XCTFail("createTask returned nil"); return
+        }
+        let path = taskManager.filePath(for: seed)
+        let before = try String(contentsOfFile: path, encoding: .utf8)
+
+        makeCoordinator(taskManager).confirmCreate(taskId: seed.id, branch: "ship-it", command: nil)
+
+        let after = try String(contentsOfFile: path, encoding: .utf8)
+        let linkLine = "worktree: \"ship-it\"\n"
+        XCTAssertTrue(after.contains(linkLine), "Create writes the link")
+        XCTAssertEqual(after.replacingOccurrences(of: linkLine, with: ""), before,
+                       "Create writes nothing but the link")
     }
 
     /// The same sheet creates hand-made worktrees, which carry no task to write to.
@@ -177,9 +192,9 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
     // MARK: - Abandoning a create
 
     /// `git worktree add` can fail after the frontmatter is already written — a branch that exists
-    /// with no worktree is enough. Unwinding must leave the file byte-for-byte as it was, because
-    /// anything else (`in_progress` naming a branch with no worktree) is a state `resolveStart`
-    /// refuses, and the task can then never be started from the UI.
+    /// with no worktree is enough. Unwinding must leave the file byte-for-byte as it was, because a
+    /// link naming a branch with no worktree is one `resolveStart` ignores, and the task can then
+    /// never be started from the UI.
     func testAbandonPendingCreateRestoresTheTaskExactlyAsItWas() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Ship it") else {
@@ -196,7 +211,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), before,
                        "a failed create leaves the task file untouched")
         let restored = taskManager.freshTask(id: seed.id)
-        XCTAssertEqual(restored?.status, WorkTask.ReservedStatus.new)
         XCTAssertNil(restored?.worktree, "no branch link survives a failed create")
 
         guard case .prefill = coordinator.resolveStart(try XCTUnwrap(restored)) else {
@@ -399,7 +413,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let taskId = UUID()
         let pending = WorkTaskCoordinator.PendingCreate(
             task: WorkTaskCoordinator.PendingCreate.TaskLink(
-                id: taskId, priorStatus: WorkTask.ReservedStatus.new, priorWorktree: nil
+                id: taskId, priorWorktree: nil
             ),
             branch: "ship-it",
             command: nil
@@ -481,8 +495,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertNil(resolved)
     }
 
-    /// Plan changes no status: it hands an agent the brief and leaves the task on its backlog
-    /// marker, in the file it was already in.
+    /// Plan hands an agent the brief and leaves the task unlinked, in the file it was already in.
     func testPlanCommandWritesNothingToTheTask() throws {
         let taskManager = WorkTaskManager(projectPath: tempRoot)
         guard let seed = taskManager.createTask(title: "Untouched") else {
@@ -496,7 +509,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
 
         XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), before,
                        "planning rewrites no frontmatter")
-        XCTAssertEqual(taskManager.freshTask(id: seed.id)?.status, WorkTask.ReservedStatus.new)
         XCTAssertNil(taskManager.freshTask(id: seed.id)?.worktree)
     }
 
@@ -577,16 +589,12 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         guard let seed = taskManager.createTask(title: "Pre-plan draft") else {
             XCTFail("createTask returned nil"); return
         }
-        taskManager.updateFields(id: seed.id) {
-            $0.body = "Short draft"
-            $0.status = WorkTask.ReservedStatus.new
-        }
+        taskManager.updateFields(id: seed.id) { $0.body = "Short draft" }
 
         // Whatever ran in the task terminal rewrote the central file.
         var planned = seed
         planned.title = "Post-plan title"
         planned.body = "Full planned brief."
-        planned.status = WorkTask.ReservedStatus.new
         try planned.serialized().write(
             toFile: taskManager.filePath(for: seed),
             atomically: true,
@@ -600,7 +608,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         var staleSnapshot = seed
         staleSnapshot.title = "Pre-plan draft"
         staleSnapshot.body = "Short draft"
-        staleSnapshot.status = WorkTask.ReservedStatus.new
 
         let result = coordinator.resolveStart(staleSnapshot)
         guard case .prefill(let prefill) = result else {
@@ -617,7 +624,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         XCTAssertEqual(reparsed?.title, "Post-plan title")
         XCTAssertEqual(reparsed?.body, "Full planned brief.")
         XCTAssertEqual(reparsed?.worktree, branch)
-        XCTAssertEqual(reparsed?.status, WorkTask.ReservedStatus.inProgress)
 
         // Relocate into a worktree and confirm content survives.
         let worktreePath = (tempRoot as NSString).appendingPathComponent("wt-start")

@@ -370,3 +370,31 @@ were not in the plan's T4 text; both comments would otherwise name a field that 
 attempt tests account for the drop from 883). `swiftlint lint --quiet` on the five touched files:
 no output. `grep -rnE "\.attempt\b|priorAttempt|attempt:" Sources/App Tests` returns only the raw
 `attempt: 2` fixture line in `Tests/WorkTaskTests.swift`.
+
+### T5: Create writes only the worktree link
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskCoordinator.swift` | `confirmCreate` sets only `worktree`; `TaskLink` is `id` + `priorWorktree`; `abandonPendingCreate` restores `worktree` alone. `TaskLink` and `abandonPendingCreate` doc comments describe the link only; the abandon log line says "its worktree link stands" instead of "its start marker stands" |
+| `Tests/WorkTaskCoordinatorTests.swift` | Class doc comment drops the `in_progress` sentence. `testResolveStartWritesNothing` asserts the file is byte-identical instead of checking a `status:` line. `testConfirmCreateWritesTheStatusAndTheConfirmedBranch` renamed `testConfirmCreateWritesTheConfirmedBranch` and asserts `worktree` only. New `testConfirmCreateWritesOnlyTheWorktreeLink`: the file after Create, minus its `worktree: "ship-it"` line, equals the file before. Abandon test drops its status assertion (it still asserts byte-identical restore, nil `worktree`, and `.prefill`). Plan and stale-snapshot tests no longer set or assert `status`. `priorStatus:` dropped from both `TaskLink` constructions |
+
+**Watched failure (RED).** Tests edited first. To get an assertion rather than a compile error,
+`priorStatus` was removed from `TaskLink` while `confirmCreate` still wrote `in_progress`;
+`./scripts/ci.sh` exited 65:
+
+```
+✖ testAbandonPendingCreateRestoresTheTaskExactlyAsItWas, XCTAssertEqual failed: ("---
+✖ testConfirmCreateWritesOnlyTheWorktreeLink, XCTAssertEqual failed: ("---
+Executed 882 tests, with 2 failures (0 unexpected)
+```
+
+Both fail on the status line: Create still rewrote `status: new` to `in_progress`, and the
+abandon (no longer restoring the status) left it there. Removing the status write made both pass.
+
+**Deviations:** the abandon log message wording (`start marker` → `worktree link`) was not named in
+the plan; it described the status. The new test is durable past T8: it compares whole files, so it
+holds once the `status:` line is gone from both.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last edit (882 tests, 0 failures). `swiftlint lint --quiet`
+on both touched files: no output. `grep -nE "status|Status"` on both files returns only the raw
+`status: in_progress` fixture and its doc comment in T2's test (a).

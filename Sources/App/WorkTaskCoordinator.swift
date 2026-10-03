@@ -19,12 +19,10 @@ class WorkTaskCoordinator: ObservableObject {
     /// A worktree creation this coordinator is waiting on. `command` is the agent command to run
     /// once the worktree is live.
     struct PendingCreate: Equatable {
-        /// The task this create links, carrying the two system-managed fields `confirmCreate`
-        /// overwrote as they read before it did — one value rather than two optionals, so a link
-        /// `abandonPendingCreate` cannot unwind is unrepresentable.
+        /// The task this create links, carrying the link `confirmCreate` overwrote as it read
+        /// before, so `abandonPendingCreate` can put it back.
         struct TaskLink: Equatable {
             let id: UUID
-            let priorStatus: String
             let priorWorktree: String?
         }
 
@@ -92,10 +90,8 @@ class WorkTaskCoordinator: ObservableObject {
             let written = workTaskManager.updateFields(id: taskId) { updated in
                 link = PendingCreate.TaskLink(
                     id: taskId,
-                    priorStatus: updated.status,
                     priorWorktree: updated.worktree
                 )
-                updated.status = WorkTask.ReservedStatus.inProgress
                 updated.worktree = branch
             }
             // The task's file can disappear between Start Now and Create — another window's
@@ -112,21 +108,19 @@ class WorkTaskCoordinator: ObservableObject {
         pendingCreate = PendingCreate(task: link, branch: branch, command: command)
     }
 
-    /// Unwinds a create that never happened. `confirmCreate` writes the frontmatter before
-    /// `git worktree add` runs, so a failed create would otherwise leave the task on `in_progress`
-    /// naming a branch with no worktree — a state `resolveStart` refuses, making the task
-    /// unstartable from the UI.
+    /// Unwinds a create that never happened. `confirmCreate` writes the link before
+    /// `git worktree add` runs, so a failed create would otherwise leave the task naming a branch
+    /// with no worktree — a link `resolveStart` ignores, making the task unstartable from the UI.
     func abandonPendingCreate() {
         guard let pending = pendingCreate else { return }
         pendingCreate = nil
         guard let task = pending.task else { return }
         let restored = workTaskManager.updateFields(id: task.id) { updated in
-            updated.status = task.priorStatus
             updated.worktree = task.priorWorktree
         }
         if restored == nil {
             Ghostty.logger.error(
-                "abandonPendingCreate: task \(task.id, privacy: .public) no longer exists; its start marker stands")
+                "abandonPendingCreate: task \(task.id, privacy: .public) no longer exists; its worktree link stands")
         }
     }
 
