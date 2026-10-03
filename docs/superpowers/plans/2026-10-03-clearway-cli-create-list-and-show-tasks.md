@@ -718,3 +718,7 @@ holds `cway` beside the renamed app executable; `codesign --verify --deep --stri
 Deviations: none from the operator's decision.
 
 Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final edit.
+
+### Simplify
+
+`TaskCommand.run` computed `Array(arguments.dropFirst(2))` in each of its three switch cases; it is now computed once as `rest`. Nothing else in the branch's diff had a reuse or altitude gain worth the churn. Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final edit.

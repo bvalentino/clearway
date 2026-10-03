@@ -25,13 +25,14 @@ enum TaskCommand {
         }
         do throws(Failure) {
             let output: String
+            let rest = Array(arguments.dropFirst(2))
             switch (command, arguments.dropFirst().first) {
             case ("task", "create"):
-                output = try create(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory, readStdin: readStdin)
+                output = try create(rest, workingDirectory: workingDirectory, readStdin: readStdin)
             case ("task", "list"):
-                output = try list(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory)
+                output = try list(rest, workingDirectory: workingDirectory)
             case ("task", "show"):
-                output = try show(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory)
+                output = try show(rest, workingDirectory: workingDirectory)
             default:
                 throw Failure.usage("unknown command '\(arguments.prefix(2).joined(separator: " "))'")
             }
