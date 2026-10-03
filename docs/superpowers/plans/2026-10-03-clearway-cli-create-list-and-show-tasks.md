@@ -614,3 +614,34 @@ Deviations:
 
 Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final code edit.
 `swiftlint lint --quiet` on both touched Swift files printed nothing.
+
+### T8: Document Sources/Shared, Sources/CLI and the build-name change
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | "Build & Run": `build.sh` names the app per worktree by passing `APP_PRODUCT_NAME`, which only the `Clearway` target reads. "Verifying a change": `APP_PRODUCT_NAME` still renames the app out from under `TEST_HOST`; never pass `PRODUCT_NAME` to `xcodebuild`, with both observed failures. Architecture: one line each for `Sources/Shared/` and `Sources/CLI/` |
+| `scripts/ci.sh:17`, `scripts/run.sh:26` | the two comments left stale by T4 now say `APP_PRODUCT_NAME` |
+| `Sources/App/CLAUDE.md` | unchanged: it names none of `WorkTask.swift`, `YAMLHelpers.swift`, `taskMarkdownPath`, `loadTask` or `parseWorktreeListOutput`, and has no `WorkTaskManager` notes to extend (its one mention, about `deleteTask`, is unaffected) |
+
+Evidence: a docs task, so no regression test. The `PRODUCT_NAME` sentence was checked against the
+current tree rather than copied from the spec's probe, with
+`xcodebuild -scheme Clearway -configuration Debug -derivedDataPath <scratchpad>/pn-dd … build`
+(scratchpad deleted afterwards):
+
+- `PRODUCT_NAME="Clearway (probe)" PRODUCT_MODULE_NAME=Clearway` (the old `build.sh` pair):
+  `error: Multiple commands produce '…/Debug/Clearway.swiftmodule/arm64-apple-macos.swiftmodule'`
+  (and three sibling files), `** BUILD FAILED **`.
+- `PRODUCT_NAME="Clearway (probe)"` alone: `error: The file "clearway" couldn't be opened because
+  there is no such file. (in target 'Clearway')`, `** BUILD FAILED **`, since the tool is renamed too.
+
+The acceptance grep over `CLAUDE.md Sources/App/CLAUDE.md` returns nothing.
+
+Deviations:
+- The plan said only that `PRODUCT_NAME` fails with a duplicate `.swiftmodule`; the probe shows
+  that holds only with `PRODUCT_MODULE_NAME=Clearway`, so the doc names both failures.
+- `scripts/ci.sh` and `scripts/run.sh` are outside the plan's file list; the orchestrator assigned
+  their stale comments to this task.
+- The `Sources/Shared/` line also names `TaskCommand`, which lives there (D16) and which the plan's
+  wording for the line omitted.
+
+Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final doc edit.
