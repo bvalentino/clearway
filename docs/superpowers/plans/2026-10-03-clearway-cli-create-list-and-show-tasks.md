@@ -535,3 +535,45 @@ until T6.
 
 Gate: `./scripts/ci.sh` exit 0, 895 tests, 0 failures, 0 warnings in the log, run after the final
 code edit. `git status --porcelain` shows only this task's files.
+
+### T6: clearway task create
+
+| File | State |
+| --- | --- |
+| `Sources/Shared/TaskCommand.swift` | `run` dispatches `task create`; any other command (including `task list`/`task show` until T7) stays `unknown command '<first two args>'`, exit 2. Private `Failure` (message + exit code, `usage` → 2, `runtime` → 1) thrown with typed throws and turned into the `clearway: <message>` stderr result in one place. `create` parses `--title`/`--body` via `parseOptions` (every flag takes the next argument as its value, so `-leading dash` and `--body -` work; unknown option, stray positional, missing value or repeated flag → exit 2), trims and validates the title, reads stdin only for `--body -`, then resolves the project, writes through `TaskFiles.write` and prints `{"id","path"}` with the D9 encoder options and a trailing newline. `resolveProject` runs `/usr/bin/env git worktree list --porcelain` in the working directory: launch failure or env exit 127 → "git not found", other non-zero → `not a git repository: <git's first stderr line>`, a `bare` line in the first block → exit 1, otherwise main = first parsed path |
+| `Tests/TaskCommandTests.swift` | now a `TempRootTestCase`; ten new create cases: main worktree, linked worktree (file lands in main backlog, nothing in the linked worktree), missing `.clearway` (dir `0700`, file `0600`), the six-title round trip through `WorkTask.parse` and a fresh `WorkTaskManager`, title trimming, missing/empty/blank title, malformed flags, `--body text`, `--body -`, non-repo cwd. Every success goes through `created(_:)`, which parses stdout with `JSONSerialization` and checks the id is an uppercase `uuidString`; every failure through `assertFailed`, which checks empty stdout and the `clearway: ` stderr shape |
+
+Evidence: the tests were written first and run against the T5 tree
+(`xcodebuild … test -only-testing:ClearwayTests/TaskCommandTests`):
+
+```
+Executed 14 tests, with 36 failures (14 unexpected)
+TaskCommandTests.swift:191: error: … testBodyDashReadsStdin : XCTAssertEqual failed: ("2") is not equal to ("0") - clearway: unknown command 'task'
+… failed: testBodyFlagTextLandsAsBody, testCreateFromLinkedWorktreeWritesIntoMainBacklog,
+testCreateFromMainWorktreeWritesSharedSerializationIntoBacklog, testCreateMakesMissingDirectoriesAndAnOwnerOnlyFile,
+testCreateOutsideGitRepositoryExitsOneAndWritesNothing (exit 2, not 1), testTitleIsTrimmedOfWhitespaceAndNewlines,
+testTitlesRoundTripThroughParserAndManager
+```
+
+The two usage-error cases passed vacuously on the T5 tree, since `task` was itself an unknown
+command with exit 2; they only exercise flag parsing now. After the implementation all 14 pass.
+
+By hand, with the `ci.sh`-built `<BUILT_PRODUCTS_DIR>/Clearway.app/Contents/Helpers/clearway` in a
+scratchpad `git init` repo: `task create --title probe` printed `{"id","path"}`, exit 0, and wrote
+`.clearway/tasks/<id>.md` (`-rw-------`, `id:` + `title: "probe"`); `--title " "` printed
+`clearway: --title is empty`, exit 2; run from `/` it printed
+`clearway: not a git repository: fatal: not a git repository (or any of the parent directories): .git`,
+exit 1. The scratchpad repo was deleted afterwards.
+
+Deviations:
+- The JSON `path` is git's real path, so under `/var/folders` it is `/private/var/…`. The fixture
+  root comes from `resolvingSymlinksInPath`, which strips `/private`, so the two path assertions
+  compare through the same resolution (`canonical(_:)`). The CLI is not changed to match the
+  fixture: git's path is the honest absolute path.
+- Invalid UTF-8 on stdin for `--body -` is a runtime error (exit 1); the plan does not name it.
+- The Debug helper is coverage-instrumented, so running it from a read-only cwd also prints
+  `LLVM Profile Error: Failed to write file "default.profraw"` on stderr. Release builds carry no
+  profiling; nothing to change in the CLI.
+
+Gate: `./scripts/ci.sh` exit 0, 905 tests, 0 failures, run after the final code edit.
+`swiftlint lint --quiet` on both touched Swift files printed nothing.
