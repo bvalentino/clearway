@@ -277,8 +277,9 @@ target, record the reason in the build log and leave crit. 12 to the operator. N
 
 **What:** Implement project resolution and `task create` (D4, D6–D10):
 - Run `/usr/bin/env git worktree list --porcelain` with `currentDirectoryURL` set to
-  `workingDirectory`, capturing stdout and stderr. Launch failure → exit 1 "git not found";
-  non-zero exit → exit 1 "not a git repository" (include git's first stderr line); first block
+  `workingDirectory`, capturing stdout and stderr. Launch failure → exit 1 "cannot run git in
+  <dir>"; env exit 127 → exit 1 "git not found"; other non-zero exit → exit 1 with git's first
+  `fatal:` stderr line (else its first line), unprefixed (changed in review-pr); first block
   with a `bare` line → exit 1; otherwise main = `Worktree.parseList(output).first?.path`, all
   paths = every parsed `path`.
 - Parse `task create` flags: `--title <v>` (required), `--body <v>` (optional, `-` means
@@ -575,7 +576,7 @@ code edit. `git status --porcelain` shows only this task's files.
 
 | File | State |
 | --- | --- |
-| `Sources/Shared/TaskCommand.swift` | `run` dispatches `task create`; any other command (including `task list`/`task show` until T7) stays `unknown command '<first two args>'`, exit 2. Private `Failure` (message + exit code, `usage` → 2, `runtime` → 1) thrown with typed throws and turned into the `clearway: <message>` stderr result in one place. `create` parses `--title`/`--body` via `parseOptions` (every flag takes the next argument as its value, so `-leading dash` and `--body -` work; unknown option, stray positional, missing value or repeated flag → exit 2), trims and validates the title, reads stdin only for `--body -`, then resolves the project, writes through `TaskFiles.write` and prints `{"id","path"}` with the D9 encoder options and a trailing newline. `resolveProject` runs `/usr/bin/env git worktree list --porcelain` in the working directory: launch failure or env exit 127 → "git not found", other non-zero → `not a git repository: <git's first stderr line>`, a `bare` line in the first block → exit 1, otherwise main = first parsed path |
+| `Sources/Shared/TaskCommand.swift` | `run` dispatches `task create`; any other command (including `task list`/`task show` until T7) stays `unknown command '<first two args>'`, exit 2. Private `Failure` (message + exit code, `usage` → 2, `runtime` → 1) thrown with typed throws and turned into the `clearway: <message>` stderr result in one place. `create` parses `--title`/`--body` via `parseOptions` (every flag takes the next argument as its value, so `-leading dash` and `--body -` work; unknown option, stray positional, missing value or repeated flag → exit 2), trims and validates the title, reads stdin only for `--body -`, then resolves the project, writes through `TaskFiles.write` and prints `{"id","path"}` with the D9 encoder options and a trailing newline. `resolveProject` runs `/usr/bin/env git worktree list --porcelain` in the working directory: launch failure → `cannot run git in <dir>: …`, env exit 127 → "git not found", other non-zero → git's first `fatal:` stderr line (review-pr), a `bare` line in the first block → exit 1, otherwise main = first parsed path |
 | `Tests/TaskCommandTests.swift` | now a `TempRootTestCase`; ten new create cases: main worktree, linked worktree (file lands in main backlog, nothing in the linked worktree), missing `.clearway` (dir `0700`, file `0600`), the six-title round trip through `WorkTask.parse` and a fresh `WorkTaskManager`, title trimming, missing/empty/blank title, malformed flags, `--body text`, `--body -`, non-repo cwd. Every success goes through `created(_:)`, which parses stdout with `JSONSerialization` and checks the id is an uppercase `uuidString`; every failure through `assertFailed`, which checks empty stdout and the `clearway: ` stderr shape |
 
 Evidence: the tests were written first and run against the T5 tree

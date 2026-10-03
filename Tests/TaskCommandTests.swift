@@ -213,6 +213,21 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: directory)))
     }
 
+    func testCommandsWhoseMainWorktreeIsBareExitOneAndWriteNothing() throws {
+        let source = try GitRepoFixture.make(at: (tempRoot as NSString).appendingPathComponent("source"))
+        let bare = canonical(tempRoot) + "/bare.git"
+        let worktree = canonical(tempRoot) + "/linked"
+        _ = try GitRepoFixture.git(["clone", "-q", "--bare", source.root, bare], in: tempRoot)
+        _ = try GitRepoFixture.git(["worktree", "add", "-q", worktree, "-b", "feature"], in: bare)
+
+        assertFailed(run(["task", "create", "--title", "Nowhere"], in: worktree), exitCode: 1)
+        assertFailed(run(["task", "list"], in: worktree), exitCode: 1)
+        assertFailed(run(["task", "show", UUID().uuidString], in: worktree), exitCode: 1)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: bare)))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: worktree)))
+    }
+
     // MARK: - task list, task show
 
     private struct Pool {

@@ -180,7 +180,7 @@ enum TaskCommand {
         do {
             try process.run()
         } catch {
-            throw .runtime("git not found: \(error.localizedDescription)")
+            throw .runtime("cannot run git in \(directory): \(error.localizedDescription)")
         }
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
         let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
@@ -189,9 +189,9 @@ enum TaskCommand {
         let envCommandNotFound: Int32 = 127
         guard process.terminationStatus != envCommandNotFound else { throw .runtime("git not found") }
         guard process.terminationStatus == 0 else {
-            let firstLine = (String(bytes: errorOutput, encoding: .utf8) ?? "")
-                .split(separator: "\n").first.map(String.init) ?? "git exited with status \(process.terminationStatus)"
-            throw .runtime("not a git repository: \(firstLine)")
+            let lines = (String(bytes: errorOutput, encoding: .utf8) ?? "").split(separator: "\n")
+            let reason = lines.first { $0.hasPrefix("fatal:") } ?? lines.first
+            throw .runtime(reason.map(String.init) ?? "git exited with status \(process.terminationStatus)")
         }
         guard let text = String(bytes: output, encoding: .utf8) else { throw .runtime("git printed output that is not UTF-8") }
         return text
