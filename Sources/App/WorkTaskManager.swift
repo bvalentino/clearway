@@ -33,9 +33,24 @@ class WorkTaskManager: ObservableObject {
 
     init(projectPath: String) {
         self.projectPath = projectPath
-        self.tasksDirectory = (projectPath as NSString).appendingPathComponent(".clearway/tasks")
+        self.tasksDirectory = TaskFiles.tasksDirectory(inProject: projectPath)
         reload()
+        createTasksDirectoryIfProjectExists()
         watchDirectory()
+    }
+
+    /// Creates `.clearway/tasks` so the backlog watcher can be armed, but never the project root:
+    /// window restoration opens stored project paths without checking them, so a moved or deleted
+    /// project must not reappear as an empty folder.
+    private func createTasksDirectoryIfProjectExists() {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: projectPath, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+        try? FileManager.default.createDirectory(
+            atPath: tasksDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
     }
 
     /// Absolute path to a branch's live worktree, or nil when the branch has no worktree.
@@ -66,10 +81,10 @@ class WorkTaskManager: ObservableObject {
     /// collision, creation-date preservation).
     private func moveCentralFileIntoWorktree(id: UUID, worktreePath: String) -> Bool {
         let fm = FileManager.default
-        let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
+        let central = TaskFiles.centralPath(for: id, tasksDirectory: tasksDirectory)
         guard fm.fileExists(atPath: central) else { return false }
 
-        let destination = Self.taskMarkdownPath(inWorktree: worktreePath)
+        let destination = TaskFiles.taskMarkdownPath(inWorktree: worktreePath)
         // Adopt the central file only into an empty slot. If the worktree already has a TASK.md,
         // leave the central file in place — NEVER delete it to resolve a collision. The merge-load
         // dedups by id, so at worst the task is shown once; at best the user keeps their data.
@@ -177,11 +192,10 @@ class WorkTaskManager: ObservableObject {
     /// serialization base when disk is newer.
     func freshTask(id: UUID) -> WorkTask? {
         if let pooled = tasks.first(where: { $0.id == id }) {
-            return loadTask(atPath: filePath(for: pooled), fallbackId: id, requireFrontmatterID: false)
+            return TaskFiles.load(atPath: filePath(for: pooled), fallbackId: id, requireFrontmatterID: false)
                 ?? pooled
         }
-        let central = (tasksDirectory as NSString).appendingPathComponent("\(id.uuidString).md")
-        return loadTask(atPath: central, fallbackId: id)
+        return TaskFiles.load(atPath: TaskFiles.centralPath(for: id, tasksDirectory: tasksDirectory), fallbackId: id)
     }
 
     /// Re-bases from disk/pool by id, applies `mutate`, and writes only when something changed.
@@ -287,58 +301,24 @@ class WorkTaskManager: ObservableObject {
     func filePath(for task: WorkTask) -> String {
         if let branch = task.worktree,
            let path = worktreePath(forBranch: branch) {
-            return Self.taskMarkdownPath(inWorktree: path)
+            return TaskFiles.taskMarkdownPath(inWorktree: path)
         }
-        return (tasksDirectory as NSString).appendingPathComponent("\(task.id.uuidString).md")
-    }
-
-    /// `.clearway/TASK.md` under a worktree root.
-    static func taskMarkdownPath(inWorktree worktreePath: String) -> String {
-        let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
-        return (clearway as NSString).appendingPathComponent("TASK.md")
+        return TaskFiles.centralPath(for: task.id, tasksDirectory: tasksDirectory)
     }
 
     private func write(_ task: WorkTask) {
-        let fm = FileManager.default
-        let path = filePath(for: task)
-        let directory = (path as NSString).deletingLastPathComponent
-        try? fm.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        guard let data = task.serialized().data(using: .utf8) else { return }
-        fm.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
+        try? TaskFiles.write(task, toPath: filePath(for: task))
         if watcherSource == nil { watchDirectory() }
     }
 
-    /// Merge-loads the single task pool from two sources: the central backlog (`<UUID>.md`)
-    /// **and** every live worktree's `TASK.md`. A task that exists in both (e.g. mid-move) is
-    /// deduped by `id` with the worktree copy winning. Load breadth spans *all* worktrees — not
-    /// just watched ones — so the sidebar can label even unopened worktrees by title.
+    /// Merge-loads the pool from the central backlog and every live worktree's `TASK.md` (see
+    /// `TaskFiles.loadPool`). Load breadth spans *all* worktrees — not just watched ones — so the
+    /// sidebar can label even unopened worktrees by title.
     private func reload() {
-        var byId: [UUID: WorkTask] = [:]
-
-        // Central backlog files: keyed by filename UUID (also the fallback identity for legacy
-        // files written before `id` was serialized into frontmatter).
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: tasksDirectory) {
-            for file in files where file.hasSuffix(".md") {
-                guard let id = UUID(uuidString: (file as NSString).deletingPathExtension) else { continue }
-                let path = (tasksDirectory as NSString).appendingPathComponent(file)
-                if let task = loadTask(atPath: path, fallbackId: id) { byId[task.id] = task }
-            }
-        }
-
-        // Each live worktree's TASK.md (identity comes from frontmatter). The worktree copy wins
-        // over any central entry with the same id. A `TASK.md` whose frontmatter carries no usable
-        // `id` is skipped — without one its identity would be a fresh random UUID on every reload,
-        // flapping the task in and out of the pool. (Going forward every write emits `id`; this
-        // guards against an external agent/hook rewriting `TASK.md` and dropping the line.)
-        for worktree in worktreeResolver() {
-            let taskMd = Self.taskMarkdownPath(inWorktree: worktree.path)
-            if let task = loadTask(atPath: taskMd, fallbackId: UUID(), requireFrontmatterID: true) {
-                byId[task.id] = task
-            }
-        }
-
-        // Newest first
-        let sorted = byId.values.sorted { $0.createdAt > $1.createdAt }
+        let sorted = TaskFiles.loadPool(
+            tasksDirectory: tasksDirectory,
+            worktreePaths: worktreeResolver().map(\.path)
+        ).map(\.task)
         if sorted != tasks {
             tasks = sorted
         }
@@ -402,26 +382,12 @@ class WorkTaskManager: ObservableObject {
             }
         }
         for worktree in worktreeResolver() {
-            let taskMd = Self.taskMarkdownPath(inWorktree: worktree.path)
+            let taskMd = TaskFiles.taskMarkdownPath(inWorktree: worktree.path)
             if FileManager.default.fileExists(atPath: taskMd) {
                 desired.insert(taskMd)
             }
         }
         return desired
-    }
-
-    /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
-    /// `fallbackId` only when the frontmatter carries no `id`. When `requireFrontmatterID` is set
-    /// (worktree `TASK.md`, whose filename carries no UUID), a file lacking a usable frontmatter
-    /// `id` is rejected rather than loaded under the synthetic `fallbackId`. Returns nil on
-    /// read/parse failure.
-    private func loadTask(atPath path: String, fallbackId: UUID, requireFrontmatterID: Bool = false) -> WorkTask? {
-        let fm = FileManager.default
-        let createdAt = (try? fm.attributesOfItem(atPath: path))?[.creationDate] as? Date ?? Date()
-        guard let data = fm.contents(atPath: path),
-              let content = String(data: data, encoding: .utf8) else { return nil }
-        if requireFrontmatterID, WorkTask.frontmatterID(from: content) == nil { return nil }
-        return WorkTask.parse(from: content, id: fallbackId, createdAt: createdAt)
     }
 
     // MARK: - File Watching
@@ -431,7 +397,9 @@ class WorkTaskManager: ObservableObject {
     /// by `reload()` but not watched. Adds/removes `.clearway` watchers to match `worktreePaths`,
     /// then re-merges so the pool reflects the current worktree set.
     func setWatchedWorktrees(_ worktreePaths: [String]) {
-        let desired = Set(worktreePaths.map { ($0 as NSString).appendingPathComponent(".clearway") })
+        let desired = Set(worktreePaths.map {
+            (TaskFiles.taskMarkdownPath(inWorktree: $0) as NSString).deletingLastPathComponent
+        })
 
         for (dir, source) in worktreeWatchers where !desired.contains(dir) {
             source.cancel()
@@ -449,8 +417,9 @@ class WorkTaskManager: ObservableObject {
         watcherSource = makeWatcher(forPath: tasksDirectory)
     }
 
-    /// Directory watcher → debounced pool reload. Nil when the path does not exist yet
-    /// (re-armed from `write` once the directory appears). Task **files** use
+    /// Directory watcher → debounced pool reload. Nil when the path does not exist: `init` creates
+    /// the tasks directory in an existing project, so for it that means the project is missing or
+    /// the create failed, and `write` re-arms once the directory appears. Task **files** use
     /// `makeTaskFileWatcher` so their inodes re-arm after atomic replace.
     private func makeWatcher(forPath path: String) -> DispatchSourceFileSystemObject? {
         FileWatchers.makeWatcher(path: path) { [weak self] in

@@ -24,13 +24,13 @@ xcodegen generate
 
 # Resolve BUILT_PRODUCTS_DIR once, then build.
 BUILD_DIR=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release -destination 'platform=macOS' \
-  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway \
+  APP_PRODUCT_NAME="$PRODUCT_NAME" \
   -showBuildSettings 2>/dev/null | grep -m1 '^\s*BUILT_PRODUCTS_DIR' | awk '{print $3}')
 
 echo "==> Building $PRODUCT_NAME v$VERSION ($COMMIT) Release..."
 echo "    Build: $CURRENT_PROJECT_VERSION"
 xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release -destination 'platform=macOS' \
-  PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway build -quiet
+  APP_PRODUCT_NAME="$PRODUCT_NAME" build -quiet
 
 APP_PATH="$BUILD_DIR/$PRODUCT_NAME.app"
 

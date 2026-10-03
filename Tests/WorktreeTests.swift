@@ -17,7 +17,7 @@ final class WorktreeTests: XCTestCase {
 
         """
 
-        let worktrees = WorktreeManager.parseWorktreeListOutput(output)
+        let worktrees = Worktree.parseList(output)
 
         XCTAssertEqual(worktrees.count, 2)
 
@@ -38,7 +38,7 @@ final class WorktreeTests: XCTestCase {
 
         """
 
-        let worktrees = WorktreeManager.parseWorktreeListOutput(output)
+        let worktrees = Worktree.parseList(output)
 
         XCTAssertEqual(worktrees.count, 1)
         XCTAssertEqual(worktrees[0].branch, "main")
@@ -57,7 +57,7 @@ final class WorktreeTests: XCTestCase {
 
         """
 
-        let worktrees = WorktreeManager.parseWorktreeListOutput(output)
+        let worktrees = Worktree.parseList(output)
 
         XCTAssertEqual(worktrees.count, 2)
         XCTAssertNil(worktrees[1].branch)
@@ -80,7 +80,7 @@ final class WorktreeTests: XCTestCase {
 
         """
 
-        let worktrees = WorktreeManager.parseWorktreeListOutput(output)
+        let worktrees = Worktree.parseList(output)
 
         XCTAssertEqual(worktrees.count, 3)
         XCTAssertTrue(worktrees[0].isMain)
@@ -91,7 +91,7 @@ final class WorktreeTests: XCTestCase {
     }
 
     func testParsesEmptyOutput() {
-        let worktrees = WorktreeManager.parseWorktreeListOutput("")
+        let worktrees = Worktree.parseList("")
         XCTAssertTrue(worktrees.isEmpty)
     }
 
@@ -103,7 +103,7 @@ final class WorktreeTests: XCTestCase {
 
         """
 
-        let worktrees = WorktreeManager.parseWorktreeListOutput(output)
+        let worktrees = Worktree.parseList(output)
 
         XCTAssertEqual(worktrees.count, 1)
         XCTAssertEqual(worktrees[0].branch, "feature/auth/oauth2")
@@ -435,7 +435,7 @@ final class WorktreeTests: XCTestCase {
         """
 
         // 7. Run the parser + resolver pipeline
-        let parsed = WorktreeManager.parseWorktreeListOutput(output)
+        let parsed = Worktree.parseList(output)
         let resolved = WorktreeManager.applyHeadResolution(to: parsed)
 
         // 8. Assertions
@@ -480,7 +480,7 @@ final class WorktreeTests: XCTestCase {
         """
 
         let resolved = WorktreeManager.applyHeadResolution(
-            to: WorktreeManager.parseWorktreeListOutput(output)
+            to: Worktree.parseList(output)
         )
 
         XCTAssertEqual(resolved.count, 2)

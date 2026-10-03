@@ -23,7 +23,7 @@ APP_PATH=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuratio
 
 # Collect the candidate bundles that exist: the worktree-suffixed name that
 # build.sh produces, plus the default "Clearway.app" from an Xcode GUI or plain
-# `xcodebuild` build (which ignore build.sh's PRODUCT_NAME override). When both
+# `xcodebuild` build (which ignore build.sh's APP_PRODUCT_NAME override). When both
 # exist, launch whichever was built most recently.
 candidates=()
 if [[ -n "$APP_PATH" ]]; then

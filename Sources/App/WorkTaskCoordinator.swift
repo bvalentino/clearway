@@ -141,7 +141,7 @@ class WorkTaskCoordinator: ObservableObject {
         var taskPath: String?
         if let task = pending.task, let path = worktree.path,
            workTaskManager.relocateTaskToWorktree(id: task.id, worktreePath: path) {
-            taskPath = WorkTaskManager.taskMarkdownPath(inWorktree: path)
+            taskPath = TaskFiles.taskMarkdownPath(inWorktree: path)
         }
 
         guard let command = pending.command else { return nil }
