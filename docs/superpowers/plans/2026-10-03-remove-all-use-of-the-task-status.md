@@ -345,3 +345,28 @@ nothing (exit 1).
 **Deviations:** none.
 
 **Gate:** `./scripts/ci.sh` exit 0 after the last code edit (883 tests, 0 failures).
+
+### T4: Delete the attempt field and counter
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTask.swift` | `var attempt`, its `frontmatterLines` line and its `parse` read removed |
+| `Sources/App/WorkTaskCoordinator.swift` | `TaskLink.priorAttempt` removed; `confirmCreate` drops the `canceled` bump; `abandonPendingCreate` no longer restores `attempt`. `priorStatus` stays for T5. The `TaskLink` doc comment's "three system-managed fields" now reads "two"; T5 rewords it fully |
+| `Sources/App/WorkTaskManager.swift` | `applyEditorBuffer` doc comment drops `attempt` from its system-managed field list (rest of that comment is T6's) |
+| `Tests/WorkTaskCoordinatorTests.swift` | Deleted `testConfirmCreateCountsTheAttemptWhenRestartingACanceledTask` and `testAbandonPendingCreateRestoresABumpedAttempt`; `priorAttempt:` dropped from both `TaskLink` constructions |
+| `Tests/WorkTaskTests.swift` | `testRetiredFieldsAreDroppedOnReserialize` keeps the raw `attempt: 2` input, drops `parsed.attempt`, and now asserts the reserialized text has no `attempt` |
+
+**Watched failure (RED).** The test edit ran first against the unchanged model; `./scripts/ci.sh` exited 65:
+
+```
+✖ testRetiredFieldsAreDroppedOnReserialize, XCTAssertFalse failed - attempt must not be re-emitted
+Executed 883 tests, with 1 failure (0 unexpected)
+```
+
+**Deviations:** the one-word comment fixes in `WorkTaskCoordinator.swift` and `WorkTaskManager.swift`
+were not in the plan's T4 text; both comments would otherwise name a field that no longer exists.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last edit (881 tests, 0 failures; the two deleted
+attempt tests account for the drop from 883). `swiftlint lint --quiet` on the five touched files:
+no output. `grep -rnE "\.attempt\b|priorAttempt|attempt:" Sources/App Tests` returns only the raw
+`attempt: 2` fixture line in `Tests/WorkTaskTests.swift`.

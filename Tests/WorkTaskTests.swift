@@ -90,9 +90,9 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertTrue(parsed.serialized().contains("status: new"), "the migrated slug must write through")
     }
 
-    /// The retired `autopilot` / `completed` / `error_message` fields are no longer part of the
-    /// model: a `TASK.md` still carrying them parses, and re-serializing drops all three while
-    /// preserving every other field.
+    /// The retired `autopilot` / `completed` / `error_message` / `attempt` fields are no longer
+    /// part of the model: a `TASK.md` still carrying them parses, and re-serializing drops all
+    /// four while preserving every other field.
     func testRetiredFieldsAreDroppedOnReserialize() throws {
         let id = UUID()
         let legacy = """
@@ -118,7 +118,6 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(parsed.title, "Carried over")
         XCTAssertEqual(parsed.status, "review")
         XCTAssertEqual(parsed.worktree, "feature/legacy")
-        XCTAssertEqual(parsed.attempt, 2)
         XCTAssertTrue(parsed.hidden)
         XCTAssertEqual(parsed.body, "Body text")
 
@@ -126,7 +125,7 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertFalse(reserialized.contains("autopilot"), "autopilot must not be re-emitted")
         XCTAssertFalse(reserialized.contains("completed"), "completed must not be re-emitted")
         XCTAssertFalse(reserialized.contains("error_message"), "error_message must not be re-emitted")
-        XCTAssertTrue(reserialized.contains("attempt: 2"))
+        XCTAssertFalse(reserialized.contains("attempt"), "attempt must not be re-emitted")
         XCTAssertTrue(reserialized.contains("hidden: true"))
         XCTAssertTrue(reserialized.contains("status: review"))
         XCTAssertTrue(reserialized.contains("worktree: \"feature/legacy\""))

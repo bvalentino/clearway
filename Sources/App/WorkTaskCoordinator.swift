@@ -19,14 +19,13 @@ class WorkTaskCoordinator: ObservableObject {
     /// A worktree creation this coordinator is waiting on. `command` is the agent command to run
     /// once the worktree is live.
     struct PendingCreate: Equatable {
-        /// The task this create links, carrying the three system-managed fields `confirmCreate`
+        /// The task this create links, carrying the two system-managed fields `confirmCreate`
         /// overwrote as they read before it did — one value rather than two optionals, so a link
         /// `abandonPendingCreate` cannot unwind is unrepresentable.
         struct TaskLink: Equatable {
             let id: UUID
             let priorStatus: String
             let priorWorktree: String?
-            let priorAttempt: Int?
         }
 
         /// `nil` for a hand-made worktree, which has no task to link or unwind.
@@ -94,12 +93,8 @@ class WorkTaskCoordinator: ObservableObject {
                 link = PendingCreate.TaskLink(
                     id: taskId,
                     priorStatus: updated.status,
-                    priorWorktree: updated.worktree,
-                    priorAttempt: updated.attempt
+                    priorWorktree: updated.worktree
                 )
-                if updated.status == WorkTask.ReservedStatus.canceled {
-                    updated.attempt = (updated.attempt ?? 0) + 1
-                }
                 updated.status = WorkTask.ReservedStatus.inProgress
                 updated.worktree = branch
             }
@@ -128,7 +123,6 @@ class WorkTaskCoordinator: ObservableObject {
         let restored = workTaskManager.updateFields(id: task.id) { updated in
             updated.status = task.priorStatus
             updated.worktree = task.priorWorktree
-            updated.attempt = task.priorAttempt
         }
         if restored == nil {
             Ghostty.logger.error(

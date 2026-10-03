@@ -14,8 +14,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
     var createdAt: Date
     var body: String
 
-    var attempt: Int?
-
     /// When true, the task is a shadow task for a worktree — it tracks state but
     /// stays out of the Tasks backlog until the user exposes it.
     var hidden: Bool = false
@@ -72,7 +70,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
         // task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
-        if let attempt { lines.append("attempt: \(attempt)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
         return lines.joined(separator: "\n")
@@ -145,7 +142,6 @@ struct WorkTask: Identifiable, Equatable, Hashable {
 
         var task = WorkTask(id: resolvedId, title: title, status: status, worktree: worktree, body: body)
         task.createdAt = createdAt
-        task.attempt = fields["attempt"].flatMap { Int($0) }
         task.hidden = fields["hidden"] == "true"
         return task
     }

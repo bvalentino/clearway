@@ -127,30 +127,12 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
                 task: WorkTaskCoordinator.PendingCreate.TaskLink(
                     id: seed.id,
                     priorStatus: WorkTask.ReservedStatus.new,
-                    priorWorktree: nil,
-                    priorAttempt: nil
+                    priorWorktree: nil
                 ),
                 branch: "hand-typed",
                 command: command
             )
         )
-    }
-
-    /// Restarting a canceled task counts the attempt and puts it back on `in_progress`.
-    /// `attempt` is the sole input to the surviving agent-metadata row, so a lost increment
-    /// would silently stop that row rendering.
-    func testConfirmCreateCountsTheAttemptWhenRestartingACanceledTask() throws {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Retry me") else {
-            XCTFail("createTask returned nil"); return
-        }
-        taskManager.updateFields(id: seed.id) { $0.status = WorkTask.ReservedStatus.canceled }
-
-        makeCoordinator(taskManager).confirmCreate(taskId: seed.id, branch: "retry-me", command: nil)
-
-        let restarted = taskManager.freshTask(id: seed.id)
-        XCTAssertEqual(restarted?.status, WorkTask.ReservedStatus.inProgress)
-        XCTAssertEqual(restarted?.attempt, 1, "a restart counts the attempt")
     }
 
     /// The same sheet creates hand-made worktrees, which carry no task to write to.
@@ -220,30 +202,6 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         guard case .prefill = coordinator.resolveStart(try XCTUnwrap(restored)) else {
             XCTFail("the task must still be startable"); return
         }
-    }
-
-    /// The restart branch bumps `attempt`, so the unwind has to put that back too — otherwise a
-    /// retry after two failed creates counts attempts the operator never made.
-    func testAbandonPendingCreateRestoresABumpedAttempt() throws {
-        let taskManager = WorkTaskManager(projectPath: tempRoot)
-        guard let seed = taskManager.createTask(title: "Retry me") else {
-            XCTFail("createTask returned nil"); return
-        }
-        taskManager.updateFields(id: seed.id) {
-            $0.status = WorkTask.ReservedStatus.canceled
-            $0.attempt = 2
-        }
-        let coordinator = makeCoordinator(taskManager)
-
-        coordinator.confirmCreate(taskId: seed.id, branch: "retry-me", command: nil)
-        XCTAssertEqual(taskManager.freshTask(id: seed.id)?.attempt, 3, "the create counts the attempt")
-
-        coordinator.abandonPendingCreate()
-
-        let restored = taskManager.freshTask(id: seed.id)
-        XCTAssertEqual(restored?.attempt, 2, "the unwind puts the attempt count back")
-        XCTAssertEqual(restored?.status, WorkTask.ReservedStatus.canceled)
-        XCTAssertNil(restored?.worktree)
     }
 
     /// A hand-made worktree writes no task, so its unwind clears the pending create and nothing
@@ -441,7 +399,7 @@ final class WorkTaskCoordinatorTests: TempRootTestCase {
         let taskId = UUID()
         let pending = WorkTaskCoordinator.PendingCreate(
             task: WorkTaskCoordinator.PendingCreate.TaskLink(
-                id: taskId, priorStatus: WorkTask.ReservedStatus.new, priorWorktree: nil, priorAttempt: nil
+                id: taskId, priorStatus: WorkTask.ReservedStatus.new, priorWorktree: nil
             ),
             branch: "ship-it",
             command: nil
