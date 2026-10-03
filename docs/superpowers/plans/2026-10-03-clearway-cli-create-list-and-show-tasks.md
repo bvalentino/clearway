@@ -7,11 +7,11 @@ Breaks down `docs/superpowers/specs/2026-10-03-clearway-cli-create-list-and-show
 
 ## Architecture decisions carried from the spec
 
-- The executable is `Clearway.app/Contents/Helpers/clearway`, never `Contents/MacOS/` (D1).
-- New xcodegen target `ClearwayCLI`: `type: tool`, `PRODUCT_NAME: clearway`,
+- The executable is `Clearway.app/Contents/MacOS/cway`, beside the app executable (D1, D20).
+- New xcodegen target `ClearwayCLI`: `type: tool`, `PRODUCT_NAME: cway`,
   `PRODUCT_MODULE_NAME: ClearwayCLI`, `PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli`. The
   `Clearway` target depends on it with `embed: true`, `codeSign: true`,
-  `copy: {destination: wrapper, subpath: Contents/Helpers}` (D2).
+  `copy: {destination: executables}` (D2).
 - `Sources/Shared/` is compiled into both targets. `WorkTask.swift` and `YAMLHelpers.swift` move
   there unchanged. A new `TaskFiles` (Foundation only, no actor isolation) owns the tasks-directory
   path, the central `<UUID>.md` path, `taskMarkdownPath(inWorktree:)`, the write (directory `0700`,
@@ -26,8 +26,8 @@ Breaks down `docs/superpowers/specs/2026-10-03-clearway-cli-create-list-and-show
   parser becomes `Worktree.parseList(_:)`. `WorktreeManager` keeps `applyHeadResolution`, `gitdir`
   and process plumbing (D5).
 - The CLI runs git as `/usr/bin/env git`. Launch failure or non-zero exit is a runtime error (D6).
-- Commands: `clearway task create --title <title> [--body <text>]` (`--body -` reads stdin, and
-  stdin is read only then), `clearway task list`, `clearway task show <id>`, `clearway help` /
+- Commands: `cway task create --title <title> [--body <text>]` (`--body -` reads stdin, and
+  stdin is read only then), `cway task list`, `cway task show <id>`, `cway help` /
   `--help` (usage on stdout, exit 0). Hand-written argument parsing, no new package (D7).
 - `create` writes `WorkTask(title: trimmed, body: body).serialized()` to
   `<main>/.clearway/tasks/<UUID>.md` through `TaskFiles`, creating missing directories. Title is
@@ -37,7 +37,7 @@ Breaks down `docs/superpowers/specs/2026-10-03-clearway-cli-create-list-and-show
   `{"id","title","location","worktree","path"}`; `show` → that object plus `"body"`. `location` is
   `"backlog"` or `"worktree"` by which file the task was read from. `worktree` is always present,
   JSON `null` when unset. `id` is the uppercase `uuidString` (D9).
-- Errors: `clearway: <message>` on stderr, empty stdout, nothing written. Exit 2 for usage errors
+- Errors: `cway: <message>` on stderr, empty stdout, nothing written. Exit 2 for usage errors
   (unknown command or flag, missing title, empty title after trimming, missing `show` id). Exit 1
   for runtime failures (not a git repo, git missing, bare main worktree, unknown or malformed id,
   write failure) (D10).
@@ -234,14 +234,14 @@ new `Tests/TaskCommandTests.swift`, `Clearway.xcodeproj/project.pbxproj` (regene
 **What:**
 - `project.yml`: add `"CLI/**"` to the `Clearway` target's `Sources` excludes. Add target
   `ClearwayCLI` per D2: `type: tool`, `platform: macOS`, sources `Sources/Shared` and
-  `Sources/CLI` (exclude `**/*.md`), settings `PRODUCT_NAME: clearway`,
+  `Sources/CLI` (exclude `**/*.md`), settings `PRODUCT_NAME: cway`,
   `PRODUCT_MODULE_NAME: ClearwayCLI`, `PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli`, and
   the D15 Debug/Release signing configs. Add to the `Clearway` target's `dependencies`:
   `- target: ClearwayCLI` with `embed: true`, `codeSign: true`,
-  `copy: {destination: wrapper, subpath: Contents/Helpers}`.
+  `copy: {destination: executables}`.
 - `TaskCommand.swift`: the `TaskCommand` enum and `Result` from "Choices made in this plan", with
   only `help` / `--help` / no arguments → usage on stdout, exit 0 (usage lists all three task
-  subcommands as specified in D7), and any other first argument → `clearway: unknown command
+  subcommands as specified in D7), and any other first argument → `cway: unknown command
   '<arg>'` on stderr, exit 2. `task create|list|show` arrive in T6 and T7; until then `task`
   with any subcommand is the unknown-command error.
 - `main.swift`: call `TaskCommand.run(arguments: Array(CommandLine.arguments.dropFirst()),
@@ -250,23 +250,23 @@ new `Tests/TaskCommandTests.swift`, `Clearway.xcodeproj/project.pbxproj` (regene
   matching handles, `exit(result.exitCode)`.
 - `TaskCommandTests`: (a) `help`, `--help` and no arguments exit 0 with non-empty stdout and empty
   stderr; (b) an unknown command exits 2 with empty stdout; (c) the first half of spec T12:
-  `Bundle.main.bundleURL/Contents/Helpers/clearway` exists and `isExecutableFile`, and running it
+  `Bundle.main.bundleURL/Contents/MacOS/cway` exists and `isExecutableFile`, and running it
   with `help` via `Process` exits 0.
 
 **Acceptance criteria:**
-- `./scripts/ci.sh` exits 0 and the built `Clearway.app/Contents/Helpers/clearway` exists and runs
+- `./scripts/ci.sh` exits 0 and the built `Clearway.app/Contents/MacOS/cway` exists and runs
   (crit. 10).
 - `./scripts/build.sh` still produces `Clearway (<worktree>).app` with
-  `Contents/Helpers/clearway` inside and no duplicate-output error (crit. 11).
+  `Contents/MacOS/cway` inside and no duplicate-output error (crit. 11).
 - `codesign --verify --deep --strict` passes on the Debug app.
-- `git status --porcelain` shows no `Clearway.swiftmodule`/`clearway` collision artifacts in the
+- `git status --porcelain` shows no `Clearway.swiftmodule` collision artifacts in the
   repo.
 
 **Verify:** `./scripts/ci.sh`; `./scripts/build.sh`; `ls -l` the helper in both bundles;
 `codesign --verify --deep --strict <app>`. For crit. 12, attempt one Release build of the app
 with `xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release
 -destination 'platform=macOS' -derivedDataPath <scratchpad>/release-dd build` and run
-`codesign -dvvv <app>/Contents/Helpers/clearway` (expect `Authority=Developer ID Application`,
+`codesign -dvvv <app>/Contents/MacOS/cway` (expect `Authority=Developer ID Application`,
 `Timestamp=`, `flags=0x10000(runtime)`) plus `codesign --verify --deep --strict <app>`. That build
 rebuilds the gitignored `Resources/git-dist`; if it cannot finish for a reason unrelated to the CLI
 target, record the reason in the build log and leave crit. 12 to the operator. Never `release.sh`.
@@ -289,7 +289,7 @@ target, record the reason in the build log and leave crit. 12 to the operator. N
   `TaskFiles.write(_:toPath: TaskFiles.centralPath(for:tasksDirectory: TaskFiles.tasksDirectory(inProject: main)))`.
   Failure → exit 1.
 - Encode `{"id": uuidString, "path": <absolute path>}` with the D9 encoder options; append a
-  trailing newline to stdout. All errors use the `clearway: <message>` stderr shape with empty
+  trailing newline to stdout. All errors use the `cway: <message>` stderr shape with empty
   stdout.
 
 Tests, each with a `GitRepoFixture` under `tempRoot` (spec T1–T4, T7 for create, T8, T9):
@@ -312,7 +312,7 @@ Tests, each with a `GitRepoFixture` under `tempRoot` (spec T1–T4, T7 for creat
 - `./scripts/ci.sh` exits 0.
 
 **Verify:** `./scripts/ci.sh`; then by hand, from this worktree,
-`"<BUILT_PRODUCTS_DIR>/Clearway.app/Contents/Helpers/clearway" task create --title probe` in a
+`"<BUILT_PRODUCTS_DIR>/Clearway.app/Contents/MacOS/cway" task create --title probe` in a
 scratchpad `git init` repo prints JSON and writes the file. Delete that scratchpad repo after.
 
 ### T7: clearway task list and task show, end to end through the bundle
@@ -338,7 +338,7 @@ Tests (spec T5, T6, T7 for list/show, T8, T12):
   malformed ids exit 1 with empty stdout; missing id exits 2.
 - `list` and `show` with a non-repo cwd exit 1.
 - All success stdouts parse with `JSONSerialization`; `list` with no tasks prints `[]`.
-- End to end: run `Bundle.main.bundleURL/Contents/Helpers/clearway` via `Process` with a fixture
+- End to end: run `Bundle.main.bundleURL/Contents/MacOS/cway` via `Process` with a fixture
   repo as `currentDirectoryURL`: `task create --title e2e`, parse the id, then `task show <id>`
   returns the same id and title (crit. 10).
 
@@ -359,8 +359,8 @@ Tests (spec T5, T6, T7 for list/show, T8, T12):
 `TEST_HOST`), and add that passing `PRODUCT_NAME` to `xcodebuild` now fails with a duplicate
 `.swiftmodule` because it reaches the `ClearwayCLI` target. Under Architecture add one line each
 for `Sources/Shared/` (format, layout and porcelain parser, compiled into both targets, Foundation
-only, no actor isolation) and `Sources/CLI/` (the `clearway` helper's `main.swift`; logic in
-`TaskCommand`; embedded at `Contents/Helpers/clearway`). In `Sources/App/CLAUDE.md`, update any
+only, no actor isolation) and `Sources/CLI/` (the `cway` helper's `main.swift`; logic in
+`TaskCommand`; embedded at `Contents/MacOS/cway`). In `Sources/App/CLAUDE.md`, update any
 note that names `WorkTask.swift`, `YAMLHelpers.swift`, `WorkTaskManager.taskMarkdownPath`,
 `loadTask` or `parseWorktreeListOutput` to the new location or name, and note in the
 `WorkTaskManager` notes (if any) that `init` creates `.clearway/tasks` so the backlog watcher is
@@ -376,7 +376,7 @@ always armed. Add no new section where none exists.
 ## Checkpoints
 
 - After T3: the app builds and behaves as before, plus D13; all existing task tests unchanged.
-- After T5: `Clearway.app/Contents/Helpers/clearway` exists in Debug, `build.sh` works in a
+- After T5: `Clearway.app/Contents/MacOS/cway` exists in Debug, `build.sh` works in a
   worktree, signature verifies.
 - After T7: spec criteria 1–11 are covered by tests; criterion 12 is the operator's if T5 could
   not complete the Release build. Criterion 2's live "appears without relaunch" is the operator's
@@ -389,7 +389,42 @@ always armed. Add no new section where none exists.
 | Refactor in T2 changes pool behavior subtly (ordering, legacy ids). | High | Existing manager/coordinator tests must pass with no edits; T2 adds direct `TaskFiles` tests. |
 | Embed phase does not re-sign with hardened runtime in Release. | Medium | T5 Release `codesign -dvvv` check; operator verifies at next notarization. |
 | Test host's `PATH` lacks `git` for the CLI's `/usr/bin/env git`. | Low | `/usr/bin` is always on the default `PATH`; if a test fails on launch, report it rather than changing D6. |
-| `xcodegen` `copy.subpath` semantics differ from the spec probe. | Low | T5 verifies the helper path in both Debug bundles. |
+| `xcodegen` copy-destination semantics differ from the spec probe. | Low | T5 verifies the helper path in both Debug bundles. |
+
+## Changelog
+
+### C1: `clearway` runs the CLI inside Clearway's own terminals (superseded by C2, reverted)
+
+Requested by the operator during the hands-on check, after T8: typing `clearway help` in a Clearway
+terminal launched a second app instance. Implemented in 21c3235 (spec D19): the running bundle's
+`Contents/Helpers` first on every terminal's `PATH` (`CLIHelperPath`), and Ghostty's `path`
+shell-integration feature off through a temp-file `shell-integration-features` override. It failed
+the operator's live check: in a Debug build's terminal `Contents/Helpers` ended up last on `PATH`,
+after an inherited `/Applications/Clearway.app/Contents/MacOS`, so `clearway` still launched the
+installed app. Reverted in full by the operator's decision (94d1d24, `git revert 21c3235`); its
+build log section went with the revert and remains readable in 21c3235.
+
+### C2: Rename the CLI to `cway` and embed it at `Contents/MacOS/cway` (operator-requested)
+
+Requested by the operator after C1 failed live; replaces C1 (spec D20, D19 superseded, D1/D2
+updated). Not a defect of T1–T8 and not unintentional; no later step reverts it.
+
+- The CLI is `cway`: `cway task create`, `cway task list`, `cway task show`, `cway help`. Usage and
+  error text (`cway: <message>`) use the new name.
+- The helper lives at `Contents/MacOS/cway`, beside the app executable, in Debug and Release
+  bundles. Ghostty's shell integration appending the bundle's `Contents/MacOS` to `PATH`
+  (`GHOSTTY_BIN_DIR`, feature `path`, at its default) is the only thing that puts `cway` on `PATH`.
+  No `PATH` code of Clearway's.
+- C1 is reverted in full, including the `loadFromDisk` loader dedup and the
+  `agentEnvironment` → `childEnvironment` rename: both existed only to carry the `PATH` override, so
+  none of 21c3235 is kept.
+
+Known limits, accepted by the operator:
+- Typing bare `clearway` in an in-app terminal still opens the app, as on main.
+- A Debug build launched from an installed Clearway's terminal finds the installed app's `cway`
+  first once a release ships one, because the inherited `PATH` entry precedes the Debug bundle's.
+
+The task headings T5–T7 and their build log sections keep the name and path as built at the time.
 
 ## Build log
 
@@ -645,3 +680,41 @@ Deviations:
   wording for the line omitted.
 
 Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final doc edit.
+
+### C2: Rename the CLI to `cway` and embed it at `Contents/MacOS/cway`
+
+| File | State |
+| --- | --- |
+| working tree | an abandoned uncommitted probe (`InheritedShellSession`, which scrubbed inherited `__MISE_*` variables, its test, a one-line `ClearwayApp.init` call and the regenerated project file) was discarded before any change; copy kept only in the session scratchpad |
+| 94d1d24 | `git revert 21c3235`: `CLIHelperPath`, the `no-path` override and its temp config file, `CLIHelperPathTests`, `GhosttyConfigTests`, the `Sources/Ghostty/CLAUDE.md` note, and C1's plan/spec entries removed (re-recorded above as superseded) |
+| `project.yml` | `ClearwayCLI` `PRODUCT_NAME: cway`; the embed copy is `destination: executables` (generated `dstSubfolderSpec = 6`, `dstPath = ""`) instead of `wrapper` + `Contents/Helpers` |
+| `Sources/Shared/TaskCommand.swift` | usage lines and the stderr prefix say `cway` |
+| `Sources/Shared/TaskFiles.swift` | doc comment names the `cway` CLI |
+| `Tests/TaskCommandTests.swift` | usage, stderr-prefix and unknown-command expectations say `cway`; both end-to-end tests run `Bundle.main.bundleURL/Contents/MacOS/cway` |
+| `CLAUDE.md` | the `PRODUCT_NAME` warning names `cway`; the `Sources/CLI/` line gives `Contents/MacOS/cway`, how it reaches `PATH`, and why its name must never match `Clearway` case-insensitively |
+| spec | D1, D2, D7, D10 updated; D19 recorded as superseded; D20 added; criteria 10, 12, the Commands checks and T12 name `Contents/MacOS/cway` |
+| plan | carried decisions, T5–T8 bodies, checkpoints and risks name `cway` and `Contents/MacOS/cway`; Changelog C1 and C2 |
+
+Evidence, the updated tests against the old embed layout (`project.yml` from HEAD, then
+`xcodebuild … test -only-testing:ClearwayTests/TaskCommandTests`):
+
+```
+TaskCommandTests.swift:81: error: … testEmbeddedHelperExistsAndRunsHelp : XCTAssertTrue failed - …/Debug/Clearway.app/Contents/MacOS/cway
+TaskCommandTests.swift:370: error: … testEmbeddedHelperCreatesThenShowsATask : failed: caught error: "… The file “cway” doesn’t exist." … NSFilePath=…/Debug/Clearway.app/Contents/MacOS/cway
+```
+
+Release signing, T5's check repeated with `-derivedDataPath <scratchpad>/release-dd` (deleted
+after): build exit 0; `Contents/MacOS` holds `Clearway` and `cway`, no `Contents/Helpers`;
+`codesign -dvvv Contents/MacOS/cway` shows `Identifier=cway`, `flags=0x10000(runtime)`,
+`Authority=Developer ID Application: Bruno Valentino (76AEQBHY3K)`, `Timestamp=`;
+`codesign --verify --deep --strict` on the app: valid, satisfies its Designated Requirement; the
+Release `cway help` prints the new usage with exit 0. `release.sh` and `notarize.sh` need no change:
+neither names a path inside the bundle; they build, zip, submit and `spctl` the whole `.app`.
+Notarization itself stays the operator's, at the next release.
+
+`./scripts/build.sh` exit 0: `Clearway (clearway-cli-create-list-and-show-tasks).app/Contents/MacOS`
+holds `cway` beside the renamed app executable; `codesign --verify --deep --strict` passes.
+
+Deviations: none from the operator's decision.
+
+Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final edit.

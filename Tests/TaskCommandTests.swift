@@ -49,7 +49,7 @@ final class TaskCommandTests: TempRootTestCase {
     ) {
         XCTAssertEqual(result.exitCode, exitCode, file: file, line: line)
         XCTAssertEqual(result.stdout, "", file: file, line: line)
-        XCTAssertTrue(result.stderr.hasPrefix("clearway: "), result.stderr, file: file, line: line)
+        XCTAssertTrue(result.stderr.hasPrefix("cway: "), result.stderr, file: file, line: line)
         XCTAssertTrue(result.stderr.hasSuffix("\n"), file: file, line: line)
     }
 
@@ -64,20 +64,20 @@ final class TaskCommandTests: TempRootTestCase {
 
     func testUsageListsEveryTaskSubcommand() {
         let usage = run(["help"]).stdout
-        XCTAssertTrue(usage.contains("clearway task create --title <title> [--body <text>]"))
-        XCTAssertTrue(usage.contains("clearway task list"))
-        XCTAssertTrue(usage.contains("clearway task show <id>"))
+        XCTAssertTrue(usage.contains("cway task create --title <title> [--body <text>]"))
+        XCTAssertTrue(usage.contains("cway task list"))
+        XCTAssertTrue(usage.contains("cway task show <id>"))
     }
 
     func testUnknownCommandExitsTwoWithEmptyStdout() {
         let result = run(["frobnicate"])
         XCTAssertEqual(result.exitCode, 2)
         XCTAssertEqual(result.stdout, "")
-        XCTAssertEqual(result.stderr, "clearway: unknown command 'frobnicate'\n")
+        XCTAssertEqual(result.stderr, "cway: unknown command 'frobnicate'\n")
     }
 
     func testEmbeddedHelperExistsAndRunsHelp() throws {
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/clearway")
+        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cway")
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: helper.path), helper.path)
 
         let process = Process()
@@ -351,7 +351,7 @@ final class TaskCommandTests: TempRootTestCase {
 
     private func runHelper(_ arguments: [String], in directory: String) throws -> (stdout: String, status: Int32) {
         let process = Process()
-        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/clearway")
+        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cway")
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
         let stdout = Pipe()

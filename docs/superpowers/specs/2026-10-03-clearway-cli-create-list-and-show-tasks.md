@@ -3,7 +3,7 @@
 **Date:** 2026-10-03
 **Base:** 32bfb80 (Remove all use of the task status, #264)
 
-`Clearway.app` gains a second executable, `Contents/Helpers/clearway`, with three commands:
+`Clearway.app` gains a second executable, `Contents/MacOS/cway`, with three commands:
 `task create`, `task list` and `task show`. An agent uses it to file a backlog task, or to read
 tasks, without knowing that a task is a markdown file with YAML frontmatter under
 `.clearway/tasks/<UUID>.md` or a worktree's `.clearway/TASK.md`. The CLI and the app compile the
@@ -18,16 +18,16 @@ and the release signing settings cover the new executable.
 
 | # | Question | Decision | Why |
 | --- | --- | --- | --- |
-| D1 | Where does the executable live in the bundle? | `Clearway.app/Contents/Helpers/clearway`. | Apple's "Placing content in a bundle" table lists "help app, helper tool" at `Contents/MacOS/` or `Contents/Helpers/` (fetched 2026-10-03, `developer.apple.com/tutorials/data/documentation/bundleresources/placing-content-in-a-bundle.json`). `Contents/MacOS/` is rejected: the main executable there is `Clearway` (`project.yml:40`), and on the default case-insensitive APFS volume `clearway` and `Clearway` are the same path. |
-| D2 | How is it built? | A new xcodegen target `ClearwayCLI`, `type: tool`, `PRODUCT_NAME: clearway`, `PRODUCT_MODULE_NAME: ClearwayCLI`, `PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli`. The `Clearway` target lists it as a dependency with `embed: true`, `codeSign: true`, `copy: {destination: wrapper, subpath: Contents/Helpers}`. | Scratchpad probe (below) built exactly this shape with xcodegen 2.45.3 / Xcode 27.0: the tool landed in `Contents/Helpers/`, ran, and `codesign --verify --deep --strict` passed on the app. An explicit module name is required: a tool emits `<module>.swiftmodule` into `BUILT_PRODUCTS_DIR` (seen in the probe), so a module named `clearway` would collide with `Clearway.swiftmodule` on a case-insensitive volume. |
+| D1 | Where does the executable live in the bundle, and what is it called? | `Clearway.app/Contents/MacOS/cway`, beside the app executable, in Debug and Release bundles (D20). | Apple's "Placing content in a bundle" table lists "help app, helper tool" at `Contents/MacOS/` or `Contents/Helpers/` (fetched 2026-10-03, `developer.apple.com/tutorials/data/documentation/bundleresources/placing-content-in-a-bundle.json`). Originally `Contents/Helpers/clearway`, because `clearway` and the app executable `Clearway` are the same path on the default case-insensitive APFS volume; the rename to `cway` (D20) removes that collision, and `Contents/MacOS` is the directory Ghostty's shell integration already puts on `PATH`. |
+| D2 | How is it built? | A new xcodegen target `ClearwayCLI`, `type: tool`, `PRODUCT_NAME: cway`, `PRODUCT_MODULE_NAME: ClearwayCLI`, `PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli`. The `Clearway` target lists it as a dependency with `embed: true`, `codeSign: true`, `copy: {destination: executables}` (D20). | Scratchpad probe built the original shape (`destination: wrapper, subpath: Contents/Helpers`) with xcodegen 2.45.3 / Xcode 27.0: the tool landed in `Contents/Helpers/`, ran, and `codesign --verify --deep --strict` passed on the app; C2 re-verified the `executables` destination the same way. An explicit module name is required: a tool emits `<module>.swiftmodule` into `BUILT_PRODUCTS_DIR` (seen in the probe), so a module named after the product could collide with `Clearway.swiftmodule`. |
 | D3 | How do the app and the CLI share one definition of the format? | A new source directory `Sources/Shared/` compiled into both targets. `Sources/App/WorkTask.swift` and `Sources/App/YAMLHelpers.swift` move there unchanged. A new `TaskFiles` (Foundation only, no actor isolation) holds the layout and I/O now private to `WorkTaskManager`: the tasks directory under a project, the central `<UUID>.md` path, `taskMarkdownPath(inWorktree:)`, the write (directory `0700`, file `0600`, `throws`), the single-file load (`requireFrontmatterID` rule), and the merge-load of the pool (central files by filename UUID, then each worktree `TASK.md`, worktree copy wins, newest first). The merge-load returns each task with the path it was read from. `WorkTaskManager` calls `TaskFiles` for all of these and keeps its watchers, pool and routing. | Brief, Constraints: "no second, hand-maintained writer". Today the layout and merge rule live in `@MainActor WorkTaskManager` (`WorkTaskManager.swift:287-309, 315-348, 418-425`), which the CLI cannot compile (it depends on `FileWatchers`, `ScheduledWork`, `ObservableObject`). Rejected: a framework or static library target, which adds a target, linking and signing for three files. Rejected: listing individual `Sources/App/*.swift` files in the CLI target, which hides the boundary in `project.yml`. |
 | D4 | How does the CLI find the main worktree and the other worktrees? | It runs `git worktree list --porcelain` in the current directory. The first entry is the main worktree, as the app already assumes (`Worktree.swift:272`, `isMain = index == 0`). The backlog is `<main>/.clearway/tasks`. The `TASK.md` candidates are every listed worktree path. | Brief, criterion 1: "the same place the pasted prompt resolves with `git worktree list`". |
 | D5 | Is the porcelain parser shared or rewritten? | Shared. `HeadStatus`, the `Worktree` struct (`Worktree.swift:6-56`) and `parseWorktreeListOutput` (`:249-280`) move to `Sources/Shared/`, the parser as `Worktree.parseList(_:)`. Its one app call site (`Worktree.swift:358`) and the test call sites in `Tests/WorktreeTests.swift` are updated. | Same "one definition" rule. All three are pure Foundation code. `WorktreeManager` keeps `applyHeadResolution`, `gitdir` and the process plumbing. |
 | D6 | Which git does the CLI run? | `/usr/bin/env git`, i.e. `git` from the caller's `PATH`. A launch failure or non-zero exit is an error (D10). | The CLI runs in a shell that already has git; it has no Finder-launched minimal `PATH` problem, which is what `GitResolver` (`GitResolver.swift:19-60`) solves for the app. |
-| D7 | What is the command surface? | `clearway task create --title <title> [--body <text>]`, where `--body -` reads the body from stdin. `clearway task list`. `clearway task show <id>`. `clearway help` / `--help` prints usage to stdout with exit 0. Arguments are parsed by hand. | Brief, In scope. Reading stdin only on `--body -` keeps a harness that leaves stdin open from hanging. A hand parser for three subcommands beats adding swift-argument-parser, a new dependency. |
+| D7 | What is the command surface? | `cway task create --title <title> [--body <text>]`, where `--body -` reads the body from stdin. `cway task list`. `cway task show <id>`. `cway help` / `--help` prints usage to stdout with exit 0. Arguments are parsed by hand. | Brief, In scope. Reading stdin only on `--body -` keeps a harness that leaves stdin open from hanging. A hand parser for three subcommands beats adding swift-argument-parser, a new dependency. |
 | D8 | What does `create` write? | `WorkTask(title: trimmed, body: body)` serialized by the shared `serialized()`, to `<main>/.clearway/tasks/<UUID>.md` via `TaskFiles`. The title is trimmed of whitespace and newlines, like `WorkTaskManager.createTask` (`WorkTaskManager.swift:131`). No `worktree`, `hidden` or `status` line. Missing directories are created. | Criteria 2, 3. `frontmatterLines` writes only `id`, `title`, and `worktree`/`hidden` when set (`WorkTask.swift:28-40`), so a CLI task and an app task are byte-identical in shape. |
 | D9 | What is the output format? | JSON on stdout, always, encoded with `JSONEncoder` (`.prettyPrinted`, `.sortedKeys`, `.withoutEscapingSlashes`). `create`: `{"id", "path"}`. `list`: an array of `{"id", "title", "location", "worktree", "path"}`. `show`: the same object plus `"body"`. `location` is `"backlog"` for a central file and `"worktree"` for a `TASK.md`, decided by which file the task was read from. `worktree` is the frontmatter link or JSON `null`, always present. `id` is the uppercase `uuidString`. | Criterion 9: an agent parses it reliably. No `--json` flag: the users are agents, and one format is simpler than two. |
-| D10 | Errors and exit codes | Message on stderr as `clearway: <message>`, nothing on stdout. Exit 2 for a usage error (unknown command or flag, missing title, empty title after trimming, missing `show` id). Exit 1 for a runtime failure (not in a git repo, git missing, bare main worktree, unknown or malformed id, write failure). Nothing is written on any error. | Criteria 5, 7, 8. |
+| D10 | Errors and exit codes | Message on stderr as `cway: <message>`, nothing on stdout. Exit 2 for a usage error (unknown command or flag, missing title, empty title after trimming, missing `show` id). Exit 1 for a runtime failure (not in a git repo, git missing, bare main worktree, unknown or malformed id, write failure). Nothing is written on any error. | Criteria 5, 7, 8. |
 | D11 | Which tasks does `list` show? | Every task in the merge-loaded pool whose `hidden` is false, newest first. | Criterion 6. |
 | D12 | Does `show` find a hidden shadow task? | Yes. `show` looks the id up in the whole pool; hiding is a `list` rule. | Criterion 7 asks for any task "wherever its file lives". An agent holding an id should get it back. |
 | D13 | The backlog watcher is never armed when `.clearway/tasks` is missing at app launch. What changes? | `WorkTaskManager.init` creates `tasksDirectory` (intermediate directories, `0700`) before `watchDirectory()`, so the backlog watcher is always armed. | Decided by the operator. Without it, a CLI task created while the app runs in a project with no `.clearway/tasks` does not appear (criterion 2 with criterion 3). `makeWatcher` returns nil when `open(path, O_EVTONLY)` fails (`FileWatchers.swift:25-26`), and only `write` re-arms it (`WorkTaskManager.swift:308`), which the CLI never reaches. The `.clearway` watchers cover only opened worktrees and only when `.clearway` already exists (`WorkTaskManager.swift:433-445`, `ContentView.swift:727-732`). An empty directory is invisible to git, so this adds no `git status` noise. Rejected: watching the project root for `.clearway` to appear, which fires on every root entry change, adds a second watcher and needs a two-level re-arm. Rejected: leaving it as is, which fails criterion 3's "still appears" in a project with no tasks directory. |
@@ -36,6 +36,8 @@ and the release signing settings cover the new executable.
 | D16 | Where does CLI logic live, and how is it tested? | The command logic (argument parsing, project resolution, running each command, rendering JSON and errors) lives in `Sources/Shared/TaskCommand.swift` as a function from arguments, working directory and stdin to `(stdout, stderr, exitCode)`. `Sources/CLI/main.swift` only wires the real process I/O to it and calls `exit`. The `Clearway` target excludes `CLI/**`. | A tool target cannot be a test host, and `ClearwayTests` already reaches everything in the app module through `@testable import Clearway`. Rejected: a second test bundle compiling the shared files, which duplicates symbols against the host app. The cost is a few kilobytes of unused code in the app binary. |
 | D17 | Is a status written or read? | No. | Brief, Constraints; dependency landed in 32bfb80. |
 | D18 | One task per `create` call? | Yes. | Brief, Constraints. |
+| D19 | Typing `clearway` in one of Clearway's own terminals launched a second app instance. What changes? | **Superseded by D20; implemented in C1 (21c3235) and reverted (94d1d24) by the operator's decision.** Was: put the running bundle's `Contents/Helpers` first on every terminal's `PATH` (`CLIHelperPath`, through the surface environment and `ShellEnvironment.path` / `awaitPath()`), and turn Ghostty's `path` shell-integration feature off with a `shell-integration-features` override loaded after the user's config. | Failed the operator's live check: in a Debug build's terminal `Contents/Helpers` ended up last on `PATH`, after an inherited `/Applications/Clearway.app/Contents/MacOS`, so `clearway` still launched the installed app. The operator chose not to fight `PATH` ordering. |
+| D20 | How is the CLI reached from Clearway's own terminals? | Decided by the operator after D19 failed. The CLI is renamed `cway` (`cway task create`, `cway task list`, `cway task show`, `cway help`; errors and usage use the new name) and embedded at `Contents/MacOS/cway`. Ghostty's shell integration appends the bundle's `Contents/MacOS` to `PATH` in every in-app terminal (`GHOSTTY_BIN_DIR`, feature `path`, default on), and that is the only thing that puts `cway` on `PATH`. Clearway has no `PATH` code of its own for it. Accepted limits: bare `clearway` in an in-app terminal still opens the app, as on main; a Debug build launched from an installed Clearway's terminal finds the installed app's `cway` first once a release ships one, because the inherited `PATH` entry precedes the Debug bundle's. | `ghostty/src/termio/Exec.zig:660-698` sets `GHOSTTY_BIN_DIR` to the executable's directory and appends it to `PATH` at spawn unless already present; with the `path` feature on, the shell integration re-appends it after the user's rc files (`ghostty/src/shell-integration/zsh/ghostty-integration:277-279`). With no case collision, `Contents/MacOS` is a supported location (D1). Rejected: D19's `PATH` rewriting, which lost to an inherited entry live. |
 
 ## Assumptions
 
@@ -61,9 +63,9 @@ without a global `PRODUCT_NAME` override (D2, D14, D15).
 
 ## Objective and success criteria
 
-An agent in any worktree of a project runs `clearway task create --title "…"` and gets back the
+An agent in any worktree of a project runs `cway task create --title "…"` and gets back the
 new task's id and path as JSON. The task appears in the app's Tasks list without a relaunch,
-shaped exactly like one the app created. `clearway task list` and `clearway task show <id>` return
+shaped exactly like one the app created. `cway task list` and `cway task show <id>` return
 the same tasks the app holds.
 
 1. From the main worktree and from a linked worktree, `task create` writes
@@ -83,11 +85,11 @@ the same tasks the app holds.
 8. Every command run outside a git repository writes nothing, prints a message on stderr and
    exits 1.
 9. stdout is valid JSON for every successful command and empty for every failure.
-10. The built `Clearway.app` contains an executable `Contents/Helpers/clearway` in Debug, and
+10. The built `Clearway.app` contains an executable `Contents/MacOS/cway` in Debug, and
     `./scripts/ci.sh` passes.
 11. `./scripts/build.sh` in a linked worktree produces `Clearway (<worktree>).app` with the
     helper inside, and the build does not fail on duplicate outputs.
-12. A Release build signs `Contents/Helpers/clearway` with the Developer ID identity, the
+12. A Release build signs `Contents/MacOS/cway` with the Developer ID identity, the
     hardened runtime flag and a secure timestamp, and notarization of the release accepts it.
 
 ## Commands
@@ -100,11 +102,11 @@ From the project's `## Pipeline` section:
 | Full gate (sign-off, once) | `./scripts/ci.sh` |
 
 Criterion 11 is checked once with `./scripts/build.sh` from this worktree, then
-`ls "<BUILT_PRODUCTS_DIR>/Clearway (clearway-cli-create-list-and-show-tasks).app/Contents/Helpers/clearway"`.
+`ls "<BUILT_PRODUCTS_DIR>/Clearway (clearway-cli-create-list-and-show-tasks).app/Contents/MacOS/cway"`.
 Resolve `BUILT_PRODUCTS_DIR` the way `run.sh` does.
 
 Criterion 12, first half, is checked by the operator or a build agent with a Release build and
-`codesign -dvvv <app>/Contents/Helpers/clearway` (expect `Authority=Developer ID Application`,
+`codesign -dvvv <app>/Contents/MacOS/cway` (expect `Authority=Developer ID Application`,
 `Timestamp=`, `flags=0x10000(runtime)`) plus `codesign --verify --deep --strict <app>`. The
 notarization half needs App Store Connect credentials and is the operator's, at the next
 `release.sh` + `notarize.sh`.
@@ -166,7 +168,7 @@ repo as the working directory.
 - T11 `WorkTaskManagerWatcherTests`: a manager initialized on a project with no `.clearway`
   picks up a `<UUID>.md` written afterwards by `TaskFiles` without any app-side write
   (crit. 3, D13).
-- T12 End to end: `Bundle.main.bundleURL/Contents/Helpers/clearway` exists and is executable;
+- T12 End to end: `Bundle.main.bundleURL/Contents/MacOS/cway` exists and is executable;
   running `task create` then `task show` through it in a fixture repo returns the task
   (crit. 10).
 - Criterion 2's "appears in the Tasks list without a relaunch" in the live UI is the operator's

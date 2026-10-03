@@ -220,8 +220,8 @@
 		BA1625EA82BDEFE3B881C43A /* Embed Dependencies */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Contents/Helpers;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 6;
 			files = (
 				1F0C7834C1F9403A9B3886E3 /* ClearwayCLI in Embed Dependencies */,
 			);
@@ -1392,7 +1392,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac.cli;
 				PRODUCT_MODULE_NAME = ClearwayCLI;
-				PRODUCT_NAME = clearway;
+				PRODUCT_NAME = cway;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -1470,7 +1470,7 @@
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac.cli;
 				PRODUCT_MODULE_NAME = ClearwayCLI;
-				PRODUCT_NAME = clearway;
+				PRODUCT_NAME = cway;
 				SDKROOT = macosx;
 			};
 			name = Release;

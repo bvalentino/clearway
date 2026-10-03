@@ -307,8 +307,7 @@ targets:
         embed: true
         codeSign: true
         copy:
-          destination: wrapper
-          subpath: Contents/Helpers
+          destination: executables
 
   ClearwayCLI:
     type: tool
@@ -322,7 +321,7 @@ targets:
           - "**/*.md"
     settings:
       base:
-        PRODUCT_NAME: clearway
+        PRODUCT_NAME: cway
         PRODUCT_MODULE_NAME: ClearwayCLI
         PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli
       configs:

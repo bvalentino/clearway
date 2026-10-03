@@ -1,6 +1,6 @@
 import Foundation
 
-/// The on-disk layout of the task pool, shared by the app and the `clearway` CLI. Backlog tasks
+/// The on-disk layout of the task pool, shared by the app and the `cway` CLI. Backlog tasks
 /// live centrally in `<project>/.clearway/tasks/<UUID>.md`; a task linked to a live worktree lives
 /// in that worktree as `.clearway/TASK.md`.
 enum TaskFiles {

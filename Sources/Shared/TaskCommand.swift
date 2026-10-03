@@ -10,10 +10,10 @@ enum TaskCommand {
 
     static let usage = """
         Usage:
-          clearway task create --title <title> [--body <text>]
-          clearway task list
-          clearway task show <id>
-          clearway help
+          cway task create --title <title> [--body <text>]
+          cway task list
+          cway task show <id>
+          cway help
 
         --body - reads the body from stdin.
 
@@ -37,7 +37,7 @@ enum TaskCommand {
             }
             return Result(stdout: output, stderr: "", exitCode: 0)
         } catch {
-            return Result(stdout: "", stderr: "clearway: \(error.message)\n", exitCode: error.exitCode)
+            return Result(stdout: "", stderr: "cway: \(error.message)\n", exitCode: error.exitCode)
         }
     }
 

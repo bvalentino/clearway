@@ -31,7 +31,7 @@ Running the Debug build drops `default.profraw` in the repo root and it is **not
 ./scripts/ci.sh
 ```
 
-Regenerates the Xcode project, lints, builds, and runs the test suite — the same gate `.github/workflows/ci.yml` applies to a PR. Use it instead of a hand-written `xcodebuild` line: new Swift files are invisible to the build until `xcodegen generate` runs, and `build.sh`'s `APP_PRODUCT_NAME` still renames the app out from under `TEST_HOST`, so the tests fail to launch. Never pass `PRODUCT_NAME` to `xcodebuild`: it reaches the `ClearwayCLI` target too, so with `PRODUCT_MODULE_NAME=Clearway` the build fails on "Multiple commands produce …/Clearway.swiftmodule", and without it the embed phase cannot find `clearway`.
+Regenerates the Xcode project, lints, builds, and runs the test suite — the same gate `.github/workflows/ci.yml` applies to a PR. Use it instead of a hand-written `xcodebuild` line: new Swift files are invisible to the build until `xcodegen generate` runs, and `build.sh`'s `APP_PRODUCT_NAME` still renames the app out from under `TEST_HOST`, so the tests fail to launch. Never pass `PRODUCT_NAME` to `xcodebuild`: it reaches the `ClearwayCLI` target too, so with `PRODUCT_MODULE_NAME=Clearway` the build fails on "Multiple commands produce …/Clearway.swiftmodule", and without it the embed phase cannot find `cway`.
 
 ## Linting
 
@@ -113,7 +113,7 @@ All new code must pass `swiftlint lint` with zero errors before committing. Warn
 - **Sources/Ghostty/** — first-party Swift wrappers around the libghostty C API. Excluded from SwiftLint (`.swiftlint.yml`), but **not** vendored and not an upstream mirror — only `ghostty/` is a submodule. Held to the same engineering bar as `Sources/App`. Per-file notes: `Sources/Ghostty/CLAUDE.md`.
 - **Sources/App/** — SwiftUI app entry point + task/worktree logic. Per-file notes: `Sources/App/CLAUDE.md`.
 - **Sources/Shared/** — the task file format (`WorkTask`, `YAMLHelpers`), the on-disk layout (`TaskFiles`), the `git worktree list --porcelain` parser (`Worktree.parseList`) and the CLI's `TaskCommand`. Compiled into both the `Clearway` and `ClearwayCLI` targets, so Foundation only and no actor isolation.
-- **Sources/CLI/** — `main.swift` of the `clearway` helper, which only wires process I/O to `TaskCommand.run`. Excluded from the `Clearway` target; the app embeds the built tool at `Contents/Helpers/clearway`. Tests reach `TaskCommand` through `@testable import Clearway`.
+- **Sources/CLI/** — `main.swift` of the `cway` helper, which only wires process I/O to `TaskCommand.run`. Excluded from the `Clearway` target; the app embeds the built tool at `Contents/MacOS/cway`, which Ghostty's shell integration already puts on every in-app terminal's `PATH` (`GHOSTTY_BIN_DIR`). Never name it so it matches `Clearway` case-insensitively: it would overwrite the app executable on the default APFS volume. Tests reach `TaskCommand` through `@testable import Clearway`.
 - **Sources/App/Clearway-Bridging-Header.h** — the only route to cmark-gfm's GFM extension API; the SPM package's umbrella header exposes just `cmark.h`, so `import cmark` cannot see it. Its four prototypes are hand-copied, so the package is pinned with `exactVersion` — a signature change in a later 2.x would not fail the build.
 - swift-markdown was evaluated and rejected for the Markdown preview: it is parse-only, ships no HTML renderer, and wraps the same cmark-gfm already vendored.
 
