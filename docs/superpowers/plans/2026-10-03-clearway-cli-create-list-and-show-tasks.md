@@ -473,3 +473,26 @@ before `watchDirectory()`.
 
 Gate: `./scripts/ci.sh` exit 0, 891 tests, 0 failures, run after the final source edit.
 `swiftlint lint --quiet` on the two touched Swift files printed nothing.
+
+### T4: Stop overriding PRODUCT_NAME for every target
+
+| File | State |
+| --- | --- |
+| `project.yml` | `Clearway` target `settings.base`: `APP_PRODUCT_NAME: Clearway`, `PRODUCT_NAME: $(APP_PRODUCT_NAME)`, `PRODUCT_MODULE_NAME: Clearway` |
+| `scripts/build.sh`, `scripts/install.sh`, `scripts/release.sh` | each of the two `xcodebuild` lines passes `APP_PRODUCT_NAME="$PRODUCT_NAME"` in place of `PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway`; nothing else in `release.sh` changed |
+| `Clearway.xcodeproj/project.pbxproj` | regenerated: the same three settings in the `Clearway` target's Debug and Release configurations |
+
+Evidence: no regression test applies; this is a build-setting indirection with one target today.
+`./scripts/build.sh` from this worktree built
+`<BUILT_PRODUCTS_DIR>/Clearway (clearway-cli-create-list-and-show-tasks).app`; its
+`Contents/MacOS/` holds `Clearway (clearway-cli-create-list-and-show-tasks)` and `CFBundleExecutable`
+prints the same name. `BUILT_PRODUCTS_DIR` still holds `Clearway.swiftmodule`, so the module name
+did not follow the bundle name. `grep -n "PRODUCT_MODULE_NAME\|PRODUCT_NAME=" scripts/*.sh` matches
+only the shell-variable assignments in `build.sh`, `install.sh`, `release.sh` and `run.sh`; no
+`xcodebuild` argument other than `APP_PRODUCT_NAME=`.
+
+Deviations: none. The stale comments in `ci.sh:17` and `run.sh:26` that mention the `PRODUCT_NAME`
+override were left alone; T8 owns the documentation of this change.
+
+Gate: `./scripts/ci.sh` exit 0, 891 tests, 0 failures, 0 warnings in the log, run after the final
+edit. `install.sh` and `release.sh` were not run.

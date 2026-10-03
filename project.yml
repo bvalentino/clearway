@@ -37,7 +37,9 @@ targets:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac
-        PRODUCT_NAME: Clearway
+        APP_PRODUCT_NAME: Clearway
+        PRODUCT_NAME: $(APP_PRODUCT_NAME)
+        PRODUCT_MODULE_NAME: Clearway
         INFOPLIST_FILE: ""
         GENERATE_INFOPLIST_FILE: YES
         MARKETING_VERSION: "2.0.1"

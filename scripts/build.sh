@@ -20,10 +20,10 @@ fi
 echo "==> Building $PRODUCT_NAME (Debug)..."
 if command -v xcbeautify >/dev/null 2>&1; then
   xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug -destination "platform=macOS,arch=$(uname -m)" \
-    PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway build | xcbeautify --quiet --disable-logging
+    APP_PRODUCT_NAME="$PRODUCT_NAME" build | xcbeautify --quiet --disable-logging
 else
   xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug -destination "platform=macOS,arch=$(uname -m)" \
-    PRODUCT_NAME="$PRODUCT_NAME" PRODUCT_MODULE_NAME=Clearway build -quiet
+    APP_PRODUCT_NAME="$PRODUCT_NAME" build -quiet
 fi
 
 echo "==> Build succeeded."

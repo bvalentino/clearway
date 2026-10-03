@@ -1094,6 +1094,7 @@
 		132BA50F8EE0FDADAE524449 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_PRODUCT_NAME = Clearway;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Clearway.entitlements;
@@ -1132,7 +1133,8 @@
 					"-framework Carbon",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac.debug;
-				PRODUCT_NAME = Clearway;
+				PRODUCT_MODULE_NAME = Clearway;
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				SDKROOT = macosx;
 				SPARKLE_FEED_URL = "https://bvalentino.github.io/clearway/appcast.xml";
 				SPARKLE_PUBLIC_KEY = "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY=";
@@ -1295,6 +1297,7 @@
 		7E8AB543E2489CFC95C93777 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_PRODUCT_NAME = Clearway;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Clearway.entitlements;
@@ -1337,7 +1340,8 @@
 					"-framework Carbon",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.getclearway.mac;
-				PRODUCT_NAME = Clearway;
+				PRODUCT_MODULE_NAME = Clearway;
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				SDKROOT = macosx;
 				SPARKLE_FEED_URL = "https://bvalentino.github.io/clearway/appcast.xml";
 				SPARKLE_PUBLIC_KEY = "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY=";
