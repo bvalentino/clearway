@@ -426,3 +426,32 @@ since it is the other system-managed field the buffer never sets.
 **Gate:** `./scripts/ci.sh` exit 0 after the last code edit (882 tests, 0 failures).
 `swiftlint lint --quiet` on both touched files: no output.
 `grep -nE "\.status\b|status:|ReservedStatus"` on both files returns only the two raw fixture lines.
+
+### T7: Detach the remaining tests from the status field
+
+| File | State |
+| --- | --- |
+| `Tests/WorkTaskManagerWatcherTests.swift` | Central-rewrite test drops its status writes and assertion (title + body still advance). `testWatcherAdoptsAtomicWorktreeStatusRewrite` renamed `testWatcherAdoptsAtomicWorktreeRewrite`, advances `title` + `body`. Re-arm test advances `title` on the first write and `title` + `body` on the second. No `status:` init arguments |
+| `Tests/TaskEditorBuffersTests.swift` | `status:` init arguments dropped. `testSaveBodyModeWritesTitleAndBodyViaRebase` guards `worktree` ("body save must not clobber worktree"). `testSaveBodyModeAllowsWriteWhenOnlyStatusMovedOnDisk` renamed `...WhenOnlyWorktreeMovedOnDisk`, advances `worktree` on disk and asserts it survives. Both CAS-abort tests drop their status writes and assertions; title/body still prove the abort |
+| `Tests/WorkTaskRelocationSafetyTests.swift` | `status:` init arguments dropped from the real and shadow tasks. The raw `status: in_progress` fixture stays for T8 |
+
+`Tests/WorkTaskManagerTests.swift` needed nothing: T6 had already applied this rule there.
+
+**Watched failure (RED).** To prove the two rewritten editor tests still bite, the body-mode write
+in `TaskEditorBuffers.save` was mutated to build a fresh `WorkTask(id:title:body:)` instead of
+setting `title`/`body` on the disk re-base; `./scripts/ci.sh` exited 65:
+
+```
+✖ testSaveBodyModeAllowsWriteWhenOnlyWorktreeMovedOnDisk, XCTAssertEqual failed: ("nil") is not equal to ("Optional("feature/disk")") - worktree from disk must survive body save
+✖ testSaveBodyModeWritesTitleAndBodyViaRebase, XCTAssertEqual failed: ("nil") is not equal to ("Optional("feature/disk")") - body save must not clobber worktree
+Executed 882 tests, with 2 failures (0 unexpected)
+```
+
+The source was restored from a scratchpad copy before the green run.
+
+**Deviations:** none.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last code edit (882 tests, 0 failures).
+`swiftlint lint --quiet` on the three touched files: no output.
+`grep -nE "\.status\b|status:|ReservedStatus"` on the three files returns only the raw fixture in
+`WorkTaskRelocationSafetyTests.swift:22`.

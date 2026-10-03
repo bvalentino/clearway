@@ -52,7 +52,7 @@ final class WorkTaskRelocationSafetyTests: TempRootTestCase {
         // Real central task linked to the branch.
         let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
         try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
-        let real = WorkTask(id: id, title: "Real", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/collide", body: "real body")
+        let real = WorkTask(id: id, title: "Real", worktree: "feature/collide", body: "real body")
         let centralFile = (centralDir as NSString).appendingPathComponent("\(id.uuidString).md")
         try real.serialized().write(toFile: centralFile, atomically: true, encoding: .utf8)
 
@@ -60,7 +60,7 @@ final class WorkTaskRelocationSafetyTests: TempRootTestCase {
         let clearway = (worktreePath as NSString).appendingPathComponent(".clearway")
         try FileManager.default.createDirectory(atPath: clearway, withIntermediateDirectories: true)
         let taskMd = (clearway as NSString).appendingPathComponent("TASK.md")
-        var shadow = WorkTask(title: "", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/collide")
+        var shadow = WorkTask(title: "", worktree: "feature/collide")
         shadow.hidden = true
         try shadow.serialized().write(toFile: taskMd, atomically: true, encoding: .utf8)
         let shadowBefore = try String(contentsOfFile: taskMd, encoding: .utf8)

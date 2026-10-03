@@ -7,7 +7,6 @@ final class TaskEditorBuffersTests: XCTestCase {
         let pool = WorkTask(
             id: UUID(),
             title: "From disk",
-            status: "work_breakdown",
             body: "Expanded brief"
         )
         var state = TaskEditorBufferState(
@@ -27,7 +26,7 @@ final class TaskEditorBuffersTests: XCTestCase {
     }
 
     func testAdoptFromPoolSkipsUnchangedBuffers() {
-        let pool = WorkTask(id: UUID(), title: "Same", status: "spec", body: "Same body")
+        let pool = WorkTask(id: UUID(), title: "Same", body: "Same body")
         var state = TaskEditorBufferState(
             title: "Same",
             bodyText: "Same body",
@@ -49,7 +48,7 @@ final class TaskEditorBuffersTests: XCTestCase {
     }
 
     func testIsDirtyBodyMode() {
-        let task = WorkTask(id: UUID(), title: "T", status: "new", body: "B")
+        let task = WorkTask(id: UUID(), title: "T", body: "B")
         let clean = TaskEditorBufferState(title: "T", bodyText: "B")
         let dirty = TaskEditorBufferState(title: "T", bodyText: "edited")
         XCTAssertFalse(TaskEditorBuffers.isDirty(task: task, state: clean, showFrontmatter: false))
@@ -57,7 +56,7 @@ final class TaskEditorBuffersTests: XCTestCase {
     }
 
     func testLeaveFrontmatterWithInvalidYAMLSetsError() {
-        let task = WorkTask(id: UUID(), title: "T", status: "new", body: "B")
+        let task = WorkTask(id: UUID(), title: "T", body: "B")
         var state = TaskEditorBufferState(
             title: "T",
             bodyText: "B",
@@ -113,7 +112,7 @@ final class TaskEditorBuffersTests: XCTestCase {
         }
         manager.updateFields(id: seed.id) {
             $0.body = "Original body"
-            $0.status = "work_breakdown"
+            $0.worktree = "feature/disk"
         }
 
         var state = TaskEditorBufferState(title: "Edited title", bodyText: "Edited body")
@@ -128,7 +127,7 @@ final class TaskEditorBuffersTests: XCTestCase {
         let pool = manager.tasks.first { $0.id == seed.id }
         XCTAssertEqual(pool?.title, "Edited title")
         XCTAssertEqual(pool?.body, "Edited body")
-        XCTAssertEqual(pool?.status, "work_breakdown", "body save must not clobber status")
+        XCTAssertEqual(pool?.worktree, "feature/disk", "body save must not clobber worktree")
     }
 
     /// Late autosave after an external agent rewrite must not stamp pre-agent title/body onto
@@ -144,16 +143,12 @@ final class TaskEditorBuffersTests: XCTestCase {
         guard let seed = manager.createTask(title: "Pre-plan title") else {
             XCTFail("createTask returned nil"); return
         }
-        manager.updateFields(id: seed.id) {
-            $0.body = "Pre-plan draft"
-            $0.status = "spec"
-        }
+        manager.updateFields(id: seed.id) { $0.body = "Pre-plan draft" }
 
         let stalePool = try XCTUnwrap(manager.tasks.first { $0.id == seed.id })
         var agent = stalePool
         agent.title = "Planned title"
         agent.body = "Expanded brief from agent"
-        agent.status = "work_breakdown"
         try agent.serialized().write(
             toFile: manager.filePath(for: stalePool),
             atomically: true,
@@ -177,16 +172,15 @@ final class TaskEditorBuffersTests: XCTestCase {
         let onDisk = try XCTUnwrap(manager.freshTask(id: seed.id))
         XCTAssertEqual(onDisk.title, "Planned title")
         XCTAssertEqual(onDisk.body, "Expanded brief from agent")
-        XCTAssertEqual(onDisk.status, "work_breakdown")
         XCTAssertEqual(state.title, "Planned title", "buffers adopt disk on CAS abort")
         XCTAssertEqual(state.bodyText, "Expanded brief from agent")
         XCTAssertGreaterThan(state.reloadingCount, 0, "adopt must suppress follow-on autosave")
     }
 
-    /// Status-only disk advance must not block a legitimate title/body save (CAS keys only
+    /// Worktree-only disk advance must not block a legitimate title/body save (CAS keys only
     /// on editor-owned fields).
     @MainActor
-    func testSaveBodyModeAllowsWriteWhenOnlyStatusMovedOnDisk() throws {
+    func testSaveBodyModeAllowsWriteWhenOnlyWorktreeMovedOnDisk() throws {
         let root = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("clearway-editor-buffers-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(atPath: root) }
@@ -195,14 +189,11 @@ final class TaskEditorBuffersTests: XCTestCase {
         guard let seed = manager.createTask(title: "Title") else {
             XCTFail("createTask returned nil"); return
         }
-        manager.updateFields(id: seed.id) {
-            $0.body = "Body"
-            $0.status = "spec"
-        }
+        manager.updateFields(id: seed.id) { $0.body = "Body" }
 
         let poolBase = try XCTUnwrap(manager.tasks.first { $0.id == seed.id })
         var advanced = poolBase
-        advanced.status = "work_breakdown"
+        advanced.worktree = "feature/disk"
         try advanced.serialized().write(
             toFile: manager.filePath(for: poolBase),
             atomically: true,
@@ -221,7 +212,7 @@ final class TaskEditorBuffersTests: XCTestCase {
         let onDisk = try XCTUnwrap(manager.freshTask(id: seed.id))
         XCTAssertEqual(onDisk.title, "User title")
         XCTAssertEqual(onDisk.body, "User body")
-        XCTAssertEqual(onDisk.status, "work_breakdown", "status from disk must survive body save")
+        XCTAssertEqual(onDisk.worktree, "feature/disk", "worktree from disk must survive body save")
     }
 
     @MainActor
@@ -234,16 +225,12 @@ final class TaskEditorBuffersTests: XCTestCase {
         guard let seed = manager.createTask(title: "Pre-plan title") else {
             XCTFail("createTask returned nil"); return
         }
-        manager.updateFields(id: seed.id) {
-            $0.body = "Pre-plan draft"
-            $0.status = "spec"
-        }
+        manager.updateFields(id: seed.id) { $0.body = "Pre-plan draft" }
 
         let stalePool = try XCTUnwrap(manager.tasks.first { $0.id == seed.id })
         var agent = stalePool
         agent.title = "Planned title"
         agent.body = "Expanded brief from agent"
-        agent.status = "work_breakdown"
         try agent.serialized().write(
             toFile: manager.filePath(for: stalePool),
             atomically: true,
@@ -269,7 +256,6 @@ final class TaskEditorBuffersTests: XCTestCase {
         let onDisk = try XCTUnwrap(manager.freshTask(id: seed.id))
         XCTAssertEqual(onDisk.title, "Planned title")
         XCTAssertEqual(onDisk.body, "Expanded brief from agent")
-        XCTAssertEqual(onDisk.status, "work_breakdown")
         XCTAssertEqual(state.editorText, agent.serialized())
     }
 }
