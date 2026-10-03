@@ -442,3 +442,34 @@ Deviations:
 
 Gate: `./scripts/ci.sh` exit 0, 890 tests, 0 failures, run after the final source edit.
 `swiftlint lint --quiet` on the four touched Swift files printed nothing.
+
+### T3: Arm the backlog watcher when .clearway/tasks is missing at launch
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskManager.swift` | `init` creates `tasksDirectory` (`withIntermediateDirectories: true`, `0700`, `try?`) between `reload()` and `watchDirectory()`; `makeWatcher` doc comment now says `init` creates the tasks directory, so a nil watcher there means the create failed and `write` re-arms it |
+| `Tests/WorkTaskManagerWatcherTests.swift` | new `testWatcherSeesBacklogTaskWrittenWhenTasksDirectoryWasMissingAtLaunch`: manager on an empty temp project; asserts `.clearway/tasks` is a directory with mode `0700` right after `init`; writes a task with `TaskFiles.write(_:toPath: TaskFiles.centralPath(...))` and no manager call; asserts it appears in `manager.tasks` within `waitUntil(timeout: 3)` |
+
+Evidence: the test was added first and run against the T2 tree. The first `./scripts/ci.sh` run
+(exit 65, 891 tests, 3 failures) stopped the test at a throwing `attributesOfItem` before it
+reached the watcher assertion, so the mode read was made non-throwing and the test re-run with
+`xcodebuild … test -only-testing:ClearwayTests/WorkTaskManagerWatcherTests` on the unfixed code:
+
+```
+WorkTaskManagerWatcherTests.swift:118: error: … XCTAssertTrue failed
+WorkTaskManagerWatcherTests.swift:119: error: … XCTAssertTrue failed
+WorkTaskManagerWatcherTests.swift:122: error: … XCTAssertEqual failed: ("nil") is not equal to ("Optional(448)")
+WorkTaskManagerWatcherTests.swift:130: error: … XCTAssertTrue failed - backlog watcher must be armed even when .clearway/tasks was missing at init
+Executed 4 tests, with 4 failures (0 unexpected)
+```
+
+All four assertions fail, the watcher one included: `TaskFiles.write` creates the directory but
+the manager's watcher was nil and nothing re-armed it. After the `init` edit all four watcher tests
+pass.
+
+Deviations: none. The directory is created after `reload()` rather than before it; `reload` reads
+nothing from an empty directory, so the order does not matter, and the plan only requires it
+before `watchDirectory()`.
+
+Gate: `./scripts/ci.sh` exit 0, 891 tests, 0 failures, run after the final source edit.
+`swiftlint lint --quiet` on the two touched Swift files printed nothing.

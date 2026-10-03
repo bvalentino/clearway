@@ -110,6 +110,26 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         )
     }
 
+    func testWatcherSeesBacklogTaskWrittenWhenTasksDirectoryWasMissingAtLaunch() async throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        let tasksDirectory = TaskFiles.tasksDirectory(inProject: tempRoot)
+
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tasksDirectory, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: tasksDirectory)
+        let permissions = attributes?[.posixPermissions] as? NSNumber
+        XCTAssertEqual(permissions?.int16Value, 0o700)
+
+        let task = WorkTask(title: "Written by the CLI")
+        try TaskFiles.write(task, toPath: TaskFiles.centralPath(for: task.id, tasksDirectory: tasksDirectory))
+
+        let adopted = await waitUntil(timeout: 3) {
+            manager.tasks.contains { $0.id == task.id && $0.title == "Written by the CLI" }
+        }
+        XCTAssertTrue(adopted, "backlog watcher must be armed even when .clearway/tasks was missing at init")
+    }
+
     // MARK: - Helpers
 
     private func seedWorktreeTask(dir: String, _ task: WorkTask) throws -> String {

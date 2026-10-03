@@ -35,6 +35,11 @@ class WorkTaskManager: ObservableObject {
         self.projectPath = projectPath
         self.tasksDirectory = TaskFiles.tasksDirectory(inProject: projectPath)
         reload()
+        try? FileManager.default.createDirectory(
+            atPath: tasksDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         watchDirectory()
     }
 
@@ -402,8 +407,9 @@ class WorkTaskManager: ObservableObject {
         watcherSource = makeWatcher(forPath: tasksDirectory)
     }
 
-    /// Directory watcher → debounced pool reload. Nil when the path does not exist yet
-    /// (re-armed from `write` once the directory appears). Task **files** use
+    /// Directory watcher → debounced pool reload. Nil when the path does not exist: `init` creates
+    /// the tasks directory, so for it that means the create failed and `write` re-arms once the
+    /// directory appears. Task **files** use
     /// `makeTaskFileWatcher` so their inodes re-arm after atomic replace.
     private func makeWatcher(forPath path: String) -> DispatchSourceFileSystemObject? {
         FileWatchers.makeWatcher(path: path) { [weak self] in
