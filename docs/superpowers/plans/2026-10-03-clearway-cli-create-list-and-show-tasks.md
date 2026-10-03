@@ -577,3 +577,40 @@ Deviations:
 
 Gate: `./scripts/ci.sh` exit 0, 905 tests, 0 failures, run after the final code edit.
 `swiftlint lint --quiet` on both touched Swift files printed nothing.
+
+### T7: clearway task list and task show, end to end through the bundle
+
+| File | State |
+| --- | --- |
+| `Sources/Shared/TaskCommand.swift` | `run` dispatches `task list` and `task show`. Private `Entry: Encodable` with a hand-written `encode(to:)` that always writes `worktree` (JSON `null` when unset) and writes `body` only for `show`; `location` is `"backlog"` when the loaded path's parent is the tasks directory, else `"worktree"`. `list` rejects any extra argument (exit 2), loads the pool through `TaskFiles.loadPool` with every listed worktree path, drops hidden tasks, keeps pool order. `show` takes exactly one argument (missing or extra → exit 2); `UUID(uuidString:)` failure → `malformed task id '<arg>'`, exit 1; not in the full pool (hidden included) → `no task <ID>`, exit 1. Usage text unchanged: T5 already lists both commands |
+| `Tests/TaskCommandTests.swift` | eight new cases: `list` over a backlog task, a linked-worktree `TASK.md` (`worktree: feature`) and a hidden shadow `TASK.md` returns two entries newest first with the right `location`, `worktree` (`null` / `feature`), `path` and key set; `list` with no tasks parses as an empty array; `list` from a linked worktree sees the whole pool; `show` finds the backlog, worktree, hidden and lowercased ids with `body`; unknown and malformed ids exit 1; missing/extra `show` argument and extra `list` argument exit 2; `list`/`show` outside a repo exit 1 and leave the directory empty; end to end through `Bundle.main.bundleURL/Contents/Helpers/clearway`: `task create --title e2e` then `task show <id>` returns the same id and title with `location` `backlog` |
+
+Evidence: the implementation was copied to the scratchpad and the two dispatch cases removed, then
+`xcodebuild … test -only-testing:ClearwayTests/TaskCommandTests` run on that tree:
+
+```
+TaskCommandTests.swift:376: error: … testEmbeddedHelperCreatesThenShowsATask : XCTAssertEqual failed: ("2") is not equal to ("0")
+TaskCommandTests.swift:344: error: … testListAndShowOutsideGitRepositoryExitOneAndWriteNothing : XCTAssertEqual failed: ("2") is not equal to ("1")
+TaskCommandTests.swift:296: error: … testListFromLinkedWorktreeSeesTheWholePool : XCTAssertEqual failed: ("2") is not equal to ("0") - clearway: unknown command 'task list'
+TaskCommandTests.swift:261: error: … testListReturnsVisibleTasksWithLocationAndWorktreeNewestFirst : … unknown command 'task list'
+TaskCommandTests.swift:288: error: … testListWithNoTasksPrintsEmptyArray : … unknown command 'task list'
+TaskCommandTests.swift:311: error: … testShowFindsBacklogWorktreeHiddenAndLowercasedIds : … unknown command 'task show'
+TaskCommandTests.swift:328: error: … testShowUnknownOrMalformedIdExitsOne : XCTAssertEqual failed: ("2") is not equal to ("1")
+Executed 22 tests, with 27 failures (10 unexpected)
+```
+
+`testListAndShowArgumentErrorsExitTwo` passed vacuously there (an unknown command is also exit 2);
+it only exercises argument counting now. The implementation was restored from the scratchpad copy
+and all 22 pass.
+
+Deviations:
+- `list` from a linked worktree is an extra case, beyond the plan's list, pinning that D4's
+  resolution reads the whole pool from any worktree.
+- The empty-list case asserts the output parses to an empty array, not an exact `[]` byte string:
+  `JSONEncoder`'s pretty-printed rendering of an empty array is a Foundation detail, and criterion 9
+  asks only for valid JSON.
+- Path assertions go through `canonical(_:)`, as in T6, because the JSON paths are git's real
+  `/private/var/…` paths.
+
+Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final code edit.
+`swiftlint lint --quiet` on both touched Swift files printed nothing.

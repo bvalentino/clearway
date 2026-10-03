@@ -212,4 +212,171 @@ final class TaskCommandTests: TempRootTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: directory)))
     }
+
+    // MARK: - task list, task show
+
+    private struct Pool {
+        let repo: GitRepoFixture
+        let backlog: WorkTask
+        let linked: WorkTask
+        let hidden: WorkTask
+        let linkedWorktree: String
+    }
+
+    /// A backlog task (oldest), a task in a linked worktree's `TASK.md` (newest) and a hidden
+    /// shadow task in a second worktree.
+    private func makePool() throws -> Pool {
+        let repo = try makeRepo()
+        let linkedWorktree = try repo.addWorktree(branch: "feature")
+        let shadowWorktree = try repo.addWorktree(branch: "shadow")
+
+        let backlog = WorkTask(title: "Backlog task", body: "Backlog body")
+        let linked = WorkTask(title: "Linked task", worktree: "feature", body: "Linked body")
+        var hidden = WorkTask(title: "Shadow task", worktree: "shadow")
+        hidden.hidden = true
+
+        let now = Date()
+        let files: [(WorkTask, String, Date)] = [
+            (backlog, TaskFiles.centralPath(for: backlog.id, tasksDirectory: TaskFiles.tasksDirectory(inProject: repo.root)), now.addingTimeInterval(-200)),
+            (linked, TaskFiles.taskMarkdownPath(inWorktree: linkedWorktree), now.addingTimeInterval(-100)),
+            (hidden, TaskFiles.taskMarkdownPath(inWorktree: shadowWorktree), now),
+        ]
+        for (task, path, created) in files {
+            try TaskFiles.write(task, toPath: path)
+            try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: path)
+        }
+        return Pool(repo: repo, backlog: backlog, linked: linked, hidden: hidden, linkedWorktree: linkedWorktree)
+    }
+
+    private func jsonObject(_ result: TaskCommand.Result, file: StaticString = #filePath, line: UInt = #line) throws -> Any {
+        XCTAssertEqual(result.exitCode, 0, result.stderr, file: file, line: line)
+        XCTAssertEqual(result.stderr, "", file: file, line: line)
+        XCTAssertTrue(result.stdout.hasSuffix("\n"), file: file, line: line)
+        return try JSONSerialization.jsonObject(with: Data(result.stdout.utf8))
+    }
+
+    func testListReturnsVisibleTasksWithLocationAndWorktreeNewestFirst() throws {
+        let pool = try makePool()
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: pool.repo.root)) as? [[String: Any]])
+
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries.map { $0["id"] as? String }, [pool.linked.id.uuidString, pool.backlog.id.uuidString])
+        for entry in entries {
+            XCTAssertEqual(Set(entry.keys), ["id", "title", "location", "worktree", "path"])
+        }
+
+        let linked = entries[0]
+        XCTAssertEqual(linked["title"] as? String, "Linked task")
+        XCTAssertEqual(linked["location"] as? String, "worktree")
+        XCTAssertEqual(linked["worktree"] as? String, "feature")
+        XCTAssertEqual(canonical(try XCTUnwrap(linked["path"] as? String)), TaskFiles.taskMarkdownPath(inWorktree: pool.linkedWorktree))
+
+        let backlog = entries[1]
+        XCTAssertEqual(backlog["title"] as? String, "Backlog task")
+        XCTAssertEqual(backlog["location"] as? String, "backlog")
+        XCTAssertTrue(backlog["worktree"] is NSNull)
+        XCTAssertEqual(
+            canonical(try XCTUnwrap(backlog["path"] as? String)),
+            TaskFiles.centralPath(for: pool.backlog.id, tasksDirectory: TaskFiles.tasksDirectory(inProject: pool.repo.root))
+        )
+    }
+
+    func testListWithNoTasksPrintsEmptyArray() throws {
+        let repo = try makeRepo()
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: repo.root)) as? [Any])
+
+        XCTAssertTrue(entries.isEmpty)
+    }
+
+    func testListFromLinkedWorktreeSeesTheWholePool() throws {
+        let pool = try makePool()
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: pool.linkedWorktree)) as? [[String: Any]])
+
+        XCTAssertEqual(entries.map { $0["id"] as? String }, [pool.linked.id.uuidString, pool.backlog.id.uuidString])
+    }
+
+    func testShowFindsBacklogWorktreeHiddenAndLowercasedIds() throws {
+        let pool = try makePool()
+        let cases: [(String, WorkTask, String)] = [
+            (pool.backlog.id.uuidString, pool.backlog, "backlog"),
+            (pool.linked.id.uuidString, pool.linked, "worktree"),
+            (pool.hidden.id.uuidString, pool.hidden, "worktree"),
+            (pool.backlog.id.uuidString.lowercased(), pool.backlog, "backlog"),
+        ]
+
+        for (argument, task, location) in cases {
+            let object = try XCTUnwrap(try jsonObject(run(["task", "show", argument], in: pool.repo.root)) as? [String: Any], argument)
+            XCTAssertEqual(Set(object.keys), ["id", "title", "location", "worktree", "path", "body"], argument)
+            XCTAssertEqual(object["id"] as? String, task.id.uuidString, argument)
+            XCTAssertEqual(object["title"] as? String, task.title, argument)
+            XCTAssertEqual(object["body"] as? String, task.body, argument)
+            XCTAssertEqual(object["location"] as? String, location, argument)
+            if let worktree = task.worktree {
+                XCTAssertEqual(object["worktree"] as? String, worktree, argument)
+            } else {
+                XCTAssertTrue(object["worktree"] is NSNull, argument)
+            }
+        }
+    }
+
+    func testShowUnknownOrMalformedIdExitsOne() throws {
+        let pool = try makePool()
+
+        assertFailed(run(["task", "show", UUID().uuidString], in: pool.repo.root), exitCode: 1)
+        assertFailed(run(["task", "show", "not-a-uuid"], in: pool.repo.root), exitCode: 1)
+    }
+
+    func testListAndShowArgumentErrorsExitTwo() throws {
+        let pool = try makePool()
+
+        assertFailed(run(["task", "show"], in: pool.repo.root), exitCode: 2)
+        assertFailed(run(["task", "show", pool.backlog.id.uuidString, "extra"], in: pool.repo.root), exitCode: 2)
+        assertFailed(run(["task", "list", "extra"], in: pool.repo.root), exitCode: 2)
+    }
+
+    func testListAndShowOutsideGitRepositoryExitOneAndWriteNothing() throws {
+        let directory = (tempRoot as NSString).appendingPathComponent("not-a-repo")
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+
+        assertFailed(run(["task", "list"], in: directory), exitCode: 1)
+        assertFailed(run(["task", "show", UUID().uuidString], in: directory), exitCode: 1)
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory), [])
+    }
+
+    // MARK: - End to end
+
+    private func runHelper(_ arguments: [String], in directory: String) throws -> (stdout: String, status: Int32) {
+        let process = Process()
+        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/clearway")
+        process.arguments = arguments
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        try process.run()
+        let output = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (String(bytes: output, encoding: .utf8) ?? "", process.terminationStatus)
+    }
+
+    func testEmbeddedHelperCreatesThenShowsATask() throws {
+        let repo = try makeRepo()
+
+        let create = try runHelper(["task", "create", "--title", "e2e"], in: repo.root)
+        XCTAssertEqual(create.status, 0)
+        let createdObject = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(create.stdout.utf8)) as? [String: String])
+        let id = try XCTUnwrap(createdObject["id"])
+
+        let show = try runHelper(["task", "show", id], in: repo.root)
+        XCTAssertEqual(show.status, 0)
+        let shown = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(show.stdout.utf8)) as? [String: Any])
+        XCTAssertEqual(shown["id"] as? String, id)
+        XCTAssertEqual(shown["title"] as? String, "e2e")
+        XCTAssertEqual(shown["location"] as? String, "backlog")
+    }
 }

@@ -28,6 +28,10 @@ enum TaskCommand {
             switch (command, arguments.dropFirst().first) {
             case ("task", "create"):
                 output = try create(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory, readStdin: readStdin)
+            case ("task", "list"):
+                output = try list(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory)
+            case ("task", "show"):
+                output = try show(Array(arguments.dropFirst(2)), workingDirectory: workingDirectory)
             default:
                 throw Failure.usage("unknown command '\(arguments.prefix(2).joined(separator: " "))'")
             }
@@ -93,6 +97,61 @@ enum TaskCommand {
             guard options.updateValue(value, forKey: argument) == nil else { throw .usage("\(argument) given more than once") }
         }
         return options
+    }
+
+    // MARK: - task list, task show
+
+    private struct Entry: Encodable {
+        let id: String
+        let title: String
+        let location: String
+        let worktree: String?
+        let path: String
+        let body: String?
+
+        init(_ loaded: TaskFiles.LoadedTask, tasksDirectory: String, includingBody: Bool) {
+            id = loaded.task.id.uuidString
+            title = loaded.task.title
+            location = (loaded.path as NSString).deletingLastPathComponent == tasksDirectory ? "backlog" : "worktree"
+            worktree = loaded.task.worktree
+            path = loaded.path
+            body = includingBody ? loaded.task.body : nil
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, title, location, worktree, path, body
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(title, forKey: .title)
+            try container.encode(location, forKey: .location)
+            try container.encode(worktree, forKey: .worktree)
+            try container.encode(path, forKey: .path)
+            try container.encodeIfPresent(body, forKey: .body)
+        }
+    }
+
+    private static func list(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
+        if let extra = arguments.first { throw .usage("unexpected argument '\(extra)'") }
+        let (pool, tasksDirectory) = try loadPool(in: workingDirectory)
+        return try json(pool.filter { !$0.task.hidden }.map { Entry($0, tasksDirectory: tasksDirectory, includingBody: false) })
+    }
+
+    private static func show(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
+        guard let idArgument = arguments.first else { throw .usage("missing task id") }
+        if let extra = arguments.dropFirst().first { throw .usage("unexpected argument '\(extra)'") }
+        guard let id = UUID(uuidString: idArgument) else { throw .runtime("malformed task id '\(idArgument)'") }
+        let (pool, tasksDirectory) = try loadPool(in: workingDirectory)
+        guard let loaded = pool.first(where: { $0.task.id == id }) else { throw .runtime("no task \(id.uuidString)") }
+        return try json(Entry(loaded, tasksDirectory: tasksDirectory, includingBody: true))
+    }
+
+    private static func loadPool(in workingDirectory: String) throws(Failure) -> (pool: [TaskFiles.LoadedTask], tasksDirectory: String) {
+        let project = try resolveProject(in: workingDirectory)
+        let tasksDirectory = TaskFiles.tasksDirectory(inProject: project.mainPath)
+        return (TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: project.worktreePaths), tasksDirectory)
     }
 
     // MARK: - Project resolution
