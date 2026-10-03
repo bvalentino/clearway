@@ -150,7 +150,6 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let legacy = """
         ---
         title: "Legacy"
-        status: new
         worktree: null
         ---
 
@@ -379,7 +378,6 @@ final class WorkTaskManagerTests: TempRootTestCase {
         let content = """
         ---
         title: "No id"
-        status: in_progress
         worktree: feature/noid
         ---
 
@@ -604,5 +602,63 @@ final class WorkTaskManagerTests: TempRootTestCase {
         XCTAssertEqual(pool.title, "User typed title")
         XCTAssertEqual(pool.body, "User typed body")
         XCTAssertEqual(pool.worktree, "feature/disk", "worktree must come from disk, not the stale pool/buffer")
+    }
+
+    // MARK: - Old status and attempt lines
+
+    /// A file still carrying `status:` and `attempt:` is never rewritten just to drop them: reload
+    /// and a no-op `updateFields` leave it byte-for-byte. The next real save drops both.
+    func testOldStatusAndAttemptLinesSurviveUntilTheNextRealSave() throws {
+        let id = UUID()
+        let centralDir = (tempRoot as NSString).appendingPathComponent(".clearway/tasks")
+        try FileManager.default.createDirectory(atPath: centralDir, withIntermediateDirectories: true)
+        let path = (centralDir as NSString).appendingPathComponent("\(id.uuidString).md")
+        let old = """
+        ---
+        id: \(id.uuidString)
+        title: "Old file"
+        status: in_progress
+        attempt: 2
+        ---
+
+        Old body
+        """
+        try old.write(toFile: path, atomically: true, encoding: .utf8)
+
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        manager.reloadFromDisk()
+        XCTAssertEqual(manager.tasks.first { $0.id == id }?.title, "Old file")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), old, "reload must not rewrite the file")
+
+        manager.updateFields(id: id) { $0.title = "Old file" }
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), old, "a no-op update must not rewrite the file")
+
+        manager.updateFields(id: id) { $0.title = "Renamed" }
+        let saved = try String(contentsOfFile: path, encoding: .utf8)
+        XCTAssertTrue(saved.contains("title: \"Renamed\""))
+        XCTAssertFalse(saved.contains("status:"), "a real save must drop the status line")
+        XCTAssertFalse(saved.contains("attempt:"), "a real save must drop the attempt line")
+    }
+
+    /// A `status:` or `attempt:` line typed into the frontmatter editor is not persisted.
+    func testApplyEditorBufferDropsTypedStatusAndAttemptLines() throws {
+        let manager = WorkTaskManager(projectPath: tempRoot)
+        guard let seed = manager.createTask(title: "Typed") else {
+            XCTFail("createTask returned nil"); return
+        }
+
+        var edited = seed
+        edited.body = "Edited body"
+        let buffer = edited.serialized().replacingOccurrences(
+            of: "title: \"Typed\"\n",
+            with: "title: \"Typed\"\nstatus: in_progress\nattempt: 3\n"
+        )
+        XCTAssertTrue(buffer.contains("status: in_progress\nattempt: 3"), "fixture must carry both lines")
+        XCTAssertTrue(manager.applyEditorBuffer(buffer, expectedId: seed.id))
+
+        let saved = try String(contentsOfFile: manager.filePath(for: seed), encoding: .utf8)
+        XCTAssertTrue(saved.contains("Edited body"), "the buffer's body must be saved")
+        XCTAssertFalse(saved.contains("status:"), "a typed status line must not be persisted")
+        XCTAssertFalse(saved.contains("attempt:"), "a typed attempt line must not be persisted")
     }
 }

@@ -19,7 +19,6 @@ final class WorkTaskRelocationSafetyTests: TempRootTestCase {
         let legacy = """
         ---
         title: "Legacy"
-        status: in_progress
         worktree: "feature/legacy"
         ---
 

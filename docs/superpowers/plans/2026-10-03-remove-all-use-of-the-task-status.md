@@ -455,3 +455,40 @@ The source was restored from a scratchpad copy before the green run.
 `swiftlint lint --quiet` on the three touched files: no output.
 `grep -nE "\.status\b|status:|ReservedStatus"` on the three files returns only the raw fixture in
 `WorkTaskRelocationSafetyTests.swift:22`.
+
+### T8: Delete the status field and pin old-line handling
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTask.swift` | `status`, `ReservedStatus`, `migrateStatus`, the `status:` `init` parameter and the `status:` line in `frontmatterLines` deleted. `parse` requires only `title`; its doc comment says so. The `:9-11` status doc comment went with the property |
+| `Tests/WorkTaskTests.swift` | `testArbitrarySlugRoundTrips`, `testLegacyStatusValuesMigrate` and `testRetiredReadyToStartMigratesToNew` deleted. Added `testSerializedTasksCarryNoStatusOrAttemptLine` (spec T1: new, hidden linked shadow, linked), `testFileWithOnlyTitleParses`, `testFileWithoutTitleIsRejected` and `testOldStatusAndAttemptLinesParseLikeTheBareFile` (spec T2: the eight status values plus `attempt: 3`, each equal to the bare file with the same `id`/`createdAt`). `testRetiredFieldsAreDroppedOnReserialize` now counts `status` among the retired fields and asserts it is not re-emitted. `status:` dropped from the two non-old-line fixtures and the init arguments |
+| `Tests/WorkTaskManagerTests.swift` | `status:` dropped from the two non-old-line raw fixtures. Added `testOldStatusAndAttemptLinesSurviveUntilTheNextRealSave` (spec T3) and `testApplyEditorBufferDropsTypedStatusAndAttemptLines` (spec T4) |
+| `Tests/WorkTaskRelocationSafetyTests.swift` | `status: in_progress` dropped from the legacy fixture |
+
+**Watched failure (RED).** The new tests were written against the finished model, so to prove they
+bite, three mutations were applied together: `frontmatterLines` appended `status: new`, `parse`
+required a `status` key (and rejected `canceled`), and `updateFields` lost its no-change guard.
+`./scripts/ci.sh` exited 65:
+
+```
+✖ testSerializedTasksCarryNoStatusOrAttemptLine, XCTAssertFalse failed - no status line in:
+✖ testFileWithOnlyTitleParses, XCTAssertEqual failed: ("nil") is not equal to ("Optional("Bare")")
+✖ testOldStatusAndAttemptLinesParseLikeTheBareFile, XCTUnwrap failed: expected non-nil value of type "WorkTask"
+✖ testOldStatusAndAttemptLinesSurviveUntilTheNextRealSave, XCTAssertEqual failed: ("---
+✖ testApplyEditorBufferDropsTypedStatusAndAttemptLines, XCTAssertFalse failed - a typed status line must not be persisted
+✖ testRetiredFieldsAreDroppedOnReserialize, XCTAssertFalse failed - status must not be re-emitted
+Executed 885 tests, with 17 failures (0 unexpected)
+```
+
+The other failures were existing parse tests on status-less fixtures, as expected under a
+required-status mutation. Both sources were restored from a scratchpad copy before the green run.
+
+**Deviations:** `testFileWithoutTitleIsRejected` is its own test rather than a case inside the
+parse-equality test, so the rejection reads separately from the acceptance. The spec T4 test went
+in `WorkTaskManagerTests`, one of the two files the spec allows.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last code edit (885 tests, 0 failures).
+`swiftlint lint --quiet` on the four touched files: no output. The criterion-14 grep over
+`Sources/App` returns only worktree status, `Todo.Status`, git exit status and agent hook JSON;
+over `Tests` it returns those plus the old-line fixtures in `WorkTaskTests`, `WorkTaskManagerTests`
+and T2's `WorkTaskCoordinatorTests` test (a).
