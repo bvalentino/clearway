@@ -511,3 +511,7 @@ sentence to replace and none was added; the rule lives in `resolveSidePanelTab`'
 `SidePanelTabTests` (T1).
 
 **Gate:** `./scripts/ci.sh` exit 0 after the last edit (885 tests, 0 failures).
+
+### Simplify
+
+Reviewed 31293f2..HEAD for reuse, simplification and altitude; nothing to change. `./scripts/ci.sh` passed (885 tests, 0 failures, exit 0).
