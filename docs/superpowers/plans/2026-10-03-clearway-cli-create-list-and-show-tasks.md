@@ -722,3 +722,26 @@ Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final edit.
 ### Simplify
 
 `TaskCommand.run` computed `Array(arguments.dropFirst(2))` in each of its three switch cases; it is now computed once as `rest`. Nothing else in the branch's diff had a reuse or altitude gain worth the churn. Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final edit.
+
+### Review fix: do not recreate a moved or deleted project in `WorkTaskManager.init`
+
+Review finding (Important, correctness): T3's unconditional `createDirectory(atPath: tasksDirectory, withIntermediateDirectories: true, …)` recreated the whole project path when the project folder had been moved or deleted. `ProjectListManager` stores paths unchecked and window restoration opens `ProjectContentView(projectPath:)` for each (`ProjectWindow.swift:133`, `WorkTaskWindow.swift:50`), so renaming `~/Dev/proj` and relaunching left an empty `~/Dev/proj/.clearway/tasks`.
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskManager.swift` | `init` calls new private `createTasksDirectoryIfProjectExists()`, which returns unless `projectPath` exists as a directory, then creates `.clearway/tasks` as before (`0700`, intermediates); `makeWatcher` doc comment updated to match |
+| `Tests/WorkTaskManagerWatcherTests.swift` | new `testInitDoesNotRecreateAMissingProjectDirectory` (the review agent's proof test, kept); `testWatcherSeesBacklogTaskWrittenWhenTasksDirectoryWasMissingAtLaunch` now creates `tempRoot` first |
+| spec D13 | states the existence condition and the review scenario |
+
+Evidence: on the unfixed code, `xcodebuild … test -only-testing:ClearwayTests/WorkTaskManagerWatcherTests`:
+
+```
+WorkTaskManagerWatcherTests.swift:136: error: -[ClearwayTests.WorkTaskManagerWatcherTests testInitDoesNotRecreateAMissingProjectDirectory] : XCTAssertFalse failed - opening a project whose folder was moved or deleted must not recreate it
+Executed 5 tests, with 1 failure (0 unexpected)
+```
+
+After the fix it passes.
+
+Deviation: the T3 test failed after the fix (lines 118, 119, 122, 130), because `TempRootTestCase.setUp` only names `tempRoot` and never creates it, so that test had been passing on the very project-root creation this fix removes. Its scenario is an existing project with no `.clearway/tasks`, so it now creates `tempRoot` before constructing the manager.
+
+Gate: `./scripts/ci.sh` exit 0, 914 tests, 0 failures, run after the final source edit.

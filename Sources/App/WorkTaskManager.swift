@@ -35,12 +35,22 @@ class WorkTaskManager: ObservableObject {
         self.projectPath = projectPath
         self.tasksDirectory = TaskFiles.tasksDirectory(inProject: projectPath)
         reload()
+        createTasksDirectoryIfProjectExists()
+        watchDirectory()
+    }
+
+    /// Creates `.clearway/tasks` so the backlog watcher can be armed, but never the project root:
+    /// window restoration opens stored project paths without checking them, so a moved or deleted
+    /// project must not reappear as an empty folder.
+    private func createTasksDirectoryIfProjectExists() {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: projectPath, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
         try? FileManager.default.createDirectory(
             atPath: tasksDirectory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        watchDirectory()
     }
 
     /// Absolute path to a branch's live worktree, or nil when the branch has no worktree.
@@ -408,8 +418,8 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// Directory watcher → debounced pool reload. Nil when the path does not exist: `init` creates
-    /// the tasks directory, so for it that means the create failed and `write` re-arms once the
-    /// directory appears. Task **files** use
+    /// the tasks directory in an existing project, so for it that means the project is missing or
+    /// the create failed, and `write` re-arms once the directory appears. Task **files** use
     /// `makeTaskFileWatcher` so their inodes re-arm after atomic replace.
     private func makeWatcher(forPath path: String) -> DispatchSourceFileSystemObject? {
         FileWatchers.makeWatcher(path: path) { [weak self] in

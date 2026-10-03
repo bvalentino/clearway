@@ -111,6 +111,7 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
     }
 
     func testWatcherSeesBacklogTaskWrittenWhenTasksDirectoryWasMissingAtLaunch() async throws {
+        try FileManager.default.createDirectory(atPath: tempRoot, withIntermediateDirectories: true)
         let manager = WorkTaskManager(projectPath: tempRoot)
         let tasksDirectory = TaskFiles.tasksDirectory(inProject: tempRoot)
 
@@ -128,6 +129,15 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
             manager.tasks.contains { $0.id == task.id && $0.title == "Written by the CLI" }
         }
         XCTAssertTrue(adopted, "backlog watcher must be armed even when .clearway/tasks was missing at init")
+    }
+
+    func testInitDoesNotRecreateAMissingProjectDirectory() {
+        let movedProject = (tempRoot as NSString).appendingPathComponent("moved-away")
+        _ = WorkTaskManager(projectPath: movedProject)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: movedProject),
+            "opening a project whose folder was moved or deleted must not recreate it"
+        )
     }
 
     // MARK: - Helpers
