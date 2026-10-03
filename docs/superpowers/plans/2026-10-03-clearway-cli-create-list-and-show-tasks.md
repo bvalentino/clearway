@@ -391,17 +391,6 @@ always armed. Add no new section where none exists.
 | Test host's `PATH` lacks `git` for the CLI's `/usr/bin/env git`. | Low | `/usr/bin` is always on the default `PATH`; if a test fails on launch, report it rather than changing D6. |
 | `xcodegen` `copy.subpath` semantics differ from the spec probe. | Low | T5 verifies the helper path in both Debug bundles. |
 
-## Changelog
-
-### C1: `clearway` runs the CLI inside Clearway's own terminals (operator-requested)
-
-Requested by the operator during the hands-on check, after T8: typing `clearway help` in a Clearway
-terminal launched a second app instance. Not a defect of T1–T8 and not unintentional; no later step
-reverts it. Both halves are required (spec D19): the running bundle's `Contents/Helpers` is first on
-every terminal's `PATH`, and Ghostty's `path` shell-integration feature is off for Clearway's
-terminals. Rejected by the operator: `PATH` order alone with the feature on, making the main
-executable dispatch CLI arguments, deferring.
-
 ## Build log
 
 ### T1: Move the task format and worktree parser into Sources/Shared
@@ -656,48 +645,3 @@ Deviations:
   wording for the line omitted.
 
 Gate: `./scripts/ci.sh` exit 0, 913 tests, 0 failures, run after the final doc edit.
-
-### C1: `clearway` runs the CLI inside Clearway's own terminals
-
-| File | State |
-| --- | --- |
-| `Sources/App/CLIHelperPath.swift` | new: `directory` (from `Bundle.main`), `prepended(to:directory:)` (first, deduplicated), `surfaceEnvironment` (the process `PATH` with the directory prepended) |
-| `Sources/App/ClearwayApp.swift` | the surface environment provider appends `CLIHelperPath.surfaceEnvironment` to the agent hook pairs |
-| `Sources/App/ShellEnvironment.swift` | `path` and `awaitPath()` prepend the helpers directory, so every terminal that `export`s that `PATH` (agent, task, setup, hook) carries it |
-| `Sources/Ghostty/Ghostty.SurfaceView.swift` | `agentEnvironment` renamed `childEnvironment`: it now carries `PATH` too |
-| `Sources/Ghostty/Ghostty.Config.swift` | `loadFromDisk()` is the one loader (launch and reload); `disableShellPathFeature` loads a temp-file `shell-integration-features` line after the user's files that keeps each resolved feature and sets `no-path`; `enabledShellIntegrationFeatures` reads the bits back |
-| `Sources/Ghostty/Ghostty.App.swift` | `reloadConfiguration` goes through `Config.loadFromDisk()` |
-| `Sources/Ghostty/CLAUDE.md` | provider rename; a `Ghostty.Config.swift` entry for the override and why both halves are needed |
-| `Tests/CLIHelperPathTests.swift`, `Tests/GhosttyConfigTests.swift` | new |
-| `Tests/AgentHookIdentityTests.swift` | the wiring pin expects the trailing `PATH` pair |
-
-Why both halves: `Exec.zig` appends `Contents/MacOS` to `PATH` unconditionally at spawn
-(`ghostty/src/termio/Exec.zig:660-698`), and the `path` feature re-appends it after the user's rc
-files. The surface `PATH` replaces the first, because `env_vars` are applied as `env_override` after
-that append (`Exec.zig:807-814`); the feature toggle removes the second. The helpers directory is
-prepended rather than appended so the running bundle's helper wins over a `clearway` an inherited
-`PATH` already carries, e.g. a parent Clearway's when a Debug build is launched from one of its
-terminals.
-
-Evidence, run against the unfixed code (provider, `ShellEnvironment` and loader untouched,
-`disableShellPathFeature` an empty stub):
-
-- `CLIHelperPathTests.testEverySurfaceHasTheHelpersFirstOnPath`: `XCTAssertEqual failed: ("nil") is not equal to ("Optional(".../Debug/Clearway.app/Contents/Helpers")")`
-- `CLIHelperPathTests.testCommandTerminalsHaveTheHelpersFirstOnPath`: `XCTAssertEqual failed: ("Optional("/Users/bvalentino/.opencode/bin")") is not equal to ("Optional(".../Clearway.app/Contents/Helpers")")`, for both `path` and `awaitPath()`
-- `CLIHelperPathTests.testAShellOnTheSurfacePathResolvesClearwayToTheHelper`: `XCTUnwrap failed: expected non-nil value of type "String"`
-- `GhosttyConfigTests.testTheLoadedConfigHasThePathFeatureOff`: `XCTAssertFalse failed`
-- `GhosttyConfigTests.testDisablingPathKeepsTheDefaultFeatures`: `("Optional(Set(["cursor", "path", "title"]))") is not equal to ("Optional(Set(["title", "cursor"]))")`
-- `GhosttyConfigTests.testDisablingPathKeepsTheUsersOwnFeatures`: `("Optional(Set(["cursor", "ssh-terminfo", "path", "sudo"]))") is not equal to ("Optional(Set(["sudo", "ssh-terminfo", "cursor"]))")`
-- `GhosttyConfigTests.testAUserConfigLineIsReadBackAsWritten` passed before the fix: it pins the bit order of the reader against Ghostty's own parser, not the fix.
-
-The preserve-the-user's-features rule was then checked by swapping the written line for a bare
-`no-path` on the fixed code: `testDisablingPathKeepsTheUsersOwnFeatures` failed with
-`("Optional(Set(["cursor", "title"]))") is not equal to ("Optional(Set(["cursor", "sudo", "ssh-terminfo"]))")`;
-restored afterwards.
-
-Deviations: none from the operator's decision. Not covered by tests: that a live login shell keeps
-the prepended entry through `/etc/zprofile`'s `path_helper` (it keeps existing entries after the
-`/etc/paths` ones) and the user's rc files; a user rc that resets `PATH` wholesale would drop it, as
-it would any inherited entry. Left to the operator's hand check.
-
-Gate: `./scripts/ci.sh` exit 0, 922 tests, 0 failures.

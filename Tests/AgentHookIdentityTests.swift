@@ -78,11 +78,11 @@ final class AgentHookIdentityTests: XCTestCase {
         let surfaceId = UUID()
         let owner = AgentActivityOwner.worktree("/Users/x/clearway")
 
-        let wired = Ghostty.SurfaceView.childEnvironment(surfaceId, owner.rawValue)
+        let wired = Ghostty.SurfaceView.agentEnvironment(surfaceId, owner.rawValue)
 
         XCTAssertEqual(
             wired.map(\.key),
-            AgentHookIdentity.environment(surfaceId: surfaceId, owner: owner).map(\.key) + ["PATH"]
+            AgentHookIdentity.environment(surfaceId: surfaceId, owner: owner).map(\.key)
         )
         XCTAssertEqual(
             wired.first(where: { $0.key == AgentHookIdentity.surfaceIdKey })?.value,

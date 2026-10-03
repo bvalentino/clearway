@@ -112,7 +112,11 @@ extension Ghostty {
         /// Reloads Ghostty configuration from disk and applies it to the running app.
         func reloadConfiguration() {
             guard let app = self.app else { return }
-            guard let newConfig = Config.loadFromDisk() else { return }
+            guard let newConfig = ghostty_config_new() else { return }
+
+            ghostty_config_load_default_files(newConfig)
+            ghostty_config_load_recursive_files(newConfig)
+            ghostty_config_finalize(newConfig)
 
             ghostty_app_update_config(app, newConfig)
 
