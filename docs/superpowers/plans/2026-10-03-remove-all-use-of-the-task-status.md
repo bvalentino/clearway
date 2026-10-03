@@ -398,3 +398,31 @@ holds once the `status:` line is gone from both.
 **Gate:** `./scripts/ci.sh` exit 0 after the last edit (882 tests, 0 failures). `swiftlint lint --quiet`
 on both touched files: no output. `grep -nE "status|Status"` on both files returns only the raw
 `status: in_progress` fixture and its doc comment in T2's test (a).
+
+### T6: Shadow and exposed tasks stop passing a status
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskManager.swift` | `createShadowTask` and `createExposedTask` build `WorkTask(title: "", worktree: branch)`. Status comments reworded: the `createShadowTask` doc drops the `.inProgress`/`.new` sentence; the `createExposedTask` inline comment names only the empty title; `updateFields` says "fresher fields"; `applyEditorBuffer` lists `worktree`, `hidden`, timestamps as never taken from the buffer and drops "state commands" and "pre-agent status"; the watcher doc says "stale content" |
+| `Tests/WorkTaskManagerTests.swift` | Every `status:` init argument dropped. The shadow/exposed `in_progress` assertions deleted. `testStatusWriteOnHiddenTaskPreservesHiddenFlag` renamed `testFieldWriteOnHiddenTaskPreservesHiddenFlag` and writes `title`. `testExternalWorktreeStatusRewriteUpdatesPool` renamed `testExternalWorktreeRewriteUpdatesPool`, advances `title` + `body` (T7's rule), branch `feature/inflight`. `testApplyEditorBufferRebasesSystemFieldsFromDisk` uses `worktree` as the disk-only field. `testApplyEditorBufferPreservesSystemFields`, the novel-insert and central-rewrite tests drop their status writes and assertions. The two raw fixtures (`status: new`, `status: in_progress`) stay until T8 |
+
+**Watched failure (RED).** The two rewritten editor-buffer tests now guard `worktree` instead of
+`status`. To prove they still bite, `applyEditorBuffer` was mutated to also copy
+`parsed.worktree` from the buffer; `./scripts/ci.sh` exited 65:
+
+```
+✖ testApplyEditorBufferPreservesSystemFields, XCTAssertEqual failed: ("nil") is not equal to ("Optional("some-branch")") - worktree must be preserved by applyEditorBuffer
+✖ testApplyEditorBufferRebasesSystemFieldsFromDisk, XCTAssertEqual failed: ("nil") is not equal to ("Optional("feature/disk")") - worktree must come from disk, not the stale pool/buffer
+Executed 882 tests, with 3 failures (0 unexpected)
+```
+
+The source was restored from a scratchpad copy before the green run.
+
+**Deviations:** the plan named the status-driven tests by line only; the T7 rule (advance `title`
+or `body`; use `worktree` for a disk-only field) was applied to the three tests here that used
+`status` that way. In the `applyEditorBuffer` doc, `hidden` replaces `status` in the field list,
+since it is the other system-managed field the buffer never sets.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last code edit (882 tests, 0 failures).
+`swiftlint lint --quiet` on both touched files: no output.
+`grep -nE "\.status\b|status:|ReservedStatus"` on both files returns only the two raw fixture lines.

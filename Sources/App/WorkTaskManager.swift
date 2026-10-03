@@ -138,14 +138,13 @@ class WorkTaskManager: ObservableObject {
     /// Creates a hidden shadow task linked to `branch` so the worktree has state tracking
     /// without cluttering Tasks. Idempotent: returns the existing task if one already
     /// links that branch (so task-initiated worktrees, which create their task first, aren't
-    /// shadowed a second time). Default status is `.inProgress` — `.new` is reserved for
-    /// Tasks (pre-worktree).
+    /// shadowed a second time).
     @discardableResult
     func createShadowTask(forBranch branch: String) -> WorkTask? {
         if let existing = task(forWorktree: branch) { return existing }
         // Title is intentionally empty — the user fills it in when they expose the task
         // via the aside's Create Task button (which opens the editor window).
-        var shadow = WorkTask(title: "", status: WorkTask.ReservedStatus.inProgress, worktree: branch)
+        var shadow = WorkTask(title: "", worktree: branch)
         shadow.hidden = true
         write(shadow)
         reload()
@@ -166,8 +165,8 @@ class WorkTaskManager: ObservableObject {
         if let existing = task(forWorktree: branch) {
             return existing.hidden ? expose(existing) : existing
         }
-        // Same defaults as shadow tasks: in-progress, empty title (the editor fills it in).
-        let task = WorkTask(title: "", status: WorkTask.ReservedStatus.inProgress, worktree: branch)
+        // Empty title, as for shadow tasks: the editor fills it in.
+        let task = WorkTask(title: "", worktree: branch)
         write(task)
         reload()
         return tasks.first { $0.id == task.id }
@@ -187,7 +186,7 @@ class WorkTaskManager: ObservableObject {
 
     /// Re-bases from disk/pool by id, applies `mutate`, and writes only when something changed.
     /// Sole public mutation path for existing tasks — callers cannot pass a full snapshot that
-    /// would clobber fresher title/body/status on disk.
+    /// would clobber fresher fields on disk.
     @discardableResult
     func updateFields(id: UUID, mutate: (inout WorkTask) -> Void) -> WorkTask? {
         guard var base = freshTask(id: id) else { return nil }
@@ -199,11 +198,10 @@ class WorkTaskManager: ObservableObject {
     }
 
     /// Applies an editor buffer's parsed form to the persisted task. System-managed fields
-    /// (`worktree`, `status`, timestamps) are owned by
-    /// `WorkTaskCoordinator` and state commands — editor buffers never overwrite them, which
+    /// (`worktree`, `hidden`, timestamps) are never taken from the buffer, which
     /// is what prevents a stale buffer from clobbering a concurrent coordinator write.
     /// Re-bases those fields from disk (via `freshTask`) so a lagging pool cannot re-publish
-    /// a pre-agent status/title over a newer file either.
+    /// stale system fields over a newer file either.
     /// Returns `false` if the buffer has unparseable frontmatter.
     @discardableResult
     func applyEditorBuffer(_ content: String, expectedId: UUID) -> Bool {
@@ -355,7 +353,7 @@ class WorkTaskManager: ObservableObject {
     /// Always re-opens every desired path: `DispatchSource` holds an fd on a specific inode, and
     /// an atomic rewrite (write-to-temp → rename) replaces that inode under the same path. Keeping
     /// the old source keyed by path leaves a **dead** watcher that never sees later writes — the
-    /// failure mode that left the pool/UI on a stale `status` after an external frontmatter edit.
+    /// failure mode that left the pool/UI on stale content after an external frontmatter edit.
     private func syncTaskFileWatchers() {
         let desired = desiredTaskFileWatcherPaths()
 
