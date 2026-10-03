@@ -492,3 +492,22 @@ in `WorkTaskManagerTests`, one of the two files the spec allows.
 `Sources/App` returns only worktree status, `Todo.Status`, git exit status and agent hook JSON;
 over `Tests` it returns those plus the old-line fixtures in `WorkTaskTests`, `WorkTaskManagerTests`
 and T2's `WorkTaskCoordinatorTests` test (a).
+
+### T9: Docs drop the task status and attempt
+
+| File | State |
+| --- | --- |
+| `README.md` | §Tasks: the `status`/`in_progress` sentences are gone; Start Now is described as offered for a task with no worktree |
+| `Sources/App/CLAUDE.md` | `WorkTaskCoordinator` bullet: `resolveStart` derives the branch for an unlinked task, focuses a linked task's live worktree, ignores a linked task with no live worktree (and why); `confirmCreate` writes `worktree = <branch as confirmed>` and nothing else. Plan bullet drops "no status". The two sentences on advancing and round-tripping `status` are gone |
+
+**Evidence:** docs-only task, no behavioral test. `grep -nE "status|attempt|Attempt" README.md Sources/App/CLAUDE.md`
+now returns seven hits, each read: worktree status tint (`:171`), background-task `status` in hook JSON (`:559`),
+Claude Code's status line (`:567`), the agent status section headers (`:571`), the hook listener's last enable
+attempt (`:602`), the yellow status badge colour (`:645`), a shell's exit status (`:690`). None is about a task.
+No `ReservedStatus`, `migrateStatus`, `WorkTaskAgentMetadata` or `in_progress` remains in either file.
+
+**Deviations:** `Sources/App/CLAUDE.md` never stated the old `in_progress` side-panel rule, so there was no
+sentence to replace and none was added; the rule lives in `resolveSidePanelTab`'s doc comment and
+`SidePanelTabTests` (T1).
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last edit (885 tests, 0 failures).
