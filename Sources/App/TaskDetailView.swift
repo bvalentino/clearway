@@ -74,12 +74,6 @@ struct TaskDetailView: View {
                         .padding(.bottom, 4)
                 }
 
-                if task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
-                    WorkTaskAgentMetadata(task: task)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
-                }
-
                 Divider()
 
                 GeometryReader { geo in

@@ -328,3 +328,20 @@ status references in the confirm/abandon/stale-snapshot tests are left for T4/T5
 
 **Gate:** `./scripts/ci.sh` exit 0 after the last edit (883 tests, 0 failures). `swiftlint lint --quiet`
 on the three touched files: no output.
+
+### T3: Remove the "Attempt N" label
+
+| File | State |
+| --- | --- |
+| `Sources/App/WorkTaskAgentMetadata.swift` | Deleted |
+| `Sources/App/WorkTaskWindow.swift` | Metadata block and its comment removed; the `Divider()` under the title stays, it separates title from body |
+| `Sources/App/TaskDetailView.swift` | Metadata block removed; `Divider()` stays for the same reason |
+| `Sources/App/TaskAsideView.swift` | Metadata row removed; the `VStack` drops `spacing: 16`, which only separated the card from the row. The `createShadowTask` comment no longer mentions status changes |
+
+**Evidence.** No test: the change deletes a view, and the suite has no view tests to pin its
+absence. Acceptance is the grep: `grep -rn "WorkTaskAgentMetadata\|Attempt " Sources/App` returns
+nothing (exit 1).
+
+**Deviations:** none.
+
+**Gate:** `./scripts/ci.sh` exit 0 after the last code edit (883 tests, 0 failures).
