@@ -15,6 +15,7 @@
 		073439951C4EB24061AFC339 /* ClearwayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */; };
 		0D4C88A1FDBBC5AD8D642D55 /* WorktreeGroupManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */; };
 		1077AA08B457EE40A4766938 /* OpenInAppsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */; };
+		122A433617703106CF67EF28 /* TaskFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD23C82D354DF0B8384A5AA /* TaskFiles.swift */; };
 		12AD5E5827F35FCBB3875D86 /* WorkTaskManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */; };
 		151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */; };
 		16632D26B22A8BC9CE983236 /* WorkTaskRelocationSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B249C5162F943C6A161511 /* WorkTaskRelocationSafetyTests.swift */; };
@@ -30,6 +31,7 @@
 		228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */; };
 		2678B9560A2D12B8CC5C1076 /* ContentViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F9D304788805B4A4AF1056 /* ContentViewHelpers.swift */; };
 		269DF3F2263E554B0083CDC6 /* Ghostty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4224CF2CA76BDF5405FD737D /* Ghostty.swift */; };
+		28B7F18AC3804C48777D34FC /* TaskFilesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFF36723FEFEA89949C8C229 /* TaskFilesTests.swift */; };
 		2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */; };
 		2B1679975B653C03C0C03FFF /* WorkTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819821F4A2EB895AB2B55BA7 /* WorkTaskTests.swift */; };
 		2C1E1DCD291D6CADCBD570B2 /* ShellEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285166667E4C68C074F90329 /* ShellEnvironmentTests.swift */; };
@@ -372,12 +374,14 @@
 		EE7FCD6FD5DA825EB4A05C2D /* MainTerminalTabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTerminalTabStrip.swift; sourceTree = "<group>"; };
 		EEAFD2DD699CB260EDDA8BE4 /* PortScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortScanner.swift; sourceTree = "<group>"; };
 		EF5D6B020A6E238AE1AE099E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		EFF36723FEFEA89949C8C229 /* TaskFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFilesTests.swift; sourceTree = "<group>"; };
 		F58C19D17C1DABAEC75CBD3C /* WorktreeSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeSettingsSheet.swift; sourceTree = "<group>"; };
 		F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskCoordinator.swift; sourceTree = "<group>"; };
 		F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyShellTests.swift; sourceTree = "<group>"; };
 		FA1D6938F91E5CBDA6AFF4C9 /* LabeledField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabeledField.swift; sourceTree = "<group>"; };
 		FB5272D378BC91AF7A25A0E9 /* WorktreeHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeHooks.swift; sourceTree = "<group>"; };
 		FC81A3DDDEF8D43A809CC476 /* WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeCommands.swift; sourceTree = "<group>"; };
+		FCD23C82D354DF0B8384A5AA /* TaskFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFiles.swift; sourceTree = "<group>"; };
 		FDF7B3E29694A7B5EB76D1CC /* TaskTerminalLaunchCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskTerminalLaunchCommandTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -445,6 +449,7 @@
 				03F025F9D1463053FC852BF1 /* SidebarVisibilityTests.swift */,
 				91CEC8883C94E4C6D2251537 /* SidePanelTabTests.swift */,
 				4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */,
+				EFF36723FEFEA89949C8C229 /* TaskFilesTests.swift */,
 				FDF7B3E29694A7B5EB76D1CC /* TaskTerminalLaunchCommandTests.swift */,
 				37B5AB4ADFFF1CF8BCB09C31 /* TaskTerminalLayoutTests.swift */,
 				559C61A49130CBB58157612B /* TerminalManagerTests.swift */,
@@ -621,6 +626,7 @@
 		DCC2FDACE87FDC368B8C6FB4 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				FCD23C82D354DF0B8384A5AA /* TaskFiles.swift */,
 				D7B12A00975BA49638EDFCF3 /* WorkTask.swift */,
 				1DA49140EA97943AF93DC322 /* WorktreeModel.swift */,
 				521513406C0810A2CBE7B065 /* YAMLHelpers.swift */,
@@ -966,6 +972,7 @@
 				69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */,
 				E1E15B0EAE5B230942FBCC4C /* TaskDetailView.swift in Sources */,
 				A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */,
+				122A433617703106CF67EF28 /* TaskFiles.swift in Sources */,
 				B09DCF51F4C210FD2BA830ED /* TaskTerminalLayout.swift in Sources */,
 				7EA84D7D27FEBFD08195D87F /* TerminalManager+Agent.swift in Sources */,
 				620139128784E65D9ECEEA90 /* TerminalManager+Commands.swift in Sources */,
@@ -1043,6 +1050,7 @@
 				6CC9B9412CE55A7117791136 /* SidePanelTabTests.swift in Sources */,
 				7A9CB2F32586AF5ACE4C955F /* SidebarVisibilityTests.swift in Sources */,
 				AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */,
+				28B7F18AC3804C48777D34FC /* TaskFilesTests.swift in Sources */,
 				E102F5FC5B4AA0762DEB4A33 /* TaskTerminalLaunchCommandTests.swift in Sources */,
 				EA971FF2AB9A1DC6947840F3 /* TaskTerminalLayoutTests.swift in Sources */,
 				75AE7FFC553C6C15E5FEC328 /* TerminalManagerTests.swift in Sources */,
