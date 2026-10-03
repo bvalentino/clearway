@@ -175,13 +175,15 @@
 - Task start-up logic lives on `WorkTaskCoordinator`, never in a view: a view resolves no worktree
   and awaits nothing, it calls a coordinator method (`resolveStart`, `confirmCreate`,
   `completePendingCreate`, `planTask`). This is what lets one behavior carry several entry points
-  without the decision being written once per door. Start Now **writes nothing**: `resolveStart`
-  returns a `StartPrefill` carrying the branch — `task.worktree` if set, else `deriveBranchName` —
-  and `ContentView` presents it as the Start Task sheet, which is `CreateWorktreeSheet` with a
-  prefill rather than a second sheet; a task whose branch already has a live worktree is focused
-  with no sheet. The frontmatter write is the sheet's Create button: `confirmCreate` writes
-  `status = in_progress` and `worktree = <branch as confirmed>`, so a cancelled sheet leaves the
-  task on its backlog marker and the branch recorded is the one the operator confirmed. It
+  without the decision being written once per door. Start Now **writes nothing**: for an unlinked
+  task `resolveStart` returns a `StartPrefill` carrying a branch from `deriveBranchName`, and
+  `ContentView` presents it as the Start Task sheet, which is `CreateWorktreeSheet` with a
+  prefill rather than a second sheet. A linked task whose branch has a live worktree is focused
+  with no sheet; a linked task with no live worktree is ignored — that is the window between
+  Create and the worktree going live, and a second sheet there would create the same branch
+  twice. The frontmatter write is the sheet's Create button: `confirmCreate` writes
+  `worktree = <branch as confirmed>` and nothing else, so a cancelled sheet leaves the task
+  unlinked and the branch recorded is the one the operator confirmed. It
   also records `pendingCreate`, which carries the agent command to run once the worktree is live
   and a `TaskLink?` — **one** optional, not a task id beside an optional prior-fields snapshot,
   so a link `abandonPendingCreate` cannot unwind is unrepresentable. It is `nil` for a hand-made
@@ -276,8 +278,8 @@
   Plan (`planTask`, in `WorkTaskCoordinator+TaskTerminal.swift`) runs the chosen command in the
   **task's own bottom terminal**, working directory `planWorkingDirectory` — the `isMain`
   worktree, where a backlog task's file still lives, falling back to `projectPath` for the window
-  before the first `git worktree list` returns. It writes nothing at all: no status, no branch
-  link, no relocation. It must not go back to `TerminalManager.run`: that appends a tab to the
+  before the first `git worktree list` returns. It writes nothing at all: no branch link, no
+  relocation. It must not go back to `TerminalManager.run`: that appends a tab to the
   primary worktree's pane, and the Tasks destination renders no pane, so the agent ran where
   nobody could see it and Plan read as a dead button. `autoRun` still decides submit-or-stage,
   but nothing holds a staged draft, so staging opens a login shell and leaves
@@ -286,10 +288,8 @@
   prompt file that could not be written, and refuses **before** opening the surface:
   `openTaskTerminal` closes the task's current one to open the new one, so a downgraded launch
   would take away what was already running there.
-  **Clearway launches no agent of its own**, and nothing advances the status afterwards — every
-  agent either path starts is a command the user saved and picked. `status` is frontmatter
-  Clearway writes and round-trips but **never renders** — there is no badge and no label table, so
-  an unrecognized slug needs no handling beyond being carried through untouched.
+  **Clearway launches no agent of its own** — every agent either path starts is a command the
+  user saved and picked.
 - `AgentLaunch.swift` — `agentAllowlist` (`claude`, `codex`, `grok`) is display order and has three
   readers: Settings → Main Terminal's picker rows in `SettingsView`; `agentMenuRows`, the tab
   strip `+` menu's row rule, which lives in this file beside the list so the two orders cannot

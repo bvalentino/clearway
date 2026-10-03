@@ -16,17 +16,13 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         guard let seed = manager.createTask(title: "Pre-plan draft") else {
             XCTFail("createTask returned nil"); return
         }
-        manager.updateFields(id: seed.id) {
-            $0.body = "Short draft"
-            $0.status = WorkTask.ReservedStatus.new
-        }
+        manager.updateFields(id: seed.id) { $0.body = "Short draft" }
 
         try await Task.sleep(nanoseconds: 50_000_000)
 
         var planned = seed
         planned.title = "Planned via watcher"
         planned.body = "Agent wrote this atomically."
-        planned.status = WorkTask.ReservedStatus.inProgress
         let path = manager.filePath(for: seed)
         try planned.serialized()
             .data(using: .utf8)!
@@ -36,26 +32,25 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
             guard let pool = manager.tasks.first(where: { $0.id == seed.id }) else { return false }
             return pool.title == "Planned via watcher"
                 && pool.body == "Agent wrote this atomically."
-                && pool.status == WorkTask.ReservedStatus.inProgress
         }
         XCTAssertTrue(adopted, "pool must adopt atomic central rewrite via watcher (no reloadFromDisk)")
     }
 
-    /// External atomic rewrite of an open worktree TASK.md updates the pool's status and body.
-    func testWatcherAdoptsAtomicWorktreeStatusRewrite() async throws {
+    /// External atomic rewrite of an open worktree TASK.md updates the pool's title and body.
+    func testWatcherAdoptsAtomicWorktreeRewrite() async throws {
         let id = UUID()
-        let worktreeTask = WorkTask(id: id, title: "In flight", status: "spec", worktree: "feature/watch")
+        let worktreeTask = WorkTask(id: id, title: "In flight", worktree: "feature/watch")
         let worktreePath = try seedWorktreeTask(dir: "wt-watch", worktreeTask)
 
         let manager = WorkTaskManager(projectPath: tempRoot)
         manager.worktreeResolver = { [(branch: "feature/watch", path: worktreePath)] }
         manager.setWatchedWorktrees([worktreePath])
-        XCTAssertEqual(manager.task(forWorktree: "feature/watch")?.status, "spec")
+        XCTAssertEqual(manager.task(forWorktree: "feature/watch")?.title, "In flight")
 
         try await Task.sleep(nanoseconds: 50_000_000)
 
         var advanced = worktreeTask
-        advanced.status = "work_breakdown"
+        advanced.title = "Broken down"
         advanced.body = "Expanded on disk"
         let path = manager.filePath(for: manager.task(forWorktree: "feature/watch")!)
         try advanced.serialized()
@@ -63,9 +58,9 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
             .write(to: URL(fileURLWithPath: path), options: .atomic)
 
         let adopted = await waitUntil(timeout: 3) {
-            manager.task(forWorktree: "feature/watch")?.status == "work_breakdown"
+            manager.task(forWorktree: "feature/watch")?.title == "Broken down"
         }
-        XCTAssertTrue(adopted, "pool must adopt worktree status via watcher")
+        XCTAssertTrue(adopted, "pool must adopt worktree title via watcher")
         XCTAssertEqual(manager.task(forWorktree: "feature/watch")?.body, "Expanded on disk")
     }
 
@@ -73,7 +68,7 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
     /// (file-watcher re-arm). Regression for dead-watcher after agent rewrite.
     func testWatcherReArmsAfterAtomicReplaceSeesSecondWrite() async throws {
         let id = UUID()
-        let worktreeTask = WorkTask(id: id, title: "In flight", status: "spec", worktree: "feature/rearm")
+        let worktreeTask = WorkTask(id: id, title: "In flight", worktree: "feature/rearm")
         let worktreePath = try seedWorktreeTask(dir: "wt-rearm", worktreeTask)
 
         let manager = WorkTaskManager(projectPath: tempRoot)
@@ -85,13 +80,13 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         let path = manager.filePath(for: manager.task(forWorktree: "feature/rearm")!)
 
         var first = worktreeTask
-        first.status = "work_breakdown"
+        first.title = "Broken down"
         try first.serialized()
             .data(using: .utf8)!
             .write(to: URL(fileURLWithPath: path), options: .atomic)
 
         let firstAdopted = await waitUntil(timeout: 3) {
-            manager.task(forWorktree: "feature/rearm")?.status == "work_breakdown"
+            manager.task(forWorktree: "feature/rearm")?.title == "Broken down"
         }
         XCTAssertTrue(firstAdopted, "first atomic rewrite must land")
 
@@ -99,14 +94,14 @@ final class WorkTaskManagerWatcherTests: TempRootTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         var second = first
-        second.status = "implement"
+        second.title = "Implementing"
         second.body = "Second agent write"
         try second.serialized()
             .data(using: .utf8)!
             .write(to: URL(fileURLWithPath: path), options: .atomic)
 
         let secondAdopted = await waitUntil(timeout: 3) {
-            manager.task(forWorktree: "feature/rearm")?.status == "implement"
+            manager.task(forWorktree: "feature/rearm")?.title == "Implementing"
                 && manager.task(forWorktree: "feature/rearm")?.body == "Second agent write"
         }
         XCTAssertTrue(

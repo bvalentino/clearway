@@ -6,54 +6,17 @@ import Foundation
 struct WorkTask: Identifiable, Equatable, Hashable {
     let id: UUID
     var title: String
-    /// The task's current state. A plain slug string: the reserved backlog marker `new`,
-    /// one of the fixed states, or an arbitrary slug left by an external writer. Clearway
-    /// writes it and carries it through a round-trip, but never renders it.
-    var status: String
     var worktree: String?
     var createdAt: Date
     var body: String
 
-    var attempt: Int?
-
-    /// When true, the task is a shadow task for a worktree — it tracks state but
-    /// stays out of the Tasks backlog until the user exposes it.
+    /// When true, the task is a shadow task for a worktree — linked to it but kept
+    /// out of the Tasks backlog until the user exposes it.
     var hidden: Bool = false
 
-    /// Namespace for the `status` slug constants Clearway knows by name. This is an `enum` used
-    /// purely as a namespace — it has no cases, so it can never be instantiated; the values are
-    /// plain `static let` strings.
-    enum ReservedStatus {
-        /// Reserved backlog marker (pre-worktree).
-        static let new = "new"
-
-        /// What a task carries once it has a worktree.
-        static let inProgress = "in_progress"
-
-        /// Read-only: nothing writes it any more. `migrateStatus` maps the legacy `stopped` onto
-        /// it, and `startTask` reads it to allow a restart.
-        static let canceled = "canceled"
-    }
-
-    /// Migrates a retired status value to its current slug. Older task files used `open`,
-    /// `started`, `stopped` and `ready_to_start`; everything else passes through unchanged so
-    /// an arbitrary slug round-trips verbatim. `ready_to_start` maps back onto the backlog
-    /// marker it stood in front of, so a task last written by a version that still had the
-    /// Ready to Start toggle stays startable.
-    static func migrateStatus(_ rawValue: String) -> String {
-        switch rawValue {
-        case "open": return ReservedStatus.new
-        case "started": return ReservedStatus.inProgress
-        case "stopped": return ReservedStatus.canceled
-        case "ready_to_start": return ReservedStatus.new
-        default: return rawValue
-        }
-    }
-
-    init(id: UUID = UUID(), title: String, status: String = ReservedStatus.new, worktree: String? = nil, body: String = "") {
+    init(id: UUID = UUID(), title: String, worktree: String? = nil, body: String = "") {
         self.id = id
         self.title = title
-        self.status = status
         self.worktree = worktree
         self.createdAt = Date()
         self.body = body
@@ -68,11 +31,9 @@ struct WorkTask: Identifiable, Equatable, Hashable {
         // when a task moves into its worktree as `TASK.md`.
         lines.append("id: \(id.uuidString)")
         lines.append("title: \(YAML.quote(title))")
-        lines.append("status: \(status)")
         // Emit worktree only when linked — an absent line means backlog (no worktree), so a fresh
         // task isn't cluttered with `worktree: null`. Parsing treats absent and `null` alike.
         if let worktree { lines.append("worktree: \(YAML.quote(worktree))") }
-        if let attempt { lines.append("attempt: \(attempt)") }
         // Emit hidden only when true — keeps legacy (exposed) files noise-free on re-save.
         if hidden { lines.append("hidden: true") }
         return lines.joined(separator: "\n")
@@ -124,13 +85,11 @@ struct WorkTask: Identifiable, Equatable, Hashable {
 
     /// Parses a task from YAML frontmatter + markdown body, using caller-supplied identity
     /// and creation time (derived from the filename and file creation date, respectively).
-    /// Returns nil if the frontmatter is missing required fields (`title`, `status`).
+    /// Returns nil if the frontmatter is missing or has no `title`.
     static func parse(from content: String, id: UUID, createdAt: Date) -> WorkTask? {
         guard let (fields, body) = YAML.parseFrontmatter(from: content) else { return nil }
 
-        guard let title = fields["title"],
-              let statusString = fields["status"], !statusString.isEmpty else { return nil }
-        let status = migrateStatus(statusString)
+        guard let title = fields["title"] else { return nil }
 
         // Prefer the frontmatter `id` (authoritative once a task moves to `TASK.md`, where the
         // filename no longer carries the UUID); fall back to the caller-supplied id for legacy
@@ -143,9 +102,8 @@ struct WorkTask: Identifiable, Equatable, Hashable {
             return value
         }()
 
-        var task = WorkTask(id: resolvedId, title: title, status: status, worktree: worktree, body: body)
+        var task = WorkTask(id: resolvedId, title: title, worktree: worktree, body: body)
         task.createdAt = createdAt
-        task.attempt = fields["attempt"].flatMap { Int($0) }
         task.hidden = fields["hidden"] == "true"
         return task
     }

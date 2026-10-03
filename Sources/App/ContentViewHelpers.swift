@@ -41,14 +41,14 @@ enum SidePanelTab: String, CaseIterable {
 
 /// Resolves which side panel tab to show when a worktree is opened.
 ///
-/// A stored per-worktree tab wins (if still available); otherwise an `in_progress` status
-/// selects `.task`; otherwise the current tab is kept (demoting `.task` to `.todos`). On main,
-/// `.task` is unavailable, so neither `.task` path fires.
-func resolveSidePanelTab(stored: String?, taskStatus: String?,
+/// A stored per-worktree tab wins (if still available); otherwise a linked task that is not a
+/// hidden shadow selects `.task`; otherwise the current tab is kept (demoting `.task` to
+/// `.todos`). On main, `.task` is unavailable, so neither `.task` path fires.
+func resolveSidePanelTab(stored: String?, linkedTask: WorkTask?,
                          current: SidePanelTab, isMain: Bool) -> SidePanelTab {
     let available = SidePanelTab.available(isMain: isMain)
     if let stored, let tab = SidePanelTab(rawValue: stored), available.contains(tab) { return tab }
-    if available.contains(.task), taskStatus == WorkTask.ReservedStatus.inProgress { return .task }
+    if available.contains(.task), let linkedTask, !linkedTask.hidden { return .task }
     return current == .task ? .todos : current
 }
 

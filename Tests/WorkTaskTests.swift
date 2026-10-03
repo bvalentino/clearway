@@ -7,7 +7,7 @@ final class WorkTaskTests: XCTestCase {
     /// The task `id` must round-trip through serialize → parse so identity survives the rename
     /// from `<UUID>.md` (central) to `TASK.md` (worktree), where the filename no longer carries it.
     func testIdRoundTripsThroughFrontmatter() throws {
-        let original = WorkTask(id: UUID(), title: "Carry me", status: WorkTask.ReservedStatus.inProgress, worktree: "feature/x", body: "Body")
+        let original = WorkTask(id: UUID(), title: "Carry me", worktree: "feature/x", body: "Body")
 
         let serialized = original.serialized()
         XCTAssertTrue(serialized.contains("id: \(original.id.uuidString)"), "frontmatter must emit the id")
@@ -20,7 +20,7 @@ final class WorkTaskTests: XCTestCase {
     /// A backlog task (no worktree) serializes without a `worktree:` line — so it isn't cluttered
     /// with `worktree: null` — and still round-trips to a nil worktree.
     func testBacklogTaskOmitsWorktreeLine() throws {
-        let backlog = WorkTask(id: UUID(), title: "Backlog", status: WorkTask.ReservedStatus.new, worktree: nil)
+        let backlog = WorkTask(id: UUID(), title: "Backlog", worktree: nil)
 
         let serialized = backlog.serialized()
         XCTAssertFalse(serialized.contains("worktree:"), "a backlog task must not emit a worktree line")
@@ -34,7 +34,6 @@ final class WorkTaskTests: XCTestCase {
         let legacy = """
         ---
         title: "Legacy"
-        status: new
         worktree: null
         ---
 
@@ -46,53 +45,65 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertEqual(reparsed?.title, "Legacy")
     }
 
-    /// An arbitrary action slug (not a reserved/legacy constant) must serialize and parse back
-    /// verbatim — an external writer may sit `status` on any slug it likes.
-    func testArbitrarySlugRoundTrips() throws {
-        let task = WorkTask(id: UUID(), title: "Loop step", status: "review", worktree: "feature/loop")
+    /// Nothing Clearway writes carries a `status:` or `attempt:` line: not a new backlog task, not
+    /// a hidden shadow task linked to its worktree, not a task linked by Create.
+    func testSerializedTasksCarryNoStatusOrAttemptLine() throws {
+        var shadow = WorkTask(title: "", worktree: "feature/shadow")
+        shadow.hidden = true
+        let tasks = [
+            WorkTask(title: "Backlog"),
+            shadow,
+            WorkTask(title: "Linked", worktree: "feature/linked", body: "Body"),
+        ]
 
-        let serialized = task.serialized()
-        XCTAssertTrue(serialized.contains("status: review"), "an arbitrary slug must serialize verbatim")
-
-        let reparsed = WorkTask.parse(from: serialized, id: task.id, createdAt: Date())
-        XCTAssertEqual(reparsed?.status, "review", "an arbitrary slug must parse back verbatim")
+        for task in tasks {
+            let serialized = task.serialized()
+            XCTAssertFalse(serialized.contains("status:"), "no status line in:\n\(serialized)")
+            XCTAssertFalse(serialized.contains("attempt:"), "no attempt line in:\n\(serialized)")
+        }
     }
 
-    /// Legacy status values still migrate on parse: `open` → `new`, `started` → `in_progress`,
-    /// `stopped` → `canceled`. Reserved/arbitrary slugs pass through unchanged.
-    func testLegacyStatusValuesMigrate() throws {
-        XCTAssertEqual(WorkTask.migrateStatus("open"), WorkTask.ReservedStatus.new)
-        XCTAssertEqual(WorkTask.migrateStatus("started"), WorkTask.ReservedStatus.inProgress)
-        XCTAssertEqual(WorkTask.migrateStatus("in_progress"), WorkTask.ReservedStatus.inProgress)
-        XCTAssertEqual(WorkTask.migrateStatus("stopped"), WorkTask.ReservedStatus.canceled)
-        XCTAssertEqual(WorkTask.migrateStatus("review"), "review", "arbitrary slugs pass through unchanged")
+    /// `title` is the only required field: a file carrying nothing else parses.
+    func testFileWithOnlyTitleParses() throws {
+        let parsed = WorkTask.parse(from: "---\ntitle: \"Bare\"\n---", id: UUID(), createdAt: Date())
+        XCTAssertEqual(parsed?.title, "Bare")
     }
 
-    /// The retired `ready_to_start` marker migrates back to `new` on parse and writes through on
-    /// the next save, so a task last written by a version that still had the Ready to Start toggle
-    /// is startable again instead of sitting on a slug **Start Now** ignores.
-    func testRetiredReadyToStartMigratesToNew() throws {
-        XCTAssertEqual(WorkTask.migrateStatus("ready_to_start"), WorkTask.ReservedStatus.new)
-
-        let id = UUID()
-        let legacy = """
+    /// A file with no `title` is rejected, whatever else it carries.
+    func testFileWithoutTitleIsRejected() throws {
+        let untitled = """
         ---
-        id: \(id.uuidString)
-        title: "Queued"
-        status: ready_to_start
+        id: \(UUID().uuidString)
+        worktree: "feature/x"
         ---
-
-        Body text
         """
-
-        let parsed = try XCTUnwrap(WorkTask.parse(from: legacy, id: id, createdAt: Date()))
-        XCTAssertEqual(parsed.status, WorkTask.ReservedStatus.new)
-        XCTAssertTrue(parsed.serialized().contains("status: new"), "the migrated slug must write through")
+        XCTAssertNil(WorkTask.parse(from: untitled, id: UUID(), createdAt: Date()))
     }
 
-    /// The retired `autopilot` / `completed` / `error_message` fields are no longer part of the
-    /// model: a `TASK.md` still carrying them parses, and re-serializing drops all three while
-    /// preserving every other field.
+    /// An old `status:` line, whatever its value, and an old `attempt:` line are ignored like any
+    /// unknown key: the file parses to exactly the task the same file without that line gives.
+    func testOldStatusAndAttemptLinesParseLikeTheBareFile() throws {
+        let id = UUID()
+        let createdAt = Date()
+        func file(_ extraLine: String?) -> String {
+            let extra = extraLine.map { "\($0)\n" } ?? ""
+            return "---\nid: \(id.uuidString)\ntitle: \"Old\"\n\(extra)worktree: \"feature/old\"\n---\n\nBody text"
+        }
+        let bare = try XCTUnwrap(WorkTask.parse(from: file(nil), id: id, createdAt: createdAt))
+
+        let oldLines = [
+            "status: new", "status: in_progress", "status: canceled", "status: open",
+            "status: started", "status: stopped", "status: ready_to_start", "status: review",
+            "attempt: 3",
+        ]
+        for line in oldLines {
+            XCTAssertEqual(WorkTask.parse(from: file(line), id: id, createdAt: createdAt), bare, "\(line) must be ignored")
+        }
+    }
+
+    /// The retired `autopilot` / `completed` / `error_message` / `attempt` / `status` fields are no
+    /// longer part of the model: a `TASK.md` still carrying them parses, and re-serializing drops
+    /// all five while preserving every other field.
     func testRetiredFieldsAreDroppedOnReserialize() throws {
         let id = UUID()
         let legacy = """
@@ -116,9 +127,7 @@ final class WorkTaskTests: XCTestCase {
         }
         XCTAssertEqual(parsed.id, id)
         XCTAssertEqual(parsed.title, "Carried over")
-        XCTAssertEqual(parsed.status, "review")
         XCTAssertEqual(parsed.worktree, "feature/legacy")
-        XCTAssertEqual(parsed.attempt, 2)
         XCTAssertTrue(parsed.hidden)
         XCTAssertEqual(parsed.body, "Body text")
 
@@ -126,9 +135,9 @@ final class WorkTaskTests: XCTestCase {
         XCTAssertFalse(reserialized.contains("autopilot"), "autopilot must not be re-emitted")
         XCTAssertFalse(reserialized.contains("completed"), "completed must not be re-emitted")
         XCTAssertFalse(reserialized.contains("error_message"), "error_message must not be re-emitted")
-        XCTAssertTrue(reserialized.contains("attempt: 2"))
+        XCTAssertFalse(reserialized.contains("attempt"), "attempt must not be re-emitted")
         XCTAssertTrue(reserialized.contains("hidden: true"))
-        XCTAssertTrue(reserialized.contains("status: review"))
+        XCTAssertFalse(reserialized.contains("status"), "status must not be re-emitted")
         XCTAssertTrue(reserialized.contains("worktree: \"feature/legacy\""))
     }
 
@@ -138,7 +147,6 @@ final class WorkTaskTests: XCTestCase {
         ---
         id: not-a-uuid
         title: "Bad id"
-        status: new
         worktree: null
         ---
         """

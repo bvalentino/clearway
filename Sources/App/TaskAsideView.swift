@@ -21,8 +21,8 @@ struct TaskAsideView: View {
                 unlinkedCreateTaskCTA
             }
         }
-        // Ensure every worktree has a persistent (possibly hidden) task so status changes
-        // have somewhere to land. `createShadowTask` is idempotent.
+        // Every worktree gets a linked task, hidden until the operator exposes it.
+        // `createShadowTask` is idempotent.
         .onAppear { workTaskManager.createShadowTask(forBranch: worktreeBranch) }
     }
 
@@ -30,15 +30,11 @@ struct TaskAsideView: View {
 
     private func taskContent(_ task: WorkTask) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading) {
                 if task.hidden {
                     createTaskPlaceholder(for: task)
                 } else {
                     WorkTaskCard(task: task, onEdit: { openTaskWindow(task) })
-                }
-
-                if !task.hidden, task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
-                    WorkTaskAgentMetadata(task: task)
                 }
             }
             .padding(16)

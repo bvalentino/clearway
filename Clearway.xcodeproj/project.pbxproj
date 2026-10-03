@@ -13,7 +13,6 @@
 		02E2455DB98F98DAF5DD93B9 /* TerminalTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF064EDBE730B518F29471B7 /* TerminalTab.swift */; };
 		073439951C4EB24061AFC339 /* ClearwayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */; };
 		0D4C88A1FDBBC5AD8D642D55 /* WorktreeGroupManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 267B4A2443A2B77A25F80243 /* WorktreeGroupManagerTests.swift */; };
-		0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */; };
 		1077AA08B457EE40A4766938 /* OpenInAppsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F6E5893A6B6ECF16571390 /* OpenInAppsSettingsSection.swift */; };
 		12AD5E5827F35FCBB3875D86 /* WorkTaskManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945B3045E3051C6B10BD34E4 /* WorkTaskManagerTests.swift */; };
 		151797A90DE5D9831A9A9A25 /* WorktreeGroupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AE4B9588D3D7473C1A2835 /* WorktreeGroupManager.swift */; };
@@ -240,7 +239,6 @@
 		3D0E30A2C721296DD9587040 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		3DBAD89265A8208B8A5D83A3 /* WorktreeDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeDraftTests.swift; sourceTree = "<group>"; };
 		3E00D38FF787B79BF5C000ED /* Clearway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clearway.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkTaskAgentMetadata.swift; sourceTree = "<group>"; };
 		3E72B54161DD09066136784D /* ShellPathResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathResolver.swift; sourceTree = "<group>"; };
 		3EE01F4BB3FBAE3CC35CC809 /* HookShellCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookShellCommandTests.swift; sourceTree = "<group>"; };
 		3F185C76B382A4B2D157462B /* TerminalTabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabTests.swift; sourceTree = "<group>"; };
@@ -569,7 +567,6 @@
 				8CCC9EEEB7310716FFCF1D86 /* ToolbarGroupBreak.swift */,
 				39394F1CC5CE0DC4E76C6792 /* ToolbarSplitButtonMenu.swift */,
 				EC1F48D279D802C46C9A7164 /* WorkTask.swift */,
-				3E26CDCCCC6A94327DEA9DE5 /* WorkTaskAgentMetadata.swift */,
 				F8B84D6620AD4362D7433C63 /* WorkTaskCoordinator.swift */,
 				A81980298EE06DF71BF08974 /* WorkTaskCoordinator+TaskTerminal.swift */,
 				904DFD7B789728DE14A731A1 /* WorkTaskListView.swift */,
@@ -974,7 +971,6 @@
 				EC113E512127E45362F56DB2 /* ToolbarGroupBreak.swift in Sources */,
 				D349CAB4A7CB896A07267013 /* ToolbarSplitButtonMenu.swift in Sources */,
 				2660005537FA16CD9ED4B9A9 /* WorkTask.swift in Sources */,
-				0F8E132F12B5D4706C7987F1 /* WorkTaskAgentMetadata.swift in Sources */,
 				89257C7D9FED4F7AA51380B3 /* WorkTaskCoordinator+TaskTerminal.swift in Sources */,
 				228FC795606DBD56B6845337 /* WorkTaskCoordinator.swift in Sources */,
 				4F05B35AB55CF4803117305E /* WorkTaskListView.swift in Sources */,

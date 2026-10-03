@@ -372,8 +372,8 @@ struct ContentView: View {
 
             let afterCreateCommand = workTaskCoordinator.completePendingCreate(branch: branch, worktree: wt)
 
-            // Give manual worktrees a hidden shadow task so state tracking works everywhere.
-            // Task-initiated creates already have their task linked, so this is a no-op.
+            // Give manual worktrees a hidden linked task, as task-initiated creates already have.
+            // For those, this is a no-op.
             workTaskManager.createShadowTask(forBranch: branch)
 
             let projectHookCmd = worktreeManager.hookCommand(\.afterCreate, forBranch: branch, worktreePath: wt.path ?? "")
@@ -677,10 +677,10 @@ struct ContentView: View {
 
     /// Restore the stored side panel tab for a worktree, or auto-select on first visit.
     private func restoreSidePanelTab(for worktree: Worktree) {
-        let status = worktree.branch.flatMap { workTaskManager.task(forWorktree: $0)?.status }
         sidePanelTab = resolveSidePanelTab(
             stored: terminalManager.sidePanelTab(for: worktree.id),
-            taskStatus: status, current: sidePanelTab, isMain: worktree.isMain)
+            linkedTask: worktree.branch.flatMap { workTaskManager.task(forWorktree: $0) },
+            current: sidePanelTab, isMain: worktree.isMain)
     }
 
     /// Persists the current lists-column width to both `@State` and `UserDefaults`.

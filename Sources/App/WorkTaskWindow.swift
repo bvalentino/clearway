@@ -222,13 +222,6 @@ struct WorkTaskWindow: View {
                     .padding(.bottom, 4)
             }
 
-            // Agent metadata (show for tasks that have been worked on)
-            if task.worktree != nil, WorkTaskAgentMetadata.hasContent(for: task) {
-                WorkTaskAgentMetadata(task: task)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-            }
-
             Divider()
 
             // Body editor / preview
@@ -285,7 +278,7 @@ struct WorkTaskWindow: View {
 
     @ViewBuilder
     private var primaryActionButton: some View {
-        if task?.status == WorkTask.ReservedStatus.new {
+        if let task, task.worktree == nil {
             Button("Start Now") {
                 saveAndStart()
             }

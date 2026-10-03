@@ -19,14 +19,11 @@ class WorkTaskCoordinator: ObservableObject {
     /// A worktree creation this coordinator is waiting on. `command` is the agent command to run
     /// once the worktree is live.
     struct PendingCreate: Equatable {
-        /// The task this create links, carrying the three system-managed fields `confirmCreate`
-        /// overwrote as they read before it did — one value rather than two optionals, so a link
-        /// `abandonPendingCreate` cannot unwind is unrepresentable.
+        /// The task this create links, carrying the link `confirmCreate` overwrote as it read
+        /// before, so `abandonPendingCreate` can put it back.
         struct TaskLink: Equatable {
             let id: UUID
-            let priorStatus: String
             let priorWorktree: String?
-            let priorAttempt: Int?
         }
 
         /// `nil` for a hand-made worktree, which has no task to link or unwind.
@@ -59,24 +56,23 @@ class WorkTaskCoordinator: ObservableObject {
         case prefill(StartPrefill)
     }
 
-    /// Start Now. Resolves what the task would start as and writes nothing: the frontmatter write
-    /// belongs to Create, so a sheet the user cancels leaves the task on its backlog marker.
+    /// Start Now. Resolves what the task would start as and writes nothing: the link write belongs
+    /// to Create, so a sheet the user cancels leaves the task unlinked.
+    ///
+    /// A linked task with no live worktree is ignored: that is the window between Create and the
+    /// worktree going live, and a second sheet there would create the same branch twice.
     func resolveStart(_ task: WorkTask) -> StartResult {
         // Content authority is disk/pool by id — never the UI-captured snapshot (a stale title/body
         // would otherwise clobber whatever the task terminal just wrote, on the bookkeeping save).
         guard let current = workTaskManager.freshTask(id: task.id) else { return .ignored }
-        guard current.status == WorkTask.ReservedStatus.new
-                || current.status == WorkTask.ReservedStatus.canceled else { return .ignored }
 
-        // Starting a task creates (or focuses) its worktree. Clearway launches no agent of its own.
         // Branch-keyed lookup resolves the correct worktree even when HEAD is detached (e.g. mid-rebase).
-        if let branch = current.worktree,
-           let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) {
+        if let branch = current.worktree {
+            guard let wt = worktreeManager.worktrees.first(where: { $0.branch == branch }) else { return .ignored }
             return .reuse(wt)
         }
         let existingBranches = Set(worktreeManager.worktrees.compactMap(\.branch))
-        let branch = current.worktree
-            ?? workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
+        let branch = workTaskManager.deriveBranchName(from: current.title, existingBranches: existingBranches)
         return .prefill(StartPrefill(taskId: current.id, title: current.title, branch: branch))
     }
 
@@ -94,14 +90,8 @@ class WorkTaskCoordinator: ObservableObject {
             let written = workTaskManager.updateFields(id: taskId) { updated in
                 link = PendingCreate.TaskLink(
                     id: taskId,
-                    priorStatus: updated.status,
-                    priorWorktree: updated.worktree,
-                    priorAttempt: updated.attempt
+                    priorWorktree: updated.worktree
                 )
-                if updated.status == WorkTask.ReservedStatus.canceled {
-                    updated.attempt = (updated.attempt ?? 0) + 1
-                }
-                updated.status = WorkTask.ReservedStatus.inProgress
                 updated.worktree = branch
             }
             // The task's file can disappear between Start Now and Create — another window's
@@ -118,22 +108,19 @@ class WorkTaskCoordinator: ObservableObject {
         pendingCreate = PendingCreate(task: link, branch: branch, command: command)
     }
 
-    /// Unwinds a create that never happened. `confirmCreate` writes the frontmatter before
-    /// `git worktree add` runs, so a failed create would otherwise leave the task on `in_progress`
-    /// naming a branch with no worktree — a state `resolveStart` refuses, making the task
-    /// unstartable from the UI.
+    /// Unwinds a create that never happened. `confirmCreate` writes the link before
+    /// `git worktree add` runs, so a failed create would otherwise leave the task naming a branch
+    /// with no worktree — a link `resolveStart` ignores, making the task unstartable from the UI.
     func abandonPendingCreate() {
         guard let pending = pendingCreate else { return }
         pendingCreate = nil
         guard let task = pending.task else { return }
         let restored = workTaskManager.updateFields(id: task.id) { updated in
-            updated.status = task.priorStatus
             updated.worktree = task.priorWorktree
-            updated.attempt = task.priorAttempt
         }
         if restored == nil {
             Ghostty.logger.error(
-                "abandonPendingCreate: task \(task.id, privacy: .public) no longer exists; its start marker stands")
+                "abandonPendingCreate: task \(task.id, privacy: .public) no longer exists; its worktree link stands")
         }
     }
 
