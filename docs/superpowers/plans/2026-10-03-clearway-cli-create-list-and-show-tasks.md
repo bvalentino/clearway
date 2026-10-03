@@ -496,3 +496,42 @@ override were left alone; T8 owns the documentation of this change.
 
 Gate: `./scripts/ci.sh` exit 0, 891 tests, 0 failures, 0 warnings in the log, run after the final
 edit. `install.sh` and `release.sh` were not run.
+
+### T5: Add the ClearwayCLI target and embed it in Contents/Helpers
+
+| File | State |
+| --- | --- |
+| `project.yml` | `Clearway` target excludes `CLI/**` and depends on `ClearwayCLI` with `embed: true`, `codeSign: true`, `copy: {destination: wrapper, subpath: Contents/Helpers}`; new `ClearwayCLI` target (`type: tool`, sources `Sources/Shared` + `Sources/CLI`, `PRODUCT_NAME: clearway`, `PRODUCT_MODULE_NAME: ClearwayCLI`, `PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli`, D15 Debug/Release signing) |
+| `Sources/Shared/TaskCommand.swift` | new: `TaskCommand.Result`, `TaskCommand.usage` (lists `task create`, `task list`, `task show`, `help`), `run(arguments:workingDirectory:readStdin:)` handling only no arguments / `help` / `--help` (usage, exit 0); anything else is `clearway: unknown command '<arg>'`, exit 2 |
+| `Sources/CLI/main.swift` | new: calls `TaskCommand.run` with the process arguments, cwd and a stdin reader, writes stdout/stderr, `exit(result.exitCode)` |
+| `Tests/TaskCommandTests.swift` | new, four cases: help/`--help`/no args, usage names every subcommand, unknown command, embedded helper exists, is executable and prints the usage with exit 0 |
+| `Clearway.xcodeproj/project.pbxproj` | regenerated |
+
+Evidence: `TaskCommand`, `main.swift` and the `CLI/**` exclude were added first, without the
+`ClearwayCLI` target, and `TaskCommandTests` run alone:
+
+```
+TaskCommandTests.swift:38: error: … testEmbeddedHelperExistsAndRunsHelp : XCTAssertTrue failed - …/Debug/Clearway.app/Contents/Helpers/clearway
+TaskCommandTests.swift:0: error: … failed: caught error: "… The file “clearway” doesn’t exist."
+Executed 4 tests, with 2 failures (1 unexpected)
+```
+
+After adding the target all four pass. `./scripts/build.sh` built
+`Clearway (clearway-cli-create-list-and-show-tasks).app` with `Contents/Helpers/clearway`
+(executable, `help` exits 0), no duplicate-output error; `BUILT_PRODUCTS_DIR` holds separate
+`Clearway.swiftmodule` and `ClearwayCLI.swiftmodule`. `codesign --verify --deep --strict` passed
+on that bundle and on the `ci.sh`-built `Clearway.app`, which also carries the helper.
+
+Release (crit. 12, first half): `xcodebuild … -configuration Release -derivedDataPath
+<scratchpad>/release-dd build` exit 0. `codesign -dvvv Contents/Helpers/clearway` shows
+`flags=0x10000(runtime)`, `Authority=Developer ID Application: Bruno Valentino (76AEQBHY3K)`,
+`Timestamp=Oct 3, 2026 at 3:45:17 PM`; `codesign --verify --deep --strict` on the app passed. The
+signature's `Identifier=clearway`, not `app.getclearway.mac.cli`: a tool with no Info.plist is
+signed under its product name. Notarization is the operator's.
+
+Deviations: the end-to-end test asserts the helper's stdout equals `TaskCommand.usage` rather than
+only the exit code, which proves the embedded binary runs the shared code. `readStdin` is unused
+until T6.
+
+Gate: `./scripts/ci.sh` exit 0, 895 tests, 0 failures, 0 warnings in the log, run after the final
+code edit. `git status --porcelain` shows only this task's files.

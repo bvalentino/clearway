@@ -28,6 +28,7 @@ targets:
           # Both per-file note files are named CLAUDE.md, so bundling them as
           # resources makes two copy commands produce one path and the build fails.
           - "**/*.md"
+          - "CLI/**"
     resources:
       - path: Resources
         optional: true
@@ -302,6 +303,37 @@ targets:
         product: cmark
       - package: Sparkle
         product: Sparkle
+      - target: ClearwayCLI
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+
+  ClearwayCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/Shared
+        excludes:
+          - "**/*.md"
+      - path: Sources/CLI
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        PRODUCT_NAME: clearway
+        PRODUCT_MODULE_NAME: ClearwayCLI
+        PRODUCT_BUNDLE_IDENTIFIER: app.getclearway.mac.cli
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application: Bruno Valentino (76AEQBHY3K)"
+          DEVELOPMENT_TEAM: 76AEQBHY3K
+          ENABLE_HARDENED_RUNTIME: YES
+          OTHER_CODE_SIGN_FLAGS: "--timestamp"
 
   ClearwayTests:
     type: bundle.unit-test
