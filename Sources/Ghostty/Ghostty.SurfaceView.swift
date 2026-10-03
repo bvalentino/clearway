@@ -66,7 +66,7 @@ extension Ghostty {
         /// Set by the app layer to name the environment every surface hands its shell. Unwired it
         /// hands over nothing, which keeps this file free of any App type: the names it returns
         /// belong to a Clearway feature libghostty's wrapper has no business knowing about.
-        static var agentEnvironment: (UUID, String?) -> [(key: String, value: String)] = { _, _ in [] }
+        static var childEnvironment: (UUID, String?) -> [(key: String, value: String)] = { _, _ in [] }
 
         init(
             _ app: ghostty_app_t,
@@ -89,7 +89,7 @@ extension Ghostty {
 
             // libghostty `dupeZ`s both key and value into the surface config's arena while
             // `ghostty_surface_new` runs, so these copies need to outlive nothing but that call.
-            let pairs = Self.agentEnvironment(surfaceId, activityOwner)
+            let pairs = Self.childEnvironment(surfaceId, activityOwner)
             let envVars = UnsafeMutableBufferPointer<ghostty_env_var_s>.allocate(capacity: pairs.count)
             for (index, pair) in pairs.enumerated() {
                 envVars[index] = ghostty_env_var_s(key: strdup(pair.key), value: strdup(pair.value))

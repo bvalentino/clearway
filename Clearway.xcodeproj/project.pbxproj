@@ -140,6 +140,7 @@
 		A5F032BA8995C6B45FC6001B /* SidebarHeaderControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D80E773DBEE4171CEC627A3 /* SidebarHeaderControls.swift */; };
 		A683A19AD2271E31023CB2E5 /* TaskEditorBuffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */; };
 		A6C532F303C5F08BB3450927 /* AgentHookSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */; };
+		A8DFD44F2F4142A733432D86 /* CLIHelperPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6763683984D2C4F9B96AC93F /* CLIHelperPath.swift */; };
 		A9942A5385855D11F8A1EFEB /* WorktreeHooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83CD0AA2D579BF8055249834 /* WorktreeHooksTests.swift */; };
 		AB0644D78E51323823D84DA9 /* AgentHookEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC46D569A48674B8AC75040 /* AgentHookEnvelopeTests.swift */; };
 		AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */; };
@@ -159,6 +160,7 @@
 		C74E8644D4CB044F86B87330 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899F796C37723322F0CE3223 /* main.swift */; };
 		CAACE972B2B4C53CAEF632F3 /* PromptsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00CC5D8B585782655D8A81A /* PromptsView.swift */; };
 		CC9FFECC62074209E54434BA /* PortLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69FEC434FF5952993CFEA3E3 /* PortLinkTests.swift */; };
+		CE6A1A4F3A420540CEB6B9A5 /* GhosttyConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FA2ABC1140FEBC8BD9B373 /* GhosttyConfigTests.swift */; };
 		D0A0EE4507A2471A788029A0 /* ProjectListManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */; };
 		D0D9853E698401494E0E656D /* ShellPathStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */; };
 		D11439AC69A59E87471F8EDF /* TaskCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92906C1F2C32771DEFF2A1DB /* TaskCommandTests.swift */; };
@@ -192,6 +194,7 @@
 		F385B62C6516989981EC9E61 /* AgentHookInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */; };
 		F3FB302FFA7CA39C8F5D8E02 /* AgentHookInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAA75E33BCCAF327D3A57391 /* AgentHookInstaller.swift */; };
 		F50B48B75A6494ED0EC0BC03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADD413DCDFE98EF635534720 /* Assets.xcassets */; };
+		F5C224DCA4C4ED1A1974BE63 /* CLIHelperPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEB0DAE009A72C49A85540A /* CLIHelperPathTests.swift */; };
 		F87D9A1E9F7D5E9399F1A1EF /* ShellPathResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7C523930DB05472B322396 /* ShellPathResolverTests.swift */; };
 		F935EB7FDFB8FA252925EABF /* CommandPlaceholdersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0B20FA6AE5CB3278F67E10 /* CommandPlaceholdersTests.swift */; };
 		FB4F22980A006328A8B51039 /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A687B79E4CF9B494E2A6391 /* ProjectWindow.swift */; };
@@ -303,6 +306,7 @@
 		62E65C09069869291224DF1D /* TodosPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosPanelView.swift; sourceTree = "<group>"; };
 		664D286B3C12FD8E2B0EB865 /* ShellPathStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathStoreTests.swift; sourceTree = "<group>"; };
 		66CE23053E6FAA018A831D96 /* TaskCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCommand.swift; sourceTree = "<group>"; };
+		6763683984D2C4F9B96AC93F /* CLIHelperPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIHelperPath.swift; sourceTree = "<group>"; };
 		69FEC434FF5952993CFEA3E3 /* PortLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortLinkTests.swift; sourceTree = "<group>"; };
 		6A0B20FA6AE5CB3278F67E10 /* CommandPlaceholdersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPlaceholdersTests.swift; sourceTree = "<group>"; };
 		6B68B8EBEF3BDC73880AC3ED /* WorktreeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagerTests.swift; sourceTree = "<group>"; };
@@ -343,6 +347,7 @@
 		97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMenuRowTests.swift; sourceTree = "<group>"; };
 		9797209B04B603197081D146 /* TerminalManager+Agent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+Agent.swift"; sourceTree = "<group>"; };
 		9AF79A9AC43E45BCC60D2C8C /* Ghostty.App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ghostty.App.swift; sourceTree = "<group>"; };
+		9BEB0DAE009A72C49A85540A /* CLIHelperPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIHelperPathTests.swift; sourceTree = "<group>"; };
 		9C5EF48F88E801A81CEA043B /* AgentActivityDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityDot.swift; sourceTree = "<group>"; };
 		9D3BF64BBAC0135924F15299 /* OpenInApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenInApp.swift; sourceTree = "<group>"; };
 		9EC9411B19B7913605A851B1 /* TodosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosView.swift; sourceTree = "<group>"; };
@@ -378,6 +383,7 @@
 		C1ECAB4B3402CFEAC103DA45 /* AgentActivityStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityStoreTests.swift; sourceTree = "<group>"; };
 		C243746D952762D349768EA1 /* CommandEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandEditorSheet.swift; sourceTree = "<group>"; };
 		C2D39D30CC314308803C5426 /* SavedCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedCommand.swift; sourceTree = "<group>"; };
+		C2FA2ABC1140FEBC8BD9B373 /* GhosttyConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyConfigTests.swift; sourceTree = "<group>"; };
 		C3210CA708E89DDB96FC1C85 /* AgentHookHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookHealth.swift; sourceTree = "<group>"; };
 		C4ADCBD75608D51A1C556ED7 /* ClearwayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClearwayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6C4FB599AF3B00EF5E9EDB4 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
@@ -467,9 +473,11 @@
 				97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */,
 				7DFD3182D70FC7843567CC2A /* AppKeyboardShortcutsTests.swift */,
 				7E47A53499E363CC6D2ECBDD /* BottomPanelActionTests.swift */,
+				9BEB0DAE009A72C49A85540A /* CLIHelperPathTests.swift */,
 				AC7453F30464AE79C0F927E1 /* CloseConfirmationDelegateTests.swift */,
 				6A0B20FA6AE5CB3278F67E10 /* CommandPlaceholdersTests.swift */,
 				7AD127323A40CFBB60CFB849 /* CreateWorktreeOutcomeTests.swift */,
+				C2FA2ABC1140FEBC8BD9B373 /* GhosttyConfigTests.swift */,
 				F9EC693CFB08AE6AD787405A /* GhosttyShellTests.swift */,
 				87D53B2248C692859A82CD26 /* GitResolverTests.swift */,
 				3EE01F4BB3FBAE3CC35CC809 /* HookShellCommandTests.swift */,
@@ -544,6 +552,7 @@
 				9103F6CCBDA7502CE85CB833 /* CaffeineManager.swift */,
 				D6B7B989FA7A783D457F33C2 /* Clearway-Bridging-Header.h */,
 				A63436E71D9D22F8C52CC078 /* ClearwayApp.swift */,
+				6763683984D2C4F9B96AC93F /* CLIHelperPath.swift */,
 				C243746D952762D349768EA1 /* CommandEditorSheet.swift */,
 				CE447169A21F18E183686F94 /* CommandPlaceholders.swift */,
 				3D0E30A2C721296DD9587040 /* CommandsView.swift */,
@@ -973,6 +982,7 @@
 				DD0CC7FF70777D368E7BE54F /* AppNotifications.swift in Sources */,
 				77D61BFA62E223BC072BD67B /* AsideAddButton.swift in Sources */,
 				78DA0D93830C945A94FBD146 /* BuildInfo.generated.swift in Sources */,
+				A8DFD44F2F4142A733432D86 /* CLIHelperPath.swift in Sources */,
 				463BA801BBC392709E59B997 /* CaffeineManager.swift in Sources */,
 				073439951C4EB24061AFC339 /* ClearwayApp.swift in Sources */,
 				2D3BBF8B6E04B083772452D4 /* CommandEditorSheet.swift in Sources */,
@@ -1093,9 +1103,11 @@
 				35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */,
 				3F069A300EA69A878442FD8B /* AppKeyboardShortcutsTests.swift in Sources */,
 				DEDD16D1CF53B46A8B405926 /* BottomPanelActionTests.swift in Sources */,
+				F5C224DCA4C4ED1A1974BE63 /* CLIHelperPathTests.swift in Sources */,
 				7F700B378F63294D5BFF0926 /* CloseConfirmationDelegateTests.swift in Sources */,
 				F935EB7FDFB8FA252925EABF /* CommandPlaceholdersTests.swift in Sources */,
 				60A44D6F22C85CFC83500AA6 /* CreateWorktreeOutcomeTests.swift in Sources */,
+				CE6A1A4F3A420540CEB6B9A5 /* GhosttyConfigTests.swift in Sources */,
 				BF7B2B3A581298E37A5F8118 /* GhosttyShellTests.swift in Sources */,
 				4D2C390BA3FFDF6DF083381C /* GitResolverTests.swift in Sources */,
 				8CBDEDACF1C023417FC486E1 /* HookShellCommandTests.swift in Sources */,

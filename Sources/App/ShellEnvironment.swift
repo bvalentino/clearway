@@ -10,9 +10,10 @@ enum ShellEnvironment {
     private static let store = ShellPathStore()
 
     /// The best known PATH, always unioned with the baseline so `cat`, `rm`, and `ls` are
-    /// found whatever the resolution produced. Reading this never starts a resolution.
+    /// found whatever the resolution produced, with the `clearway` helper first. Reading this
+    /// never starts a resolution.
     static var path: String {
-        store.currentPath
+        CLIHelperPath.prepended(to: store.currentPath)
     }
 
     /// A process environment dictionary with the best known PATH. Built on each read: a cached
@@ -34,6 +35,6 @@ enum ShellEnvironment {
 
     /// The PATH for an agent launch, resolving one if none is known yet.
     static func awaitPath() async -> String {
-        await store.awaitPath()
+        CLIHelperPath.prepended(to: await store.awaitPath())
     }
 }
