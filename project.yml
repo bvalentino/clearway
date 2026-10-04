@@ -43,8 +43,8 @@ targets:
         PRODUCT_MODULE_NAME: Clearway
         INFOPLIST_FILE: ""
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "2.0.1"
-        CURRENT_PROJECT_VERSION: 19
+        MARKETING_VERSION: "2.1.2"
+        CURRENT_PROJECT_VERSION: 22
         CODE_SIGN_ENTITLEMENTS: Clearway.entitlements
         SPARKLE_FEED_URL: "https://bvalentino.github.io/clearway/appcast.xml"
         SPARKLE_PUBLIC_KEY: "bezL3QSG/qNJwVOEXJ8rs02NYJE0C6UZVK2M5VgaBEY="
@@ -332,6 +332,7 @@ targets:
           CODE_SIGN_IDENTITY: "Developer ID Application: Bruno Valentino (76AEQBHY3K)"
           DEVELOPMENT_TEAM: 76AEQBHY3K
           ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
           OTHER_CODE_SIGN_FLAGS: "--timestamp"
 
   ClearwayTests:

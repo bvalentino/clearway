@@ -6,6 +6,26 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 2.1.2</title>
+      <pubDate>Sun, 04 Oct 2026 22:29:53 +0000</pubDate>
+      <sparkle:version>22</sparkle:version>
+      <sparkle:shortVersionString>2.1.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[
+* Remove all use of the task status
+* Add cway CLI: create, list, and show tasks
+* Handle detached HEAD worktrees in cway task list
+* cway: explicit error messages instead of git's raw output
+* Bundle clearway skill and add skill installer to Settings
+* Show skill install failures in Settings
+* Setup tab types the After create hook verbatim, once
+* Bundle THIRD-PARTY-LICENSES in the app
+
+[v2.1.2 on GitHub](https://github.com/bvalentino/clearway/releases/tag/v2.1.2)
+      ]]></description>
+      <enclosure url="https://github.com/bvalentino/clearway/releases/download/v2.1.2/Clearway-2.1.2-3fe622b.dmg" length="35053035" type="application/octet-stream" sparkle:edSignature="/zhIkD3do7ohhQsTeanNNITA9A5krR11FG59OYmUn4M1xPi3FbejMYu0jXeiU2U9PDbhPVAZmBPTglkY2T4JCQ=="/>
+    </item>
+    <item>
       <title>Version 2.0.1</title>
       <pubDate>Fri, 25 Sep 2026 14:44:53 +0000</pubDate>
       <sparkle:version>19</sparkle:version>
