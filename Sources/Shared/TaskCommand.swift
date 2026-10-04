@@ -171,8 +171,8 @@ enum TaskCommand {
     private static func resolveProject(in workingDirectory: String) throws(Failure) -> Project {
         let arguments = ["worktree", "list", "--porcelain"]
         let output = try git(arguments, in: workingDirectory)
-        let paths = Worktree.parseList(output).compactMap(\.path)
-        guard let mainPath = paths.first else {
+        let worktrees = Worktree.parseList(output)
+        guard let mainPath = worktrees.first?.path else {
             throw .runtime("\(quoted(arguments)) in '\(workingDirectory)' listed no worktrees.")
         }
         let mainBlock = output.components(separatedBy: "\n\n").first ?? ""
@@ -182,7 +182,8 @@ enum TaskCommand {
                     + "cway needs a project whose main worktree is checked out."
             )
         }
-        return Project(mainPath: mainPath, worktreePaths: paths)
+        let carriers = Worktree.taskCarriers(Worktree.applyHeadResolution(to: worktrees))
+        return Project(mainPath: mainPath, worktreePaths: carriers.map(\.path))
     }
 
     private static func quoted(_ gitArguments: [String]) -> String {
