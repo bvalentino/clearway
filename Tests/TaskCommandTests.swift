@@ -618,7 +618,12 @@ final class TaskCommandTests: TempRootTestCase {
     func testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository() throws {
         let repo = try makeRepo()
 
-        let result = try runHelper(["task", "list"], in: repo.root, environment: ["GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"])
+        // GitHub's macOS runner image sets `safe.directory = *` globally, which disarms the check.
+        let result = try runHelper(["task", "list"], in: repo.root, environment: [
+            "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null"
+        ])
 
         XCTAssertEqual(result.status, 1)
         XCTAssertEqual(result.stdout, "")

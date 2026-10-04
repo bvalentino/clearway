@@ -160,6 +160,7 @@ no new warnings in the two files.
 
 - **Review fix: git's stderr is decoded lossily.** `gitFailure` decodes stderr with `String(decoding:as: UTF8.self)` under a one-line `swiftlint:disable:next optional_data_string_conversion`. This reverses T1's choice of `String(bytes:encoding: .utf8) ?? ""`, which dropped all of git's stderr when any byte was invalid UTF-8 and reported "printed nothing", hiding the cause (against the spec's "so the cause is never hidden"). Reachable with real git: a `.git/config` value git echoes verbatim, such as `repositoryformatversion = \xFF`. Do not revert to the failable decode. The stdout decode in `git` stays failable on purpose, because that output is parsed. Guarded by `testGitStderrThatIsNotUTF8StillShowsGitsReason`. No message wording changed.
 - **Merged origin/main (d180d34, #266 detached-HEAD worktrees).** One conflict, in `TaskCommand.resolveProject`. Resolution: #266's `Worktree.parseList` list and its `Worktree.taskCarriers(Worktree.applyHeadResolution(to:))` filter for `worktreePaths` are kept as main has them; this branch's order (R8 before R3) and wording are kept. #266's own failure, `git listed no worktrees`, is the same throw site as R8, so it takes R8's wording unchanged (`'git worktree list --porcelain' in '<wd>' listed no worktrees.`); `mainPath` now reads `worktrees.first?.path`, which equals the old `paths.first` because `parseList` drops path-less entries. #266's `testListAndShowSkipADetachedWorktreesTask` asserted `cway: no task <ID>` through the old two-argument `assertFailed`; it now asserts exact R10 with the main path from git's porcelain, as `testShowUnknownOrMalformedIdExitsOne` does. Gate: `./scripts/ci.sh`, exit 0, `Executed 928 tests, with 0 failures`.
+- **CI fix: the dubious-ownership test isolates git's global and system config.** PR #267's `Build & Test` (run 37169798183) failed `testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository`: `cway` exited 0 and printed `[\n\n]`. Cause: GitHub's macOS runner image sets `safe.directory = *` in the runner's global git config, and `*` disarms the ownership check even under `GIT_TEST_ASSUME_DIFFERENT_OWNER`. The test now also passes `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` to the child. Assertions and every cway message are unchanged. Details under "CI fix: runner's `safe.directory = *`" in the build log.
 
 ## Build log
 
@@ -259,3 +260,27 @@ Left as nits, not changed:
 - `usage(_:)` relies on each caller ending its message with a period; all nine do.
 - An argument containing a newline breaks D5's one-line rule. This takes hostile input.
 - `gitFailure`'s "could not find the project" framing assumes `git(_:in:)` has one caller, which is true today.
+
+### CI fix: runner's `safe.directory = *`
+
+| File | State |
+| --- | --- |
+| `Tests/TaskCommandTests.swift` | `testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository` passes `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` with `GIT_TEST_ASSUME_DIFFERENT_OWNER=1`, plus a one-line comment naming the runner image's setting so the isolation is not removed later. Assertions unchanged. |
+
+Cause, from the sources rather than a local guess:
+
+- The job log shows git 2.55.0 at `/opt/homebrew/bin/git`. `actions/checkout`'s `git config --global --add safe.directory /Users/runner/work/clearway/clearway` goes into a temporary global config for that step only, and names the checkout path, not the test's temp repo. It is not the cause.
+- The runner image does it. `actions/runner-images`, `images/macos/scripts/build/install-git.sh` line 12: `git config --global --add safe.directory "*"`.
+- git v2.55.0 `setup.c`, `ensure_valid_ownership`: `if (!git_env_bool("GIT_TEST_ASSUME_DIFFERENT_OWNER", 0) && … ) return 1;` followed by `git_protected_config(safe_directory_cb, &data); … return data.is_safe;`. So the variable only skips the owner comparison, and the protected config is still read. `safe_directory_cb` has `} else if (!strcmp(value, "*")) { data->is_safe = 1;`. `Documentation/config/safe.adoc`: "To completely opt-out of this security check, set `safe.directory` to the string `*`." `git-config.adoc`: "Protected configuration refers to the 'system', 'global', and 'command' scopes."
+- The fix follows `Documentation/git.adoc` on `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`: "if `GIT_CONFIG_GLOBAL` is set, neither `$HOME/.gitconfig` nor `$XDG_CONFIG_HOME/git/config` will be read. Can be set to `/dev/null` to skip reading configuration files of the respective level." The command scope is empty unless `git -c` or `GIT_CONFIG_COUNT`/`GIT_CONFIG_PARAMETERS` is set, and neither the runner nor `cway` sets them.
+
+Evidence: the built `cway` (DerivedData `Debug/Clearway.app/Contents/MacOS/cway`), run in a scratchpad repo with a scratchpad global config holding `safe.directory = *`, i.e. the runner's conditions:
+
+- `GIT_CONFIG_GLOBAL=<that file> GIT_TEST_ASSUME_DIFFERENT_OWNER=1 cway task list` printed `[`, a blank line and `]`, and exited 0. That is the CI failure exactly.
+- With `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null` added, it exited 1 with R6: `… 'git worktree list --porcelain' exited with status 128. git said:` / `  fatal: detected dubious ownership in repository at '…'` / `  … git config --global --add safe.directory …`.
+
+The real `~/.gitconfig` was not touched. The isolation applies only to the `cway` child; `makeRepo` runs git in the test process with the normal config.
+
+Deviations: none. The test still exercises dubious ownership through real git on both machines.
+
+Gate: `./scripts/ci.sh` after the last edit: exit 0, `Executed 928 tests, with 0 failures`.
