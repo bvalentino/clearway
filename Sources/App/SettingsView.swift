@@ -55,6 +55,7 @@ struct SettingsView: View {
 
             OpenInAppsSettingsSection(settings: settings)
             HiddenPortsSettingsSection(settings: settings)
+            SkillSettingsSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")

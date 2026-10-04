@@ -192,7 +192,7 @@ class WorkTaskManager: ObservableObject {
     /// serialization base when disk is newer.
     func freshTask(id: UUID) -> WorkTask? {
         if let pooled = tasks.first(where: { $0.id == id }) {
-            return TaskFiles.load(atPath: filePath(for: pooled), fallbackId: id, requireFrontmatterID: false)
+            return TaskFiles.load(atPath: filePath(for: pooled), fallbackId: id)
                 ?? pooled
         }
         return TaskFiles.load(atPath: TaskFiles.centralPath(for: id, tasksDirectory: tasksDirectory), fallbackId: id)
@@ -318,7 +318,7 @@ class WorkTaskManager: ObservableObject {
         let sorted = TaskFiles.loadPool(
             tasksDirectory: tasksDirectory,
             worktreePaths: worktreeResolver().map(\.path)
-        ).map(\.task)
+        ).tasks.map(\.task)
         if sorted != tasks {
             tasks = sorted
         }

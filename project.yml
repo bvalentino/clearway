@@ -29,6 +29,9 @@ targets:
           # resources makes two copy commands produce one path and the build fails.
           - "**/*.md"
           - "CLI/**"
+      - path: Skills
+        type: folder
+        buildPhase: resources
     resources:
       - path: Resources
         optional: true
