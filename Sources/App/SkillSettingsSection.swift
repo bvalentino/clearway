@@ -3,6 +3,7 @@ import SwiftUI
 struct SkillSettingsSection: View {
 
     @State private var status: SkillInstallStatus?
+    @State private var failures: [SkillInstaller.Failure] = []
 
     var body: some View {
         Section("Agents") {
@@ -10,18 +11,21 @@ struct SkillSettingsSection: View {
                 LabeledContent("Clearway Skill") {
                     Button(status.isInstalled ? "Uninstall" : "Install") {
                         let act = status.isInstalled ? SkillInstaller.uninstall : SkillInstaller.install
-                        act(NSHomeDirectory(), Bundle.main.bundlePath)
+                        failures = act(NSHomeDirectory(), Bundle.main.bundlePath)
                         refresh()
                     }
                 }
-                ForEach(status.messages, id: \.self) { message in
+                ForEach(failures.map(\.message) + status.messages, id: \.self) { message in
                     Label(message, systemImage: "exclamationmark.triangle")
                         .font(.callout)
                         .foregroundStyle(.red)
                 }
             }
         }
-        .onAppear(perform: refresh)
+        .onAppear {
+            failures = []
+            refresh()
+        }
     }
 
     private func refresh() {

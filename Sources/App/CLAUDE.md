@@ -670,10 +670,26 @@
   Install repoints it and Uninstall removes it. Anything else at the path is foreign and is never
   touched. Never check an entry with `fileExists`: it follows the link and reads a dangling one as
   missing, and the create over it then fails.
+  **Only `ENOENT` is `missing`**: any other `attributesOfItem` failure (a parent that is a file, a
+  directory without search permission) is `unreadable(reason:)`, which Install and Uninstall skip
+  and the Settings lines report as "could not be read". Reading it as missing would send Install
+  into a create that fails for a reason it cannot name.
+  **A stale link is replaced by creating the new link at `<container>/.<linkName>.<UUID>` and
+  `rename(2)`-ing it over the old one**, never by removing the old one first, so a failed Install
+  leaves the previous link in place rather than no link at all. A mode change cannot test that
+  path: removing and creating an entry both need write on the directory, so a read-only directory
+  fails before either. `SkillInstallerTests` uses a `deny add_file` ACL instead, which refuses the
+  create and still allows a removal, so it would catch a regression to remove-then-create.
   **The state is read from disk on every call and never stored**, so nothing can disagree with the
   links themselves, and for the same reason Uninstall removes no directory — knowing that Install
   created a `skills` directory would take a stored record. `SkillInstallStatus` carries
   `isInstalled` and the Settings warning lines so the view decides nothing.
+  **`install` and `uninstall` return one `Failure` per entry whose link or removal threw** and
+  write nothing to disk about it; its `reason` is the `strerror` text of the POSIX error under the
+  thrown `NSError`, so the Settings line reads "Permission denied" rather than Foundation's
+  sentence. Every `\(error)` in its log calls, and in `AgentHookInstaller`'s, is
+  `privacy: .public`: the unified log redacts a dynamic interpolation by default, which leaves a
+  bug report with `<private>` in place of the cause.
   **Nothing calls `install` at launch**, unlike the hook toggle: the `ci.sh` test host is the built
   app, so a launch call would link the developer's real home to a test build on every run. Every
   function takes `home` and `bundlePath` so the suite runs under a temp root.
@@ -682,6 +698,9 @@
   the only call site of `SkillInstaller.install` and `uninstall`**; `onAppear` only reads `status`,
   and the button re-reads it after acting. The status starts `nil` so no row renders before the
   first read: an empty `SkillInstallStatus` would show the no-agent line.
+  **The last action's failures live in view `@State`, never on disk**: each click replaces them
+  with its own result, and `onAppear` clears them, so reopening Settings shows only what the disk
+  still says. They render before the `status.messages` lines, in the same red `Label`.
 - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
   `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
   launcher, the one menu view the toolbar and the sidebar both render, and the Settings section
