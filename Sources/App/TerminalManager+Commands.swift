@@ -87,25 +87,26 @@ extension TerminalManager {
 
     /// Wait until a freshly spawned shell is at a prompt before injecting into it.
     ///
-    /// The gate is the first non-`nil` `pwd`, which libghostty publishes from the OSC 7 that shell
-    /// integration emits at the prompt. Measured on a live surface: zsh reported it 196-218 ms after
-    /// the tab was appended, and text sent on that edge landed on a fully rendered prompt line and
-    /// ran exactly once. Injecting with no gate at all is *not* safe to ship even though it executes:
-    /// the tty queue buffers the text, so it is echoed above the login banner and then replayed onto
-    /// a half-built prompt, leaving a garbled tab.
+    /// The gate is a reported `pwd` **and** the cursor sitting at a prompt: `needsConfirmQuit` turns
+    /// `false` only once the `133;A` mark, which zsh integration puts inside the first `PS1`, has
+    /// been drawn. The first OSC 7 alone is too early — zsh emits it from the first `precmd`, before
+    /// ZLE takes the tty out of cooked mode, so text sent on that edge is echoed raw under the login
+    /// banner and then replayed on the prompt line, showing the command twice.
+    ///
+    /// The prompt half reads `confirm-close-surface`: `false` reduces the gate to `pwd` alone, and
+    /// `always` keeps it shut until the fallback.
     ///
     /// `shellReadinessFallback` is for shells Ghostty injects no integration into, where `pwd` never
     /// arrives — `/bin/dash -i` never reported one, and the wait timed out at 763 ms, after which
-    /// both the run and the stage landed cleanly on dash's prompt. 750 ms is ~3.5x the observed
-    /// 200 ms prompt latency, and only a shell that reports nothing ever pays it. An agent tab is
-    /// the same case — it `exec`s over the shell and reports no `pwd` — so `startAgentTab`'s staged
-    /// paste always pays the full fallback window.
+    /// both the run and the stage landed cleanly on dash's prompt. Only a shell that reports nothing
+    /// ever pays it. An agent tab is the same case — it `exec`s over the shell and reports no
+    /// `pwd` — so `startAgentTab`'s staged paste always pays the full fallback window.
     ///
     /// Internal (not `private`) so `startAgentTab` can reach it: `private` does not cross a file
     /// even within a type.
     static func awaitShellPrompt(on surface: Ghostty.SurfaceView) async {
         let deadline = ContinuousClock.now + shellReadinessFallback
-        while surface.pwd == nil, ContinuousClock.now < deadline {
+        while surface.pwd == nil || surface.needsConfirmQuit, ContinuousClock.now < deadline {
             try? await Task.sleep(for: shellReadinessPoll)
         }
     }
