@@ -122,3 +122,7 @@ reachable from XCTest. Checks run after the last code edit:
 **Gate.** `./scripts/ci.sh` exit 0: 950 tests, 0 failures, "CI passed."
 
 **Operator check.** Spec criteria 1-10 in a Debug build; the build agent did not launch the app.
+
+### Simplify
+
+Rewrapped one over-long line in the `Sources/App/CLAUDE.md` Setup-tab note; no code change. `hookShellCommand`'s `path:` parameter stays, since `HookShellCommandTests` passes it.

@@ -339,9 +339,9 @@
   `openSetupTab` (`TerminalManager+Setup.swift`) appends it right after, in the background, and
   types the hook verbatim into that login shell at its first prompt — no `/bin/sh -c`, no `PATH`
   export, no failure banner; the login shell's own `PATH` is the authority. Before remove
-  (`ContentView`) is now the only user of `hookShellCommand`. `pendingSetupHooks` is kept apart from `createdWorktrees`
-  because `takeFirstTabSource` consumes the creation mark before an agent first tab lands, so the
-  hook cannot ride that mark to the append. No tab is ever
+  (`ContentView`) is now the only user of `hookShellCommand`. `pendingSetupHooks` is kept apart
+  from `createdWorktrees` because `takeFirstTabSource` consumes the creation mark before an agent
+  first tab lands, so the hook cannot ride that mark to the append. No tab is ever
   an intermediate screen — ⌘T and the `+` menu's New Terminal row pass no command and get a login
   shell; ⌥⌘T, the `+` menu's agent rows and the first tab of a worktree Clearway itself just
   created pass an agent command built by
