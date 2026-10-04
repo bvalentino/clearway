@@ -161,3 +161,70 @@ Gate: `./scripts/ci.sh` after the edit, exit 0 in 181 s. "Executed 956 tests, wi
 `Test-ClearwayTests-2026.10.04_18-44-12--0400.xcresult` reports
 `testThirdPartyLicensesShipsWithEveryNotice() Passed`. No "test runner exited with code 0" recurrence
 in this run.
+
+**T2**
+
+Outcome: **unreproducible** (D7). No early exit recurred in 36 minutes of repro runs covering 20
+test-host launches; nothing names the `exit()` caller of host 32226.
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | `## Pipeline` gains a four-line subsection: capture through the unified log, the step 1 queries, the `_XCTestMain` finding below, a pointer to the spec. |
+| `Sources/App/ClearwayApp.swift` | Unchanged at commit. A D9 diagnostic lived here during the runs only (below). |
+| this plan | This entry. |
+
+Hypotheses and evidence: H1-H3 and E1-E8 as in the spec, not repeated here.
+
+Diagnostic (D9). Added to the working tree before R1, rather than after a hit as the plan orders it, so
+that a single recurrence would already carry its stack: a file-scope `nonisolated` function called
+first thing in `ClearwayApp.init`, registering an `atexit` handler that wrote `Thread.callStackSymbols`
+to `<scratchpad>/exit-traces/<pid>.txt` and `NSLog`. Removed before the gate; `git status --porcelain`
+was empty after removal.
+
+Repro runs. All used `ci.sh`'s flags (`-project Clearway.xcodeproj -scheme ClearwayTests
+-configuration Debug -destination "platform=macOS,arch=arm64"`), no `PRODUCT_NAME`/`APP_PRODUCT_NAME`.
+`timeout` does not exist on this machine (exit 127), so every process was bounded by a perl wrapper
+(`perl -e 'alarm shift; exec @ARGV' <secs> …`) and load also by `trap 'kill $LOADPIDS' EXIT`.
+R2 used `build-for-testing` into two scratchpad DerivedData paths (`ddA`, `ddB`), then
+`test-without-building` against `ddA`, `ddB` and the default DerivedData: three separate products,
+one bundle id (`app.getclearway.mac.debug`).
+
+| Step | What ran | Wall-clock | Result |
+| --- | --- | --- | --- |
+| R1 calibrate | `test -only-testing:ClearwayTests/WorktreeGroupPersistenceTests -test-iterations 2` | 63 s | 52 tests, 0 failures, exit 0 |
+| R1 | same, `-test-iterations 15` | 415 s | 390 tests, 0 failures, exit 0 |
+| R2a | B: suite ×14 (`ddB`); A: full suite (`ddA`) at +20 s; C: full suite (default) at +90 s | 404 s | 364 + 956 + 956 tests, 0 failures, all exit 0 |
+| R2b | B and D: suite ×14 each (`ddB`, default); A: full suite twice in a row (`ddA`) at +30 s; 8 × `yes` load | 420 s | 364 + 364 + 956 + 956, 0 failures |
+| R2c | three full suites (`ddA`, `ddB`, default) staggered 0/15/30 s, twice | 389 s | 6 × 956, 0 failures |
+| R2d | B: suite ×16 (`ddB`); A: full suite twice (`ddA`); C: full suite twice (default) at +45 s; 14 × `yes` load | 470 s | 416 + 4 × 956, 0 failures |
+
+Total repro wall-clock: 2161 s (36 min) against D5's 60. In each R2 round at least one full-suite host
+ended while another host was inside `WorktreeGroupPersistenceTests`, the E5 timing. The step 1 query
+over `--last 2h` after the last round returned no "before finishing running tests" line; `pgrep -fl
+'xcodebuild|yes$'` returned nothing.
+
+Finding from the diagnostic. Every one of the 20 traced hosts, full suite and suite loop alike,
+exited with this stack and logged no `terminate:`:
+
+```
+3   libsystem_c.dylib     exit + 44
+4   XCTestCore            _XCTestMain + 108
+5   libXCTestBundleInject __RunTests_block_invoke_2 + 0
+6   CoreFoundation        __CFMachPortPerform + 288
+```
+
+So XCTest's own end of run is a direct `exit()` from `_XCTestMain`. That weakens E3: a host with an
+`atexit` run and no `terminate:` line looks exactly like a host whose XCTest finished, so E3 does not
+separate an outside caller (H2) from XCTest ending the run itself. It also means host 33479's
+`terminate:` at 17:14:02.157 was not its normal XCTest end. It was an AppKit quit, consistent with the
+operator's clicks on its window (E6), although xcodebuild 32009 reported its run finished with no
+error. None of the runs here could reproduce operator input on a test host's window, and the memory
+rule against agents driving the app keeps that out of reach. This is the one condition from the
+incident that R2 did not recreate.
+
+Deviations from the plan: the diagnostic went in before R1 rather than after a hit (reason above);
+perl `alarm` replaced `timeout`, which is not installed.
+
+Gate: `./scripts/ci.sh` after the last edit, exit 0 in 168 s. "Executed 956 tests, with 0 failures
+(0 unexpected)", "==> CI passed." Before commit `git status --porcelain` listed only `CLAUDE.md` and
+this plan (no `default.profraw`, no diagnostic), and `pgrep -fl 'xcodebuild|yes$'` returned nothing.
