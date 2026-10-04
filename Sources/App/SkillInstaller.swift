@@ -80,10 +80,10 @@ enum SkillInstaller {
     }
 
     private static func posixError(in error: Error) -> NSError? {
-        if (error as NSError).domain == NSPOSIXErrorDomain { return error as NSError }
-        guard let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError,
-              underlying.domain == NSPOSIXErrorDomain else { return nil }
-        return underlying
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain { return nsError }
+        let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        return underlying?.domain == NSPOSIXErrorDomain ? underlying : nil
     }
 
     private static func reason(for error: Error) -> String {

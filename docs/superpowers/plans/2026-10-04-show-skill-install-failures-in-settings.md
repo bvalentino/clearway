@@ -284,3 +284,7 @@ the fix.
 **Deviations.** None.
 
 **Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures).
+
+### Simplify
+
+`SkillInstaller.posixError(in:)` cast to `NSError` three times; it now casts once and returns the POSIX error directly or the underlying one. Behavior unchanged.
