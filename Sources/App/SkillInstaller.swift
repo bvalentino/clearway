@@ -133,8 +133,4 @@ struct SkillInstallStatus: Equatable {
         let noAgent = entries.filter { $0.target != .cli }.allSatisfy { $0.state == .agentAbsent }
         return foreign + (noAgent ? ["No ~/.claude or ~/.codex directory was found, so the skill was not installed."] : [])
     }
-
-    func state(of target: SkillInstaller.Target) -> SkillInstaller.EntryState? {
-        entries.first { $0.target == target }?.state
-    }
 }

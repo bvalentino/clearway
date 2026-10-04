@@ -173,9 +173,7 @@ final class SkillInstallerTests: TempRootTestCase {
         try fileManager.removeItem(atPath: codexLink)
         try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: path("Gone.app/Contents/Resources/Skills/clearway"))
         uninstall()
-        for link in [cliLink, claudeLink, codexLink] {
-            XCTAssertNil(try? fileManager.attributesOfItem(atPath: link), "\(link) should be gone")
-        }
+        assertAllLinksGone()
     }
 
     func testAStaleEntryBlocksInstalled() throws {
@@ -202,9 +200,7 @@ final class SkillInstallerTests: TempRootTestCase {
 
         uninstall()
 
-        for link in [cliLink, claudeLink, codexLink] {
-            XCTAssertNil(try? fileManager.attributesOfItem(atPath: link), "\(link) should be gone")
-        }
+        assertAllLinksGone()
         XCTAssertTrue(fileManager.fileExists(atPath: path(".clearway/hook.sock")))
         XCTAssertTrue(fileManager.fileExists(atPath: path(".claude/skills/other")))
         XCTAssertNotNil(try? fileManager.attributesOfItem(atPath: path(".agents/skills/sibling")))
@@ -241,6 +237,12 @@ final class SkillInstallerTests: TempRootTestCase {
 
     // MARK: - Helpers
 
+    private func assertAllLinksGone(file: StaticString = #filePath, line: UInt = #line) {
+        for link in [cliLink, claudeLink, codexLink] {
+            XCTAssertNil(try? fileManager.attributesOfItem(atPath: link), "\(link) should be gone", file: file, line: line)
+        }
+    }
+
     private func install() { SkillInstaller.install(home: tempRoot, bundlePath: bundle) }
     private func uninstall() { SkillInstaller.uninstall(home: tempRoot, bundlePath: bundle) }
     private func status() -> SkillInstallStatus { SkillInstaller.status(home: tempRoot, bundlePath: bundle) }
@@ -270,5 +272,11 @@ final class SkillInstallerTests: TempRootTestCase {
 
     private func inode(_ link: String) throws -> Int? {
         try fileManager.attributesOfItem(atPath: link)[.systemFileNumber] as? Int
+    }
+}
+
+private extension SkillInstallStatus {
+    func state(of target: SkillInstaller.Target) -> SkillInstaller.EntryState? {
+        entries.first { $0.target == target }?.state
     }
 }

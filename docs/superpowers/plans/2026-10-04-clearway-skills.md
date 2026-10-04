@@ -323,3 +323,7 @@ CLAUDE.md note). After the gate, `ls -ld` reports "No such file or directory" fo
 
 **Gate.** `./scripts/ci.sh` after the last code edit: exit 0, 945 tests, 0 failures. SwiftLint on
 the two changed Swift files: no output.
+
+### Simplify
+
+Removed the production-dead `SkillInstallStatus.state(of:)` (now a private test extension), collapsed the Install/Uninstall branch in `SkillSettingsSection`, and extracted `assertAllLinksGone` in `SkillInstallerTests`. Skipped: a shared directory-exists helper (touches four files outside the diff), the `warnings` inout to a return value, and the extra `fileExists` stat (kept by T1 design).
