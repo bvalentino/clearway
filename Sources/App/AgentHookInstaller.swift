@@ -79,7 +79,7 @@ enum AgentHookInstaller {
             try fileManager.setAttributes([.posixPermissions: AgentHookScript.scriptMode], ofItemAtPath: path)
             return true
         } catch {
-            Ghostty.logger.error("The agent hook forwarder could not be installed at \(path, privacy: .public): \(error)")
+            Ghostty.logger.error("The agent hook forwarder could not be installed at \(path, privacy: .public): \(error, privacy: .public)")
             return false
         }
     }
@@ -132,7 +132,7 @@ enum AgentHookInstaller {
             Ghostty.logger.info("\(installing ? "Installed" : "Removed", privacy: .public) the Clearway hooks in \(path, privacy: .public)")
             return .installed
         } catch {
-            Ghostty.logger.error("\(path, privacy: .public) could not be written: \(error)")
+            Ghostty.logger.error("\(path, privacy: .public) could not be written: \(error, privacy: .public)")
             return .refused(path: displayPath)
         }
     }
@@ -157,7 +157,7 @@ enum AgentHookInstaller {
             Ghostty.logger.info("Backed \(path, privacy: .public) up to \(backup, privacy: .public)")
             return true
         } catch {
-            Ghostty.logger.error("\(path, privacy: .public) could not be backed up, so it was left alone: \(error)")
+            Ghostty.logger.error("\(path, privacy: .public) could not be backed up, so it was left alone: \(error, privacy: .public)")
             return false
         }
     }

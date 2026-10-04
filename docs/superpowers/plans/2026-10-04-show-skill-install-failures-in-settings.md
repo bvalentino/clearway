@@ -267,3 +267,20 @@ the fix.
 
 **Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures);
 `swiftlint lint --quiet Sources/App/SkillSettingsSection.swift` reports nothing.
+
+### T4: Public error logging in AgentHookInstaller and the per-file notes
+
+| File | State |
+| --- | --- |
+| `Sources/App/AgentHookInstaller.swift` | The three `\(error)` log interpolations (lines 82, 135, 160) carry `privacy: .public` (E8). |
+| `Sources/App/CLAUDE.md` | `SkillInstaller.swift` entry: only `ENOENT` is `missing`, anything else `unreadable(reason:)` and skipped; stale links replaced by temp link plus `rename(2)`, never remove-then-create; why a mode change cannot test that path and the test uses a `deny add_file` ACL; `install`/`uninstall` return `Failure`s with `strerror` reasons and store nothing; every logged `\(error)` is `privacy: .public`. `SkillSettingsSection.swift` entry: the last action's failures live in view `@State`, replaced per click, cleared on appear, rendered before `status.messages`. |
+
+**Evidence.**
+
+- No RED test: log privacy and per-file notes have no XCTest-observable behavior.
+- `grep -n '\\(error' Sources/App/SkillInstaller.swift Sources/App/AgentHookInstaller.swift` returns six
+  lines, each with `\(error, privacy: .public)` (spec criterion 7).
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures).
