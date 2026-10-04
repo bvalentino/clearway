@@ -163,9 +163,10 @@ enum TaskCommand {
         guard !mainBlock.components(separatedBy: "\n").contains("bare") else {
             throw .runtime("the main worktree is a bare repository, which has no task backlog")
         }
-        let paths = Worktree.parseList(output).compactMap(\.path)
-        guard let mainPath = paths.first else { throw .runtime("git listed no worktrees") }
-        return Project(mainPath: mainPath, worktreePaths: paths)
+        let worktrees = Worktree.parseList(output)
+        guard let mainPath = worktrees.first?.path else { throw .runtime("git listed no worktrees") }
+        let carriers = Worktree.taskCarriers(Worktree.applyHeadResolution(to: worktrees))
+        return Project(mainPath: mainPath, worktreePaths: carriers.map(\.path))
     }
 
     private static func git(_ arguments: [String], in directory: String) throws(Failure) -> String {

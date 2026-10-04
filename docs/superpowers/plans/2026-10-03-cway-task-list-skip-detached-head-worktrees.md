@@ -186,3 +186,29 @@ each of the four functions once, in `Sources/Shared/WorktreeModel.swift`.
 **Deviations.** None. No `@MainActor` annotation in `WorktreeTests` needed touching.
 
 **Gate.** `./scripts/ci.sh`, exit 0: 916 tests, 0 failures.
+
+### T2: cway task list and show load TASK.md only from task carriers
+
+| File | State |
+| --- | --- |
+| `Sources/Shared/TaskCommand.swift` | `resolveProject` parses once; `mainPath` is the first parsed entry's `path` (same "git listed no worktrees" failure); `worktreePaths` is `Worktree.taskCarriers(Worktree.applyHeadResolution(to: worktrees)).map(\.path)`. Bare-main guard untouched. |
+| `Tests/TaskCommandTests.swift` | Helper `addDetachedWorktree(_:to:)` plus three tests: `testListAndShowSkipADetachedWorktreesTask`, `testListAndShowIncludeAMidRebaseWorktreesTask` (writes `refs/heads/feature` to `<gitdir>/rebase-merge/head-name`), `testShowReportsTheCentralCopyWhenTheWorktreeCopyIsInADetachedWorktree` (D6). |
+
+**Evidence.** Tests written first; `./scripts/ci.sh` on the T1 tree exited 65, 919 tests, 8 failures:
+
+```
+✖ testListAndShowSkipADetachedWorktreesTask, XCTAssertFalse failed
+✖ testListAndShowSkipADetachedWorktreesTask, XCTAssertEqual failed: ("0") is not equal to ("1")
+✖ testListAndShowSkipADetachedWorktreesTask, XCTAssertEqual failed: ("") is not equal to ("cway: no task 6416E1D0-…
+✖ testShowReportsTheCentralCopyWhenTheWorktreeCopyIsInADetachedWorktree, XCTAssertEqual failed: ("Optional("Worktree title")") is not equal to ("Optional("Central title")")
+✖ testShowReportsTheCentralCopyWhenTheWorktreeCopyIsInADetachedWorktree, XCTAssertEqual failed: ("Optional("worktree")") is not equal to ("Optional("backlog")")
+```
+
+The mid-rebase test passed on the T1 tree, as it should: the old code listed every worktree. Its job is
+to fail a "skip every detached entry" shortcut, not to go red before the change.
+
+**Deviations.** None. The detached test asserts the exact stderr `cway: no task <ID>\n` on top of
+`assertFailed`; the existing "no task" test only checks the `cway: ` prefix, so there was no exact
+format to copy.
+
+**Gate.** `./scripts/ci.sh`, exit 0: 919 tests, 0 failures.
