@@ -481,6 +481,39 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory), [])
     }
 
+    func testListAndShowWarnOnStderrForSkippedFilesAndKeepTheirOutput() throws {
+        let pool = try makePool()
+        let mainPath = try XCTUnwrap(Worktree.parseList(try GitRepoFixture.git(["worktree", "list", "--porcelain"], in: pool.repo.root)).first?.path)
+        let unparseable = TaskFiles.centralPath(for: UUID(), tasksDirectory: TaskFiles.tasksDirectory(inProject: mainPath))
+        XCTAssertTrue(FileManager.default.createFile(atPath: unparseable, contents: Data("Just a body".utf8)))
+        _ = try pool.repo.addWorktree(branch: "idless")
+        let idless = TaskFiles.taskMarkdownPath(inWorktree: (mainPath as NSString).appendingPathComponent(".worktrees/idless"))
+        try FileManager.default.createDirectory(atPath: (idless as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: idless, contents: Data("---\ntitle: No id\n---".utf8)))
+        let warnings = [(unparseable, "cannot parse the frontmatter"), (idless, "its frontmatter has no id")]
+            .sorted { $0.0 < $1.0 }
+            .map { "cway: warning: skipped '\($0.0)': \($0.1).\n" }
+            .joined()
+
+        let listed = run(["task", "list"], in: pool.repo.root)
+        XCTAssertEqual(listed.exitCode, 0)
+        XCTAssertEqual(listed.stderr, warnings)
+        let entries = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(listed.stdout.utf8)) as? [[String: Any]])
+        XCTAssertEqual(entries.map { $0["id"] as? String }, [pool.linked.id.uuidString, pool.backlog.id.uuidString])
+
+        let shown = run(["task", "show", pool.backlog.id.uuidString], in: pool.repo.root)
+        XCTAssertEqual(shown.exitCode, 0)
+        XCTAssertEqual(shown.stderr, warnings)
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: Data(shown.stdout.utf8)) as? [String: Any])?["title"] as? String, "Backlog task")
+
+        let unknown = UUID()
+        assertFailed(
+            run(["task", "show", unknown.uuidString], in: pool.repo.root),
+            exitCode: 1,
+            stderr: warnings + "cway: no task with id \(unknown.uuidString) in the project at '\(mainPath)'. Run 'cway task list' to see the tasks.\n"
+        )
+    }
+
     private func addDetachedWorktree(_ name: String, to repo: GitRepoFixture) throws -> String {
         let path = (repo.root as NSString).appendingPathComponent(".worktrees/\(name)")
         try GitRepoFixture.git(["worktree", "add", "-q", "--detach", path], in: repo.root)

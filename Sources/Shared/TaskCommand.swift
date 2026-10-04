@@ -23,6 +23,7 @@ enum TaskCommand {
         guard let command = arguments.first, command != "help", command != "--help" else {
             return Result(stdout: usage, stderr: "", exitCode: 0)
         }
+        var warnings = ""
         do throws(Failure) {
             let output: String
             let rest = Array(arguments.dropFirst(2))
@@ -30,15 +31,15 @@ enum TaskCommand {
             case ("task", "create"):
                 output = try create(rest, workingDirectory: workingDirectory, readStdin: readStdin)
             case ("task", "list"):
-                output = try list(rest, workingDirectory: workingDirectory)
+                output = try list(rest, workingDirectory: workingDirectory, warnings: &warnings)
             case ("task", "show"):
-                output = try show(rest, workingDirectory: workingDirectory)
+                output = try show(rest, workingDirectory: workingDirectory, warnings: &warnings)
             default:
                 throw Failure.usage("unknown command '\(arguments.prefix(2).joined(separator: " "))'.")
             }
-            return Result(stdout: output, stderr: "", exitCode: 0)
+            return Result(stdout: output, stderr: warnings, exitCode: 0)
         } catch {
-            return Result(stdout: "", stderr: "cway: \(error.message)\n", exitCode: error.exitCode)
+            return Result(stdout: "", stderr: warnings + "cway: \(error.message)\n", exitCode: error.exitCode)
         }
     }
 
@@ -139,19 +140,19 @@ enum TaskCommand {
         }
     }
 
-    private static func list(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
+    private static func list(_ arguments: [String], workingDirectory: String, warnings: inout String) throws(Failure) -> String {
         if let extra = arguments.first { throw .strayArgument(extra, to: "task list") }
-        let (pool, tasksDirectory, _) = try loadPool(in: workingDirectory)
+        let (pool, tasksDirectory, _) = try loadPool(in: workingDirectory, warnings: &warnings)
         return try json(pool.filter { !$0.task.hidden }.map { Entry($0, tasksDirectory: tasksDirectory, includingBody: false) })
     }
 
-    private static func show(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
+    private static func show(_ arguments: [String], workingDirectory: String, warnings: inout String) throws(Failure) -> String {
         guard let idArgument = arguments.first else { throw .usage("'task show' needs a task id.") }
         if let extra = arguments.dropFirst().first { throw .strayArgument(extra, to: "task show") }
         guard let id = UUID(uuidString: idArgument) else {
             throw .runtime("'\(idArgument)' is not a task id. A task id is a UUID; run 'cway task list' to see the ids.")
         }
-        let (pool, tasksDirectory, mainPath) = try loadPool(in: workingDirectory)
+        let (pool, tasksDirectory, mainPath) = try loadPool(in: workingDirectory, warnings: &warnings)
         guard let loaded = pool.first(where: { $0.task.id == id }) else {
             throw .runtime("no task with id \(id.uuidString) in the project at '\(mainPath)'. Run 'cway task list' to see the tasks.")
         }
@@ -159,11 +160,13 @@ enum TaskCommand {
     }
 
     private static func loadPool(
-        in workingDirectory: String
+        in workingDirectory: String, warnings: inout String
     ) throws(Failure) -> (pool: [TaskFiles.LoadedTask], tasksDirectory: String, mainPath: String) {
         let project = try resolveProject(in: workingDirectory)
         let tasksDirectory = TaskFiles.tasksDirectory(inProject: project.mainPath)
-        return (TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: project.worktreePaths), tasksDirectory, project.mainPath)
+        let loaded = TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: project.worktreePaths)
+        warnings = loaded.skipped.map { "cway: warning: skipped '\($0.path)': \($0.reason.rawValue).\n" }.joined()
+        return (loaded.tasks, tasksDirectory, project.mainPath)
     }
 
     // MARK: - Project resolution

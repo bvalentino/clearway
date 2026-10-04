@@ -318,7 +318,7 @@ class WorkTaskManager: ObservableObject {
         let sorted = TaskFiles.loadPool(
             tasksDirectory: tasksDirectory,
             worktreePaths: worktreeResolver().map(\.path)
-        ).map(\.task)
+        ).tasks.map(\.task)
         if sorted != tasks {
             tasks = sorted
         }
