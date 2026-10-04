@@ -522,6 +522,24 @@ final class TaskCommandTests: TempRootTestCase {
         )
     }
 
+    func testEmbeddedHelperSaysGitPrintedNothingWhenItsStderrIsBlank() throws {
+        let bin = (tempRoot as NSString).appendingPathComponent("bin")
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        let fakeGit = (bin as NSString).appendingPathComponent("git")
+        try "#!/bin/sh\nprintf '  \\n\\n' >&2\nexit 3\n".write(toFile: fakeGit, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeGit)
+
+        let result = try runHelper(["task", "list"], in: tempRoot, environment: ["PATH": "\(bin):/usr/bin:/bin"])
+
+        XCTAssertEqual(result.status, 1)
+        XCTAssertEqual(result.stdout, "")
+        XCTAssertTrue(result.stderr.hasPrefix("cway: could not find the project for '"), result.stderr)
+        XCTAssertTrue(
+            result.stderr.hasSuffix("': 'git worktree list --porcelain' exited with status 3 and printed nothing.\n"),
+            result.stderr
+        )
+    }
+
     func testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository() throws {
         let repo = try makeRepo()
 

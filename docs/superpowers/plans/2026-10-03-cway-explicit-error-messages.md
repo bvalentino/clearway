@@ -241,3 +241,20 @@ Evidence: the test run alone (`xcodebuild … -only-testing:ClearwayTests/TaskCo
 Deviations: I looked for a lossy decode that needs no suppression. SwiftLint 0.63.2 matches the rule on spelling only: `String(decoding: d, as: Unicode.UTF8.self)` is not flagged, while `as: UTF8.self` is flagged even on `Array(d)`. Changing the spelling avoids the warning without fixing anything and gives the reader no reason, so the code uses the explicit suppression. A lint probe in the scratchpad confirmed this.
 
 Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 922 tests, with 0 failures`; `swiftlint lint --quiet` on both files reports nothing.
+
+### Review PR
+
+`/pr-review-toolkit:review-pr code tests errors types` over `8a11de5..HEAD`. The code, error-handling and type reviews found nothing important; every U1–U8 and R1–R13 message matches the catalogue.
+
+| File | State |
+| --- | --- |
+| `Tests/TaskCommandTests.swift` | `testEmbeddedHelperSaysGitPrintedNothingWhenItsStderrIsBlank`: the R6 "printed nothing" branch had no test. A fake `git` on `PATH` prints only blank lines to stderr and exits 3; the test expects exit 1, empty stdout, and the R6 sentence ending `exited with status 3 and printed nothing.` This pins the guard, the blank-line filter and the status in the framing. Not run here: `sign-off` owns the gate. |
+
+Left as nits, not changed:
+
+- A git killed by a signal is reported as "exited with status N". Present before this branch.
+- `/usr/bin/env`'s own 126 error ("env: git: Permission denied") is shown under "git said:". The text is accurate and actionable.
+- `LC_ALL=C` (D3) has no test: Apple's git ships no translations, so only a fake `git` could observe it.
+- `usage(_:)` relies on each caller ending its message with a period; all nine do.
+- An argument containing a newline breaks D5's one-line rule. This takes hostile input.
+- `gitFailure`'s "could not find the project" framing assumes `git(_:in:)` has one caller, which is true today.
