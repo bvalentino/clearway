@@ -34,7 +34,7 @@ final class SkillInstallerTests: TempRootTestCase {
     func testInstallWithBothAgentsLinksAllThreeIntoTheBundle() throws {
         try makeAgents(claude: true, codex: true)
 
-        install()
+        XCTAssertEqual(install(), [])
 
         XCTAssertEqual(try destination(cliLink), cliDestination)
         XCTAssertEqual(try destination(claudeLink), skillDestination)
@@ -96,8 +96,28 @@ final class SkillInstallerTests: TempRootTestCase {
         try makeAgents(claude: true, codex: true)
         try write("blocks the skills directory", to: path(".claude/skills"))
 
-        install()
+        let failures = install()
 
+        XCTAssertEqual(try destination(cliLink), cliDestination)
+        XCTAssertEqual(try destination(codexLink), skillDestination)
+        XCTAssertEqual(failures, [])
+        let status = status()
+        XCTAssertEqual(status.state(of: .claudeCode), .unreadable(reason: "Not a directory"))
+        XCTAssertTrue(status.messages.contains("~/.claude/skills/clearway could not be read: Not a directory."))
+    }
+
+    func testAnUnwritableSkillsDirectoryIsReportedAndTheOthersAreLinked() throws {
+        try makeAgents(claude: true, codex: true)
+        let skills = path(".claude/skills")
+        try makeDirectory(skills)
+        try setMode(0o555, of: skills)
+        defer { try? setMode(0o755, of: skills) }
+
+        let failures = install()
+
+        let expected = SkillInstaller.Failure(displayPath: "~/.claude/skills/clearway", action: .link, reason: "Permission denied")
+        XCTAssertEqual(failures, [expected])
+        XCTAssertEqual(failures.first?.message, "~/.claude/skills/clearway could not be linked: Permission denied.")
         XCTAssertEqual(try destination(cliLink), cliDestination)
         XCTAssertEqual(try destination(codexLink), skillDestination)
     }
@@ -192,13 +212,13 @@ final class SkillInstallerTests: TempRootTestCase {
 
         try fileManager.removeItem(atPath: codexLink)
         try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: path("Gone.app/Contents/Resources/Skills/clearway"))
-        uninstall()
+        XCTAssertEqual(uninstall(), [])
         assertAllLinksGone()
     }
 
     func testUninstallRemovesLinksIntoAnotherExistingBundle() throws {
         try makeAgents(claude: true, codex: true)
-        SkillInstaller.install(home: tempRoot, bundlePath: otherBundle)
+        _ = SkillInstaller.install(home: tempRoot, bundlePath: otherBundle)
         XCTAssertEqual(status().entries.map(\.state), [.stale, .stale, .stale])
 
         uninstall()
@@ -243,6 +263,21 @@ final class SkillInstallerTests: TempRootTestCase {
         XCTAssertFalse(status.isInstalled)
     }
 
+    func testAnUnremovableLinkIsReportedAndTheOthersAreRemoved() throws {
+        try makeAgents(claude: true, codex: true)
+        install()
+        let skills = path(".claude/skills")
+        try setMode(0o555, of: skills)
+        defer { try? setMode(0o755, of: skills) }
+
+        let failures = uninstall()
+
+        XCTAssertEqual(failures, [SkillInstaller.Failure(displayPath: "~/.claude/skills/clearway", action: .remove, reason: "Permission denied")])
+        XCTAssertEqual(failures.first?.message, "~/.claude/skills/clearway could not be removed: Permission denied.")
+        XCTAssertNil(try? fileManager.attributesOfItem(atPath: cliLink))
+        XCTAssertNil(try? fileManager.attributesOfItem(atPath: codexLink))
+    }
+
     func testUninstallLeavesAnAgentAbsentEntryAlone() throws {
         try makeAgents(claude: false, codex: false)
         try makeDirectory(path(".agents/skills"))
@@ -266,6 +301,26 @@ final class SkillInstallerTests: TempRootTestCase {
         XCTAssertEqual(status.messages, [])
     }
 
+    func testAnEntryThatCannotBeStatedIsUnreadableAndSkippedByUninstall() throws {
+        try makeAgents(claude: true, codex: true)
+        install()
+        let skills = path(".claude/skills")
+        try setMode(0o600, of: skills)
+        defer { try? setMode(0o755, of: skills) }
+
+        let before = status()
+        XCTAssertEqual(before.state(of: .claudeCode), .unreadable(reason: "Permission denied"))
+        XCTAssertEqual(before.messages, ["~/.claude/skills/clearway could not be read: Permission denied."])
+        XCTAssertTrue(before.isInstalled)
+
+        XCTAssertEqual(uninstall(), [])
+
+        XCTAssertNil(try? fileManager.attributesOfItem(atPath: cliLink))
+        XCTAssertNil(try? fileManager.attributesOfItem(atPath: codexLink))
+        try setMode(0o755, of: skills)
+        XCTAssertEqual(try destination(claudeLink), skillDestination)
+    }
+
     func testAMissingEntryBlocksInstalled() throws {
         try makeAgents(claude: true, codex: true)
         install()
@@ -283,8 +338,10 @@ final class SkillInstallerTests: TempRootTestCase {
         }
     }
 
-    private func install() { SkillInstaller.install(home: tempRoot, bundlePath: bundle) }
-    private func uninstall() { SkillInstaller.uninstall(home: tempRoot, bundlePath: bundle) }
+    @discardableResult
+    private func install() -> [SkillInstaller.Failure] { SkillInstaller.install(home: tempRoot, bundlePath: bundle) }
+    @discardableResult
+    private func uninstall() -> [SkillInstaller.Failure] { SkillInstaller.uninstall(home: tempRoot, bundlePath: bundle) }
     private func status() -> SkillInstallStatus { SkillInstaller.status(home: tempRoot, bundlePath: bundle) }
 
     private func path(_ relative: String) -> String {
@@ -294,6 +351,10 @@ final class SkillInstallerTests: TempRootTestCase {
     private func makeAgents(claude: Bool, codex: Bool) throws {
         if claude { try makeDirectory(path(".claude")) }
         if codex { try makeDirectory(path(".codex")) }
+    }
+
+    private func setMode(_ mode: Int, of path: String) throws {
+        try fileManager.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
     }
 
     private func makeDirectory(_ path: String) throws {

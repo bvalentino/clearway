@@ -10,7 +10,7 @@ struct SkillSettingsSection: View {
                 LabeledContent("Clearway Skill") {
                     Button(status.isInstalled ? "Uninstall" : "Install") {
                         let act = status.isInstalled ? SkillInstaller.uninstall : SkillInstaller.install
-                        act(NSHomeDirectory(), Bundle.main.bundlePath)
+                        _ = act(NSHomeDirectory(), Bundle.main.bundlePath)
                         refresh()
                     }
                 }

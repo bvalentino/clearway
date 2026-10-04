@@ -9,6 +9,22 @@ enum SkillInstaller {
 
     enum EntryState: Equatable {
         case agentAbsent, missing, current, stale, foreign
+        case unreadable(reason: String)
+    }
+
+    struct Failure: Equatable {
+        enum Action { case link, remove }
+
+        let displayPath: String
+        let action: Action
+        let reason: String
+
+        var message: String {
+            switch action {
+            case .link: "\(displayPath) could not be linked: \(reason)."
+            case .remove: "\(displayPath) could not be removed: \(reason)."
+            }
+        }
     }
 
     struct Entry: Equatable {
@@ -24,7 +40,8 @@ enum SkillInstaller {
         })
     }
 
-    static func install(home: String, bundlePath: String) {
+    static func install(home: String, bundlePath: String) -> [Failure] {
+        var failures: [Failure] = []
         for target in Target.allCases {
             let location = Location(target, home: home, bundlePath: bundlePath)
             do {
@@ -33,18 +50,21 @@ enum SkillInstaller {
                     try location.createContainer()
                 case .stale:
                     try FileManager.default.removeItem(atPath: location.path)
-                case .agentAbsent, .current, .foreign:
+                case .agentAbsent, .current, .foreign, .unreadable:
                     continue
                 }
                 try FileManager.default.createSymbolicLink(atPath: location.path, withDestinationPath: location.destination)
                 Ghostty.logger.info("Linked \(location.path, privacy: .public) to \(location.destination, privacy: .public)")
             } catch {
-                Ghostty.logger.error("\(location.path, privacy: .public) could not be linked: \(error)")
+                Ghostty.logger.error("\(location.path, privacy: .public) could not be linked: \(error, privacy: .public)")
+                failures.append(Failure(displayPath: location.displayPath, action: .link, reason: reason(for: error)))
             }
         }
+        return failures
     }
 
-    static func uninstall(home: String, bundlePath: String) {
+    static func uninstall(home: String, bundlePath: String) -> [Failure] {
+        var failures: [Failure] = []
         for target in Target.allCases {
             let location = Location(target, home: home, bundlePath: bundlePath)
             guard [.current, .stale].contains(location.state()) else { continue }
@@ -52,9 +72,22 @@ enum SkillInstaller {
                 try FileManager.default.removeItem(atPath: location.path)
                 Ghostty.logger.info("Removed \(location.path, privacy: .public)")
             } catch {
-                Ghostty.logger.error("\(location.path, privacy: .public) could not be removed: \(error)")
+                Ghostty.logger.error("\(location.path, privacy: .public) could not be removed: \(error, privacy: .public)")
+                failures.append(Failure(displayPath: location.displayPath, action: .remove, reason: reason(for: error)))
             }
         }
+        return failures
+    }
+
+    private static func posixError(in error: Error) -> NSError? {
+        guard let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError,
+              underlying.domain == NSPOSIXErrorDomain else { return nil }
+        return underlying
+    }
+
+    private static func reason(for error: Error) -> String {
+        guard let posix = posixError(in: error) else { return error.localizedDescription }
+        return String(cString: strerror(Int32(posix.code)))
     }
 
     private struct Location {
@@ -91,7 +124,13 @@ enum SkillInstaller {
         func state() -> EntryState {
             let fileManager = FileManager.default
             if let gate, !isDirectory(gate) { return .agentAbsent }
-            guard let attributes = try? fileManager.attributesOfItem(atPath: path) else { return .missing }
+            let attributes: [FileAttributeKey: Any]
+            do {
+                attributes = try fileManager.attributesOfItem(atPath: path)
+            } catch {
+                if SkillInstaller.posixError(in: error)?.code == Int(ENOENT) { return .missing }
+                return .unreadable(reason: SkillInstaller.reason(for: error))
+            }
             guard attributes[.type] as? FileAttributeType == .typeSymbolicLink,
                   let linked = try? fileManager.destinationOfSymbolicLink(atPath: path) else { return .foreign }
             if linked == destination { return .current }
@@ -119,8 +158,14 @@ struct SkillInstallStatus: Equatable {
     }
 
     var messages: [String] {
-        let foreign = entries.filter { $0.state == .foreign }.map { "\($0.displayPath) already exists and was left alone." }
+        let entryLines = entries.compactMap { entry -> String? in
+            switch entry.state {
+            case .foreign: "\(entry.displayPath) already exists and was left alone."
+            case .unreadable(let reason): "\(entry.displayPath) could not be read: \(reason)."
+            case .agentAbsent, .missing, .current, .stale: nil
+            }
+        }
         let noAgent = entries.filter { $0.target != .cli }.allSatisfy { $0.state == .agentAbsent }
-        return foreign + (noAgent ? ["No ~/.claude or ~/.codex directory was found, so the skill was not installed."] : [])
+        return entryLines + (noAgent ? ["No ~/.claude or ~/.codex directory was found, so the skill was not installed."] : [])
     }
 }
