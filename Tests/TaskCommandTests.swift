@@ -468,19 +468,61 @@ final class TaskCommandTests: TempRootTestCase {
 
     // MARK: - End to end
 
-    private func runHelper(_ arguments: [String], in directory: String) throws -> (stdout: String, status: Int32) {
+    private func runHelper(
+        _ arguments: [String],
+        in directory: String,
+        environment: [String: String] = [:]
+    ) throws -> (stdout: String, stderr: String, status: Int32) {
         let process = Process()
         process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cway")
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, override in override }
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
+        process.standardError = stderr
         process.standardInput = FileHandle.nullDevice
         try process.run()
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return (String(bytes: output, encoding: .utf8) ?? "", process.terminationStatus)
+        return (
+            String(bytes: output, encoding: .utf8) ?? "",
+            String(bytes: errorOutput, encoding: .utf8) ?? "",
+            process.terminationStatus
+        )
+    }
+
+    func testEmbeddedHelperWithoutGitOnPathSaysGitWasNotFound() throws {
+        let repo = try makeRepo()
+
+        let result = try runHelper(["task", "list"], in: repo.root, environment: ["PATH": "/nonexistent"])
+
+        XCTAssertEqual(result.status, 1)
+        XCTAssertEqual(result.stdout, "")
+        XCTAssertEqual(
+            result.stderr,
+            "cway: git was not found on PATH. cway runs git to find the project; install git or add it to PATH.\n"
+        )
+    }
+
+    func testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository() throws {
+        let repo = try makeRepo()
+
+        let result = try runHelper(["task", "list"], in: repo.root, environment: ["GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"])
+
+        XCTAssertEqual(result.status, 1)
+        XCTAssertEqual(result.stdout, "")
+        XCTAssertTrue(result.stderr.hasPrefix("cway: could not find the project for '"), result.stderr)
+        XCTAssertTrue(
+            result.stderr.contains("'git worktree list --porcelain' exited with status 128. git said:\n"),
+            result.stderr
+        )
+        let lines = result.stderr.split(separator: "\n")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("  fatal: detected dubious ownership") }, result.stderr)
+        XCTAssertTrue(lines.contains { $0.contains("safe.directory") }, result.stderr)
+        XCTAssertFalse(result.stderr.contains("is not inside a git repository"), result.stderr)
     }
 
     func testEmbeddedHelperCreatesThenShowsATask() throws {

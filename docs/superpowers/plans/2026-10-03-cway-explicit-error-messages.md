@@ -202,3 +202,18 @@ Evidence: `./scripts/ci.sh` with the new tests and the T1 code, exit 65, `Execut
 Deviations: none. R13 is reworded and untested, as the spec says.
 
 Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 919 tests, with 0 failures`; `swiftlint lint --quiet` on both files reports nothing.
+
+### T3: Embedded-binary environment cases
+
+| File | State |
+| --- | --- |
+| `Tests/TaskCommandTests.swift` | `runHelper` takes `environment: [String: String] = [:]`, merged over the inherited environment, and returns stderr with stdout and status; existing callers unchanged. New: `PATH=/nonexistent` asserts exact R5, exit 1, empty stdout (spec T9); `GIT_TEST_ASSUME_DIFFERENT_OWNER=1` asserts R6's framing prefix, `exited with status 128. git said:\n`, a `  fatal: detected dubious ownership` line, a `safe.directory` line, no R2, exit 1, empty stdout (spec T10). |
+
+Evidence: the two new tests run (via `xcodebuild … -only-testing`) against `Sources/Shared/TaskCommand.swift` from `8a11de5`, copied in from `git show` and restored from a scratchpad copy afterwards: exit 65, `Executed 2 tests, with 5 failures`.
+
+- `testEmbeddedHelperWithoutGitOnPathSaysGitWasNotFound, XCTAssertEqual failed: ("cway: git not found…`
+- `testEmbeddedHelperShowsGitsDubiousOwnershipReasonNotOutsideRepository, XCTAssertTrue failed - cway: fatal: detected dubious ownership in repository at '/private/var/…'` (×4: no R6 framing, no `git said:`, no indented line, no `safe.directory` line, since `8a11de5` printed only git's first `fatal:` line)
+
+Deviations: none. No production code changed.
+
+Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 921 tests, with 0 failures`; `swiftlint lint --quiet Tests/TaskCommandTests.swift` reports nothing.
