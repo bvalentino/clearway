@@ -36,36 +36,39 @@ Clearway is distributed outside the Mac App Store, so Release builds must be sig
 
 ## Release flow
 
-Start from a clean `main`:
+From a clean `main` that matches `origin/main`, run one command (wall-clock dominated by the Release build and one notary round-trip):
 
 ```bash
-git checkout main && git pull --ff-only
+./scripts/release.sh
 ```
 
-Then run the pipeline (wall-clock ~10 minutes, dominated by two notary round-trips):
+It asks for the new `MARKETING_VERSION`, then runs unattended until a single `Publish v<VERSION>? [y/N]` prompt. Nothing leaves the machine before that prompt is answered with `y`.
+
+| Step | Script | What it does |
+| --- | --- | --- |
+| Preflight | `scripts/release.sh` | On `main`, no uncommitted tracked changes, in sync with `origin/main`, the four environment variables set, `gh` logged in, tag `v<VERSION>` not taken |
+| Bump | `scripts/release.sh` | Sets `MARKETING_VERSION`, increments `CURRENT_PROJECT_VERSION`, regenerates the xcodeproj, commits `Release v<VERSION>` locally |
+| Build | `scripts/release/build.sh` | Clean signed Release build of that commit → `release/Clearway-<VERSION>-<sha>.zip` |
+| Package | `scripts/release/package.sh` | DMG → sign → notarize → staple → Gatekeeper check → `release/Clearway-<VERSION>-<sha>.dmg` |
+| Publish | `scripts/release/publish.sh` | Re-verifies the DMG, signs it for Sparkle, fetches GitHub's auto-generated notes, shows a summary and asks. On `y`: pushes the release commit, creates the GitHub release (tagged at that commit) with both DMGs, then commits and pushes `docs/appcast.xml` as `Publish v<VERSION> appcast` |
+
+The version bump is committed before the build, so the hash stamped into the app, the artifact names and the `v<VERSION>` tag all refer to the same commit. The appcast is pushed last, so the feed never advertises a DMG that is not downloadable yet. The appcast item embeds a trimmed Markdown copy of the notes so Sparkle's update dialog lists the changes inline; the full text is saved to `release/v<VERSION>-notes.md`.
+
+### Resuming after a failed stage
+
+A failed stage rolls nothing back, and `release.sh` prints the stages still to run. Fix the cause and run them directly, in order — each finds the previous stage's output by `<VERSION>-<sha>`:
 
 ```bash
-./scripts/release.sh        # prompts for new MARKETING_VERSION, bumps CURRENT_PROJECT_VERSION,
-                            # regenerates xcodeproj, builds signed Release, zips
-./scripts/notarize.sh       # submits zip, waits, staples ticket, verifies with spctl
-./scripts/package-dmg.sh    # wraps stapled .app in a signed + notarized + stapled DMG
-./scripts/publish-update.sh # signs DMG, writes docs/appcast.xml, prints gh release cmd
+./scripts/release/build.sh
+./scripts/release/package.sh
+./scripts/release/publish.sh
 ```
 
-`publish-update.sh` fetches GitHub's auto-generated notes for the tag, embeds a trimmed Markdown copy in the appcast item so Sparkle's update dialog lists the changes inline, saves the full text to `release/v<VERSION>-notes.md`, and prints a ready-to-paste `gh release create` command. Run it **before** committing and pushing, so the DMG is reachable when GitHub Pages redeploys the appcast feed:
+Do not re-run `./scripts/release.sh` to resume: its preflight refuses while the release commit is unpushed, because it would bump the build number a second time. If the fix needs a code change, commit it on top of the release commit and resume from `build.sh`; the artifacts are then named after the new `HEAD`, which is also where the tag goes.
 
-```bash
-gh release create v<VERSION> \
-  release/Clearway-<VERSION>-<sha>.dmg \
-  release/Clearway.dmg \
-  --repo bvalentino/clearway \
-  --title v<VERSION> \
-  --notes-file release/v<VERSION>-notes.md
+To abandon an unpublished release instead, `git reset --hard origin/main` drops the local release commit.
 
-git add project.yml Clearway.xcodeproj/project.pbxproj docs/appcast.xml
-git commit -m "Release v<VERSION>"
-git push
-```
+If `publish.sh` fails after the GitHub release was created, the appcast is the only step left, and re-running `publish.sh` stops at "tag already exists". Delete the release and its tag (`gh release delete v<VERSION> --cleanup-tag`) and run `publish.sh` again.
 
 Both DMGs are uploaded as release assets: the versioned one is fetched by Sparkle via `docs/appcast.xml`, and `Clearway.dmg` keeps the landing page's `/releases/latest/download/Clearway.dmg` URL resolving. Same bytes, same signature.
 
@@ -78,21 +81,21 @@ Both DMGs are uploaded as release assets: the versioned one is fetched by Sparkl
 spctl -a -t open --context context:primary-signature -vv release/Clearway-*.dmg
 xcrun stapler validate release/Clearway-*.dmg
 
-# Or the .app inside the notarized zip
-unzip -o release/Clearway-*-notarized.zip -d /tmp/clearway-check
-codesign -dvv /tmp/clearway-check/Clearway.app
-spctl -a -vv /tmp/clearway-check/Clearway.app
-xcrun stapler validate /tmp/clearway-check/Clearway.app
+# Or the .app inside it (needs network — only the DMG carries a stapled ticket)
+hdiutil attach -readonly -nobrowse release/Clearway-<VERSION>-<sha>.dmg
+codesign -dvv /Volumes/Clearway/Clearway.app
+spctl -a -vv /Volumes/Clearway/Clearway.app
+hdiutil detach /Volumes/Clearway
 ```
 
-Both should report `accepted, source=Notarized Developer ID`.
+Both `spctl` calls should report `accepted, source=Notarized Developer ID`.
 
 ## Troubleshooting
 
-If `notarize.sh` reports `status=Invalid`, it auto-fetches and prints the `notarytool` log. Common causes:
+If `package.sh` reports `status=Invalid`, it auto-fetches and prints the `notarytool` log. Common causes:
 
 - **"The signature does not include a secure timestamp"** — `OTHER_CODE_SIGN_FLAGS = --timestamp` missing from the Release config in `project.yml`.
-- **"The executable requests the com.apple.security.get-task-allow entitlement"** — `CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO` missing from the Release config. Xcode injects `get-task-allow=true` by default; disabling injection forces it to use only `Clearway.entitlements`.
+- **"The executable requests the com.apple.security.get-task-allow entitlement"** — `CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO` missing from the Release config of the target that builds the named executable (`Clearway` and `ClearwayCLI` both need it). Xcode injects `get-task-allow=true` by default; disabling injection leaves only the target's own entitlements.
 - **New hardened runtime exception needed** — `notarytool` names the exact entitlement key; add it to `Clearway.entitlements` and rebuild.
 
 Debug builds (`./scripts/build.sh`, `./scripts/run.sh`) use ad-hoc signing with hardened runtime off, so the dev loop is unaffected.
