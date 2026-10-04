@@ -6,7 +6,7 @@ Sources/App/BuildInfo.generated.swift
 
 # Build artifacts
 build/
-release/
+/release/
 Resources/git-dist
 
 # OS

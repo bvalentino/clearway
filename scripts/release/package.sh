@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
-# Package a notarized Clearway.app into a signed, notarized, stapled DMG.
+# Release stage 2: wrap the signed app from build.sh in a signed, notarized,
+# stapled DMG at release/Clearway-<version>-<sha>.dmg.
 #
-# Usage:
-#   ./scripts/package-dmg.sh [path/to/Clearway-*-notarized.zip]
+# Run through ./scripts/release.sh; run directly only to resume a release.
 #
-# If no argument is given, uses the most recent -notarized.zip in release/.
-# Run ./scripts/notarize.sh first to produce the stapled input.
-#
-# Required environment:
-#   ASC_API_KEY_PATH   absolute path to your App Store Connect API .p8 file
-#   ASC_API_KEY_ID     your App Store Connect API Key ID (10-char identifier)
-#   ASC_API_ISSUER_ID  your App Store Connect Issuer ID (UUID)
+# The DMG is the only notary submission: the notary service issues a ticket for
+# the disk image and for the app nested in it, so the app is notarized without
+# a submission of its own. Only the DMG carries a stapled ticket.
 set -euo pipefail
 
-: "${ASC_API_KEY_PATH:?Set ASC_API_KEY_PATH to your App Store Connect API .p8 file path}"
-: "${ASC_API_KEY_ID:?Set ASC_API_KEY_ID to your App Store Connect API Key ID}"
-: "${ASC_API_ISSUER_ID:?Set ASC_API_ISSUER_ID to your App Store Connect Issuer ID}"
+# shellcheck source=common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-RELEASE_DIR="$PROJECT_DIR/release"
+clearway_read_versions
+clearway_require_notary_env
 
 SIGN_IDENTITY="Developer ID Application: Bruno Valentino (76AEQBHY3K)"
 VOLUME_NAME="Clearway"
@@ -30,32 +24,14 @@ WINDOW_BOUNDS="{400, 100, 1000, 500}"   # {left, top, right, bottom} → 600x400
 APP_ICON_POS="{160, 200}"
 APPLICATIONS_ICON_POS="{440, 200}"
 
-if [ ! -f "$ASC_API_KEY_PATH" ]; then
-  echo "Error: ASC_API_KEY_PATH points to a file that doesn't exist: $ASC_API_KEY_PATH"
-  exit 1
-fi
-
-# Pick the notarized zip: argument, or newest in release/
-if [ $# -ge 1 ]; then
-  ZIP_PATH="$1"
-else
-  ZIP_PATH=$(ls -t "$RELEASE_DIR"/Clearway-*-notarized.zip 2>/dev/null | head -1 || true)
-  if [ -z "$ZIP_PATH" ]; then
-    echo "Error: no -notarized.zip in $RELEASE_DIR."
-    echo "       Run ./scripts/notarize.sh first, or pass a zip path as argument."
-    exit 1
-  fi
-fi
+BASE=$(clearway_artifact_base)
+ZIP_PATH="$RELEASE_DIR/$BASE.zip"
+DMG_PATH="$RELEASE_DIR/$BASE.dmg"
 
 if [ ! -f "$ZIP_PATH" ]; then
-  echo "Error: $ZIP_PATH not found."
+  echo "Error: $ZIP_PATH not found. Run ./scripts/release/build.sh first."
   exit 1
 fi
-
-# DMG name = zip name minus the -notarized suffix
-BASE=$(basename "$ZIP_PATH" .zip)
-BASE=${BASE%-notarized}
-DMG_PATH="$RELEASE_DIR/$BASE.dmg"
 
 # Staging dir holds the .app + an Applications symlink for the DMG layout
 STAGING=$(mktemp -d)
@@ -75,13 +51,6 @@ ditto -x -k "$ZIP_PATH" "$STAGING"
 APP_PATH=$(find "$STAGING" -maxdepth 2 -name "*.app" -type d | head -1)
 if [ -z "$APP_PATH" ]; then
   echo "Error: no .app inside $ZIP_PATH"
-  exit 1
-fi
-
-# Require the .app to already be stapled (notarize.sh handles this)
-if ! xcrun stapler validate "$APP_PATH" >/dev/null 2>&1; then
-  echo "Error: $(basename "$APP_PATH") is not stapled."
-  echo "       Run ./scripts/notarize.sh first."
   exit 1
 fi
 
@@ -105,7 +74,6 @@ hdiutil create \
 echo "==> Applying window layout (icon size ${ICON_SIZE})..."
 MOUNT_OUTPUT=$(hdiutil attach -readwrite -noverify -noautoopen "$TEMP_DMG")
 MOUNT_DEVICE=$(echo "$MOUNT_OUTPUT" | grep -E '^/dev/' | head -1 | awk '{print $1}')
-MOUNT_POINT="/Volumes/$VOLUME_NAME"
 
 # Give Finder a moment to register the volume before we script it
 sleep 2
@@ -184,4 +152,3 @@ echo ""
 echo "==> Done."
 echo "    DMG: $DMG_PATH"
 echo "    Size: $(du -h "$DMG_PATH" | awk '{print $1}')"
-echo "    Distribute this file."
