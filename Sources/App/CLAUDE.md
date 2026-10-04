@@ -660,6 +660,23 @@
   roster contributes no key and nothing renders — but that roster still
   counts as work, because `effectivePhase` lifts a surface holding a live subagent to `.working`
   before any derivation sees it.
+- `SkillInstaller.swift` — the Clearway skill's install: `~/.clearway/cway` linked to the bundle's
+  `Contents/MacOS/cway`, and a `clearway` link to the bundle's `Contents/Resources/Skills/clearway`
+  in `~/.claude/skills` (gated on `~/.claude`) and `~/.agents/skills` (gated on `~/.codex`, the same
+  Codex gate as `AgentHookInstaller`). It never creates `~/.claude` or `~/.codex`.
+  **An entry is Clearway's when it is a symlink whose destination string ends in
+  `.app/Contents/MacOS/cway` or `.app/Contents/Resources/Skills/clearway`**, read without following
+  the link, so a link left by a moved app or a Debug build is recognised even when it dangles:
+  Install repoints it and Uninstall removes it. Anything else at the path is foreign and is never
+  touched. Never check an entry with `fileExists`: it follows the link and reads a dangling one as
+  missing, and the create over it then fails.
+  **The state is read from disk on every call and never stored**, so nothing can disagree with the
+  links themselves, and for the same reason Uninstall removes no directory — knowing that Install
+  created a `skills` directory would take a stored record. `SkillInstallStatus` carries
+  `isInstalled` and the Settings warning lines so the view decides nothing.
+  **Nothing calls `install` at launch**, unlike the hook toggle: the `ci.sh` test host is the built
+  app, so a launch call would link the developer's real home to a test build on every run. Every
+  function takes `home` and `bundlePath` so the suite runs under a temp root.
 - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
   `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
   launcher, the one menu view the toolbar and the sidebar both render, and the Settings section
