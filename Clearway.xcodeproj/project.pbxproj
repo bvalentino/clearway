@@ -144,6 +144,7 @@
 		AB0644D78E51323823D84DA9 /* AgentHookEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC46D569A48674B8AC75040 /* AgentHookEnvelopeTests.swift */; };
 		AB581291AF69F133FBDE31D8 /* TaskEditorBuffersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4676B9CAE87B571532844089 /* TaskEditorBuffersTests.swift */; };
 		AC4FAE844570FB2DCAEB8A37 /* PromptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A15AF63CD7636A38973624 /* PromptManager.swift */; };
+		AD79976CD286E9D586690BDA /* Skills in Resources */ = {isa = PBXBuildFile; fileRef = 15286F9DA93A1025A74AF329 /* Skills */; };
 		AEBB43C763D77B27328748E8 /* WorktreeGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBE75EDA8AD2C88EEA34AEC /* WorktreeGroupTests.swift */; };
 		B04975A2CFF84C4577C01698 /* cmark in Frameworks */ = {isa = PBXBuildFile; productRef = 56382C26DF738F11CBAD2CFC /* cmark */; };
 		B09DCF51F4C210FD2BA830ED /* TaskTerminalLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90876CD3F8FC24EE43E80D7C /* TaskTerminalLayout.swift */; };
@@ -243,6 +244,7 @@
 		0C74599CAA9DDA323490A5AA /* WindowTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTitleTests.swift; sourceTree = "<group>"; };
 		111635747B13F014EEF1AB32 /* Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Worktree.swift; sourceTree = "<group>"; };
 		1352FD6135ECCC5ABB118A46 /* AgentHookInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookInstallerTests.swift; sourceTree = "<group>"; };
+		15286F9DA93A1025A74AF329 /* Skills */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Skills; sourceTree = SOURCE_ROOT; };
 		172FE703B96BA5ABB88D82E1 /* TerminalManager+TaskTerminals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalManager+TaskTerminals.swift"; sourceTree = "<group>"; };
 		1753DB7CA84C6EBA0B8922EE /* MarkdownPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreviewView.swift; sourceTree = "<group>"; };
 		179B8378B9C31AFE3AEFEE34 /* ProjectListManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListManager.swift; sourceTree = "<group>"; };
@@ -662,6 +664,7 @@
 		A614019FF2C644C322B19FAD = {
 			isa = PBXGroup;
 			children = (
+				15286F9DA93A1025A74AF329 /* Skills */,
 				0C4CE2943D1A81CD00DF0985 /* CLI */,
 				A318F58A3C48267E0957E3FA /* Sources */,
 				3AD21F46AF733A8FE1DF029C /* Tests */,
@@ -792,6 +795,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F50B48B75A6494ED0EC0BC03 /* Assets.xcassets in Resources */,
+				AD79976CD286E9D586690BDA /* Skills in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

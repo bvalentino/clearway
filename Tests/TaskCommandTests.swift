@@ -102,6 +102,14 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertEqual(String(bytes: output, encoding: .utf8), TaskCommand.usage)
     }
 
+    func testBundledSkillHasOnlyNameAndDescriptionFrontmatter() throws {
+        let skill = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Skills/clearway/SKILL.md")
+        let fields = try XCTUnwrap(YAML.parseFrontmatter(from: String(contentsOf: skill, encoding: .utf8))?.fields)
+        XCTAssertEqual(Set(fields.keys), ["name", "description"])
+        XCTAssertEqual(fields["name"], "clearway")
+        XCTAssertFalse(fields["description", default: ""].isEmpty)
+    }
+
     // MARK: - task create
 
     func testCreateFromMainWorktreeWritesSharedSerializationIntoBacklog() throws {
