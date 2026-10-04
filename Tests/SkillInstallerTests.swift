@@ -219,21 +219,35 @@ final class SkillInstallerTests: TempRootTestCase {
         assertAllLinksGone()
     }
 
-    /// A mode change cannot reach this path: removing and creating an entry both need write on the
-    /// directory. An ACL denying `add_file` refuses the create and still allows the removal.
     func testAStaleLinkSurvivesAnInstallThatCannotCreateItsReplacement() throws {
         try makeAgents(claude: true, codex: true)
         let skills = path(".claude/skills")
         try makeDirectory(skills)
         let oldDestination = (otherBundle as NSString).appendingPathComponent("Contents/Resources/Skills/clearway")
         try fileManager.createSymbolicLink(atPath: claudeLink, withDestinationPath: oldDestination)
-        defer { try? chmod(["-N", skills]) }
-        try chmod(["+a", "user:\(NSUserName()) deny add_file", skills])
+        defer { try? run("/bin/chmod", ["-N", skills]) }
+        try run("/bin/chmod", ["+a", "user:\(NSUserName()) deny add_file", skills])
 
         let failures = install()
 
         XCTAssertEqual(try destination(claudeLink), oldDestination)
         XCTAssertEqual(failures, [SkillInstaller.Failure(displayPath: "~/.claude/skills/clearway", action: .link, reason: "Permission denied")])
+        XCTAssertEqual(try temporaryEntries(in: skills), [])
+    }
+
+    func testAStaleLinkSurvivesAnInstallWhoseRenameFails() throws {
+        try makeAgents(claude: true, codex: true)
+        let skills = path(".claude/skills")
+        try makeDirectory(skills)
+        let oldDestination = (otherBundle as NSString).appendingPathComponent("Contents/Resources/Skills/clearway")
+        try fileManager.createSymbolicLink(atPath: claudeLink, withDestinationPath: oldDestination)
+        defer { try? run("/usr/bin/chflags", ["-h", "nouchg", claudeLink]) }
+        try run("/usr/bin/chflags", ["-h", "uchg", claudeLink])
+
+        let failures = install()
+
+        XCTAssertEqual(try destination(claudeLink), oldDestination)
+        XCTAssertEqual(failures, [SkillInstaller.Failure(displayPath: "~/.claude/skills/clearway", action: .link, reason: "Operation not permitted")])
         XCTAssertEqual(try temporaryEntries(in: skills), [])
     }
 
@@ -378,13 +392,13 @@ final class SkillInstallerTests: TempRootTestCase {
         try fileManager.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
     }
 
-    private func chmod(_ arguments: [String]) throws {
+    private func run(_ tool: String, _ arguments: [String]) throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments
         try process.run()
         process.waitUntilExit()
-        XCTAssertEqual(process.terminationStatus, 0, "chmod \(arguments.joined(separator: " ")) failed")
+        XCTAssertEqual(process.terminationStatus, 0, "\(tool) \(arguments.joined(separator: " ")) failed")
     }
 
     private func temporaryEntries(in container: String) throws -> [String] {
