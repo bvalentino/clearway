@@ -236,3 +236,15 @@ Deviations: none.
 Gate: `./scripts/ci.sh` after the last code and config edit exited 0, 951 tests, 0 failures. The
 `WorktreeGroupPersistenceTests` early exit seen in T1 did not recur. Only this build-log section
 was written after that run.
+
+### Simplify
+
+Reviewed the branch diff (`project.yml`, `Tests/BundledResourcesTests.swift`, `CLAUDE.md`); nothing to simplify, no code changed.
+
+### Review PR
+
+Ran `/pr-review-toolkit:review-pr code tests errors types` on `git diff main...HEAD`. No findings at or above
+the reporting bar: code review found the change matches CLAUDE.md, the test analyzer found no gap rated
+8 or higher, no swallowed errors, and no production type was added. One nit was left alone: the test's
+`@testable import Clearway` is unused, but every other test file in the repo uses the same header. No
+code changed.
