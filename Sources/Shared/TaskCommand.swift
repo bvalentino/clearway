@@ -34,7 +34,7 @@ enum TaskCommand {
             case ("task", "show"):
                 output = try show(rest, workingDirectory: workingDirectory)
             default:
-                throw Failure.usage("unknown command '\(arguments.prefix(2).joined(separator: " "))'")
+                throw Failure.usage("unknown command '\(arguments.prefix(2).joined(separator: " "))'.")
             }
             return Result(stdout: output, stderr: "", exitCode: 0)
         } catch {
@@ -46,7 +46,10 @@ enum TaskCommand {
         let message: String
         let exitCode: Int32
 
-        static func usage(_ message: String) -> Failure { Failure(message: message, exitCode: 2) }
+        static func usage(_ message: String) -> Failure { Failure(message: message + " Run 'cway help' for usage.", exitCode: 2) }
+        static func strayArgument(_ argument: String, to command: String) -> Failure {
+            .usage("'\(command)' does not take the argument '\(argument)'.")
+        }
         static func runtime(_ message: String) -> Failure { Failure(message: message, exitCode: 1) }
     }
 
@@ -63,14 +66,14 @@ enum TaskCommand {
     }
 
     private static func create(_ arguments: [String], workingDirectory: String, readStdin: () -> Data) throws(Failure) -> String {
-        let options = try parseOptions(arguments, allowed: ["--title", "--body"])
-        guard let rawTitle = options["--title"] else { throw .usage("missing --title") }
+        let options = try parseOptions(arguments, allowed: ["--title", "--body"], command: "task create")
+        guard let rawTitle = options["--title"] else { throw .usage("'task create' needs --title <title>.") }
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { throw .usage("--title is empty") }
+        guard !title.isEmpty else { throw .usage("--title is empty; give the task a title.") }
 
         var body = options["--body"] ?? ""
         if body == "-" {
-            guard let stdin = String(data: readStdin(), encoding: .utf8) else { throw .runtime("stdin is not valid UTF-8") }
+            guard let stdin = String(data: readStdin(), encoding: .utf8) else { throw .runtime("the body read from stdin (--body -) is not valid UTF-8.") }
             body = stdin
         }
 
@@ -80,22 +83,24 @@ enum TaskCommand {
         do {
             try TaskFiles.write(task, toPath: path)
         } catch {
-            throw .runtime("cannot write \(path): \(error.localizedDescription)")
+            throw .runtime("could not write the task file '\(path)': \(error.localizedDescription)")
         }
         return try json(Created(id: task.id.uuidString, path: path))
     }
 
     /// Parses `--flag value` pairs. Every flag takes exactly one value, which may itself start
     /// with `-` (a title like `-leading dash`, or `--body -`).
-    private static func parseOptions(_ arguments: [String], allowed: Set<String>) throws(Failure) -> [String: String] {
+    private static func parseOptions(_ arguments: [String], allowed: Set<String>, command: String) throws(Failure) -> [String: String] {
         var options: [String: String] = [:]
         var remaining = arguments[...]
         while let argument = remaining.popFirst() {
             guard allowed.contains(argument) else {
-                throw .usage(argument.hasPrefix("-") ? "unknown option '\(argument)'" : "unexpected argument '\(argument)'")
+                throw argument.hasPrefix("-")
+                    ? .usage("'\(command)' has no option '\(argument)'.")
+                    : .strayArgument(argument, to: command)
             }
-            guard let value = remaining.popFirst() else { throw .usage("\(argument) needs a value") }
-            guard options.updateValue(value, forKey: argument) == nil else { throw .usage("\(argument) given more than once") }
+            guard let value = remaining.popFirst() else { throw .usage("\(argument) needs a value.") }
+            guard options.updateValue(value, forKey: argument) == nil else { throw .usage("\(argument) is given more than once.") }
         }
         return options
     }
@@ -135,24 +140,30 @@ enum TaskCommand {
     }
 
     private static func list(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
-        if let extra = arguments.first { throw .usage("unexpected argument '\(extra)'") }
-        let (pool, tasksDirectory) = try loadPool(in: workingDirectory)
+        if let extra = arguments.first { throw .strayArgument(extra, to: "task list") }
+        let (pool, tasksDirectory, _) = try loadPool(in: workingDirectory)
         return try json(pool.filter { !$0.task.hidden }.map { Entry($0, tasksDirectory: tasksDirectory, includingBody: false) })
     }
 
     private static func show(_ arguments: [String], workingDirectory: String) throws(Failure) -> String {
-        guard let idArgument = arguments.first else { throw .usage("missing task id") }
-        if let extra = arguments.dropFirst().first { throw .usage("unexpected argument '\(extra)'") }
-        guard let id = UUID(uuidString: idArgument) else { throw .runtime("malformed task id '\(idArgument)'") }
-        let (pool, tasksDirectory) = try loadPool(in: workingDirectory)
-        guard let loaded = pool.first(where: { $0.task.id == id }) else { throw .runtime("no task \(id.uuidString)") }
+        guard let idArgument = arguments.first else { throw .usage("'task show' needs a task id.") }
+        if let extra = arguments.dropFirst().first { throw .strayArgument(extra, to: "task show") }
+        guard let id = UUID(uuidString: idArgument) else {
+            throw .runtime("'\(idArgument)' is not a task id. A task id is a UUID; run 'cway task list' to see the ids.")
+        }
+        let (pool, tasksDirectory, mainPath) = try loadPool(in: workingDirectory)
+        guard let loaded = pool.first(where: { $0.task.id == id }) else {
+            throw .runtime("no task with id \(id.uuidString) in the project at '\(mainPath)'. Run 'cway task list' to see the tasks.")
+        }
         return try json(Entry(loaded, tasksDirectory: tasksDirectory, includingBody: true))
     }
 
-    private static func loadPool(in workingDirectory: String) throws(Failure) -> (pool: [TaskFiles.LoadedTask], tasksDirectory: String) {
+    private static func loadPool(
+        in workingDirectory: String
+    ) throws(Failure) -> (pool: [TaskFiles.LoadedTask], tasksDirectory: String, mainPath: String) {
         let project = try resolveProject(in: workingDirectory)
         let tasksDirectory = TaskFiles.tasksDirectory(inProject: project.mainPath)
-        return (TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: project.worktreePaths), tasksDirectory)
+        return (TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: project.worktreePaths), tasksDirectory, project.mainPath)
     }
 
     // MARK: - Project resolution
@@ -248,7 +259,7 @@ enum TaskCommand {
             let data = try encoder.encode(value)
             return (String(bytes: data, encoding: .utf8) ?? "") + "\n"
         } catch {
-            throw .runtime("cannot encode output: \(error.localizedDescription)")
+            throw .runtime("could not encode the output as JSON: \(error.localizedDescription)")
         }
     }
 }

@@ -52,6 +52,10 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertEqual(result.stderr, stderr, file: file, line: line)
     }
 
+    private func usageError(_ message: String) -> String {
+        "cway: \(message) Run 'cway help' for usage.\n"
+    }
+
     private func outsideRepoMessage(_ directory: String) -> String {
         "cway: the current directory '\(directory)' is not inside a git repository. Run cway from inside a project or one of its worktrees.\n"
     }
@@ -76,7 +80,8 @@ final class TaskCommandTests: TempRootTestCase {
         let result = run(["frobnicate"])
         XCTAssertEqual(result.exitCode, 2)
         XCTAssertEqual(result.stdout, "")
-        XCTAssertEqual(result.stderr, "cway: unknown command 'frobnicate'\n")
+        XCTAssertEqual(result.stderr, usageError("unknown command 'frobnicate'."))
+        assertFailed(run(["task", "frob", "x"]), exitCode: 2, stderr: usageError("unknown command 'task frob'."))
     }
 
     func testEmbeddedHelperExistsAndRunsHelp() throws {
@@ -161,9 +166,10 @@ final class TaskCommandTests: TempRootTestCase {
         let repo = try makeRepo()
 
         let cases: [([String], String)] = [
-            (["task", "create"], "cway: missing --title\n"),
-            (["task", "create", "--title", ""], "cway: --title is empty\n"),
-            (["task", "create", "--title", " \n\t "], "cway: --title is empty\n"),
+            (["task", "create"], usageError("'task create' needs --title <title>.")),
+            (["task", "create", "--body", "x"], usageError("'task create' needs --title <title>.")),
+            (["task", "create", "--title", ""], usageError("--title is empty; give the task a title.")),
+            (["task", "create", "--title", " \n\t "], usageError("--title is empty; give the task a title.")),
         ]
         for (arguments, message) in cases {
             assertFailed(run(arguments, in: repo.root), exitCode: 2, stderr: message)
@@ -174,11 +180,11 @@ final class TaskCommandTests: TempRootTestCase {
     func testMalformedCreateArgumentsAreUsageErrorsAndWriteNothing() throws {
         let repo = try makeRepo()
         let cases: [([String], String)] = [
-            (["task", "create", "--title", "x", "--force"], "cway: unknown option '--force'\n"),
-            (["task", "create", "--title"], "cway: --title needs a value\n"),
-            (["task", "create", "--title", "x", "--body"], "cway: --body needs a value\n"),
-            (["task", "create", "--title", "x", "--title", "y"], "cway: --title given more than once\n"),
-            (["task", "create", "--title", "x", "stray"], "cway: unexpected argument 'stray'\n"),
+            (["task", "create", "--title", "x", "--force"], usageError("'task create' has no option '--force'.")),
+            (["task", "create", "--title"], usageError("--title needs a value.")),
+            (["task", "create", "--title", "x", "--body"], usageError("--body needs a value.")),
+            (["task", "create", "--title", "x", "--title", "y"], usageError("--title is given more than once.")),
+            (["task", "create", "--title", "x", "stray"], usageError("'task create' does not take the argument 'stray'.")),
         ]
 
         for (arguments, message) in cases {
@@ -210,6 +216,36 @@ final class TaskCommandTests: TempRootTestCase {
             try String(contentsOfFile: path, encoding: .utf8),
             WorkTask(id: id, title: "Piped", body: body).serialized()
         )
+    }
+
+    func testBodyDashWithNonUTF8StdinExitsOneAndWritesNothing() throws {
+        let repo = try makeRepo()
+
+        assertFailed(
+            run(["task", "create", "--title", "Piped", "--body", "-"], in: repo.root, stdin: { Data([0xFF, 0xFE]) }),
+            exitCode: 1,
+            stderr: "cway: the body read from stdin (--body -) is not valid UTF-8.\n"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: repo.root)))
+    }
+
+    func testUnwritableTasksDirectoryNamesTheTaskFile() throws {
+        let repo = try makeRepo()
+        let tasksDirectory = (repo.root as NSString).appendingPathComponent(".clearway/tasks")
+        let fm = FileManager.default
+        try fm.createDirectory(atPath: tasksDirectory, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: tasksDirectory)
+        defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tasksDirectory) }
+
+        let result = run(["task", "create", "--title", "Blocked"], in: repo.root)
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertEqual(result.stdout, "")
+        let prefix = "cway: could not write the task file '"
+        XCTAssertTrue(result.stderr.hasPrefix(prefix), result.stderr)
+        let quotedPath = result.stderr.dropFirst(prefix.count).prefix { $0 != "'" }
+        XCTAssertTrue(quotedPath.contains("/.clearway/tasks/"), result.stderr)
+        XCTAssertTrue(result.stderr.hasSuffix("\n"), result.stderr)
     }
 
     func testCreateOutsideGitRepositoryExitsOneAndWritesNothing() throws {
@@ -389,21 +425,35 @@ final class TaskCommandTests: TempRootTestCase {
         let pool = try makePool()
 
         let unknown = UUID()
+        let listed = try GitRepoFixture.git(["worktree", "list", "--porcelain"], in: pool.repo.root)
+        let mainPath = try XCTUnwrap(Worktree.parseList(listed).first?.path)
 
-        assertFailed(run(["task", "show", unknown.uuidString], in: pool.repo.root), exitCode: 1, stderr: "cway: no task \(unknown.uuidString)\n")
-        assertFailed(run(["task", "show", "not-a-uuid"], in: pool.repo.root), exitCode: 1, stderr: "cway: malformed task id 'not-a-uuid'\n")
+        assertFailed(
+            run(["task", "show", unknown.uuidString.lowercased()], in: pool.repo.root),
+            exitCode: 1,
+            stderr: "cway: no task with id \(unknown.uuidString) in the project at '\(mainPath)'. Run 'cway task list' to see the tasks.\n"
+        )
+        assertFailed(
+            run(["task", "show", "not-a-uuid"], in: pool.repo.root),
+            exitCode: 1,
+            stderr: "cway: 'not-a-uuid' is not a task id. A task id is a UUID; run 'cway task list' to see the ids.\n"
+        )
     }
 
     func testListAndShowArgumentErrorsExitTwo() throws {
         let pool = try makePool()
 
-        assertFailed(run(["task", "show"], in: pool.repo.root), exitCode: 2, stderr: "cway: missing task id\n")
+        assertFailed(run(["task", "show"], in: pool.repo.root), exitCode: 2, stderr: usageError("'task show' needs a task id."))
         assertFailed(
             run(["task", "show", pool.backlog.id.uuidString, "extra"], in: pool.repo.root),
             exitCode: 2,
-            stderr: "cway: unexpected argument 'extra'\n"
+            stderr: usageError("'task show' does not take the argument 'extra'.")
         )
-        assertFailed(run(["task", "list", "extra"], in: pool.repo.root), exitCode: 2, stderr: "cway: unexpected argument 'extra'\n")
+        assertFailed(
+            run(["task", "list", "extra"], in: pool.repo.root),
+            exitCode: 2,
+            stderr: usageError("'task list' does not take the argument 'extra'.")
+        )
     }
 
     func testListAndShowOutsideGitRepositoryExitOneAndWriteNothing() throws {

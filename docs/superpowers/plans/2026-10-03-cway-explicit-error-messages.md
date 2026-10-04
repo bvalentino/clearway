@@ -181,3 +181,24 @@ Deviations:
 - `LC_ALL=C` is not observable in a test here (spec D3); verified by reading the diff.
 
 Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 917 tests, with 0 failures`, no SwiftLint warnings.
+
+### T2: Usage and remaining runtime messages
+
+| File | State |
+| --- | --- |
+| `Sources/Shared/TaskCommand.swift` | `Failure.usage` appends ` Run 'cway help' for usage.`; `Failure.strayArgument(_:to:)` builds U3 for `parseOptions`, `list` and `show`. `parseOptions` takes the subcommand name for U2/U3. U1, U4-U8 reworded. R9, R11, R12, R13 reworded; `loadPool` also returns the main path, which R10 names. |
+| `Tests/TaskCommandTests.swift` | `usageError(_:)` builds the expected U text. Every usage call site asserts the exact catalogue text, U1-U8 all covered (added: two-word unknown command, `create --body x` without `--title`). R9 and R10 asserted exactly, R10's path taken from git's porcelain. New: non-UTF-8 stdin (R11, nothing written); `.clearway/tasks` at `0o500` (R12 prefix, quoted path under `/.clearway/tasks/`, mode restored in `defer`). |
+
+Evidence: `./scripts/ci.sh` with the new tests and the T1 code, exit 65, `Executed 919 tests, with 18 failures`. Every failure was an old message, e.g.:
+
+- `testUnknownCommandExitsTwoWithEmptyStdout, XCTAssertEqual failed: ("cway: unknown command 'frobnicate'` (and `'task frob'`)
+- `testMalformedCreateArgumentsAreUsageErrorsAndWriteNothing`: `unknown option '--force'`, `--title needs a value`, `--body needs a value`, `--title given more than once`, `unexpected argument 'stray'`
+- `testMissingOrBlankTitleIsUsageErrorAndWritesNothing`: `missing --title` (×2), `--title is empty` (×2)
+- `testListAndShowArgumentErrorsExitTwo`: `missing task id`, `unexpected argument 'extra'` (×2)
+- `testShowUnknownOrMalformedIdExitsOne`: `no task 08F13391-…`, `malformed task id 'not-a-uuid'`
+- `testBodyDashWithNonUTF8StdinExitsOneAndWritesNothing`: `cway: stdin is not valid UTF-8`
+- `testUnwritableTasksDirectoryNamesTheTaskFile, XCTAssertTrue failed - cway: cannot write /private/var/…/.clearway/tasks/CFBB32B2-….md: The file “CFBB32B2-…`
+
+Deviations: none. R13 is reworded and untested, as the spec says.
+
+Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 919 tests, with 0 failures`; `swiftlint lint --quiet` on both files reports nothing.
