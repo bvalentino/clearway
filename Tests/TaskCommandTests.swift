@@ -418,6 +418,21 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertEqual(shown["location"] as? String, "backlog")
     }
 
+    func testDetachedMainWorktreeKeepsTheBacklogButNotItsOwnTask() throws {
+        let repo = try makeRepo()
+        _ = try repo.addWorktree(branch: "feature")
+        try GitRepoFixture.git(["checkout", "-q", "--detach"], in: repo.root)
+        let mainTask = WorkTask(title: "Main task")
+        try TaskFiles.write(mainTask, toPath: TaskFiles.taskMarkdownPath(inWorktree: repo.root))
+
+        let (id, path) = try created(run(["task", "create", "--title", "Backlog task"], in: repo.root))
+        XCTAssertEqual(canonical(path), TaskFiles.centralPath(for: id, tasksDirectory: TaskFiles.tasksDirectory(inProject: repo.root)))
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: repo.root)) as? [[String: Any]])
+        XCTAssertEqual(entries.map { $0["id"] as? String }, [id.uuidString])
+        XCTAssertEqual(entries.first?["location"] as? String, "backlog")
+    }
+
     // MARK: - End to end
 
     private func runHelper(_ arguments: [String], in directory: String) throws -> (stdout: String, status: Int32) {

@@ -163,8 +163,7 @@ extension Worktree {
     }
 
     /// The worktrees whose `TASK.md` is visible: those with both a branch and a path. `worktrees`
-    /// must be head-resolved, so a rebase or bisect counts. This is the one rule both the app's
-    /// Tasks list and `cway task` use.
+    /// must be head-resolved, so a rebase or bisect counts.
     static func taskCarriers(_ worktrees: [Worktree]) -> [(branch: String, path: String)] {
         worktrees.compactMap { worktree in
             guard let branch = worktree.branch, let path = worktree.path else { return nil }
