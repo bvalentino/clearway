@@ -327,3 +327,19 @@ the two changed Swift files: no output.
 ### Simplify
 
 Removed the production-dead `SkillInstallStatus.state(of:)` (now a private test extension), collapsed the Install/Uninstall branch in `SkillSettingsSection`, and extracted `assertAllLinksGone` in `SkillInstallerTests`. Skipped: a shared directory-exists helper (touches four files outside the diff), the `warnings` inout to a return value, and the extra `fileExists` stat (kept by T1 design).
+
+### Review PR
+
+- `TaskFiles.loadPool` tests existence with `attributesOfItem` (lstat) instead of `fileExists`, which
+  follows links: a dangling `TASK.md` symlink or tasks-directory symlink read as missing and skipped
+  with no warning, against D14's "an existing worktree `TASK.md` it cannot read". Scratchpad probe on
+  a dangling link: `fileExists` false, `attributesOfItem` succeeds, `contents` nil. New test
+  `testDanglingTaskMarkdownSymlinkIsReported`.
+- Dropped `TaskFiles.load`'s dead `requireFrontmatterID` parameter; only `loadPool` used it.
+- Installer tests added for D4 (a gate that is a file reads `agentAbsent`), D7 (one failing entry
+  does not stop the others), D8 (Uninstall removes a link into another existing bundle and leaves
+  an `agentAbsent` entry alone) and D9 (CLI-only reads installed). The foreign-link fixture now
+  points at `repo/Contents/Resources/Skills/clearway`, so the `.app/` part of D5's suffix is exercised.
+- Removed four doc comments in `SkillInstaller.swift` that restated `Sources/App/CLAUDE.md`.
+- Not changed, per D10: a failed link or remove is logged only, not shown in Settings. Recorded as a
+  follow-up.

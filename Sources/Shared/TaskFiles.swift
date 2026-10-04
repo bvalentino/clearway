@@ -51,12 +51,9 @@ enum TaskFiles {
     }
 
     /// Reads and parses a task file, deriving `createdAt` from the file's creation date and using
-    /// `fallbackId` only when the frontmatter carries no `id`. When `requireFrontmatterID` is set
-    /// (worktree `TASK.md`, whose filename carries no UUID), a file lacking a usable frontmatter
-    /// `id` is rejected rather than loaded under the synthetic `fallbackId`. Returns nil on
-    /// read/parse failure.
-    static func load(atPath path: String, fallbackId: UUID, requireFrontmatterID: Bool = false) -> WorkTask? {
-        try? loadResult(atPath: path, fallbackId: fallbackId, requireFrontmatterID: requireFrontmatterID).get()
+    /// `fallbackId` only when the frontmatter carries no `id`. Returns nil on read/parse failure.
+    static func load(atPath path: String, fallbackId: UUID) -> WorkTask? {
+        try? loadResult(atPath: path, fallbackId: fallbackId, requireFrontmatterID: false).get()
     }
 
     private static func loadResult(atPath path: String, fallbackId: UUID, requireFrontmatterID: Bool) -> Result<WorkTask, SkipReason> {
@@ -73,10 +70,13 @@ enum TaskFiles {
     /// **and** every worktree's `TASK.md`. A task that exists in both (e.g. mid-move) is
     /// deduped by `id` with the worktree copy winning. Newest first. A file or directory that
     /// exists but cannot be loaded is reported in `skipped`, ordered by path; a missing one is not.
+    /// Existence is `lstat`, not `fileExists`, so a dangling symlink is reported rather than missing.
     static func loadPool(tasksDirectory: String, worktreePaths: [String]) -> LoadedPool {
         let fm = FileManager.default
         var byId: [UUID: LoadedTask] = [:]
         var skipped: [SkippedFile] = []
+
+        func exists(_ path: String) -> Bool { (try? fm.attributesOfItem(atPath: path)) != nil }
 
         func add(_ path: String, fallbackId: UUID, requireFrontmatterID: Bool) {
             switch loadResult(atPath: path, fallbackId: fallbackId, requireFrontmatterID: requireFrontmatterID) {
@@ -87,7 +87,7 @@ enum TaskFiles {
 
         // Central backlog files: keyed by filename UUID (also the fallback identity for legacy
         // files written before `id` was serialized into frontmatter).
-        if fm.fileExists(atPath: tasksDirectory) {
+        if exists(tasksDirectory) {
             if let files = try? fm.contentsOfDirectory(atPath: tasksDirectory) {
                 for file in files where file.hasSuffix(".md") {
                     guard let id = UUID(uuidString: (file as NSString).deletingPathExtension) else { continue }
@@ -105,7 +105,7 @@ enum TaskFiles {
         // guards against an external agent/hook rewriting `TASK.md` and dropping the line.)
         for worktreePath in worktreePaths {
             let path = taskMarkdownPath(inWorktree: worktreePath)
-            guard fm.fileExists(atPath: path) else { continue }
+            guard exists(path) else { continue }
             add(path, fallbackId: UUID(), requireFrontmatterID: true)
         }
 

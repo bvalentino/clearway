@@ -79,7 +79,27 @@ final class SkillInstallerTests: TempRootTestCase {
         XCTAssertFalse(fileManager.fileExists(atPath: path(".agents")))
         let status = status()
         XCTAssertEqual(status.entries.map(\.state), [.current, .agentAbsent, .agentAbsent])
+        XCTAssertTrue(status.isInstalled)
         XCTAssertEqual(status.messages, [noAgentMessage])
+    }
+
+    func testAGateThatIsAFileReadsAsAgentAbsent() throws {
+        try write("not a directory", to: path(".claude"))
+
+        install()
+
+        XCTAssertEqual(status().state(of: .claudeCode), .agentAbsent)
+        XCTAssertNil(try? fileManager.attributesOfItem(atPath: claudeLink))
+    }
+
+    func testOneEntryFailingDoesNotStopTheOthers() throws {
+        try makeAgents(claude: true, codex: true)
+        try write("blocks the skills directory", to: path(".claude/skills"))
+
+        install()
+
+        XCTAssertEqual(try destination(cliLink), cliDestination)
+        XCTAssertEqual(try destination(codexLink), skillDestination)
     }
 
     func testInstallTwiceLeavesTheLinksAsTheFirstMadeThem() throws {
@@ -101,7 +121,7 @@ final class SkillInstallerTests: TempRootTestCase {
         try makeDirectory(claudeLink)
         try write("my skill", to: (claudeLink as NSString).appendingPathComponent("SKILL.md"))
         try makeDirectory(path(".agents/skills"))
-        try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: path("elsewhere/clearway"))
+        try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: path("repo/Contents/Resources/Skills/clearway"))
 
         install()
         assertForeignEntriesUntouched()
@@ -124,7 +144,7 @@ final class SkillInstallerTests: TempRootTestCase {
             fileManager.contents(atPath: (claudeLink as NSString).appendingPathComponent("SKILL.md")),
             Data("my skill".utf8), file: file, line: line
         )
-        XCTAssertEqual(try? destination(codexLink), path("elsewhere/clearway"), file: file, line: line)
+        XCTAssertEqual(try? destination(codexLink), path("repo/Contents/Resources/Skills/clearway"), file: file, line: line)
     }
 
     func testInstalledWithAForeignEntryStillReadsInstalledAndReportsIt() throws {
@@ -176,6 +196,16 @@ final class SkillInstallerTests: TempRootTestCase {
         assertAllLinksGone()
     }
 
+    func testUninstallRemovesLinksIntoAnotherExistingBundle() throws {
+        try makeAgents(claude: true, codex: true)
+        SkillInstaller.install(home: tempRoot, bundlePath: otherBundle)
+        XCTAssertEqual(status().entries.map(\.state), [.stale, .stale, .stale])
+
+        uninstall()
+
+        assertAllLinksGone()
+    }
+
     func testAStaleEntryBlocksInstalled() throws {
         try makeAgents(claude: true, codex: true)
         install()
@@ -211,6 +241,16 @@ final class SkillInstallerTests: TempRootTestCase {
         let status = status()
         XCTAssertEqual(status.entries.map(\.state), [.missing, .missing, .missing])
         XCTAssertFalse(status.isInstalled)
+    }
+
+    func testUninstallLeavesAnAgentAbsentEntryAlone() throws {
+        try makeAgents(claude: false, codex: false)
+        try makeDirectory(path(".agents/skills"))
+        try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: skillDestination)
+
+        uninstall()
+
+        XCTAssertEqual(try destination(codexLink), skillDestination)
     }
 
     // MARK: - Status

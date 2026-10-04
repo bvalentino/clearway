@@ -113,6 +113,17 @@ final class TaskFilesTests: TempRootTestCase {
         XCTAssertEqual(pool.skipped, [TaskFiles.SkippedFile(path: tasksDirectory, reason: .unlistable)])
     }
 
+    func testDanglingTaskMarkdownSymlinkIsReported() throws {
+        let worktree = makeWorktree("feature")
+        let taskMd = TaskFiles.taskMarkdownPath(inWorktree: worktree)
+        try FileManager.default.createDirectory(atPath: (taskMd as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: taskMd, withDestinationPath: makeWorktree("gone.md"))
+
+        let pool = TaskFiles.loadPool(tasksDirectory: tasksDirectory, worktreePaths: [worktree])
+
+        XCTAssertEqual(pool.skipped, [TaskFiles.SkippedFile(path: taskMd, reason: .unreadable)])
+    }
+
     func testMissingFilesAndNonTaskNamesAreNotReported() throws {
         try writeFile("not a task", atPath: (tasksDirectory as NSString).appendingPathComponent("notes.md"))
         let missingWorktree = makeWorktree("no-task")

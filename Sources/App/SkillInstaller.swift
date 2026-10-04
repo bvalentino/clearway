@@ -1,11 +1,6 @@
 import Foundation
 import os
 
-/// The Clearway skill's install: a `~/.clearway/cway` link to the bundle's CLI and a `clearway`
-/// link in each present agent's skills directory to the bundle's skill folder.
-///
-/// The state is read from the links on disk every time and never stored, so a moved app, a Debug
-/// build's links or a hand-deleted entry all show as they are.
 enum SkillInstaller {
 
     enum Target: CaseIterable {
@@ -49,8 +44,6 @@ enum SkillInstaller {
         }
     }
 
-    /// Removes no directory, including a `skills` directory Install created: knowing that Install
-    /// created it would take a stored record, and an empty directory costs nothing.
     static func uninstall(home: String, bundlePath: String) {
         for target in Target.allCases {
             let location = Location(target, home: home, bundlePath: bundlePath)
@@ -121,13 +114,10 @@ enum SkillInstaller {
 struct SkillInstallStatus: Equatable {
     let entries: [SkillInstaller.Entry]
 
-    /// A foreign or agent-absent entry does not block it, or a foreign entry would keep the button
-    /// on Install forever with Clearway's own links on disk and Uninstall unreachable.
     var isInstalled: Bool {
         !entries.contains { [.missing, .stale].contains($0.state) } && entries.contains { $0.state == .current }
     }
 
-    /// The cases where the button does less than its label says.
     var messages: [String] {
         let foreign = entries.filter { $0.state == .foreign }.map { "\($0.displayPath) already exists and was left alone." }
         let noAgent = entries.filter { $0.target != .cli }.allSatisfy { $0.state == .agentAbsent }
