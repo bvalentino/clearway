@@ -45,12 +45,15 @@ final class TaskCommandTests: TempRootTestCase {
     }
 
     private func assertFailed(
-        _ result: TaskCommand.Result, exitCode: Int32, file: StaticString = #filePath, line: UInt = #line
+        _ result: TaskCommand.Result, exitCode: Int32, stderr: String, file: StaticString = #filePath, line: UInt = #line
     ) {
         XCTAssertEqual(result.exitCode, exitCode, file: file, line: line)
         XCTAssertEqual(result.stdout, "", file: file, line: line)
-        XCTAssertTrue(result.stderr.hasPrefix("cway: "), result.stderr, file: file, line: line)
-        XCTAssertTrue(result.stderr.hasSuffix("\n"), file: file, line: line)
+        XCTAssertEqual(result.stderr, stderr, file: file, line: line)
+    }
+
+    private func outsideRepoMessage(_ directory: String) -> String {
+        "cway: the current directory '\(directory)' is not inside a git repository. Run cway from inside a project or one of its worktrees.\n"
     }
 
     func testHelpPrintsUsageAndExitsZero() {
@@ -157,24 +160,29 @@ final class TaskCommandTests: TempRootTestCase {
     func testMissingOrBlankTitleIsUsageErrorAndWritesNothing() throws {
         let repo = try makeRepo()
 
-        for arguments in [["task", "create"], ["task", "create", "--title", ""], ["task", "create", "--title", " \n\t "]] {
-            assertFailed(run(arguments, in: repo.root), exitCode: 2)
+        let cases: [([String], String)] = [
+            (["task", "create"], "cway: missing --title\n"),
+            (["task", "create", "--title", ""], "cway: --title is empty\n"),
+            (["task", "create", "--title", " \n\t "], "cway: --title is empty\n"),
+        ]
+        for (arguments, message) in cases {
+            assertFailed(run(arguments, in: repo.root), exitCode: 2, stderr: message)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: repo.root)))
     }
 
     func testMalformedCreateArgumentsAreUsageErrorsAndWriteNothing() throws {
         let repo = try makeRepo()
-        let cases = [
-            ["task", "create", "--title", "x", "--force"],
-            ["task", "create", "--title"],
-            ["task", "create", "--title", "x", "--body"],
-            ["task", "create", "--title", "x", "--title", "y"],
-            ["task", "create", "--title", "x", "stray"],
+        let cases: [([String], String)] = [
+            (["task", "create", "--title", "x", "--force"], "cway: unknown option '--force'\n"),
+            (["task", "create", "--title"], "cway: --title needs a value\n"),
+            (["task", "create", "--title", "x", "--body"], "cway: --body needs a value\n"),
+            (["task", "create", "--title", "x", "--title", "y"], "cway: --title given more than once\n"),
+            (["task", "create", "--title", "x", "stray"], "cway: unexpected argument 'stray'\n"),
         ]
 
-        for arguments in cases {
-            assertFailed(run(arguments, in: repo.root), exitCode: 2)
+        for (arguments, message) in cases {
+            assertFailed(run(arguments, in: repo.root), exitCode: 2, stderr: message)
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: repo.root)))
     }
@@ -208,9 +216,45 @@ final class TaskCommandTests: TempRootTestCase {
         let directory = (tempRoot as NSString).appendingPathComponent("not-a-repo")
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
 
-        assertFailed(run(["task", "create", "--title", "Nowhere"], in: directory), exitCode: 1)
+        let result = run(["task", "create", "--title", "Nowhere"], in: directory)
 
+        assertFailed(result, exitCode: 1, stderr: outsideRepoMessage(directory))
+        XCTAssertFalse(result.stderr.contains(".git"))
+        XCTAssertFalse(result.stderr.contains("parent directories"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: directory)))
+    }
+
+    func testBrokenGitfileReportsGitsReasonNotOutsideRepository() throws {
+        let directory = (tempRoot as NSString).appendingPathComponent("broken")
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        try "gitdir: /nonexistent/x\n".write(
+            toFile: (directory as NSString).appendingPathComponent(".git"), atomically: true, encoding: .utf8
+        )
+
+        let result = run(["task", "list"], in: directory)
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertEqual(result.stdout, "")
+        let framing = "cway: could not find the project for '\(directory)': 'git worktree list --porcelain' exited with status 128. git said:\n"
+        XCTAssertTrue(result.stderr.hasPrefix(framing), result.stderr)
+        XCTAssertTrue(result.stderr.contains("\n  fatal: not a git repository:"), result.stderr)
+        XCTAssertFalse(result.stderr.contains("is not inside a git repository"), result.stderr)
+        XCTAssertTrue(result.stderr.hasSuffix("\n"), result.stderr)
+    }
+
+    func testMissingWorkingDirectoryIsReportedInsteadOfCrashing() {
+        let missing = (tempRoot as NSString).appendingPathComponent("gone")
+
+        assertFailed(
+            run(["task", "list"], in: missing),
+            exitCode: 1,
+            stderr: "cway: the current directory '\(missing)' does not exist. cd into a project and run cway again.\n"
+        )
+        assertFailed(
+            run(["task", "list"], in: ""),
+            exitCode: 1,
+            stderr: "cway: the current directory no longer exists. cd into a project and run cway again.\n"
+        )
     }
 
     func testCommandsWhoseMainWorktreeIsBareExitOneAndWriteNothing() throws {
@@ -219,10 +263,14 @@ final class TaskCommandTests: TempRootTestCase {
         let worktree = canonical(tempRoot) + "/linked"
         _ = try GitRepoFixture.git(["clone", "-q", "--bare", source.root, bare], in: tempRoot)
         _ = try GitRepoFixture.git(["worktree", "add", "-q", worktree, "-b", "feature"], in: bare)
+        let listed = try GitRepoFixture.git(["worktree", "list", "--porcelain"], in: worktree)
+        let mainPath = try XCTUnwrap(Worktree.parseList(listed).first?.path)
+        let message = "cway: the main worktree of this repository, '\(mainPath)', is a bare repository with no task backlog. "
+            + "cway needs a project whose main worktree is checked out.\n"
 
-        assertFailed(run(["task", "create", "--title", "Nowhere"], in: worktree), exitCode: 1)
-        assertFailed(run(["task", "list"], in: worktree), exitCode: 1)
-        assertFailed(run(["task", "show", UUID().uuidString], in: worktree), exitCode: 1)
+        assertFailed(run(["task", "create", "--title", "Nowhere"], in: worktree), exitCode: 1, stderr: message)
+        assertFailed(run(["task", "list"], in: worktree), exitCode: 1, stderr: message)
+        assertFailed(run(["task", "show", UUID().uuidString], in: worktree), exitCode: 1, stderr: message)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: bare)))
         XCTAssertFalse(FileManager.default.fileExists(atPath: clearwayDirectory(in: worktree)))
@@ -340,24 +388,30 @@ final class TaskCommandTests: TempRootTestCase {
     func testShowUnknownOrMalformedIdExitsOne() throws {
         let pool = try makePool()
 
-        assertFailed(run(["task", "show", UUID().uuidString], in: pool.repo.root), exitCode: 1)
-        assertFailed(run(["task", "show", "not-a-uuid"], in: pool.repo.root), exitCode: 1)
+        let unknown = UUID()
+
+        assertFailed(run(["task", "show", unknown.uuidString], in: pool.repo.root), exitCode: 1, stderr: "cway: no task \(unknown.uuidString)\n")
+        assertFailed(run(["task", "show", "not-a-uuid"], in: pool.repo.root), exitCode: 1, stderr: "cway: malformed task id 'not-a-uuid'\n")
     }
 
     func testListAndShowArgumentErrorsExitTwo() throws {
         let pool = try makePool()
 
-        assertFailed(run(["task", "show"], in: pool.repo.root), exitCode: 2)
-        assertFailed(run(["task", "show", pool.backlog.id.uuidString, "extra"], in: pool.repo.root), exitCode: 2)
-        assertFailed(run(["task", "list", "extra"], in: pool.repo.root), exitCode: 2)
+        assertFailed(run(["task", "show"], in: pool.repo.root), exitCode: 2, stderr: "cway: missing task id\n")
+        assertFailed(
+            run(["task", "show", pool.backlog.id.uuidString, "extra"], in: pool.repo.root),
+            exitCode: 2,
+            stderr: "cway: unexpected argument 'extra'\n"
+        )
+        assertFailed(run(["task", "list", "extra"], in: pool.repo.root), exitCode: 2, stderr: "cway: unexpected argument 'extra'\n")
     }
 
     func testListAndShowOutsideGitRepositoryExitOneAndWriteNothing() throws {
         let directory = (tempRoot as NSString).appendingPathComponent("not-a-repo")
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
 
-        assertFailed(run(["task", "list"], in: directory), exitCode: 1)
-        assertFailed(run(["task", "show", UUID().uuidString], in: directory), exitCode: 1)
+        assertFailed(run(["task", "list"], in: directory), exitCode: 1, stderr: outsideRepoMessage(directory))
+        assertFailed(run(["task", "show", UUID().uuidString], in: directory), exitCode: 1, stderr: outsideRepoMessage(directory))
 
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory), [])
     }

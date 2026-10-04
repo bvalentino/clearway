@@ -158,21 +158,44 @@ enum TaskCommand {
     // MARK: - Project resolution
 
     private static func resolveProject(in workingDirectory: String) throws(Failure) -> Project {
-        let output = try git(["worktree", "list", "--porcelain"], in: workingDirectory)
+        let arguments = ["worktree", "list", "--porcelain"]
+        let output = try git(arguments, in: workingDirectory)
+        let paths = Worktree.parseList(output).compactMap(\.path)
+        guard let mainPath = paths.first else {
+            throw .runtime("\(quoted(arguments)) in '\(workingDirectory)' listed no worktrees.")
+        }
         let mainBlock = output.components(separatedBy: "\n\n").first ?? ""
         guard !mainBlock.components(separatedBy: "\n").contains("bare") else {
-            throw .runtime("the main worktree is a bare repository, which has no task backlog")
+            throw .runtime(
+                "the main worktree of this repository, '\(mainPath)', is a bare repository with no task backlog. "
+                    + "cway needs a project whose main worktree is checked out."
+            )
         }
-        let paths = Worktree.parseList(output).compactMap(\.path)
-        guard let mainPath = paths.first else { throw .runtime("git listed no worktrees") }
         return Project(mainPath: mainPath, worktreePaths: paths)
     }
 
+    private static func quoted(_ gitArguments: [String]) -> String {
+        "'git \(gitArguments.joined(separator: " "))'"
+    }
+
     private static func git(_ arguments: [String], in directory: String) throws(Failure) -> String {
+        // Checked before Process sees the path: a deleted working directory reaches here as "",
+        // and Process raises an uncatchable Objective-C exception for it.
+        guard !directory.isEmpty else {
+            throw .runtime("the current directory no longer exists. cd into a project and run cway again.")
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw .runtime("the current directory '\(directory)' does not exist. cd into a project and run cway again.")
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        var environment = ProcessInfo.processInfo.environment
+        environment["LC_ALL"] = "C"
+        process.environment = environment
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
@@ -180,21 +203,40 @@ enum TaskCommand {
         do {
             try process.run()
         } catch {
-            throw .runtime("cannot run git in \(directory): \(error.localizedDescription)")
+            throw .runtime("could not start git in '\(directory)': \(error.localizedDescription)")
         }
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
         let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
-        let envCommandNotFound: Int32 = 127
-        guard process.terminationStatus != envCommandNotFound else { throw .runtime("git not found") }
-        guard process.terminationStatus == 0 else {
-            let lines = (String(bytes: errorOutput, encoding: .utf8) ?? "").split(separator: "\n")
-            let reason = lines.first { $0.hasPrefix("fatal:") } ?? lines.first
-            throw .runtime(reason.map(String.init) ?? "git exited with status \(process.terminationStatus)")
+        let status = process.terminationStatus
+        guard status == 0 else {
+            throw gitFailure(status: status, stderr: errorOutput, directory: directory, command: quoted(arguments))
         }
-        guard let text = String(bytes: output, encoding: .utf8) else { throw .runtime("git printed output that is not UTF-8") }
+        guard let text = String(bytes: output, encoding: .utf8) else {
+            throw .runtime("\(quoted(arguments)) in '\(directory)' printed output that is not UTF-8.")
+        }
         return text
+    }
+
+    private static func gitFailure(status: Int32, stderr: Data, directory: String, command: String) -> Failure {
+        let envCommandNotFound: Int32 = 127
+        let gitFatal: Int32 = 128
+        if status == envCommandNotFound {
+            return .runtime("git was not found on PATH. cway runs git to find the project; install git or add it to PATH.")
+        }
+        let lines = (String(bytes: stderr, encoding: .utf8) ?? "")
+            .split(separator: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if status == gitFatal, lines.first?.hasPrefix("fatal: not a git repository (or any ") == true {
+            return .runtime(
+                "the current directory '\(directory)' is not inside a git repository. "
+                    + "Run cway from inside a project or one of its worktrees."
+            )
+        }
+        let framing = "could not find the project for '\(directory)': \(command) exited with status \(status)"
+        guard !lines.isEmpty else { return .runtime("\(framing) and printed nothing.") }
+        return .runtime(([framing + ". git said:"] + lines.map { "  \($0)" }).joined(separator: "\n"))
     }
 
     // MARK: - Output
