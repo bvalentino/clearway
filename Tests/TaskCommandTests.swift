@@ -362,6 +362,77 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory), [])
     }
 
+    private func addDetachedWorktree(_ name: String, to repo: GitRepoFixture) throws -> String {
+        let path = (repo.root as NSString).appendingPathComponent(".worktrees/\(name)")
+        try GitRepoFixture.git(["worktree", "add", "-q", "--detach", path], in: repo.root)
+        return canonical(path)
+    }
+
+    func testListAndShowSkipADetachedWorktreesTask() throws {
+        let repo = try makeRepo()
+        let worktree = try addDetachedWorktree("loose", to: repo)
+        let task = WorkTask(title: "Loose task")
+        try TaskFiles.write(task, toPath: TaskFiles.taskMarkdownPath(inWorktree: worktree))
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: repo.root)) as? [[String: Any]])
+        XCTAssertFalse(entries.contains { $0["id"] as? String == task.id.uuidString })
+
+        let show = run(["task", "show", task.id.uuidString], in: repo.root)
+        assertFailed(show, exitCode: 1)
+        XCTAssertEqual(show.stderr, "cway: no task \(task.id.uuidString)\n")
+    }
+
+    func testListAndShowIncludeAMidRebaseWorktreesTask() throws {
+        let repo = try makeRepo()
+        let worktree = try addDetachedWorktree("rebasing", to: repo)
+        let rebaseDirectory = (try repo.gitDir(ofWorktreeAt: worktree) as NSString).appendingPathComponent("rebase-merge")
+        try FileManager.default.createDirectory(atPath: rebaseDirectory, withIntermediateDirectories: true)
+        try "refs/heads/feature\n".write(
+            toFile: (rebaseDirectory as NSString).appendingPathComponent("head-name"), atomically: true, encoding: .utf8
+        )
+        let task = WorkTask(title: "Rebasing task")
+        try TaskFiles.write(task, toPath: TaskFiles.taskMarkdownPath(inWorktree: worktree))
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: repo.root)) as? [[String: Any]])
+        let entry = try XCTUnwrap(entries.first { $0["id"] as? String == task.id.uuidString })
+        XCTAssertEqual(entry["location"] as? String, "worktree")
+        XCTAssertEqual(canonical(try XCTUnwrap(entry["path"] as? String)), TaskFiles.taskMarkdownPath(inWorktree: worktree))
+
+        let shown = try XCTUnwrap(try jsonObject(run(["task", "show", task.id.uuidString], in: repo.root)) as? [String: Any])
+        XCTAssertEqual(shown["title"] as? String, "Rebasing task")
+        XCTAssertEqual(shown["location"] as? String, "worktree")
+    }
+
+    func testShowReportsTheCentralCopyWhenTheWorktreeCopyIsInADetachedWorktree() throws {
+        let repo = try makeRepo()
+        let worktree = try addDetachedWorktree("loose", to: repo)
+        let central = WorkTask(title: "Central title")
+        var local = central
+        local.title = "Worktree title"
+        try TaskFiles.write(central, toPath: TaskFiles.centralPath(for: central.id, tasksDirectory: TaskFiles.tasksDirectory(inProject: repo.root)))
+        try TaskFiles.write(local, toPath: TaskFiles.taskMarkdownPath(inWorktree: worktree))
+
+        let shown = try XCTUnwrap(try jsonObject(run(["task", "show", central.id.uuidString], in: repo.root)) as? [String: Any])
+
+        XCTAssertEqual(shown["title"] as? String, "Central title")
+        XCTAssertEqual(shown["location"] as? String, "backlog")
+    }
+
+    func testDetachedMainWorktreeKeepsTheBacklogButNotItsOwnTask() throws {
+        let repo = try makeRepo()
+        _ = try repo.addWorktree(branch: "feature")
+        try GitRepoFixture.git(["checkout", "-q", "--detach"], in: repo.root)
+        let mainTask = WorkTask(title: "Main task")
+        try TaskFiles.write(mainTask, toPath: TaskFiles.taskMarkdownPath(inWorktree: repo.root))
+
+        let (id, path) = try created(run(["task", "create", "--title", "Backlog task"], in: repo.root))
+        XCTAssertEqual(canonical(path), TaskFiles.centralPath(for: id, tasksDirectory: TaskFiles.tasksDirectory(inProject: repo.root)))
+
+        let entries = try XCTUnwrap(try jsonObject(run(["task", "list"], in: repo.root)) as? [[String: Any]])
+        XCTAssertEqual(entries.map { $0["id"] as? String }, [id.uuidString])
+        XCTAssertEqual(entries.first?["location"] as? String, "backlog")
+    }
+
     // MARK: - End to end
 
     private func runHelper(_ arguments: [String], in directory: String) throws -> (stdout: String, status: Int32) {
