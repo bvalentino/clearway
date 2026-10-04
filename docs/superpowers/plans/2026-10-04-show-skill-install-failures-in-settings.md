@@ -249,3 +249,21 @@ the fix.
 
 **Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures);
 `swiftlint lint --quiet` on the two touched source files reports nothing.
+
+### T3: Settings shows the last action's failures
+
+| File | State |
+| --- | --- |
+| `Sources/App/SkillSettingsSection.swift` | New `@State private var failures: [SkillInstaller.Failure] = []`. The button assigns `failures = act(NSHomeDirectory(), Bundle.main.bundlePath)` then `refresh()`, so each click replaces the previous click's list (E6). `onAppear` clears `failures` and refreshes `status` (E6). The one `ForEach` iterates `failures.map(\.message) + status.messages` with `id: \.self`, failures first, same red `Label` (`exclamationmark.triangle`, `.callout`) (E7). No new copy. |
+
+**Evidence.**
+
+- No RED test: a SwiftUI body is unreachable from XCTest, as the plan states. The failure list and its
+  messages are covered by T1's `SkillInstallerTests`; this task only stops discarding them.
+- `id: \.self` cannot collide: failure lines read "could not be linked/removed", status lines "could not be
+  read" / "already exists" / the no-agent line, and each failure names a distinct entry path.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures);
+`swiftlint lint --quiet Sources/App/SkillSettingsSection.swift` reports nothing.
