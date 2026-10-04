@@ -48,12 +48,12 @@ enum SkillInstaller {
                 switch location.state() {
                 case .missing:
                     try location.createContainer()
+                    try FileManager.default.createSymbolicLink(atPath: location.path, withDestinationPath: location.destination)
                 case .stale:
-                    try FileManager.default.removeItem(atPath: location.path)
+                    try location.replaceLink()
                 case .agentAbsent, .current, .foreign, .unreadable:
                     continue
                 }
-                try FileManager.default.createSymbolicLink(atPath: location.path, withDestinationPath: location.destination)
                 Ghostty.logger.info("Linked \(location.path, privacy: .public) to \(location.destination, privacy: .public)")
             } catch {
                 Ghostty.logger.error("\(location.path, privacy: .public) could not be linked: \(error, privacy: .public)")
@@ -80,6 +80,7 @@ enum SkillInstaller {
     }
 
     private static func posixError(in error: Error) -> NSError? {
+        if (error as NSError).domain == NSPOSIXErrorDomain { return error as NSError }
         guard let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError,
               underlying.domain == NSPOSIXErrorDomain else { return nil }
         return underlying
@@ -94,6 +95,7 @@ enum SkillInstaller {
         /// The agent's own config directory, which Clearway never creates; `nil` for the CLI.
         let gate: String?
         let container: String
+        let linkName: String
         let path: String
         let destination: String
         /// What makes a link Clearway's from any bundle path, including one that no longer exists.
@@ -103,7 +105,7 @@ enum SkillInstaller {
         init(_ target: Target, home: String, bundlePath: String) {
             let cliSuffix = "Contents/MacOS/cway"
             let skillSuffix = "Contents/Resources/Skills/clearway"
-            let (gateName, containerName, linkName, suffix): (String?, String, String, String) = switch target {
+            let (gateName, containerName, name, suffix): (String?, String, String, String) = switch target {
             case .cli: (nil, ".clearway", "cway", cliSuffix)
             case .claudeCode: (".claude", ".claude/skills", "clearway", skillSuffix)
             case .codex: (".codex", ".agents/skills", "clearway", skillSuffix)
@@ -111,12 +113,13 @@ enum SkillInstaller {
             let home = home as NSString
             gate = gateName.map(home.appendingPathComponent)
             container = home.appendingPathComponent(containerName)
-            path = (container as NSString).appendingPathComponent(linkName)
+            linkName = name
+            path = (container as NSString).appendingPathComponent(name)
             destination = (bundlePath as NSString).appendingPathComponent(suffix)
             destinationSuffix = ".app/" + suffix
             // Built from the names rather than abbreviated from `path`: `abbreviatingWithTildeInPath`
             // reads the real home, so under a temp root the displayed line would differ.
-            displayPath = "~/\(containerName)/\(linkName)"
+            displayPath = "~/\(containerName)/\(name)"
         }
 
         /// Never `fileExists` on the entry itself: it follows the link and reports a dangling one
@@ -135,6 +138,21 @@ enum SkillInstaller {
                   let linked = try? fileManager.destinationOfSymbolicLink(atPath: path) else { return .foreign }
             if linked == destination { return .current }
             return linked.hasSuffix(destinationSuffix) ? .stale : .foreign
+        }
+
+        /// `rename(2)` swaps the new link in over the stale one in one step, so a failed Install
+        /// never leaves the path empty. Never remove the stale link first.
+        func replaceLink() throws {
+            let temporary = (container as NSString).appendingPathComponent(".\(linkName).\(UUID().uuidString)")
+            try FileManager.default.createSymbolicLink(atPath: temporary, withDestinationPath: destination)
+            guard rename(temporary, path) != 0 else { return }
+            let renameError = NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            do {
+                try FileManager.default.removeItem(atPath: temporary)
+            } catch {
+                Ghostty.logger.error("\(temporary, privacy: .public) could not be removed: \(error, privacy: .public)")
+            }
+            throw renameError
         }
 
         func createContainer() throws {

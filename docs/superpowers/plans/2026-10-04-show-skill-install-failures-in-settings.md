@@ -220,3 +220,32 @@ the fix.
 
 **Gate.** `./scripts/ci.sh` exit 0 after the last source edit; all 19 `SkillInstallerTests` pass;
 `swiftlint lint --quiet` on the three touched files reports nothing.
+
+### T2: Replace a stale link by rename, never by remove-then-create
+
+| File | State |
+| --- | --- |
+| `Sources/App/SkillInstaller.swift` | Install's `.stale` branch calls `Location.replaceLink()`: creates `<container>/.<linkName>.<UUID>`, then `rename(2)`s it over the stale link; on a rename failure it removes the temporary link (logging a failure there with `privacy: .public`) and throws a POSIX `NSError` built from `errno`. `.missing` creates the link directly, as before. `Location` exposes `linkName`. `posixError(in:)` also accepts an error that is itself in `NSPOSIXErrorDomain`, so the rename reason comes out as `strerror` text (E3). Install no longer calls `removeItem` on a stale link's path. |
+| `Tests/SkillInstallerTests.swift` | New: `testAStaleLinkSurvivesAnInstallThatCannotCreateItsReplacement` (F3), with `chmod(_:)` (runs `/bin/chmod` via `Process`, ACL cleared with `-N` in `defer`) and `temporaryEntries(in:)` helpers. Extended: `testStaleAndDanglingLinksAreRepointedByInstallAndRemovedByUninstall` asserts Install returns `[]` and leaves no `.cway.*`/`.clearway.*` entry in any of the three containers (F6). |
+
+**Evidence.**
+
+- RED: F3 written first, run against the T1 code. `./scripts/ci.sh` exit 65, 954 tests, 1 failure:
+  `testAStaleLinkSurvivesAnInstallThatCannotCreateItsReplacement, XCTAssertEqual failed: threw error "Error Domain=NSCocoaErrorDomain Code=260 "The file “clearway” couldn’t be opened because there is no such file." ... NSUnderlyingError=... {Error Domain=NSPOSIXErrorDomain ...`
+  — the stale link was removed and its re-creation refused, so `destination(claudeLink)` found nothing.
+- GREEN: same test passes after `replaceLink()`; the temporary link's creation is what the ACL refuses, so the
+  stale link is never touched and no `.clearway.*` entry is left.
+- F6's new assertions pass on both the T1 code and T2 (the old path made no temporary entry); they guard the
+  rename path against leaving one behind.
+
+**Deviations.**
+
+- The rename-failure branch (temp created, `rename(2)` refused) has no test: no ACL or mode found in the spec's
+  probes allows creating an entry in a directory while refusing a rename over a sibling in the same directory.
+  It is covered by review only.
+- `replaceLink()` carries a two-line doc comment ("Never remove the stale link first"), kept as a regression
+  guard; the test's doc comment records why a mode change cannot reach the path. T4 restates both in
+  `Sources/App/CLAUDE.md`.
+
+**Gate.** `./scripts/ci.sh` exit 0 after the last source edit (954 tests, 0 failures);
+`swiftlint lint --quiet` on the two touched source files reports nothing.

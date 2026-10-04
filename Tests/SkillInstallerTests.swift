@@ -205,15 +205,36 @@ final class SkillInstallerTests: TempRootTestCase {
         XCTAssertFalse(before.isInstalled)
         XCTAssertEqual(before.messages, [])
 
-        install()
+        XCTAssertEqual(install(), [])
         XCTAssertEqual(try destination(cliLink), cliDestination)
         XCTAssertEqual(try destination(claudeLink), skillDestination)
         XCTAssertEqual(try destination(codexLink), skillDestination)
+        for container in [".clearway", ".claude/skills", ".agents/skills"] {
+            XCTAssertEqual(try temporaryEntries(in: path(container)), [], "\(container) must hold no temporary link")
+        }
 
         try fileManager.removeItem(atPath: codexLink)
         try fileManager.createSymbolicLink(atPath: codexLink, withDestinationPath: path("Gone.app/Contents/Resources/Skills/clearway"))
         XCTAssertEqual(uninstall(), [])
         assertAllLinksGone()
+    }
+
+    /// A mode change cannot reach this path: removing and creating an entry both need write on the
+    /// directory. An ACL denying `add_file` refuses the create and still allows the removal.
+    func testAStaleLinkSurvivesAnInstallThatCannotCreateItsReplacement() throws {
+        try makeAgents(claude: true, codex: true)
+        let skills = path(".claude/skills")
+        try makeDirectory(skills)
+        let oldDestination = (otherBundle as NSString).appendingPathComponent("Contents/Resources/Skills/clearway")
+        try fileManager.createSymbolicLink(atPath: claudeLink, withDestinationPath: oldDestination)
+        defer { try? chmod(["-N", skills]) }
+        try chmod(["+a", "user:\(NSUserName()) deny add_file", skills])
+
+        let failures = install()
+
+        XCTAssertEqual(try destination(claudeLink), oldDestination)
+        XCTAssertEqual(failures, [SkillInstaller.Failure(displayPath: "~/.claude/skills/clearway", action: .link, reason: "Permission denied")])
+        XCTAssertEqual(try temporaryEntries(in: skills), [])
     }
 
     func testUninstallRemovesLinksIntoAnotherExistingBundle() throws {
@@ -355,6 +376,19 @@ final class SkillInstallerTests: TempRootTestCase {
 
     private func setMode(_ mode: Int, of path: String) throws {
         try fileManager.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
+    }
+
+    private func chmod(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0, "chmod \(arguments.joined(separator: " ")) failed")
+    }
+
+    private func temporaryEntries(in container: String) throws -> [String] {
+        try fileManager.contentsOfDirectory(atPath: container).filter { $0.hasPrefix(".cway.") || $0.hasPrefix(".clearway.") }
     }
 
     private func makeDirectory(_ path: String) throws {
