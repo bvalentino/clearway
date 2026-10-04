@@ -677,6 +677,11 @@
   **Nothing calls `install` at launch**, unlike the hook toggle: the `ci.sh` test host is the built
   app, so a launch call would link the developer's real home to a test build on every run. Every
   function takes `home` and `bundlePath` so the suite runs under a temp root.
+- `SkillSettingsSection.swift` — Settings' "Agents" section: one Install/Uninstall button and the
+  `SkillInstallStatus.messages` lines in the hook health line's red style. **Its button action is
+  the only call site of `SkillInstaller.install` and `uninstall`**; `onAppear` only reads `status`,
+  and the button re-reads it after acting. The status starts `nil` so no row renders before the
+  first read: an empty `SkillInstallStatus` would show the no-agent line.
 - `OpenInApp.swift` / `OpenInAppLauncher.swift` / `OpenInMenu.swift` /
   `OpenInAppsSettingsSection.swift` — the "Open In" list: the model and its `Draft` validation, the
   launcher, the one menu view the toolbar and the sidebar both render, and the Settings section

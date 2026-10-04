@@ -43,6 +43,7 @@
 		2F43B4C896A89D4494DFFBC3 /* WorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B72EE6CE255D7A9004F92 /* WorktreeTests.swift */; };
 		2FC531EDD2252FCF9B20819A /* NotificationObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDAE15ABED5D6FC97CBF276 /* NotificationObservation.swift */; };
 		3127D0ABBF03DD8175E2ECBB /* WorktreeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA49140EA97943AF93DC322 /* WorktreeModel.swift */; };
+		3346748A87C98DAD4D704C1F /* SkillSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3029A17CF1A5D90CE3BD322 /* SkillSettingsSection.swift */; };
 		35B7398ACB0913D7CA9F2FC6 /* AgentMenuRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97032912E0AF9052AE7800F7 /* AgentMenuRowTests.swift */; };
 		37E83FC99B5DCB38AEE84058 /* TaskCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CE23053E6FAA018A831D96 /* TaskCommand.swift */; };
 		38A4A022B43AF4C7D0FD042E /* PromptListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A289D16C8729AD679B9C0921 /* PromptListView.swift */; };
@@ -366,6 +367,7 @@
 		AF845FCB581E1B628B736556 /* MarkdownSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighter.swift; sourceTree = "<group>"; };
 		B138ED76CF9F4BF34515ACD0 /* AgentHookEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookEvent.swift; sourceTree = "<group>"; };
 		B1FE5564F524A7FBD7F03548 /* ShellPathValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellPathValidation.swift; sourceTree = "<group>"; };
+		B3029A17CF1A5D90CE3BD322 /* SkillSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillSettingsSection.swift; sourceTree = "<group>"; };
 		B69299F6EE2D7FFF3EFBCA90 /* AgentHookSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookSettingsTests.swift; sourceTree = "<group>"; };
 		B791FC3AEB1374564858A072 /* WorktreeGroupManager+Ordering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeGroupManager+Ordering.swift"; sourceTree = "<group>"; };
 		B81142617650A73C69973357 /* SidebarSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarSheets.swift; sourceTree = "<group>"; };
@@ -608,6 +610,7 @@
 				1D9DEE3F414E3AD4551FCC62 /* SidebarView.swift */,
 				E8DA44DE72A4F73AE639D4E0 /* SidePanelTabStrip.swift */,
 				74388A0B98631550FA8F4B85 /* SkillInstaller.swift */,
+				B3029A17CF1A5D90CE3BD322 /* SkillSettingsSection.swift */,
 				0AA2F9015F08B68DAD03FD12 /* TaskAsideView.swift */,
 				54E4F120F042C2615893DCE6 /* TaskDetailView.swift */,
 				EAE459E15542D8C5EA90C6C5 /* TaskEditorBuffers.swift */,
@@ -1047,6 +1050,7 @@
 				6D33DC48A8F6646366418B8E /* SidebarSheets.swift in Sources */,
 				2AAF47ECAB371BF3E59DD2F1 /* SidebarView.swift in Sources */,
 				B0497BC3FC464ADA1D737946 /* SkillInstaller.swift in Sources */,
+				3346748A87C98DAD4D704C1F /* SkillSettingsSection.swift in Sources */,
 				69E1EF840D0BBBD01CADE677 /* TaskAsideView.swift in Sources */,
 				C0AFF26959405EFBAE2B2A88 /* TaskCommand.swift in Sources */,
 				E1E15B0EAE5B230942FBCC4C /* TaskDetailView.swift in Sources */,
