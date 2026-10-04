@@ -156,6 +156,10 @@ no new warnings in the two files.
 | The R12 test leaves a `0o500` directory that breaks `tempRoot` cleanup. | Restore the mode in `defer`. |
 | `GIT_TEST_ASSUME_DIFFERENT_OWNER` stops working in a future git. | Out of our control; the test would fail loudly with git's actual stderr in the assertion message, not pass silently. |
 
+## Changelog
+
+- **Review fix: git's stderr is decoded lossily.** `gitFailure` decodes stderr with `String(decoding:as: UTF8.self)` under a one-line `swiftlint:disable:next optional_data_string_conversion`. This reverses T1's choice of `String(bytes:encoding: .utf8) ?? ""`, which dropped all of git's stderr when any byte was invalid UTF-8 and reported "printed nothing", hiding the cause (against the spec's "so the cause is never hidden"). Reachable with real git: a `.git/config` value git echoes verbatim, such as `repositoryformatversion = \xFF`. Do not revert to the failable decode. The stdout decode in `git` stays failable on purpose, because that output is parsed. Guarded by `testGitStderrThatIsNotUTF8StillShowsGitsReason`. No message wording changed.
+
 ## Build log
 
 ### T1: Explicit messages on the git path
@@ -221,3 +225,19 @@ Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 921 tests, w
 ### Simplify
 
 Reviewed the three commits for reuse, simplification and altitude; nothing worth changing, so no code was touched. `./scripts/ci.sh` after the review: exit 0, 921 tests, 0 failures.
+
+### Review fix: non-UTF-8 git stderr
+
+| File | State |
+| --- | --- |
+| `Sources/Shared/TaskCommand.swift` | `gitFailure` decodes stderr with `String(decoding: stderr, as: UTF8.self)`, invalid bytes becoming U+FFFD, under `// swiftlint:disable:next optional_data_string_conversion` with the reason on the decode line. The stdout decode stays `String(bytes:encoding:)`. |
+| `Tests/TaskCommandTests.swift` | `testGitStderrThatIsNotUTF8StillShowsGitsReason` (written by the review step, kept unchanged): appends `repositoryformatversion = \xFF` to `.git/config`, expects exit 1, no "printed nothing", and an indented `fatal: bad numeric config value` line. |
+
+Evidence: the test run alone (`xcodebuild … -only-testing:ClearwayTests/TaskCommandTests/testGitStderrThatIsNotUTF8StillShowsGitsReason`) against `TaskCommand.swift` from `HEAD`, restored from a scratchpad copy afterwards (`cmp` identical): exit 65, 2 failures:
+
+- `XCTAssertFalse failed - cway: could not find the project for '/var/folders/…/clearway-tests-…': 'git worktree list --porcelain' exited with status 128 and printed nothing.`
+- `XCTAssertTrue failed - cway: could not find the project for '/var/folders/…/clearway-tests-…': 'git worktree list --porcelain' exited with status 128 and printed nothing.`
+
+Deviations: I looked for a lossy decode that needs no suppression. SwiftLint 0.63.2 matches the rule on spelling only: `String(decoding: d, as: Unicode.UTF8.self)` is not flagged, while `as: UTF8.self` is flagged even on `Array(d)`. Changing the spelling avoids the warning without fixing anything and gives the reader no reason, so the code uses the explicit suppression. A lint probe in the scratchpad confirmed this.
+
+Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 922 tests, with 0 failures`; `swiftlint lint --quiet` on both files reports nothing.

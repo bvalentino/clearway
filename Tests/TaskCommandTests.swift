@@ -278,6 +278,21 @@ final class TaskCommandTests: TempRootTestCase {
         XCTAssertTrue(result.stderr.hasSuffix("\n"), result.stderr)
     }
 
+    func testGitStderrThatIsNotUTF8StillShowsGitsReason() throws {
+        let repo = try makeRepo()
+        let config = (repo.root as NSString).appendingPathComponent(".git/config")
+        let handle = try XCTUnwrap(FileHandle(forWritingAtPath: config))
+        handle.seekToEndOfFile()
+        handle.write(Data("[core]\n\trepositoryformatversion = ".utf8) + Data([0xFF]) + Data("\n".utf8))
+        try handle.close()
+
+        let result = run(["task", "list"], in: repo.root)
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertFalse(result.stderr.contains("printed nothing"), result.stderr)
+        XCTAssertTrue(result.stderr.contains("\n  fatal: bad numeric config value"), result.stderr)
+    }
+
     func testMissingWorkingDirectoryIsReportedInsteadOfCrashing() {
         let missing = (tempRoot as NSString).appendingPathComponent("gone")
 

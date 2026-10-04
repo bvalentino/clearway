@@ -236,7 +236,8 @@ enum TaskCommand {
         if status == envCommandNotFound {
             return .runtime("git was not found on PATH. cway runs git to find the project; install git or add it to PATH.")
         }
-        let lines = (String(bytes: stderr, encoding: .utf8) ?? "")
+        // swiftlint:disable:next optional_data_string_conversion
+        let lines = String(decoding: stderr, as: UTF8.self) // shown, not parsed: git echoes non-UTF-8 config values
             .split(separator: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         if status == gitFatal, lines.first?.hasPrefix("fatal: not a git repository (or any ") == true {
