@@ -160,9 +160,9 @@ shorter than the tool timeout.
 
 ### "The test runner exited with code 0 before finishing running tests"
 
-Capture it from the unified log at once, not the xcresult, which never records the host's last lines and keeps only ~2 weeks:
+Capture it from the unified log at once, since it keeps only ~2 weeks; the xcresult never records the host's last lines:
 `/usr/bin/log show --last 1h --predicate 'process == "xcodebuild" AND eventMessage CONTAINS "before finishing running tests"' --style compact`, then the host pid from `testmanagerd`'s "closing test session … pid" line, then `--predicate 'processID == <pid>' --debug --info`. Bare `log` is a zsh builtin.
-A missing `terminate:` proves nothing: every normal host end is `exit()` from `_XCTestMain`. The one known incident did not reproduce; see `docs/superpowers/specs/2026-10-04-fix-early-test-runner-exit.md`.
+A missing `terminate:` proves nothing: every normal host end is `exit()` from `_XCTestMain`. The one known incident did not reproduce; see `docs/superpowers/specs/2026-10-04-fix-early-test-runner-exit.md` and the T2 build log in `docs/superpowers/plans/2026-10-04-fix-early-test-runner-exit.md`, which supersedes the spec's E3.
 
 ### Merge model
 
