@@ -217,3 +217,7 @@ Evidence: the two new tests run (via `xcodebuild … -only-testing`) against `So
 Deviations: none. No production code changed.
 
 Gate: `./scripts/ci.sh` after the last code edit: exit 0, `Executed 921 tests, with 0 failures`; `swiftlint lint --quiet Tests/TaskCommandTests.swift` reports nothing.
+
+### Simplify
+
+Reviewed the three commits for reuse, simplification and altitude; nothing worth changing, so no code was touched. `./scripts/ci.sh` after the review: exit 0, 921 tests, 0 failures.
