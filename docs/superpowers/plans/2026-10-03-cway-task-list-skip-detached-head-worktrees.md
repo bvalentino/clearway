@@ -212,3 +212,19 @@ to fail a "skip every detached entry" shortcut, not to go red before the change.
 format to copy.
 
 **Gate.** `./scripts/ci.sh`, exit 0: 919 tests, 0 failures.
+
+### T3: Docs name the shared head resolution and task-carrier rule
+
+| File | State |
+| --- | --- |
+| `CLAUDE.md` | The `Sources/Shared/` bullet (line 115) now lists head resolution (`Worktree.applyHeadResolution`) and the task-carrier rule (`Worktree.taskCarriers`, the one filter the app's Tasks list and `cway task list`/`show` both use). |
+| `Sources/App/CLAUDE.md` | Line 460: `WorktreeManager.inProgressOp` is now `Worktree.inProgressOp`. |
+
+**Evidence.** Docs only, so no failing test applies. `grep -rn --include='*.md' "WorktreeManager\.\(gitdir\|inProgressOp\|applyHeadResolution\)" .`
+now finds hits only under `docs/`, which the criterion excludes. No other `CLAUDE.md` line describes
+`gitdir`, `applyHeadResolution` or `taskResolverPairs` as living in `WorktreeManager`; line 459's bare
+`applyHeadResolution` names no owner and stays.
+
+**Deviations.** None.
+
+**Gate.** `./scripts/ci.sh`, exit 0: 919 tests, 0 failures.

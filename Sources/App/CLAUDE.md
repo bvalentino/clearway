@@ -457,7 +457,7 @@
   worktree that is neither main nor open unless Settings → Appearance → Show detached worktrees is
   on; a worktree whose HEAD is detached because a git operation is in progress never reaches it as
   `.detached`, because `applyHeadResolution` has already rewritten it — to `.rebasing`/`.bisecting`
-  with the branch `WorktreeManager.inProgressOp` recovered, or to `.inProgress` for cherry-pick,
+  with the branch `Worktree.inProgressOp` recovered, or to `.inProgress` for cherry-pick,
   revert, merge and `git am`, which record no branch, so those rows keep the "(detached)" name and
   are hidden by nothing. Only rendering paths go through that method, and only they should:
   this is a display rule, not a change to what the app tracks.
