@@ -228,3 +228,7 @@ now finds hits only under `docs/`, which the criterion excludes. No other `CLAUD
 **Deviations.** None.
 
 **Gate.** `./scripts/ci.sh`, exit 0: 919 tests, 0 failures.
+
+### Simplify
+
+No changes: the moved code is verbatim, `taskCarriers` is the single shared rule, and no duplication or dead code remained. `./scripts/ci.sh` exit 0 (919 tests, 0 failures).
