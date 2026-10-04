@@ -228,3 +228,5 @@ perl `alarm` replaced `timeout`, which is not installed.
 Gate: `./scripts/ci.sh` after the last edit, exit 0 in 168 s. "Executed 956 tests, with 0 failures
 (0 unexpected)", "==> CI passed." Before commit `git status --porcelain` listed only `CLAUDE.md` and
 this plan (no `default.profraw`, no diagnostic), and `pgrep -fl 'xcodebuild|yes$'` returned nothing.
+
+Simplify: nothing to simplify. The diff is one deleted import, one four-line CLAUDE.md note, and docs. `./scripts/ci.sh` exit 0, 956 tests, 0 failures.
