@@ -1,5 +1,4 @@
 import XCTest
-@testable import Clearway
 
 final class BundledResourcesTests: XCTestCase {
 
