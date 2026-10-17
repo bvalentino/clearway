@@ -31,6 +31,8 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
+clearway_require_uninstrumented "$APP_PATH"
+
 # Strip extended attributes that cause Gatekeeper issues when zipped
 xattr -cr "$APP_PATH"
 

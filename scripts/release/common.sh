@@ -69,6 +69,28 @@ clearway_require_clean_tree() {
   fi
 }
 
+# The otool output is captured before it is searched: under pipefail,
+# `otool | grep -q` can kill otool with SIGPIPE on the first match and pass an
+# instrumented binary.
+clearway_require_uninstrumented() {
+  local app="$1" name bin sections
+  for name in "$PRODUCT_NAME" cway; do
+    bin="$app/Contents/MacOS/$name"
+    if [ ! -f "$bin" ]; then
+      echo "Error: $bin not found." >&2
+      return 1
+    fi
+    if ! sections=$(otool -l "$bin"); then
+      echo "Error: otool could not read $bin." >&2
+      return 1
+    fi
+    if [[ "$sections" == *__llvm_prf* ]]; then
+      echo "Error: $bin is built with profiling instrumentation (__llvm_prf sections)." >&2
+      return 1
+    fi
+  done
+}
+
 clearway_require_notary_env() {
   : "${ASC_API_KEY_PATH:?Set ASC_API_KEY_PATH to your App Store Connect API .p8 file path}"
   : "${ASC_API_KEY_ID:?Set ASC_API_KEY_ID to your App Store Connect API Key ID}"

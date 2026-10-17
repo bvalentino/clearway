@@ -185,3 +185,34 @@ Deviations: none. No regression test applies; the change is build configuration,
 settings and `otool` checks above.
 
 Gate: `./scripts/ci.sh` after the last edit to code or config, exit 0 (956 tests, 0 failures).
+
+### T2: Guard shipped binaries against profiling instrumentation
+
+| File | State |
+| --- | --- |
+| `scripts/release/common.sh` | New `clearway_require_uninstrumented <app>` (D5): for `Contents/MacOS/$PRODUCT_NAME` and `Contents/MacOS/cway`, fails naming the binary when it is missing, when `otool -l` fails, or when the captured output contains `__llvm_prf`. Output is captured before matching, per the pipefail note |
+| `scripts/release/build.sh` | Calls the guard after the `APP_PATH` check, before `xattr -cr` (D6) |
+| `scripts/install.sh` | Sources `release/common.sh` in place of its own `SCRIPT_DIR`/`PROJECT_DIR`/`cd`/`PRODUCT_NAME` lines; calls the guard after the `APP_PATH` check, before `rm -rf "$INSTALL_PATH"` (D6) |
+
+Evidence (all probes in the scratchpad):
+
+- The installed 2.1.2 app, copied with `ditto` before `install.sh` ran: `otool -l ... | grep -c __llvm_prf`
+  prints `7` for `Clearway` and `7` for `cway`, so no synthetic sample was needed.
+- RED, before the function existed: `bash -euo pipefail -c "source scripts/release/common.sh; clearway_require_uninstrumented <scratchpad>/old/Clearway.app"`
+  printed `clearway_require_uninstrumented: command not found`, exit 127.
+- Negative proof, same command after the change: exit 1,
+  `Error: <scratchpad>/old/Clearway.app/Contents/MacOS/Clearway is built with profiling instrumentation (__llvm_prf sections).`
+- The `cway` branch on its own: a copy of the new app with the 2.1.2 `cway` swapped in exits 1,
+  `Error: <scratchpad>/oldcway/Clearway.app/Contents/MacOS/cway is built with profiling instrumentation (__llvm_prf sections).`
+- Missing-binary proof: a copy of the new app with `Contents/MacOS/cway` deleted exits 1,
+  `Error: <scratchpad>/nocway/Clearway.app/Contents/MacOS/cway not found.`
+- `./scripts/install.sh` exit 0, so the guard passed on the new Release build. Afterwards
+  `otool -l /Applications/Clearway.app/Contents/MacOS/Clearway | grep -c __llvm_prf` prints `0`, and `0`
+  for `.../cway`. The guard run directly on `/Applications/Clearway.app` exits 0.
+- In a fresh scratchpad directory, `git init -q && /Applications/Clearway.app/Contents/MacOS/cway task list`
+  printed `[]` (exit 0) and `ls -a` shows only `.`, `..`, `.git`: no `default.profraw`.
+- `bash -n` passes on all three scripts.
+
+Deviations: none. `release/build.sh` was not run, as the plan says.
+
+Gate: `./scripts/ci.sh` after the last script edit, exit 0 (956 tests, 0 failures).
