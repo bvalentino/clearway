@@ -238,3 +238,8 @@ Deviations: none. No regression test applies; the change is CI config and docs. 
 exercised only by GitHub on the PR.
 
 Gate: `./scripts/ci.sh` after the last edit, exit 0 (956 tests, 0 failures).
+
+### Simplify
+
+Reviewed the branch diff for reuse, simplification and altitude; no change made. `install.sh` already reuses `release/common.sh`, and the guard is a single shared helper.
+Gate: `./scripts/ci.sh` exit 0. A first run exited 65 on `TaskCommandTests.testHelpPrintsUsageAndExitsZero` and passed on rerun with no edits between; the test shells out and was not investigated.
