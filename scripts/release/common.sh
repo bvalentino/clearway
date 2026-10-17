@@ -60,7 +60,6 @@ clearway_require_main_branch() {
   fi
 }
 
-# Untracked files are ignored: a Debug launch leaves default.profraw behind.
 clearway_require_clean_tree() {
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     echo "Error: the working tree has uncommitted changes to tracked files:" >&2

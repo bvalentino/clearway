@@ -216,3 +216,25 @@ Evidence (all probes in the scratchpad):
 Deviations: none. `release/build.sh` was not run, as the plan says.
 
 Gate: `./scripts/ci.sh` after the last script edit, exit 0 (956 tests, 0 failures).
+
+### T3: Keep CI in step and drop the stale profraw docs
+
+| File | State |
+| --- | --- |
+| `.github/workflows/ci.yml` | `Test` step uses `-scheme Clearway` (D3), matching both `xcodebuild` lines in `scripts/ci.sh` |
+| `CLAUDE.md` | Removed the Build & Run paragraph about Debug launches dropping `default.profraw`, and the sentence "Expect the un-gitignored `default.profraw` noted above after any Debug launch." under Merge model (D8) |
+| `scripts/release/common.sh` | Removed the comment above `clearway_require_clean_tree`; the function still uses `--untracked-files=no` (D8) |
+
+Evidence:
+
+- D8 input is T1's result: the Debug `Clearway` and `cway` binaries have 0 `__llvm_prf` sections and
+  no `default.profraw` appeared, so the doc removals apply.
+- `git grep -n ClearwayTests -- .github scripts` prints nothing.
+- `grep -n -- -scheme scripts/ci.sh .github/workflows/ci.yml`: every line is `-scheme Clearway`.
+- `git grep -n profraw -- ':!docs/superpowers'` prints nothing (exit 1).
+- After the `ci.sh` run, no `default.profraw` in the repo root.
+
+Deviations: none. No regression test applies; the change is CI config and docs. `ci.yml` is
+exercised only by GitHub on the PR.
+
+Gate: `./scripts/ci.sh` after the last edit, exit 0 (956 tests, 0 failures).
