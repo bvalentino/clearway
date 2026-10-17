@@ -79,8 +79,8 @@ clearway_require_uninstrumented() {
       echo "Error: $bin not found." >&2
       return 1
     fi
-    if ! sections=$(otool -l "$bin"); then
-      echo "Error: otool could not read $bin." >&2
+    if ! sections=$(otool -l "$bin") || [[ "$sections" != *LC_SEGMENT_64* ]]; then
+      echo "Error: $bin is not a readable Mach-O executable." >&2
       return 1
     fi
     if [[ "$sections" == *__llvm_prf* ]]; then
