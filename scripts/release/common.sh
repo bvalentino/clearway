@@ -60,13 +60,34 @@ clearway_require_main_branch() {
   fi
 }
 
-# Untracked files are ignored: a Debug launch leaves default.profraw behind.
 clearway_require_clean_tree() {
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     echo "Error: the working tree has uncommitted changes to tracked files:" >&2
     git status --short --untracked-files=no >&2
     return 1
   fi
+}
+
+# The otool output is captured before it is searched: under pipefail,
+# `otool | grep -q` can kill otool with SIGPIPE on the first match and pass an
+# instrumented binary.
+clearway_require_uninstrumented() {
+  local app="$1" name bin sections
+  for name in "$PRODUCT_NAME" cway; do
+    bin="$app/Contents/MacOS/$name"
+    if [ ! -f "$bin" ]; then
+      echo "Error: $bin not found." >&2
+      return 1
+    fi
+    if ! sections=$(otool -l "$bin") || [[ "$sections" != *LC_SEGMENT_64* ]]; then
+      echo "Error: $bin is not a readable Mach-O executable." >&2
+      return 1
+    fi
+    if [[ "$sections" == *__llvm_prf* ]]; then
+      echo "Error: $bin is built with profiling instrumentation (__llvm_prf sections)." >&2
+      return 1
+    fi
+  done
 }
 
 clearway_require_notary_env() {

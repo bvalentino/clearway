@@ -22,9 +22,6 @@ which only the `Clearway` target reads, while `ci.sh` builds the default `Clearw
 the bundle the way `run.sh` does — newest `.app` in `BUILT_PRODUCTS_DIR`, executable name from
 `CFBundleExecutable` — rather than hardcoding a DerivedData path, or you will run a stale binary.
 
-Running the Debug build drops `default.profraw` in the repo root and it is **not** gitignored, so
-`git status` goes dirty after every launch. Never `git add -A` without reading the list.
-
 ## Verifying a change
 
 ```bash
@@ -173,5 +170,4 @@ non-fast-forward pushes — GitHub requires no status check, so `.github/workflo
 `SwiftLint`, `Build & Test`) gates by convention, not enforcement.
 
 `ci.sh` does not itself refuse on a dirty tree, so before any CI stamp or sign-off run
-`git status --porcelain` and report untracked/ignored files; they block sign-off. Expect the
-un-gitignored `default.profraw` noted above after any Debug launch.
+`git status --porcelain` and report untracked/ignored files; they block sign-off.

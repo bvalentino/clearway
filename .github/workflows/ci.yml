@@ -103,7 +103,7 @@ jobs:
 
       - name: Test
         run: >
-          xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests
+          xcodebuild -project Clearway.xcodeproj -scheme Clearway
           -configuration Debug -destination 'platform=macOS'
           -clonedSourcePackagesDirPath "$PWD/.ci-source-packages"
           -disableAutomaticPackageResolution

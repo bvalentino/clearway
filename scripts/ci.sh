@@ -16,10 +16,10 @@ swiftlint lint --quiet
 echo "==> Building and testing..."
 # No APP_PRODUCT_NAME override here: it renames the app bundle out from under TEST_HOST.
 if command -v xcbeautify >/dev/null 2>&1; then
-  xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests -configuration Debug \
+  xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug \
     -destination "platform=macOS,arch=$(uname -m)" test | xcbeautify --quiet --disable-logging
 else
-  xcodebuild -project Clearway.xcodeproj -scheme ClearwayTests -configuration Debug \
+  xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Debug \
     -destination "platform=macOS,arch=$(uname -m)" test -quiet
 fi
 

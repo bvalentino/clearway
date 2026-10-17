@@ -9,6 +9,24 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
+  configs:
+    Release:
+      ENABLE_CODE_COVERAGE: NO
+
+schemes:
+  Clearway:
+    build:
+      targets:
+        Clearway: all
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - ClearwayTests
+  ClearwayCLI:
+    build:
+      targets:
+        ClearwayCLI: all
 
 packages:
   cmark-gfm:

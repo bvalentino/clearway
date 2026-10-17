@@ -2,12 +2,8 @@
 # Build Clearway in Release configuration and install to /Applications.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
-cd "$PROJECT_DIR"
-
-PRODUCT_NAME="Clearway"
+# shellcheck source=release/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/release/common.sh"
 
 # Resolve BUILT_PRODUCTS_DIR once, then build.
 BUILD_DIR=$(xcodebuild -project Clearway.xcodeproj -scheme Clearway -configuration Release -destination 'platform=macOS' \
@@ -24,6 +20,8 @@ if [ ! -d "$APP_PATH" ]; then
   echo "Error: $APP_PATH not found."
   exit 1
 fi
+
+clearway_require_uninstrumented "$APP_PATH"
 
 INSTALL_PATH="/Applications/$PRODUCT_NAME.app"
 
